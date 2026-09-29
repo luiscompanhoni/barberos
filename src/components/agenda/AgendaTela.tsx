@@ -1,0 +1,167 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/cliente-api";
+import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
+import { DetalheModal } from "./DetalheModal";
+import { EncaixeModal, type ServicoApi } from "./EncaixeModal";
+import { Grade } from "./Grade";
+import { montarColunas, type AgendamentoApi, type Coluna } from "./tipos";
+import { useAgenda } from "./useAgenda";
+
+const FUSO = "America/Sao_Paulo";
+
+/** Segunda-feira da semana de `data` (a grade semanal comeca na segunda). */
+function inicioSemana(data: string) {
+  const ds = new Date(`${data}T12:00:00Z`).getUTCDay();
+  return somarDias(data, ds === 0 ? -6 : 1 - ds);
+}
+
+export function AgendaTela(p: {
+  modoInicial: "dia" | "semana";
+  permitirTrocarModo?: boolean;
+  /** Barbeiro fixo (minha agenda). */
+  barbeiroFixo?: string;
+  /** Mostra seletor de barbeiro na semana. */
+  escolherBarbeiro?: boolean;
+  papel: string;
+  meuBarbeiroId: string | null;
+}) {
+  const [modo, setModo] = useState(p.modoInicial);
+  const [data, setData] = useState(() => dataLocal(Date.now(), FUSO));
+  const [barbeiroSel, setBarbeiroSel] = useState<string | undefined>(p.barbeiroFixo);
+  const [servicos, setServicos] = useState<ServicoApi[]>([]);
+  const [todosBarbeiros, setTodosBarbeiros] = useState<{ id: string; nome: string; ativo: boolean }[]>([]);
+  const [encaixe, setEncaixe] = useState<{ coluna: Coluna | null; inicio: number | null } | null>(null);
+  const [aberto, setAberto] = useState<AgendamentoApi | null>(null);
+  const [aviso, setAviso] = useState<{ texto: string; erro?: boolean } | null>(null);
+
+  const dias = modo === "semana" ? 7 : 1;
+  const dataConsulta = modo === "semana" ? inicioSemana(data) : data;
+  // Na semana sem barbeiro escolhido, usa o primeiro.
+  const filtro = modo === "semana" ? (barbeiroSel ?? todosBarbeiros.find((b) => b.ativo)?.id) : p.barbeiroFixo;
+  const { agenda, erro, aoVivo, recarregar } = useAgenda(dataConsulta, dias, modo === "semana" && !filtro ? "__nenhum__" : filtro);
+
+  useEffect(() => {
+    api<ServicoApi[]>("/api/servicos").then(setServicos).catch(() => {});
+    api<{ id: string; nome: string; ativo: boolean }[]>("/api/barbeiros").then(setTodosBarbeiros).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!aviso) return;
+    const t = setTimeout(() => setAviso(null), 4500);
+    return () => clearTimeout(t);
+  }, [aviso]);
+
+  const colunas = useMemo(() => (agenda ? montarColunas(agenda, modo) : []), [agenda, modo]);
+  const podeEditar = useCallback(
+    (barbeiroId: string) => p.papel !== "BARBEIRO" || barbeiroId === p.meuBarbeiroId,
+    [p.papel, p.meuBarbeiroId],
+  );
+
+  async function mover(ag: AgendamentoApi, col: Coluna, inicio: number, fim: number) {
+    try {
+      await api(`/api/agendamentos/${ag.id}`, {
+        method: "PATCH",
+        body: { inicio: new Date(inicio).toISOString(), fim: new Date(fim).toISOString(), barbeiroId: col.barbeiroId },
+      });
+      const nomeB = agenda?.barbeiros.find((b) => b.id === col.barbeiroId)?.nome ?? "";
+      setAviso({ texto: `${ag.cliente.nome}: ${minParaHhmm(minutosLocal(inicio, FUSO))} às ${minParaHhmm(minutosLocal(fim, FUSO))} com ${nomeB}.` });
+    } catch (e) {
+      setAviso({ texto: (e as Error).message, erro: true });
+    }
+    await recarregar();
+  }
+
+  const rotuloData = new Date(`${data}T12:00:00Z`).toLocaleDateString("pt-BR", {
+    weekday: "long", day: "2-digit", month: "long", timeZone: "UTC",
+  });
+  const passo = modo === "semana" ? 7 : 1;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1">
+          <button className="btn" onClick={() => setData(somarDias(data, -passo))} aria-label="Anterior">‹</button>
+          <button className="btn" onClick={() => setData(dataLocal(Date.now(), FUSO))}>Hoje</button>
+          <button className="btn" onClick={() => setData(somarDias(data, passo))} aria-label="Próximo">›</button>
+        </div>
+        <input type="date" className="campo w-auto" value={data} onChange={(e) => e.target.value && setData(e.target.value)} />
+        <span className="text-sm font-medium capitalize text-zinc-700">
+          {modo === "semana" ? `Semana de ${new Date(`${dataConsulta}T12:00:00Z`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}` : rotuloData}
+        </span>
+
+        {p.permitirTrocarModo && (
+          <div className="flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm">
+            {(["dia", "semana"] as const).map((m) => (
+              <button key={m} className={`rounded-md px-3 py-1 capitalize ${modo === m ? "bg-zinc-900 text-white" : ""}`} onClick={() => setModo(m)}>{m}</button>
+            ))}
+          </div>
+        )}
+        {p.escolherBarbeiro && modo === "semana" && (
+          <select className="campo w-auto" value={filtro ?? ""} onChange={(e) => setBarbeiroSel(e.target.value)}>
+            {todosBarbeiros.filter((b) => b.ativo).map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
+          </select>
+        )}
+
+        <div className="ml-auto flex items-center gap-3">
+          <span className={`flex items-center gap-1.5 text-xs ${aoVivo ? "text-emerald-700" : "text-zinc-400"}`}>
+            <span className={`h-2 w-2 rounded-full ${aoVivo ? "bg-emerald-500" : "bg-zinc-300"}`} />
+            {aoVivo ? "Ao vivo" : "Reconectando"}
+          </span>
+          <button className="btn-primario" onClick={() => setEncaixe({ coluna: null, inicio: null })}>+ Atendimento</button>
+        </div>
+      </div>
+
+      {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      {!agenda ? (
+        <div className="cartao text-sm text-zinc-500">Carregando agenda...</div>
+      ) : colunas.length === 0 ? (
+        <div className="cartao text-sm text-zinc-500">Nenhum barbeiro ativo. Cadastre a equipe em Equipe e serviços.</div>
+      ) : (
+        <Grade
+          colunas={colunas}
+          agendamentos={agenda.agendamentos}
+          fuso={agenda.fuso}
+          granularidadeMin={agenda.granularidadeMin}
+          podeEditar={podeEditar}
+          onMover={mover}
+          onVazio={(coluna, inicio) => setEncaixe({ coluna, inicio })}
+          onAbrir={setAberto}
+        />
+      )}
+      <p className="text-xs text-zinc-500">
+        Clique num horário vazio para encaixar. Arraste o cartão para mudar horário ou barbeiro e puxe a borda de baixo para mudar a duração.
+      </p>
+
+      {encaixe && agenda && (
+        <EncaixeModal
+          data={encaixe.coluna?.data ?? data}
+          barbeiroId={encaixe.coluna?.barbeiroId ?? p.meuBarbeiroId ?? filtro ?? agenda.barbeiros[0]?.id ?? ""}
+          inicio={encaixe.inicio}
+          fuso={agenda.fuso}
+          barbeiros={(p.papel === "BARBEIRO" ? todosBarbeiros.filter((b) => b.id === p.meuBarbeiroId) : todosBarbeiros).filter((b) => b.ativo)}
+          servicos={servicos}
+          onFechar={() => setEncaixe(null)}
+          onCriado={(msg) => { setEncaixe(null); setAviso({ texto: msg }); recarregar(); }}
+        />
+      )}
+      {aberto && agenda && (
+        <DetalheModal
+          ag={aberto}
+          fuso={agenda.fuso}
+          barbeiroNome={agenda.barbeiros.find((b) => b.id === aberto.barbeiroId)?.nome ?? ""}
+          podeEditar={podeEditar(aberto.barbeiroId)}
+          onFechar={() => setAberto(null)}
+          onAlterado={(msg) => { setAberto(null); setAviso({ texto: msg }); recarregar(); }}
+        />
+      )}
+
+      {aviso && (
+        <div role="status" className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-2.5 text-sm shadow-lg ${aviso.erro ? "bg-red-600 text-white" : "bg-zinc-900 text-white"}`}>
+          {aviso.texto}
+        </div>
+      )}
+    </div>
+  );
+}

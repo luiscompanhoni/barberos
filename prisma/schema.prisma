@@ -1,0 +1,275 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Papel {
+  DONO
+  RECEPCAO
+  BARBEIRO
+  CLIENTE
+}
+
+enum TipoExcecao {
+  FOLGA
+  HORARIO_ESPECIAL
+}
+
+enum StatusAgendamento {
+  MARCADO
+  CONFIRMADO
+  CHEGOU
+  EM_ATENDIMENTO
+  CONCLUIDO
+  FALTOU
+  CANCELADO
+}
+
+enum OrigemAgendamento {
+  BOT
+  SITE
+  RECEPCAO
+  BARBEIRO
+  PAINEL
+}
+
+model Usuario {
+  id        String    @id @default(cuid())
+  telefone  String    @unique
+  nome      String
+  papel     Papel
+  ativo     Boolean   @default(true)
+  criadoEm  DateTime  @default(now()) @db.Timestamptz(3)
+  barbeiro  Barbeiro?
+  cliente   Cliente?
+
+  @@map("usuarios")
+}
+
+model CodigoLogin {
+  id          String    @id @default(cuid())
+  telefone    String
+  codigoHash  String
+  expiraEm    DateTime  @db.Timestamptz(3)
+  tentativas  Int       @default(0)
+  usadoEm     DateTime? @db.Timestamptz(3)
+  criadoEm    DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([telefone, criadoEm])
+  @@map("codigos_login")
+}
+
+/// Linha unica (id = 1) com as regras gerais da barbearia.
+model Configuracao {
+  id                     Int    @id @default(1)
+  nomeBarbearia          String @default("Barbearia")
+  fuso                   String @default("America/Sao_Paulo")
+  granularidadeMin       Int    @default(15)
+  antecedenciaMinimaMin  Int    @default(60)
+  janelaAgendamentoDias  Int    @default(30)
+  intervaloEntreClientes Int    @default(0)
+  /// Cliente so cancela/remarca sozinho ate X minutos antes.
+  prazoCancelamentoMin   Int    @default(120)
+  /// Maximo de agendamentos futuros por cliente (bot e site).
+  maxAgendamentosCliente Int    @default(2)
+  endereco               String?
+  botAtivo               Boolean @default(true)
+
+  @@map("configuracao")
+}
+
+model Barbeiro {
+  id           String             @id @default(cuid())
+  usuarioId    String             @unique
+  usuario      Usuario            @relation(fields: [usuarioId], references: [id])
+  nome         String
+  cor          String             @default("#378ADD")
+  ordem        Int                @default(0)
+  ativo        Boolean            @default(true)
+  servicos     BarbeiroServico[]
+  expediente   ExpedientePadrao[]
+  excecoes     ExcecaoAgenda[]
+  bloqueios    Bloqueio[]
+  agendamentos Agendamento[]
+
+  @@map("barbeiros")
+}
+
+model Servico {
+  id            String            @id @default(cuid())
+  nome          String
+  duracaoMin    Int
+  precoCentavos Int
+  ordem         Int               @default(0)
+  ativo         Boolean           @default(true)
+  barbeiros     BarbeiroServico[]
+  agendamentos  Agendamento[]
+
+  @@map("servicos")
+}
+
+/// Quais servicos cada barbeiro faz, com duracao/preco proprios opcionais.
+model BarbeiroServico {
+  barbeiroId    String
+  servicoId     String
+  duracaoMin    Int?
+  precoCentavos Int?
+  barbeiro      Barbeiro @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
+  servico       Servico  @relation(fields: [servicoId], references: [id], onDelete: Cascade)
+
+  @@id([barbeiroId, servicoId])
+  @@map("barbeiro_servicos")
+}
+
+/// Semana padrao: varios intervalos por dia permitem pausa de almoco (ex.: 9-12 e 13-19).
+model ExpedientePadrao {
+  id         String   @id @default(cuid())
+  barbeiroId String
+  barbeiro   Barbeiro @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
+  diaSemana  Int // 0 = domingo ... 6 = sabado
+  inicioMin  Int // minutos desde 00:00 no fuso da barbearia
+  fimMin     Int
+
+  @@index([barbeiroId, diaSemana])
+  @@map("expediente_padrao")
+}
+
+/// Excecao numa data: folga ou horario diferente (inclui dia extra).
+model ExcecaoAgenda {
+  id         String      @id @default(cuid())
+  barbeiroId String
+  barbeiro   Barbeiro    @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
+  data       DateTime    @db.Date
+  tipo       TipoExcecao
+  /// Para HORARIO_ESPECIAL: [{ "inicioMin": 540, "fimMin": 780 }]
+  intervalos Json?
+  motivo     String?
+
+  @@unique([barbeiroId, data])
+  @@map("excecoes_agenda")
+}
+
+/// Periodo fechado (horas, dias, ferias).
+model Bloqueio {
+  id          String   @id @default(cuid())
+  barbeiroId  String
+  barbeiro    Barbeiro @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
+  inicio      DateTime @db.Timestamptz(3)
+  fim         DateTime @db.Timestamptz(3)
+  motivo      String?
+  criadoPorId String?
+  criadoEm    DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([barbeiroId, inicio])
+  @@map("bloqueios")
+}
+
+model Cliente {
+  id           String        @id @default(cuid())
+  telefone     String        @unique
+  nome         String
+  observacoes  String?
+  usuarioId    String?       @unique
+  usuario      Usuario?      @relation(fields: [usuarioId], references: [id])
+  criadoEm     DateTime      @default(now()) @db.Timestamptz(3)
+  agendamentos Agendamento[]
+  conversa     Conversa?
+
+  @@map("clientes")
+}
+
+/// A exclusao "sem sobreposicao" por barbeiro e criada em SQL na migracao.
+model Agendamento {
+  id            String            @id @default(cuid())
+  barbeiroId    String
+  barbeiro      Barbeiro          @relation(fields: [barbeiroId], references: [id])
+  clienteId     String
+  cliente       Cliente           @relation(fields: [clienteId], references: [id])
+  servicoId     String
+  servico       Servico           @relation(fields: [servicoId], references: [id])
+  inicio        DateTime          @db.Timestamptz(3)
+  fim           DateTime          @db.Timestamptz(3)
+  status        StatusAgendamento @default(MARCADO)
+  origem        OrigemAgendamento
+  precoCentavos Int
+  observacao    String?
+  /// Cliente aceitou qualquer barbeiro: a recepcao pode trocar sem perguntar.
+  semPreferencia Boolean          @default(false)
+  criadoPorId   String?
+  criadoEm      DateTime          @default(now()) @db.Timestamptz(3)
+  atualizadoEm  DateTime          @updatedAt @db.Timestamptz(3)
+
+  @@index([barbeiroId, inicio])
+  @@index([clienteId])
+  @@map("agendamentos")
+}
+
+model Auditoria {
+  id         String   @id @default(cuid())
+  usuarioId  String?
+  acao       String
+  entidade   String
+  entidadeId String
+  dados      Json?
+  criadoEm   DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([entidade, entidadeId])
+  @@map("auditoria")
+}
+
+enum EstadoConversa {
+  BOT
+  HUMANO
+}
+
+enum AutorMensagem {
+  CLIENTE
+  BOT
+  EQUIPE
+  /// Aviso automatico enviado ao cliente (remarcacao, cancelamento).
+  SISTEMA
+  /// Anotacao interna, nao vai para o cliente.
+  NOTA
+}
+
+/// Uma conversa de WhatsApp por telefone.
+model Conversa {
+  id              String         @id @default(cuid())
+  telefone        String         @unique
+  /// Numero como o WhatsApp identifica (celular BR antigo pode vir sem o 9).
+  waId            String?
+  nomePerfil      String?
+  clienteId       String?        @unique
+  cliente         Cliente?       @relation(fields: [clienteId], references: [id])
+  estado          EstadoConversa @default(BOT)
+  /// Ultima mensagem do cliente: abre a janela de 24h do WhatsApp.
+  ultimaEntradaEm DateTime?      @db.Timestamptz(3)
+  naoLidas        Int            @default(0)
+  /// Historico da sessao atual com o Claude (append-only; reinicia apos inatividade).
+  sessaoInicioEm  DateTime?      @db.Timestamptz(3)
+  sessao          Json?
+  atualizadoEm    DateTime       @updatedAt @db.Timestamptz(3)
+  mensagens       Mensagem[]
+
+  @@index([atualizadoEm])
+  @@map("conversas")
+}
+
+model Mensagem {
+  id         String        @id @default(cuid())
+  conversaId String
+  conversa   Conversa      @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  autor      AutorMensagem
+  texto      String
+  /// id da mensagem no WhatsApp (evita processar a mesma entrada duas vezes)
+  wamid      String?       @unique
+  erro       String?
+  criadoEm   DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([conversaId, criadoEm])
+  @@map("mensagens")
+}

@@ -1,0 +1,121 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { Modal } from "@/components/Modal";
+import { api, reais } from "@/lib/cliente-api";
+import { minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
+import { formatarTelefone } from "@/lib/telefone";
+import { ROTULO_ORIGEM, ROTULO_STATUS, type AgendamentoApi, type Status } from "./tipos";
+
+/** Fluxo do atendimento no dia: chegou -> na cadeira -> concluido (ou faltou). */
+const PROXIMOS: Partial<Record<Status, Status[]>> = {
+  MARCADO: ["CHEGOU", "FALTOU"],
+  CONFIRMADO: ["CHEGOU", "FALTOU"],
+  CHEGOU: ["EM_ATENDIMENTO", "FALTOU"],
+  EM_ATENDIMENTO: ["CONCLUIDO"],
+  CONCLUIDO: ["EM_ATENDIMENTO"],
+  FALTOU: ["MARCADO"],
+};
+
+type Resumo = {
+  atendidos: number;
+  faltas: number;
+  ultimos: { id: string; inicio: string; status: string; servico: { nome: string }; barbeiro: { nome: string } }[];
+};
+
+export function DetalheModal(p: {
+  ag: AgendamentoApi;
+  fuso: string;
+  barbeiroNome: string;
+  podeEditar: boolean;
+  onFechar: () => void;
+  onAlterado: (msg: string) => void;
+}) {
+  const { ag } = p;
+  const [erro, setErro] = useState("");
+  const [ocupado, setOcupado] = useState(false);
+  const [confirmarCancel, setConfirmarCancel] = useState(false);
+  const hora = (iso: string) => minParaHhmm(minutosLocal(Date.parse(iso), p.fuso));
+  const [resumo, setResumo] = useState<Resumo | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    api<Resumo>(`/api/clientes/${ag.cliente.id}`).then((r) => vivo && setResumo(r)).catch(() => {});
+    return () => { vivo = false; };
+  }, [ag.cliente.id]);
+
+  async function status(s: Status) {
+    setErro("");
+    setOcupado(true);
+    try {
+      await api(`/api/agendamentos/${ag.id}`, { method: "PATCH", body: { status: s } });
+      p.onAlterado(`${ag.cliente.nome}: ${ROTULO_STATUS[s].toLowerCase()}.`);
+    } catch (e) {
+      setErro((e as Error).message);
+      setOcupado(false);
+    }
+  }
+
+  const whats = `https://wa.me/${ag.cliente.telefone}`;
+
+  return (
+    <Modal titulo={ag.cliente.nome} onFechar={p.onFechar}>
+      <dl className="grid grid-cols-[110px_1fr] gap-y-1.5 text-sm">
+        <dt className="text-zinc-500">Horário</dt><dd>{hora(ag.inicio)} às {hora(ag.fim)}</dd>
+        <dt className="text-zinc-500">Serviço</dt><dd>{ag.servico.nome} · {reais(ag.precoCentavos)}</dd>
+        <dt className="text-zinc-500">Barbeiro</dt>
+        <dd>{p.barbeiroNome}{ag.semPreferencia && <span className="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-800">sem preferência: pode trocar</span>}</dd>
+        <dt className="text-zinc-500">Situação</dt><dd>{ROTULO_STATUS[ag.status]}</dd>
+        <dt className="text-zinc-500">Celular</dt>
+        <dd><a className="underline" href={whats} target="_blank" rel="noreferrer">{formatarTelefone(ag.cliente.telefone)}</a></dd>
+        <dt className="text-zinc-500">Marcado por</dt><dd>{ROTULO_ORIGEM[ag.origem] ?? ag.origem}</dd>
+        {ag.cliente.observacoes && (<><dt className="text-zinc-500">Preferências</dt><dd>{ag.cliente.observacoes}</dd></>)}
+        {ag.observacao && (<><dt className="text-zinc-500">Obs.</dt><dd>{ag.observacao}</dd></>)}
+      </dl>
+
+      {resumo && (
+        <div className="mt-4 rounded-lg bg-zinc-50 p-3 text-sm">
+          <p className="text-zinc-600">
+            {resumo.atendidos} atendimento(s) concluído(s)
+            {resumo.faltas > 0 && <span className="text-red-700"> · {resumo.faltas} falta(s)</span>}
+          </p>
+          {resumo.ultimos.filter((u) => u.id !== ag.id).length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-xs text-zinc-500">
+              {resumo.ultimos.filter((u) => u.id !== ag.id).map((u) => (
+                <li key={u.id}>
+                  {new Date(u.inicio).toLocaleDateString("pt-BR", { timeZone: p.fuso })} · {u.servico.nome} com {u.barbeiro.nome}
+                  {u.status === "FALTOU" ? " · faltou" : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {p.podeEditar && ag.status !== "CANCELADO" && (
+        <div className="mt-5 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            {(PROXIMOS[ag.status] ?? []).map((s) => (
+              <button key={s} className={s === "FALTOU" ? "btn-perigo" : "btn-primario"} disabled={ocupado} onClick={() => status(s)}>
+                {s === "MARCADO" ? "Desfazer falta" : ROTULO_STATUS[s]}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-zinc-500">Para mudar horário, barbeiro ou duração, arraste o cartão na agenda.</p>
+          {ag.status !== "CONCLUIDO" && (
+            confirmarCancel ? (
+              <div className="flex items-center gap-2 rounded-lg bg-red-50 p-2 text-sm">
+                <span className="flex-1 text-red-800">Cancelar o atendimento de {ag.cliente.nome}?</span>
+                <button className="btn" onClick={() => setConfirmarCancel(false)}>Não</button>
+                <button className="btn-perigo" disabled={ocupado} onClick={() => status("CANCELADO")}>Cancelar</button>
+              </div>
+            ) : (
+              <button className="text-sm text-red-700 underline" onClick={() => setConfirmarCancel(true)}>Cancelar atendimento</button>
+            )
+          )}
+        </div>
+      )}
+      {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
+    </Modal>
+  );
+}

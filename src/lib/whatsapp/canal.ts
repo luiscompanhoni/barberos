@@ -1,0 +1,61 @@
+/**
+ * Envio de mensagens pelo WhatsApp.
+ * - "cloud": WhatsApp Cloud API oficial da Meta (producao).
+ * - "simulador": nada sai do servidor; as mensagens ficam no banco e aparecem na
+ *   tela /simulador (para testar sem conta na Meta).
+ */
+
+export type ResultadoEnvio = { wamid: string | null };
+
+export type TemplateWhatsApp = {
+  nome: string;
+  idioma?: string;
+  /** Parametros do corpo, na ordem {{1}}, {{2}}... */
+  parametros: string[];
+  /** Template de autenticacao (codigo de acesso) com botao "copiar codigo". */
+  botaoCodigo?: string;
+};
+
+export function provedorWhatsApp(): "cloud" | "simulador" {
+  return process.env.WHATSAPP_PROVIDER === "cloud" ? "cloud" : "simulador";
+}
+
+function configCloud() {
+  const token = process.env.WHATSAPP_TOKEN;
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+  if (!token || !phoneId) throw new Error("WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID são obrigatórios com WHATSAPP_PROVIDER=cloud.");
+  const versao = process.env.WHATSAPP_API_VERSION ?? "v23.0";
+  return { token, url: `https://graph.facebook.com/${versao}/${phoneId}/messages` };
+}
+
+async function postarCloud(corpo: Record<string, unknown>): Promise<ResultadoEnvio> {
+  const { token, url } = configCloud();
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", ...corpo }),
+  });
+  const json = (await r.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: { message?: string } };
+  if (!r.ok) throw new Error(`WhatsApp ${r.status}: ${json.error?.message ?? "erro desconhecido"}`);
+  return { wamid: json.messages?.[0]?.id ?? null };
+}
+
+export async function enviarTexto(para: string, texto: string): Promise<ResultadoEnvio> {
+  if (provedorWhatsApp() === "simulador") return { wamid: null };
+  return postarCloud({ to: para, type: "text", text: { preview_url: false, body: texto.slice(0, 4096) } });
+}
+
+export async function enviarTemplate(para: string, t: TemplateWhatsApp): Promise<ResultadoEnvio> {
+  if (provedorWhatsApp() === "simulador") return { wamid: null };
+  const components: Record<string, unknown>[] = [
+    { type: "body", parameters: t.parametros.map((text) => ({ type: "text", text })) },
+  ];
+  if (t.botaoCodigo) {
+    components.push({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: t.botaoCodigo }] });
+  }
+  return postarCloud({
+    to: para,
+    type: "template",
+    template: { name: t.nome, language: { code: t.idioma ?? "pt_BR" }, components },
+  });
+}
