@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, CalendarCheck, Clock3, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import { SemVaga } from "./SemVaga";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 
 const FUSO = "America/Sao_Paulo";
@@ -38,6 +40,16 @@ export function AgendarTela() {
   const [escolha, setEscolha] = useState<Opcao | null>(null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [previa, setPrevia] = useState<{ precoCentavos: number; peloPlano: boolean; nota: string | null; bloqueio: string | null } | null>(null);
+
+  // Preco real para este cliente (incluso no plano, desconto de assinante ou avulso).
+  useEffect(() => {
+    if (!escolha || !servicoId) return;
+    let vivo = true;
+    const q = new URLSearchParams({ servicoId, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, ...(remarcarId ? { remarcar: remarcarId } : {}) });
+    api<NonNullable<typeof previa>>(`/api/cliente/preco?${q}`).then((r) => vivo && setPrevia(r)).catch(() => {});
+    return () => { vivo = false; setPrevia(null); };
+  }, [escolha, servicoId, remarcarId]);
 
   useEffect(() => {
     api<Catalogo>("/api/cliente/servicos").then(setCatalogo).catch((e) => setErro(e.message));
@@ -73,9 +85,9 @@ export function AgendarTela() {
     setSalvando(true);
     try {
       if (remarcarId) {
-        await api(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId } });
+        await api(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId, forcarAvulso: !!previa?.bloqueio } });
       } else {
-        await api("/api/cliente/agendamentos", { method: "POST", body: { servicoId, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER } });
+        await api("/api/cliente/agendamentos", { method: "POST", body: { servicoId, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio } });
       }
       router.push("/c");
       router.refresh();
@@ -89,113 +101,148 @@ export function AgendarTela() {
 
   if (!catalogo) return <p className="text-sm text-zinc-500">{erro || "Carregando..."}</p>;
   const dias = Array.from({ length: catalogo.janelaDias + 1 }, (_, i) => somarDias(hoje, i));
+  const barbeiroEscolhido = barbeiroId === QUALQUER ? null : servico?.barbeiros.find((b) => b.id === barbeiroId);
+  const voltarPasso = () => {
+    if (passo === 4) setEscolha(null);
+    else if (passo === 3) { setBarbeiroId(""); setDisp(null); }
+    else if (passo === 2 && !remarcarId) setServicoId("");
+  };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold">{remarcarId ? "Remarcar horário" : "Agendar"}</h1>
-        <span className="ml-auto text-xs text-zinc-500">Passo {passo} de 4</span>
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="eyebrow">{remarcarId ? "Remarcar horário" : "Agendar"}</span>
+        <span className="text-xs font-bold text-zinc-500 uppercase">Passo {passo} de 4</span>
       </div>
-      {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      <div className="mt-3 grid grid-cols-4 gap-2">
+        {[1, 2, 3, 4].map((n) => <div key={n} className={`h-1 rounded-full transition ${n <= passo ? "bg-ouro" : "bg-zinc-200"}`} />)}
+      </div>
+      {erro && <p className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
       {passo === 1 && (
-        <div className="grid gap-2">
-          {catalogo.servicos.map((s) => (
-            <button key={s.id} className="cartao flex items-center text-left hover:border-zinc-400" onClick={() => setServicoId(s.id)}>
-              <span>
-                <span className="block font-medium">{s.nome}</span>
-                <span className="text-sm text-zinc-500">{s.duracaoMin} min</span>
-              </span>
-              <span className="ml-auto font-semibold">{reais(s.precoCentavos)}</span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {passo >= 2 && servico && (
-        <Resumo rotulo="Serviço" valor={`${servico.nome} · ${reais(servico.precoCentavos)}`} onTrocar={remarcarId ? undefined : () => { setServicoId(""); setBarbeiroId(""); setEscolha(null); setDisp(null); }} />
+        <Passo eyebrow="Comece por aqui" titulo="Qual serviço?">
+          <div className="space-y-3">
+            {catalogo.servicos.map((s) => (
+              <button key={s.id} className="cartao-clicavel flex w-full items-center gap-4 p-5 text-left" onClick={() => setServicoId(s.id)}>
+                <Scissors className="shrink-0 text-ouro" size={20} />
+                <span className="flex-1">
+                  <span className="block font-bold">{s.nome}</span>
+                  <span className="mt-1 block text-xs text-zinc-500">{s.duracaoMin} min · {reais(s.precoCentavos)}</span>
+                </span>
+                <ArrowRight className="text-zinc-400" size={16} />
+              </button>
+            ))}
+          </div>
+        </Passo>
       )}
 
       {passo === 2 && servico && (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <button className="cartao text-left hover:border-zinc-400" onClick={() => setBarbeiroId(QUALQUER)}>
-            <span className="font-medium">Qualquer barbeiro</span>
-            <span className="block text-sm text-zinc-500">Mais horários disponíveis</span>
-          </button>
-          {servico.barbeiros.map((b) => (
-            <button key={b.id} className="cartao flex items-center gap-2 text-left hover:border-zinc-400" onClick={() => setBarbeiroId(b.id)}>
-              <span className="h-3 w-3 rounded-full" style={{ background: b.cor }} />
-              <span className="font-medium">{b.nome}</span>
+        <Passo eyebrow="Escolha o profissional" titulo="Com quem?">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <button className="cartao-clicavel p-5 text-center" onClick={() => setBarbeiroId(QUALQUER)}>
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-zinc-200"><UserRound className="text-ouro" /></div>
+              <p className="mt-3 text-sm font-bold">Qualquer barbeiro</p>
+              <p className="mt-1 text-[11px] text-zinc-500">Mais horários</p>
             </button>
-          ))}
-        </div>
+            {servico.barbeiros.map((b) => (
+              <button key={b.id} className="cartao-clicavel p-5 text-center" onClick={() => setBarbeiroId(b.id)}>
+                <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border-2 text-sm font-bold text-zinc-900"
+                  style={{ borderColor: b.cor, background: `${b.cor}22` }}>
+                  {b.nome.slice(0, 2).toUpperCase()}
+                </div>
+                <p className="mt-3 text-sm font-bold">{b.nome}</p>
+              </button>
+            ))}
+          </div>
+        </Passo>
       )}
 
-      {passo >= 3 && servico && (
-        <Resumo
-          rotulo="Barbeiro"
-          valor={barbeiroId === QUALQUER ? "Qualquer barbeiro" : (servico.barbeiros.find((b) => b.id === barbeiroId)?.nome ?? "")}
-          onTrocar={() => { setBarbeiroId(""); setEscolha(null); setDisp(null); }}
-        />
-      )}
-
-      {passo === 3 && (
-        <div className="space-y-3">
-          <div className="flex gap-2 overflow-x-auto pb-1">
+      {passo === 3 && servico && (
+        <Passo eyebrow={`${servico.nome} · ${barbeiroEscolhido?.nome ?? "qualquer barbeiro"}`} titulo="Quando?">
+          <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-3 [scrollbar-width:none]">
             {dias.map((d) => {
               const c = diaCurto(d);
+              const sel = d === data;
               return (
                 <button key={d} onClick={() => { setData(d); setDisp(null); }}
-                  className={`shrink-0 rounded-xl border px-3 py-2 text-center text-sm ${d === data ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 bg-white"}`}>
+                  className={`min-w-[68px] shrink-0 rounded-xl border p-3 text-center text-xs font-bold transition ${sel ? "border-ouro bg-ouro text-fundo" : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-400"}`}>
                   <span className="block capitalize">{c.semana}</span>
-                  <span className="block font-semibold">{c.dia}</span>
+                  <span className={`mt-0.5 block text-sm ${sel ? "" : "text-zinc-900"}`}>{c.dia}</span>
                 </button>
               );
             })}
           </div>
+          <p className="rotulo mt-6">Horários disponíveis</p>
           {!disp ? (
-            <p className="text-sm text-zinc-500">Buscando horários...</p>
+            <p className="mt-3 text-sm text-zinc-500">Buscando horários...</p>
           ) : opcoes.length === 0 ? (
-            <p className="cartao text-sm text-zinc-600">Sem horários livres nesse dia. Tente outro dia{barbeiroId !== QUALQUER ? " ou outro barbeiro" : ""}.</p>
+            <SemVaga key={`${data}|${barbeiroId}`} data={data} servicoId={servico.id} barbeiroId={barbeiroId === QUALQUER ? null : barbeiroId} />
           ) : (
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+            <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
               {opcoes.map((o) => (
-                <button key={o.inicio} onClick={() => setEscolha(o)} className="rounded-lg border border-zinc-300 bg-white py-2 text-sm font-medium hover:border-zinc-900">
+                <button key={o.inicio} onClick={() => setEscolha(o)}
+                  className="rounded-lg border border-zinc-200 bg-white py-3 text-sm font-bold transition hover:border-ouro hover:text-ouro">
                   {hora(o.inicio)}
                 </button>
               ))}
             </div>
           )}
-        </div>
+        </Passo>
       )}
 
       {passo === 4 && escolha && servico && (
-        <div className="cartao space-y-3">
-          <p className="text-sm text-zinc-600">Confira e confirme:</p>
-          <p className="text-lg font-semibold first-letter:uppercase">
-            {new Date(escolha.inicio).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", timeZone: FUSO })} às {hora(escolha.inicio)}
-          </p>
-          <p className="text-sm">{servico.nome} com {escolha.barbeiroNome} · {reais(escolha.precoCentavos)}</p>
-          <div className="flex gap-2">
-            <button className="btn" onClick={() => setEscolha(null)}>Voltar</button>
-            <button className="btn-primario" onClick={confirmar} disabled={salvando}>
-              {salvando ? "Confirmando..." : remarcarId ? "Confirmar remarcação" : "Confirmar agendamento"}
-            </button>
+        <Passo eyebrow="Confirme seu horário" titulo="Tudo certo?">
+          <div className="cartao-destaque grid gap-5 p-6">
+            <Linha Icone={Scissors} rotulo="Serviço" valor={servico.nome} />
+            <Linha Icone={UserRound} rotulo="Barbeiro" valor={escolha.barbeiroNome} />
+            <Linha Icone={CalendarCheck} rotulo="Data"
+              valor={new Date(escolha.inicio).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: FUSO })} />
+            <Linha Icone={Clock3} rotulo="Horário" valor={hora(escolha.inicio)} />
+            <Linha Icone={Wallet} rotulo="Valor"
+              valor={!previa ? reais(escolha.precoCentavos) : previa.peloPlano ? "Incluso no seu plano" : `${reais(previa.precoCentavos)}${previa.nota ? ` (${previa.nota})` : ""}`}
+              destaque={!!previa?.peloPlano} />
           </div>
-        </div>
+          {previa?.bloqueio && (
+            <div className="mt-4 rounded-xl border border-ouro/30 bg-ouro/5 p-4 text-xs leading-5 text-zinc-600">
+              <strong className="text-ouro">Regra do plano:</strong> {previa.bloqueio}
+            </div>
+          )}
+        </Passo>
       )}
 
-      <Link href="/c" className="block text-center text-sm text-zinc-500 underline">Voltar para meus horários</Link>
+      <div className="mt-8 flex gap-3">
+        {passo > 1 && !(passo === 2 && remarcarId) && (
+          <button className="btn h-12 w-12 shrink-0 p-0" aria-label="Voltar" onClick={voltarPasso}><ArrowLeft size={18} /></button>
+        )}
+        {passo === 4 && (
+          <button className="btn-primario h-12 flex-1" onClick={confirmar} disabled={salvando}>
+            {salvando ? "Confirmando..." : previa?.bloqueio ? `Confirmar como avulso · ${reais(previa.precoCentavos)}` : remarcarId ? "Confirmar remarcação" : "Confirmar agendamento"}
+          </button>
+        )}
+      </div>
+      {passo < 4 && <Link href="/c" className="mt-6 block text-center text-sm text-zinc-500 hover:text-zinc-900">Voltar para meus horários</Link>}
     </div>
   );
 }
 
-function Resumo({ rotulo, valor, onTrocar }: { rotulo: string; valor: string; onTrocar?: () => void }) {
+function Passo({ eyebrow, titulo, children }: { eyebrow: string; titulo: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm">
-      <span className="text-zinc-500">{rotulo}:</span>
-      <span className="font-medium">{valor}</span>
-      {onTrocar && <button className="ml-auto text-xs text-zinc-500 underline" onClick={onTrocar}>trocar</button>}
+    <section className="entrar-suave">
+      <p className="eyebrow mt-8">{eyebrow}</p>
+      <h1 className="titulo-marca mt-3 mb-7 text-4xl">{titulo}</h1>
+      {children}
+    </section>
+  );
+}
+
+function Linha({ Icone, rotulo, valor, destaque }: { Icone: LucideIcon; rotulo: string; valor: string; destaque?: boolean }) {
+  return (
+    <div className="flex items-center gap-4">
+      <Icone className="shrink-0 text-ouro" size={20} />
+      <div>
+        <p className="text-[10px] font-bold text-zinc-500 uppercase">{rotulo}</p>
+        <p className={`mt-1 text-sm font-bold first-letter:uppercase ${destaque ? "text-ouro" : ""}`}>{valor}</p>
+      </div>
     </div>
   );
 }

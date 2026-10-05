@@ -29,6 +29,15 @@ enum StatusAgendamento {
   CANCELADO
 }
 
+enum OrigemCliente {
+  INDICACAO
+  INSTAGRAM
+  GOOGLE
+  FACHADA
+  WHATSAPP
+  OUTRO
+}
+
 enum OrigemAgendamento {
   BOT
   SITE
@@ -78,6 +87,33 @@ model Configuracao {
   maxAgendamentosCliente Int    @default(2)
   endereco               String?
   botAtivo               Boolean @default(true)
+  /// Dias apos o vencimento em que o assinante ainda usa o plano sem pagar.
+  toleranciaAtrasoDias   Int     @default(3)
+
+  // ---- Automacoes (Fase 5)
+  /// Lembrete na vespera: X horas antes (0 = desligado). Pede confirmacao.
+  lembreteHorasAntes     Int     @default(24)
+  /// Lembrete perto do horario: X minutos antes (0 = desligado).
+  lembreteMinutosAntes   Int     @default(90)
+  /// Depois de uma falta, oferece remarcar.
+  avisoFalta             Boolean @default(true)
+  /// Com N faltas em X dias o cliente so marca com a equipe (0 = sem limite).
+  limiteFaltas           Int     @default(2)
+  janelaFaltasDias       Int     @default(60)
+  /// Agradecimento depois do atendimento (com link de avaliacao, se houver).
+  posAtendimento         Boolean @default(false)
+  linkAvaliacao          String?
+  /// Chama de volta quem nao aparece ha X dias (0 = desligado).
+  reativacaoDias         Int     @default(0)
+  /// Parabens no dia do aniversario (com um presente opcional).
+  aniversario            Boolean @default(false)
+  presenteAniversario    String?
+  /// Lembrete de retorno no ritmo de cada cliente (com horarios sugeridos).
+  retornoAtivo           Boolean @default(false)
+  /// Indique e ganhe: premio de quem indica (quando o amigo faz o 1o atendimento) e de quem chega.
+  indicacaoAtiva         Boolean @default(false)
+  premioIndicadorCentavos Int    @default(2000)
+  premioIndicadoCentavos Int     @default(1000)
 
   @@map("configuracao")
 }
@@ -90,11 +126,14 @@ model Barbeiro {
   cor          String             @default("#378ADD")
   ordem        Int                @default(0)
   ativo        Boolean            @default(true)
+  /// Link secreto do calendario (.ics) para assinar no Google Agenda / celular.
+  tokenCalendario String?         @unique
   servicos     BarbeiroServico[]
   expediente   ExpedientePadrao[]
   excecoes     ExcecaoAgenda[]
   bloqueios    Bloqueio[]
   agendamentos Agendamento[]
+  planos       PlanoBarbeiro[]
 
   @@map("barbeiros")
 }
@@ -108,6 +147,7 @@ model Servico {
   ativo         Boolean           @default(true)
   barbeiros     BarbeiroServico[]
   agendamentos  Agendamento[]
+  planos        PlanoServico[]
 
   @@map("servicos")
 }
@@ -173,11 +213,31 @@ model Cliente {
   telefone     String        @unique
   nome         String
   observacoes  String?
+  /// Exigido pelo Asaas para cobrar. Nunca exibido inteiro na interface.
+  cpf          String?
+  email        String?
   usuarioId    String?       @unique
   usuario      Usuario?      @relation(fields: [usuarioId], references: [id])
   criadoEm     DateTime      @default(now()) @db.Timestamptz(3)
   agendamentos Agendamento[]
   conversa     Conversa?
+  assinaturas  Assinatura[]
+  listaEspera  ListaEsperaPlano[]
+  comandas     Comanda[]
+  /// Pediu para nao receber mensagens automaticas (respondeu PARAR).
+  aceitaMensagens    Boolean   @default(true)
+  ultimaReativacaoEm DateTime? @db.Timestamptz(3)
+  /// Para idade media e mensagem de aniversario (opcional).
+  dataNascimento     DateTime? @db.Date
+  /// Como conheceu a barbearia (canal de aquisicao) e detalhe (ex.: quem indicou).
+  origem             OrigemCliente?
+  origemDetalhe      String?
+  /// Codigo curto do link "indique e ganhe" (criado na primeira vez que o cliente pede o link).
+  codigoIndicacao    String?   @unique
+  esperas            EsperaHorario[]
+  indicacoesFeitas   Indicacao[] @relation("indicador")
+  indicadoPor        Indicacao?  @relation("indicado")
+  beneficios         Beneficio[]
 
   @@map("clientes")
 }
@@ -199,6 +259,10 @@ model Agendamento {
   observacao    String?
   /// Cliente aceitou qualquer barbeiro: a recepcao pode trocar sem perguntar.
   semPreferencia Boolean          @default(false)
+  /// Coberto por assinatura (preco zero).
+  assinaturaId  String?
+  assinatura    Assinatura?       @relation(fields: [assinaturaId], references: [id])
+  itemComanda   ItemComanda?
   criadoPorId   String?
   criadoEm      DateTime          @default(now()) @db.Timestamptz(3)
   atualizadoEm  DateTime          @updatedAt @db.Timestamptz(3)
@@ -272,4 +336,422 @@ model Mensagem {
 
   @@index([conversaId, criadoEm])
   @@map("mensagens")
+}
+
+enum FormaPagamento {
+  CARTAO
+  PIX
+  BOLETO
+}
+
+enum StatusAssinatura {
+  /// Criada, esperando o primeiro pagamento.
+  PENDENTE
+  ATIVA
+  /// Tem cobranca vencida sem pagamento.
+  ATRASADA
+  CANCELADA
+}
+
+enum StatusCobranca {
+  PENDENTE
+  PAGA
+  ATRASADA
+  CANCELADA
+  ESTORNADA
+}
+
+model Plano {
+  id                    String           @id @default(cuid())
+  nome                  String
+  descricao             String?
+  precoCentavos         Int
+  ativo                 Boolean          @default(true)
+  ordem                 Int              @default(0)
+  /// Limite de assinantes (null = sem limite).
+  vagas                 Int?
+  /// Dias minimos entre um uso e o proximo (null = livre).
+  intervaloMinDias      Int?
+  /// Quantos agendamentos pelo plano o cliente pode ter marcados ao mesmo tempo.
+  maxAgendamentosAbertos Int             @default(1)
+  /// Dias da semana em que o plano vale (0 = domingo). Vazio = todos.
+  diasSemana            Int[]            @default([])
+  /// Desconto para assinantes em servicos fora do plano.
+  descontoExtrasPct     Int              @default(0)
+  formasPagamento       FormaPagamento[] @default([CARTAO, PIX, BOLETO])
+  criadoEm              DateTime         @default(now()) @db.Timestamptz(3)
+  servicos              PlanoServico[]
+  barbeiros             PlanoBarbeiro[]
+  assinaturas           Assinatura[]
+  listaEspera           ListaEsperaPlano[]
+
+  @@map("planos")
+}
+
+/// Servicos cobertos pelo plano (usos por ciclo: null = ilimitado).
+model PlanoServico {
+  planoId      String
+  servicoId    String
+  usosPorCiclo Int?
+  plano        Plano   @relation(fields: [planoId], references: [id], onDelete: Cascade)
+  servico      Servico @relation(fields: [servicoId], references: [id], onDelete: Cascade)
+
+  @@id([planoId, servicoId])
+  @@map("plano_servicos")
+}
+
+/// Barbeiros que atendem pelo plano (nenhum = todos).
+model PlanoBarbeiro {
+  planoId    String
+  barbeiroId String
+  plano      Plano    @relation(fields: [planoId], references: [id], onDelete: Cascade)
+  barbeiro   Barbeiro @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
+
+  @@id([planoId, barbeiroId])
+  @@map("plano_barbeiros")
+}
+
+model Assinatura {
+  id                 String           @id @default(cuid())
+  clienteId          String
+  cliente            Cliente          @relation(fields: [clienteId], references: [id])
+  planoId            String
+  plano              Plano            @relation(fields: [planoId], references: [id])
+  status             StatusAssinatura @default(PENDENTE)
+  formaPagamento     FormaPagamento
+  /// Preco travado na adesao.
+  precoCentavos      Int
+  gatewayId          String?          @unique
+  gatewayClienteId   String?
+  /// Inicio do ciclo pago atual (conta os usos por ciclo).
+  cicloInicio        DateTime?        @db.Timestamptz(3)
+  proximoVencimento  DateTime?        @db.Date
+  criadaEm           DateTime         @default(now()) @db.Timestamptz(3)
+  ativadaEm          DateTime?        @db.Timestamptz(3)
+  canceladaEm        DateTime?        @db.Timestamptz(3)
+  motivoCancelamento String?
+  origem             OrigemAgendamento
+  /// Codigo aleatorio para links publicos (ex.: pagina de cartao). Nao e o id.
+  tokenPublico       String?          @unique
+  cobrancas          Cobranca[]
+  agendamentos       Agendamento[]
+
+  @@index([clienteId, status])
+  @@index([planoId, status])
+  @@map("assinaturas")
+}
+
+model Cobranca {
+  id            String         @id @default(cuid())
+  assinaturaId  String
+  assinatura    Assinatura     @relation(fields: [assinaturaId], references: [id], onDelete: Cascade)
+  gatewayId     String         @unique
+  valorCentavos Int
+  vencimento    DateTime       @db.Date
+  status        StatusCobranca @default(PENDENTE)
+  pagaEm        DateTime?      @db.Timestamptz(3)
+  link          String?
+  forma         FormaPagamento?
+  /// Pix: codigo copia e cola, imagem do QR e validade
+  pixCopiaECola String?
+  pixQrUrl      String?
+  expiraEm      DateTime?      @db.Timestamptz(3)
+  /// Boleto: link e linha digitavel
+  boletoUrl     String?
+  boletoLinha   String?
+  /// Codigo aleatorio da pagina publica de pagamento (/c/pagar/<token>)
+  tokenPublico  String?        @unique
+  criadaEm      DateTime       @default(now()) @db.Timestamptz(3)
+  atualizadaEm  DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@index([assinaturaId, vencimento])
+  @@map("cobrancas")
+}
+
+/// Eventos de webhook ja processados (o gateway reenvia; processa uma vez so).
+model EventoPagamento {
+  id           String   @id
+  tipo         String
+  cobrancaId   String?
+  processadoEm DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("eventos_pagamento")
+}
+
+model ListaEsperaPlano {
+  id        String    @id @default(cuid())
+  planoId   String
+  plano     Plano     @relation(fields: [planoId], references: [id], onDelete: Cascade)
+  clienteId String
+  cliente   Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  criadoEm  DateTime  @default(now()) @db.Timestamptz(3)
+  avisadoEm DateTime? @db.Timestamptz(3)
+
+  @@unique([planoId, clienteId])
+  @@map("lista_espera_planos")
+}
+
+/// So para PAGAMENTOS_PROVIDER=simulado: faz o papel do "lado do gateway" em testes locais.
+model CobrancaSimulada {
+  id                  String         @id
+  assinaturaGatewayId String
+  valorCentavos       Int
+  vencimento          DateTime       @db.Date
+  status              StatusCobranca @default(PENDENTE)
+  pagaEm              DateTime?      @db.Timestamptz(3)
+  criadaEm            DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@index([assinaturaGatewayId])
+  @@map("cobrancas_simuladas")
+}
+
+// ------------------------------------------------------------------ Fase 4: estoque e comanda
+
+enum CategoriaProduto {
+  BAR
+  LOJA
+  /// Insumo usado no atendimento (pomada, lamina...): nao vai para a comanda.
+  USO_INTERNO
+}
+
+enum TipoMovimento {
+  ENTRADA
+  VENDA
+  CONSUMO
+  AJUSTE
+  PERDA
+  ESTORNO
+}
+
+enum StatusComanda {
+  ABERTA
+  FECHADA
+  CANCELADA
+}
+
+enum FormaRecebimento {
+  DINHEIRO
+  PIX
+  CREDITO
+  DEBITO
+}
+
+enum StatusPagamentoComanda {
+  /// Enviado para a maquininha, esperando o cliente passar o cartao.
+  AGUARDANDO
+  PAGO
+  CANCELADO
+}
+
+model Produto {
+  id            String           @id @default(cuid())
+  nome          String
+  categoria     CategoriaProduto
+  precoCentavos Int              @default(0)
+  /// Custo de compra da ultima entrada (para valor do estoque e margem).
+  custoCentavos Int              @default(0)
+  /// Saldo atual. Pode ficar negativo se venderem sem dar entrada: o painel avisa.
+  estoque       Int              @default(0)
+  estoqueMinimo Int              @default(0)
+  unidade       String           @default("un")
+  codigoBarras  String?          @unique
+  ativo         Boolean          @default(true)
+  criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
+  movimentos    MovimentoEstoque[]
+  itens         ItemComanda[]
+
+  @@map("produtos")
+}
+
+/// Toda mudanca de saldo passa por aqui (historico e auditoria do estoque).
+model MovimentoEstoque {
+  id                    String        @id @default(cuid())
+  produtoId             String
+  produto               Produto       @relation(fields: [produtoId], references: [id])
+  tipo                  TipoMovimento
+  /// Positivo entra, negativo sai.
+  quantidade            Int
+  saldoApos             Int
+  custoUnitarioCentavos Int?
+  comandaId             String?
+  usuarioId             String?
+  motivo                String?
+  criadoEm              DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([produtoId, criadoEm])
+  @@index([comandaId])
+  @@map("movimentos_estoque")
+}
+
+model Comanda {
+  id               String             @id @default(cuid())
+  /// Numero curto para falar no balcao e aparecer na maquininha.
+  numero           Int                @unique @default(autoincrement())
+  clienteId        String?
+  cliente          Cliente?           @relation(fields: [clienteId], references: [id])
+  /// Cliente sem cadastro (ex.: so passou no bar).
+  nomeAvulso       String?
+  status           StatusComanda      @default(ABERTA)
+  descontoCentavos Int                @default(0)
+  observacao       String?
+  abertaPorId      String?
+  abertaEm         DateTime           @default(now()) @db.Timestamptz(3)
+  fechadaEm        DateTime?          @db.Timestamptz(3)
+  itens            ItemComanda[]
+  pagamentos       PagamentoComanda[]
+
+  @@index([status, abertaEm])
+  @@map("comandas")
+}
+
+model ItemComanda {
+  id                String       @id @default(cuid())
+  comandaId         String
+  comanda           Comanda      @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  produtoId         String?
+  produto           Produto?     @relation(fields: [produtoId], references: [id])
+  /// Servico feito na agenda (um atendimento entra em uma comanda so).
+  agendamentoId     String?      @unique
+  agendamento       Agendamento? @relation(fields: [agendamentoId], references: [id])
+  descricao         String
+  quantidade        Int          @default(1)
+  precoUnitCentavos Int
+  /// Quem vendeu/atendeu (para relatorio; sem comissao por enquanto).
+  barbeiroId        String?
+  criadoEm          DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([comandaId])
+  @@map("itens_comanda")
+}
+
+model PagamentoComanda {
+  id              String                 @id @default(cuid())
+  comandaId       String
+  comanda         Comanda                @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  forma           FormaRecebimento
+  valorCentavos   Int
+  status          StatusPagamentoComanda
+  /// Pedido do Stone Connect (Pagar.me) quando cobrado na maquininha.
+  gatewayPedidoId String?                @unique
+  nsu             String?
+  bandeira        String?
+  registradoPorId String?
+  criadoEm        DateTime               @default(now()) @db.Timestamptz(3)
+  pagoEm          DateTime?              @db.Timestamptz(3)
+
+  @@index([comandaId])
+  @@map("pagamentos_comanda")
+}
+
+// ------------------------------------------------------------------ Fase 5: automacoes
+
+enum TipoAutomacao {
+  LEMBRETE_VESPERA
+  LEMBRETE_PROXIMO
+  POS_FALTA
+  POS_ATENDIMENTO
+  REATIVACAO
+  ANIVERSARIO
+  RETORNO
+  ESPERA_HORARIO
+  INDICACAO
+}
+
+/// Uma linha por mensagem automatica enviada: garante que nada sai duas vezes.
+model AutomacaoEnviada {
+  id            String        @id @default(cuid())
+  tipo          TipoAutomacao
+  /// Vazio na reativacao (que e por cliente, nao por atendimento).
+  agendamentoId String?
+  clienteId     String
+  /// Para reativacao: id unico por "rodada" (cliente + ultima visita).
+  chave         String
+  ok            Boolean       @default(true)
+  erro          String?
+  criadoEm      DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@unique([tipo, chave])
+  @@index([criadoEm])
+  @@map("automacoes_enviadas")
+}
+
+// ------------------------------------------------------------------ Crescimento: espera, retorno, indicacao
+
+enum StatusEspera {
+  ATIVA
+  AVISADA
+  ATENDIDA
+  EXPIRADA
+  CANCELADA
+}
+
+enum PeriodoDia {
+  QUALQUER
+  MANHA
+  TARDE
+  NOITE
+}
+
+/// Cliente quer um horario num dia sem vaga: avisamos quando abrir (cancelamento, remarcacao...).
+model EsperaHorario {
+  id         String            @id @default(cuid())
+  clienteId  String
+  cliente    Cliente           @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  data       DateTime          @db.Date
+  servicoId  String
+  /// Vazio = qualquer barbeiro.
+  barbeiroId String?
+  periodo    PeriodoDia        @default(QUALQUER)
+  status     StatusEspera      @default(ATIVA)
+  origem     OrigemAgendamento
+  avisadaEm  DateTime?         @db.Timestamptz(3)
+  criadoEm   DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@index([status, data])
+  @@index([clienteId, status])
+  @@map("esperas_horario")
+}
+
+/// Quem indicou quem. Um cliente so pode ter sido indicado uma vez.
+model Indicacao {
+  id           String    @id @default(cuid())
+  indicadorId  String
+  indicador    Cliente   @relation("indicador", fields: [indicadorId], references: [id], onDelete: Cascade)
+  indicadoId   String    @unique
+  indicado     Cliente   @relation("indicado", fields: [indicadoId], references: [id], onDelete: Cascade)
+  origem       OrigemAgendamento
+  /// Quando o indicado fez o 1o atendimento (e o indicador ganhou o premio).
+  convertidaEm DateTime? @db.Timestamptz(3)
+  criadoEm     DateTime  @default(now()) @db.Timestamptz(3)
+  beneficios   Beneficio[]
+
+  @@index([indicadorId])
+  @@map("indicacoes")
+}
+
+enum StatusBeneficio {
+  DISPONIVEL
+  USADO
+  CANCELADO
+}
+
+/// Credito de desconto do cliente (ex.: premio de indicacao), usado na comanda.
+model Beneficio {
+  id            String          @id @default(cuid())
+  clienteId     String
+  cliente       Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  descricao     String
+  valorCentavos Int
+  status        StatusBeneficio @default(DISPONIVEL)
+  /// INDICOU (premio de quem indicou) ou INDICADO (boas-vindas de quem chegou) ou MANUAL.
+  motivo        String
+  indicacaoId   String?
+  indicacao     Indicacao?      @relation(fields: [indicacaoId], references: [id], onDelete: SetNull)
+  comandaId     String?
+  criadoEm      DateTime        @default(now()) @db.Timestamptz(3)
+  usadoEm       DateTime?       @db.Timestamptz(3)
+
+  @@unique([indicacaoId, motivo])
+  @@index([clienteId, status])
+  @@map("beneficios")
 }

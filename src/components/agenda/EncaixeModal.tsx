@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/Modal";
-import { api, reais } from "@/lib/cliente-api";
+import { api, ErroApi, reais } from "@/lib/cliente-api";
 import { minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { formatarTelefone } from "@/lib/telefone";
 
@@ -40,6 +40,18 @@ export function EncaixeModal(p: {
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [semPreferencia, setSemPreferencia] = useState(false);
+  const [avulso, setAvulso] = useState<{ preco: number } | null>(null);
+  const [planoCliente, setPlanoCliente] = useState<{ nome: string; valida: boolean } | null>(null);
+
+  // Mostra se o cliente escolhido e assinante (o encaixe sai pelo plano).
+  useEffect(() => {
+    if (!cliente) return;
+    let vivo = true;
+    api<{ plano: { nome: string; valida: boolean } | null }>(`/api/clientes/${cliente.id}`)
+      .then((r) => vivo && setPlanoCliente(r.plano))
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [cliente]);
 
   // Horarios livres do servico escolhido (ja consideram a duracao do barbeiro).
   useEffect(() => {
@@ -68,9 +80,10 @@ export function EncaixeModal(p: {
     return () => clearTimeout(t);
   }, [busca, cliente]);
 
-  async function salvar(e: React.FormEvent) {
+  async function salvar(e: React.FormEvent, forcarAvulso = false) {
     e.preventDefault();
     setErro("");
+    setAvulso(null);
     if (!servicoId) return setErro("Escolha o serviço.");
     if (!horario) return setErro("Escolha um horário livre.");
     if (!cliente && (!nome.trim() || telefone.replace(/\D/g, "").length < 10)) {
@@ -80,11 +93,14 @@ export function EncaixeModal(p: {
     try {
       await api("/api/agendamentos", {
         method: "POST",
-        body: { barbeiroId, servicoId, inicio: horario, semPreferencia, cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone } },
+        body: { barbeiroId, servicoId, inicio: horario, semPreferencia, forcarAvulso, cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone } },
       });
       p.onCriado(`Encaixe criado às ${minParaHhmm(minutosLocal(Date.parse(horario), p.fuso))} para ${cliente?.nome ?? nome.trim()}.`);
     } catch (e) {
       setErro((e as Error).message);
+      if (e instanceof ErroApi && e.codigo === "regra_plano") {
+        setAvulso({ preco: (e.detalhes as { precoAvulso: number }).precoAvulso });
+      }
       setSalvando(false);
     }
   }
@@ -131,8 +147,15 @@ export function EncaixeModal(p: {
           <label className="rotulo">Cliente</label>
           {cliente ? (
             <div className="flex items-center justify-between rounded-lg border border-zinc-300 px-3 py-2 text-sm">
-              <span><b>{cliente.nome}</b> · {formatarTelefone(cliente.telefone)}</span>
-              <button type="button" className="text-zinc-500 underline" onClick={() => { setCliente(null); setBusca(""); }}>trocar</button>
+              <span>
+                <b>{cliente.nome}</b> · {formatarTelefone(cliente.telefone)}
+                {planoCliente && (
+                  <span className={`ml-2 rounded px-1.5 text-xs ${planoCliente.valida ? "bg-violet-100 text-violet-800" : "bg-red-100 text-red-800"}`}>
+                    {planoCliente.nome}{planoCliente.valida ? "" : " (suspenso)"}
+                  </span>
+                )}
+              </span>
+              <button type="button" className="text-zinc-500 underline" onClick={() => { setCliente(null); setBusca(""); setPlanoCliente(null); }}>trocar</button>
             </div>
           ) : (
             <>
@@ -163,6 +186,11 @@ export function EncaixeModal(p: {
         </label>
 
         {erro && <p className="text-sm text-red-600">{erro}</p>}
+        {avulso && (
+          <button type="button" className="btn w-full" onClick={(e) => salvar(e, true)}>
+            Marcar como avulso por {reais(avulso.preco)}
+          </button>
+        )}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" className="btn" onClick={p.onFechar}>Voltar</button>
           <button className="btn-primario" disabled={salvando}>{salvando ? "Salvando..." : "Agendar"}</button>

@@ -104,12 +104,12 @@ export function SimuladorTela({ semChave }: { semChave: boolean }) {
         </div>
       </div>
 
-      <div className="flex h-[640px] flex-col overflow-hidden rounded-3xl border-8 border-zinc-900 bg-[#efeae2]">
-        <div className="bg-[#075e54] px-4 py-2 text-sm font-medium text-white">Barbearia</div>
+      <div className="flex h-[640px] flex-col overflow-hidden rounded-3xl border-8 border-zinc-300 bg-[#0b141a]">
+        <div className="bg-[#202c33] px-4 py-2 text-sm font-medium text-zinc-900">Barbearia</div>
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {visiveis.map((m) => (
             <div key={m.id} className={`flex ${m.autor === "CLIENTE" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm ${m.autor === "CLIENTE" ? "bg-[#d9fdd3]" : "bg-white"}`}>
+              <div className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm ${m.autor === "CLIENTE" ? "bg-[#005c4b]" : "bg-[#202c33]"}`}>
                 <p className="whitespace-pre-wrap">{m.texto}</p>
                 <p className="text-right text-[10px] text-zinc-500">{hora(m.criadoEm)}</p>
               </div>
@@ -118,7 +118,7 @@ export function SimuladorTela({ semChave }: { semChave: boolean }) {
           {esperando && <p className="text-xs text-zinc-500">digitando...</p>}
           <div ref={fim} />
         </div>
-        <form onSubmit={enviar} className="flex gap-2 bg-[#f0f0f0] p-2">
+        <form onSubmit={enviar} className="flex gap-2 bg-[#202c33] p-2">
           <input className="campo rounded-full" placeholder="Mensagem" value={texto} onChange={(e) => setTexto(e.target.value)} />
           <button className="btn-primario rounded-full" disabled={esperando}>Enviar</button>
         </form>

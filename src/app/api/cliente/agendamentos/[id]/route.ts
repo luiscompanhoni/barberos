@@ -9,8 +9,8 @@ import { corpo, zId, zInstante } from "@/lib/validacao";
 export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/cliente/agendamentos/[id]">) => {
   const s = await exigirCliente();
   const { id } = await ctx.params;
-  const b = await corpo(req, z.object({ inicio: zInstante, barbeiroId: zId.optional() }));
-  return NextResponse.json(await remarcarPeloCliente(s.clienteId, id, b.inicio, b.barbeiroId));
+  const b = await corpo(req, z.object({ inicio: zInstante, barbeiroId: zId.optional(), forcarAvulso: z.boolean().optional() }));
+  return NextResponse.json(await remarcarPeloCliente(s.clienteId, id, b.inicio, b.barbeiroId, b.forcarAvulso));
 });
 
 export const DELETE = rota(async (_req: Request, ctx: RouteContext<"/api/cliente/agendamentos/[id]">) => {

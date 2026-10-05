@@ -197,7 +197,7 @@ export function Grade(props: {
                 return (
                   <div key={b.id} className="absolute inset-x-1 rounded-md border border-dashed border-zinc-400 px-2 py-1 text-xs text-zinc-600"
                     style={{ top: y(Math.max(ini, iniDia)), height: (Math.min(fim, fimDia) - Math.max(ini, iniDia)) * PX_MIN,
-                      background: "repeating-linear-gradient(135deg,#f4f4f5,#f4f4f5 6px,#e4e4e7 6px,#e4e4e7 12px)" }}
+                      background: "repeating-linear-gradient(135deg,#141312,#141312 6px,#1c1b19 6px,#1c1b19 12px)" }}
                     onClick={(e) => e.stopPropagation()}>
                     Agenda fechada{b.motivo ? ` · ${b.motivo}` : ""}
                   </div>

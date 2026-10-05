@@ -111,13 +111,13 @@ export function ConversasTela() {
                 )}
               </div>
             </header>
-            <div className="flex-1 space-y-2 overflow-y-auto bg-[#efeae2] p-4">
+            <div className="flex-1 space-y-2 overflow-y-auto bg-[#0b141a] p-4">
               {detalhe.mensagens.map((m) =>
                 m.autor === "NOTA" ? (
                   <p key={m.id} className="text-center text-[11px] text-zinc-600">{m.texto} · {hora(m.criadoEm)}</p>
                 ) : (
                   <div key={m.id} className={`flex ${m.autor === "CLIENTE" ? "justify-start" : "justify-end"}`}>
-                    <div className={`max-w-[80%] rounded-lg px-3 py-1.5 text-sm shadow-sm ${m.autor === "CLIENTE" ? "bg-white" : m.autor === "BOT" ? "bg-[#d9fdd3]" : "bg-sky-100"}`}>
+                    <div className={`max-w-[80%] rounded-lg px-3 py-1.5 text-sm shadow-sm ${m.autor === "CLIENTE" ? "bg-[#202c33]" : m.autor === "BOT" ? "bg-[#005c4b]" : "border border-ouro/40 bg-[#2a2415]"}`}>
                       <p className="whitespace-pre-wrap">{m.texto}</p>
                       <p className="mt-0.5 text-right text-[10px] text-zinc-500">
                         {m.autor === "BOT" ? "Bot" : m.autor === "EQUIPE" ? "Equipe" : m.autor === "SISTEMA" ? "Aviso automático" : ""} {hora(m.criadoEm)}

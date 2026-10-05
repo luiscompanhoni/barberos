@@ -7,7 +7,8 @@ import { EventEmitter } from "node:events";
  */
 export type EventoAgenda =
   | { tipo: "agenda"; barbeiroIds: string[]; datas: string[] }
-  | { tipo: "conversa"; conversaId: string };
+  | { tipo: "conversa"; conversaId: string }
+  | { tipo: "comanda"; comandaId: string };
 
 const g = globalThis as unknown as { barramento?: EventEmitter };
 const barramento = g.barramento ?? new EventEmitter();

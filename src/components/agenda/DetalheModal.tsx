@@ -1,7 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Receipt } from "lucide-react";
 import { Modal } from "@/components/Modal";
+import { CadastroCliente } from "./CadastroCliente";
 import { api, reais } from "@/lib/cliente-api";
 import { minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { formatarTelefone } from "@/lib/telefone";
@@ -18,6 +21,8 @@ const PROXIMOS: Partial<Record<Status, Status[]>> = {
 };
 
 type Resumo = {
+  cliente: { dataNascimento: string | null; origem: string | null; origemDetalhe: string | null };
+  plano: { nome: string; status: string; valida: boolean } | null;
   atendidos: number;
   faltas: number;
   ultimos: { id: string; inicio: string; status: string; servico: { nome: string }; barbeiro: { nome: string } }[];
@@ -56,13 +61,27 @@ export function DetalheModal(p: {
     }
   }
 
+  const router = useRouter();
+  /** Abre (ou reaproveita) a comanda do cliente com este servico ja lancado. */
+  async function comanda() {
+    setErro("");
+    setOcupado(true);
+    try {
+      const r = await api<{ id: string }>("/api/comandas", { method: "POST", body: { agendamentoId: ag.id } });
+      router.push(`/comandas/${r.id}`);
+    } catch (e) {
+      setErro((e as Error).message);
+      setOcupado(false);
+    }
+  }
+
   const whats = `https://wa.me/${ag.cliente.telefone}`;
 
   return (
     <Modal titulo={ag.cliente.nome} onFechar={p.onFechar}>
       <dl className="grid grid-cols-[110px_1fr] gap-y-1.5 text-sm">
         <dt className="text-zinc-500">Horário</dt><dd>{hora(ag.inicio)} às {hora(ag.fim)}</dd>
-        <dt className="text-zinc-500">Serviço</dt><dd>{ag.servico.nome} · {reais(ag.precoCentavos)}</dd>
+        <dt className="text-zinc-500">Serviço</dt><dd>{ag.servico.nome} · {ag.assinante ? "pelo plano" : reais(ag.precoCentavos)}</dd>
         <dt className="text-zinc-500">Barbeiro</dt>
         <dd>{p.barbeiroNome}{ag.semPreferencia && <span className="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-800">sem preferência: pode trocar</span>}</dd>
         <dt className="text-zinc-500">Situação</dt><dd>{ROTULO_STATUS[ag.status]}</dd>
@@ -75,6 +94,11 @@ export function DetalheModal(p: {
 
       {resumo && (
         <div className="mt-4 rounded-lg bg-zinc-50 p-3 text-sm">
+          {resumo.plano && (
+            <p className={resumo.plano.valida ? "font-medium text-violet-800" : "font-medium text-red-700"}>
+              {resumo.plano.nome} · {resumo.plano.valida ? (resumo.plano.status === "ATRASADA" ? "pagamento atrasado (ainda na tolerância)" : "em dia") : resumo.plano.status === "PENDENTE" ? "aguardando 1º pagamento" : "pagamento atrasado: plano suspenso"}
+            </p>
+          )}
           <p className="text-zinc-600">
             {resumo.atendidos} atendimento(s) concluído(s)
             {resumo.faltas > 0 && <span className="text-red-700"> · {resumo.faltas} falta(s)</span>}
@@ -89,6 +113,7 @@ export function DetalheModal(p: {
               ))}
             </ul>
           )}
+          {p.podeEditar && <CadastroCliente key={ag.cliente.id} clienteId={ag.cliente.id} inicial={resumo.cliente} />}
         </div>
       )}
 
@@ -100,6 +125,9 @@ export function DetalheModal(p: {
                 {s === "MARCADO" ? "Desfazer falta" : ROTULO_STATUS[s]}
               </button>
             ))}
+            {ag.status !== "FALTOU" && (
+              <button className="btn" disabled={ocupado} onClick={comanda}><Receipt size={14} /> Comanda</button>
+            )}
           </div>
           <p className="text-xs text-zinc-500">Para mudar horário, barbeiro ou duração, arraste o cartão na agenda.</p>
           {ag.status !== "CONCLUIDO" && (

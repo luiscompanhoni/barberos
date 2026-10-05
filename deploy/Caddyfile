@@ -1,0 +1,8 @@
+# Enderecos vem do .env (CADDY_ENDERECOS):
+# - so IP, para testar:  :80
+# - com dominio (https automatico pelo Let's Encrypt):
+#   blackbarber.com.br, www.blackbarber.com.br, painel.blackbarber.com.br
+{$CADDY_ENDERECOS} {
+	encode zstd gzip
+	reverse_proxy app:3000
+}

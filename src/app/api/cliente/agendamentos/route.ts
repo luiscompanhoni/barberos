@@ -19,7 +19,7 @@ export const GET = rota(async () => {
 
 export const POST = rota(async (req: Request) => {
   const s = await exigirCliente();
-  const b = await corpo(req, z.object({ barbeiroId: zId, servicoId: zId, inicio: zInstante, semPreferencia: z.boolean().optional() }));
+  const b = await corpo(req, z.object({ barbeiroId: zId, servicoId: zId, inicio: zInstante, semPreferencia: z.boolean().optional(), forcarAvulso: z.boolean().optional() }));
   const cliente = await db.cliente.findUniqueOrThrow({ where: { id: s.clienteId } });
   if (!cliente.nome.trim()) throw new ErroNegocio("Informe seu nome no perfil antes de agendar.", 422, "sem_nome");
   const ag = await agendarPeloCliente({ ...b, telefone: cliente.telefone, nome: cliente.nome, origem: "SITE" });

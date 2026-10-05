@@ -31,7 +31,12 @@ export function ConfiguracaoTela() {
   async function salvar(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await api("/api/configuracao", { method: "PATCH", body: { ...c, endereco: c!.endereco?.trim() || null } });
+      // So os campos desta secao (as automacoes salvam separado e nao podem ser sobrescritas).
+      const { nomeBarbearia, granularidadeMin, antecedenciaMinimaMin, janelaAgendamentoDias, intervaloEntreClientes, prazoCancelamentoMin, maxAgendamentosCliente, botAtivo } = c!;
+      await api("/api/configuracao", {
+        method: "PATCH",
+        body: { nomeBarbearia, granularidadeMin, antecedenciaMinimaMin, janelaAgendamentoDias, intervaloEntreClientes, prazoCancelamentoMin, maxAgendamentosCliente, botAtivo, endereco: c!.endereco?.trim() || null },
+      });
       setMsg({ texto: "Configurações salvas. Bot, site e recepção já usam as novas regras." });
     } catch (e) {
       setMsg({ texto: (e as Error).message, erro: true });

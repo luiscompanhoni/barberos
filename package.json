@@ -11,7 +11,14 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:migrate": "prisma migrate dev",
     "db:demo": "tsx prisma/demo-historico.ts",
-    "criar-dono": "tsx prisma/criar-dono.ts"
+    "criar-dono": "tsx prisma/criar-dono.ts",
+    "db:planos": "tsx prisma/planos-exemplo.ts",
+    "db:produtos": "tsx --env-file=.env prisma/produtos-exemplo.ts",
+    "teste:assinaturas": "tsx --env-file=.env scripts/teste-assinaturas.ts",
+    "teste:pagarme": "tsx --env-file=.env scripts/teste-pagarme.ts",
+    "teste:comandas": "tsx --env-file=.env scripts/teste-comandas.ts",
+    "teste:automacoes": "tsx --env-file=.env scripts/teste-automacoes.ts",
+    "teste:crescimento": "tsx --env-file=.env scripts/teste-crescimento.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",
@@ -19,6 +26,7 @@
     "@prisma/client": "^6.19.3",
     "date-fns": "^4.4.0",
     "jose": "^6.2.12",
+    "lucide-react": "^1.49.0",
     "next": "16.3.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",

@@ -53,8 +53,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
       semPreferencia: a.semPreferencia,
       cliente: a.cliente,
       servico: a.servico,
-      // Fase 3: vira `true` quando o cliente tiver assinatura ativa.
-      assinante: false,
+      assinante: a.assinaturaId !== null,
     })),
     dias: porDia.map(({ data, mapa }) => ({
       data,

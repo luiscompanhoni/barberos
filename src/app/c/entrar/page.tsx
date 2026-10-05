@@ -10,7 +10,7 @@ export default async function EntrarCliente() {
     <FormularioLogin
       area="cliente"
       titulo={cfg.nomeBarbearia}
-      subtitulo="Entre com seu celular para agendar e ver seus horários"
+      subtitulo="Área do cliente"
       destinoPadrao="/c"
     />
   );

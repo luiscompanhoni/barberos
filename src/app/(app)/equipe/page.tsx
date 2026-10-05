@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { AutomacoesTela } from "@/components/AutomacoesTela";
 import { ConfiguracaoTela } from "@/components/ConfiguracaoTela";
 import { EquipeTela } from "@/components/EquipeTela";
 import { sessaoAtual } from "@/lib/auth/sessao";
@@ -9,6 +10,7 @@ export default async function Equipe() {
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <ConfiguracaoTela />
+      <AutomacoesTela />
       <EquipeTela />
     </div>
   );

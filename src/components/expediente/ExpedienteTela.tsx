@@ -5,6 +5,7 @@ import { api } from "@/lib/cliente-api";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { Excecoes, type ExcecaoApi } from "./Excecoes";
 import { FecharAgenda, type BloqueioApi } from "./FecharAgenda";
+import { CalendarioLink } from "./CalendarioLink";
 import { SemanaPadrao } from "./SemanaPadrao";
 
 type Config = {
@@ -46,6 +47,7 @@ export function ExpedienteTela(p: { barbeiros: { id: string; nome: string }[]; i
           <SemanaPadrao key={cfg.id} barbeiroId={cfg.id} inicial={cfg.expediente} onSalvo={carregar} />
           <Excecoes barbeiroId={cfg.id} excecoes={cfg.excecoes} hoje={hoje} onSalvo={carregar} />
           <FecharAgenda barbeiroId={cfg.id} bloqueios={cfg.bloqueios} hoje={hoje} onSalvo={carregar} />
+          <CalendarioLink barbeiroId={cfg.id} />
         </>
       )}
     </div>
