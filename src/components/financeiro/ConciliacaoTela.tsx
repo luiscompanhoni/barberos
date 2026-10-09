@@ -6,11 +6,11 @@ import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
 
 type Forma = "PIX" | "DEBITO" | "CREDITO" | "ONLINE";
 type Linha = {
-  data: string; forma: Forma; quantidade: number; brutoCentavos: number; taxaCentavos: number; liquidoCentavos: number; previstoEm: string;
+  data: string; forma: Forma; quantidade: number; brutoCentavos: number; estornoCentavos?: number; taxaCentavos: number; liquidoCentavos: number; previstoEm: string;
   recebidoCentavos: number | null; diferencaCentavos: number | null; status: "PENDENTE" | "CONFERIDO" | "DIVERGENTE"; observacao: string | null;
 };
 type Taxa = { forma: Forma; taxaBps: number; prazoDias: number };
-type Dados = { linhas: Linha[]; totais: { bruto: number; liquido: number; recebido: number; pendentes: number; divergentes: number }; taxas: Taxa[] };
+type Dados = { linhas: Linha[]; totais: { bruto: number; estornos?: number; liquido: number; recebido: number; pendentes: number; divergentes: number }; taxas: Taxa[] };
 
 const ROTULO: Record<Forma, string> = { PIX: "Pix", DEBITO: "Débito", CREDITO: "Crédito", ONLINE: "Online (Celcash)" };
 const br = (d: string) => d.split("-").reverse().slice(0, 2).join("/");
@@ -52,6 +52,7 @@ export function ConciliacaoTela({ dono }: { dono: boolean }) {
         {d && (
           <div className="ml-auto flex flex-wrap gap-4 text-sm">
             <span>Bruto <b>{reais(d.totais.bruto)}</b></span>
+            {!!d.totais.estornos && <span className="text-red-600">já descontados {reais(d.totais.estornos)} de estornos</span>}
             <span>Líquido esperado <b>{reais(d.totais.liquido)}</b></span>
             <span>Conferido <b>{reais(d.totais.recebido)}</b></span>
             {d.totais.pendentes > 0 && <span className="text-amber-700">{d.totais.pendentes} a conferir</span>}
@@ -100,7 +101,7 @@ export function ConciliacaoTela({ dono }: { dono: boolean }) {
                     <td className="py-2">{br(l.data)}</td>
                     <td>{ROTULO[l.forma]}</td>
                     <td className="text-right">{l.quantidade}</td>
-                    <td className="text-right">{reais(l.brutoCentavos)}</td>
+                    <td className="text-right">{reais(l.brutoCentavos)}{!!l.estornoCentavos && <span className="block text-[10px] text-red-600">− {reais(l.estornoCentavos)} estorno</span>}</td>
                     <td className="text-right text-zinc-500">-{reais(l.taxaCentavos)}</td>
                     <td className="text-right font-semibold">{reais(l.liquidoCentavos)}</td>
                     <td className={l.status === "PENDENTE" && l.previstoEm < hojeSp() ? "font-semibold text-amber-700" : ""}>{br(l.previstoEm)}</td>

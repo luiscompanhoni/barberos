@@ -6,7 +6,7 @@ import { ArrowDownCircle, ArrowUpCircle, Lock, LockOpen, Printer, Receipt, X } f
 import { api, reais } from "@/lib/cliente-api";
 
 type Linha = {
-  tipo: "ABERTURA" | "PAGAMENTO" | "TROCO" | "SANGRIA" | "SUPRIMENTO" | "DESPESA" | "FECHAMENTO"; em: string; descricao: string; valorCentavos: number;
+  tipo: "ABERTURA" | "PAGAMENTO" | "TROCO" | "SANGRIA" | "SUPRIMENTO" | "DESPESA" | "ESTORNO" | "FECHAMENTO"; em: string; descricao: string; valorCentavos: number;
   dinheiro: boolean; forma?: string | null; comanda?: number | null; cliente?: string | null; online?: boolean; contado?: number | null; esperado?: number | null;
   diferenca?: number | null; entrada: boolean; efeitoCentavos: number; saldoCentavos: number;
 };
@@ -99,7 +99,8 @@ export function ExtratoCaixa({ caixaId, versao = 0, compacto = false, onFechar }
                       {l.tipo === "ABERTURA" ? <LockOpen size={13} className="text-ouro" /> : l.tipo === "FECHAMENTO" ? <Lock size={13} className="text-ouro" />
                         : l.entrada ? <ArrowDownCircle size={13} className="text-emerald-600" /> : <ArrowUpCircle size={13} className="text-red-600" />}
                       <span>{l.descricao}{l.cliente ? ` · ${l.cliente}` : ""}</span>
-                      {l.online && <span className="selo-ouro text-[10px]">pago antes</span>}
+                      {l.online && <span className="selo-ouro text-[10px]">{l.tipo === "ESTORNO" ? "online" : "pago antes"}</span>}
+                      {l.tipo === "ESTORNO" && !l.dinheiro && <span className="text-[10px] text-zinc-500">(não sai da gaveta)</span>}
                     </span>
                     {l.tipo === "FECHAMENTO" && (
                       <span className="block text-[11px] text-zinc-500">

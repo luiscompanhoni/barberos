@@ -4,13 +4,16 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { MOTIVOS_CANCELAMENTO } from "@/lib/assinaturas/schemas";
-import { assinar, cancelar, entrarNaListaDeEspera, situacaoDoCliente, vagasRestantes } from "@/lib/assinaturas/servico";
+import { MOTIVOS, ROTULO_MOTIVO } from "@/lib/assinaturas/retencao-regras";
+import { assinar, entrarNaListaDeEspera, situacaoDoCliente, vagasRestantes } from "@/lib/assinaturas/servico";
+import { executarCancelamento } from "./ferramentas-cancelamento";
 import type { ContextoBot, ResultadoFerramenta } from "./ferramentas";
 
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
 const dataBr = (d: Date | null) => (d ? d.toISOString().slice(0, 10).split("-").reverse().join("/") : null);
+
+const MOTIVOS_DESCRICAO = MOTIVOS.map((m) => `${m} = ${ROTULO_MOTIVO[m]}`).join("; ");
 
 export const FERRAMENTAS_ASSINATURA: Anthropic.Beta.BetaTool[] = [
   {
@@ -51,16 +54,29 @@ export const FERRAMENTAS_ASSINATURA: Anthropic.Beta.BetaTool[] = [
     },
   },
   {
+    name: "oferta_cancelamento",
+    description:
+      "Cliente quer cancelar o plano: depois de perguntar o motivo, chame esta ferramenta. Ela devolve a oferta da barbearia para esse motivo (desconto, pausa, falar com o gerente ou nenhuma) e até quando o plano vale se ele cancelar.",
+    input_schema: {
+      type: "object",
+      properties: { motivo: { type: "string", enum: [...MOTIVOS], description: MOTIVOS_DESCRICAO } },
+      required: ["motivo"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "cancelar_assinatura",
     description:
-      "Cancela o plano do cliente. Antes, pergunte o motivo e ofereça uma alternativa (outro horário, plano mais barato, falar com a equipe). Só cancele se ele confirmar.",
+      "Executa a decisão do cliente sobre o cancelamento, depois de oferta_cancelamento: aceitar_desconto, pausar (com dias), falar_com_gerente ou cancelar. Só use a decisão que o cliente escolheu claramente.",
     input_schema: {
       type: "object",
       properties: {
-        motivo: { type: "string", enum: [...MOTIVOS_CANCELAMENTO] },
+        motivo: { type: "string", enum: [...MOTIVOS], description: MOTIVOS_DESCRICAO },
+        decisao: { type: "string", enum: ["aceitar_desconto", "pausar", "falar_com_gerente", "cancelar"] },
+        dias: { type: "number", description: "Só para pausar: uma das opções de dias devolvidas pela oferta" },
         detalhe: { type: "string", description: "O que o cliente contou, em poucas palavras" },
       },
-      required: ["motivo"],
+      required: ["motivo", "decisao"],
       additionalProperties: false,
     },
   },
@@ -75,7 +91,13 @@ const ENTRADAS = {
     nome_cliente: z.string().trim().max(80).optional(),
   }),
   entrar_lista_espera: z.object({ plano_id: z.string() }),
-  cancelar_assinatura: z.object({ motivo: z.enum(MOTIVOS_CANCELAMENTO), detalhe: z.string().max(200).optional() }),
+  oferta_cancelamento: z.object({ motivo: z.enum(MOTIVOS) }),
+  cancelar_assinatura: z.object({
+    motivo: z.enum(MOTIVOS),
+    decisao: z.enum(["aceitar_desconto", "pausar", "falar_com_gerente", "cancelar"]),
+    dias: z.number().int().min(1).max(365).optional(),
+    detalhe: z.string().max(200).optional(),
+  }),
 };
 
 export const NOMES_ASSINATURA = new Set(FERRAMENTAS_ASSINATURA.map((f) => f.name));
@@ -159,14 +181,9 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
       const posicao = await entrarNaListaDeEspera(c.id, e.plano_id);
       return { texto: `Cliente na lista de espera, posição ${posicao}. Ele será avisado aqui quando abrir vaga.` };
     }
-    case "cancelar_assinatura": {
-      const e = ENTRADAS.cancelar_assinatura.parse(entrada);
-      const c = await db.cliente.findUnique({ where: { telefone: ctx.telefone } });
-      const sit = c ? await situacaoDoCliente(c.id) : null;
-      if (!sit) return { texto: "O cliente não tem assinatura para cancelar.", erro: true };
-      await cancelar(sit.assinatura.id, e.detalhe ? `${e.motivo}: ${e.detalhe}` : e.motivo, null, { avisar: false });
-      return { texto: `Assinatura do ${sit.assinatura.plano.nome} cancelada. Horários já marcados continuam, como avulsos.` };
-    }
+    case "oferta_cancelamento":
+    case "cancelar_assinatura":
+      return executarCancelamento(nome, entrada, ctx);
     default:
       return { texto: `Ferramenta desconhecida: ${nome}`, erro: true };
   }

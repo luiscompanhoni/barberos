@@ -8,6 +8,7 @@ import { movimentar } from "./estoque";
 import { configuracao } from "@/lib/agenda/carregar";
 import { linkAbsoluto } from "@/lib/assinaturas/cobrancas";
 import { aplicarNaComanda, sincronizarAntecipado } from "@/lib/agenda/antecipado";
+import { estornosDaComanda } from "@/lib/estornos/servico";
 import { descricaoServico, erroNoPagamento, resumoComanda, valorCashback } from "./regras";
 
 type Tx = Prisma.TransactionClient;
@@ -46,7 +47,9 @@ export async function detalheComanda(id: string) {
     : 0;
   // Links de pagamento em aberto (com o endereco publico para copiar).
   const linksPagamento = c.linksPagamento.map((l) => ({ ...l, url: linkAbsoluto(`/c/link/${l.token}`) }));
-  return { ...c, linksPagamento, saldoCliente, resumo: resumoComanda(c.itens, c.pagamentos, c.descontoCentavos) };
+  // Pedidos de estorno dos pagamentos desta comanda (pendentes e feitos).
+  const estornos = await estornosDaComanda(id);
+  return { ...c, linksPagamento, saldoCliente, estornos, resumo: resumoComanda(c.itens, c.pagamentos, c.descontoCentavos) };
 }
 
 /** Comandas abertas + as fechadas/canceladas de um dia (padrao: hoje). */

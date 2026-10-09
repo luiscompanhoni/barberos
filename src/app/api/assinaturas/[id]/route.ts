@@ -4,6 +4,9 @@ import { exigirSessao } from "@/lib/auth/sessao";
 import { cobrancaEmAberto, cobrarPeloWhatsApp, linkAbsoluto, processarEventoGateway, sincronizarAssinatura } from "@/lib/assinaturas/cobrancas";
 import { mascararCpf } from "@/lib/assinaturas/regras";
 import { cancelar } from "@/lib/assinaturas/servico";
+import { registrarCancelamentoDaEquipe } from "@/lib/assinaturas/retencao";
+import { motivoPorTexto } from "@/lib/assinaturas/retencao-regras";
+import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, rota } from "@/lib/erros";
 import { provedorPagamento } from "@/lib/pagamentos/gateway";
@@ -19,6 +22,7 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinatura
       cliente: { select: { id: true, nome: true, telefone: true, cpf: true } },
       plano: { select: { nome: true } },
       cobrancas: { orderBy: { vencimento: "desc" } },
+      retencoes: { orderBy: { criadoEm: "desc" }, take: 5, select: { id: true, motivo: true, detalhe: true, desfecho: true, origem: true, criadoEm: true } },
       agendamentos: { orderBy: { inicio: "desc" }, take: 10, select: { id: true, inicio: true, status: true, servico: { select: { nome: true } } } },
     },
   });
@@ -28,6 +32,7 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinatura
     cliente: { ...a.cliente, cpf: mascararCpf(a.cliente.cpf) },
     cobrancas: a.cobrancas.map((c) => ({ ...c, link: linkAbsoluto(c.link) })),
     simulado: provedorPagamento() === "simulado",
+    cashbarber: ehCashbarber(a.gatewayId),
   });
 });
 
@@ -58,7 +63,9 @@ export const POST = rota(async (req: Request, ctx: RouteContext<"/api/assinatura
       if (s.papel !== "DONO") throw new ErroNegocio("Só o dono cancela assinaturas.", 403);
       if (!b.motivo) throw new ErroNegocio("Informe o motivo do cancelamento.");
       await cancelar(id, b.motivo, s.usuarioId);
-      return NextResponse.json({ ok: true });
+      await registrarCancelamentoDaEquipe(id, motivoPorTexto(b.motivo), b.motivo.split(":").slice(1).join(":").trim() || (motivoPorTexto(b.motivo) === "OUTRO" ? b.motivo : null), s.usuarioId);
+      // CashBarber: a cobranca e la; o BarberOS so registra.
+      return NextResponse.json({ ok: true, cashbarber: ehCashbarber(a.gatewayId) });
   }
 
   if (provedorPagamento() !== "simulado" || !a.gatewayId) throw new ErroNegocio("Simulação disponível só no modo simulado.", 403);

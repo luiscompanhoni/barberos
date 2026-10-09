@@ -306,6 +306,38 @@ export function converterPedido(o: PedidoPagarme): CobrancaAvulsa {
   };
 }
 
+// ---------------------------------------------------------------- estorno
+
+export type EstornoPagarme = {
+  cobrancaId: string;
+  /** Id da transacao de devolucao (ou da cobranca, se nao vier). */
+  estornoId: string;
+  /** "refunded"/"canceled" = devolvido; "pending_refund"/"processing" = em processamento (Pix). */
+  status: string;
+  pendente: boolean;
+};
+
+/**
+ * Estorna (total ou parcial) uma cobranca paga: DELETE /charges/{id} com `amount`.
+ * Aceita o id da cobranca (ch_) ou do pedido (or_: usa a cobranca paga dele).
+ * No Pix a Pagar.me devolve sozinha quando suportado (pode ficar "pending_refund").
+ */
+export async function estornarCobranca(id: string, valorCentavos?: number): Promise<EstornoPagarme> {
+  let cobrancaId = id;
+  if (id.startsWith("or_")) {
+    const o = await chamar<PedidoPagarme>("GET", `/orders/${encodeURIComponent(id)}`);
+    const paga = (o.charges ?? []).find((c) => c.status === "paid" || c.status === "overpaid");
+    if (!paga) throw new Error("Pagar.me: o pedido não tem cobrança paga para estornar.");
+    cobrancaId = paga.id;
+  }
+  const c = await chamar<CobrancaPagarme & { last_transaction?: { id?: string; status?: string } | null }>(
+    "DELETE", `/charges/${encodeURIComponent(cobrancaId)}`, valorCentavos ? { amount: valorCentavos } : undefined,
+  );
+  const status = c.last_transaction?.status ?? c.status;
+  if (status === "failed" || c.status === "failed" || status === "refund_failed") throw new Error(`Pagar.me recusou o estorno (${status}).`);
+  return { cobrancaId, estornoId: c.last_transaction?.id ?? c.id, status, pendente: status === "pending_refund" || status === "processing" || c.status === "pending_refund" };
+}
+
 // ---------------------------------------------------------------- Stone Connect 2.0 (maquininha)
 // Doc: https://connect-stone.stone.com.br - o pedido criado aqui aparece na maquininha
 // (S920/Q92) cujo numero de serie foi informado; pago no POS, a Pagar.me manda webhook.

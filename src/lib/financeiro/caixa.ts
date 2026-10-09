@@ -7,6 +7,8 @@ import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { resumoComanda } from "@/lib/comandas/regras";
 import { db } from "@/lib/db";
+import { estornosEfetivos, PAGAMENTO_RECEBIDO } from "@/lib/estornos/financeiro";
+import { somarPorForma } from "@/lib/estornos/regras";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { dinheiroEsperado, totaisPorForma } from "./regras";
 
@@ -16,11 +18,13 @@ export const caixaAberto = () => db.caixa.findFirst({ where: { status: "ABERTO" 
 export async function resumoCaixa(c: Caixa) {
   const fim = c.fechadoEm ?? new Date();
   const janela = { gte: c.abertoEm, lte: fim };
-  const [pagamentos, fechadas, abertas, movimentos] = await Promise.all([
-    db.pagamentoComanda.findMany({ where: { status: "PAGO", pagoEm: janela }, select: { forma: true, valorCentavos: true, antecipadoId: true, linkPagamentoId: true } }),
+  // Estornado depois continua contando na hora do pagamento; o estorno aparece a parte (dinheiro = sangria).
+  const [pagamentos, fechadas, abertas, movimentos, estornos] = await Promise.all([
+    db.pagamentoComanda.findMany({ where: { ...PAGAMENTO_RECEBIDO, pagoEm: janela }, select: { forma: true, valorCentavos: true, antecipadoId: true, linkPagamentoId: true } }),
     db.comanda.findMany({ where: { status: "FECHADA", fechadaEm: janela }, include: { itens: true, pagamentos: true } }),
     db.comanda.count({ where: { status: "ABERTA" } }),
     db.movimentoCaixa.findMany({ where: { caixaId: c.id }, orderBy: { criadoEm: "asc" } }),
+    estornosEfetivos(janela),
   ]);
   const totais = totaisPorForma(pagamentos.map((p) => ({ forma: p.forma, valorCentavos: p.valorCentavos, online: !!p.antecipadoId || !!p.linkPagamentoId })));
   const troco = fechadas.reduce((t, x) => t + resumoComanda(x.itens, x.pagamentos, x.descontoCentavos).troco, 0);
@@ -32,6 +36,8 @@ export async function resumoCaixa(c: Caixa) {
     troco,
     suprimentos,
     sangrias,
+    /** Estornos feitos no turno por forma (dinheiro ja esta nas sangrias). */
+    estornos: somarPorForma(estornos),
     esperado: dinheiroEsperado({ fundo: c.fundoCentavos, recebidoDinheiro: totais.DINHEIRO, troco, suprimentos, sangrias }),
     comandasFechadas: fechadas.length,
     faturado,
@@ -73,7 +79,7 @@ export async function fecharCaixa(s: Sessao, contadoCentavos: number, observacao
   if (diferenca !== 0 && !observacao?.trim()) {
     throw new ErroNegocio(`O dinheiro contado ${diferenca > 0 ? "sobrou" : "faltou"} ${(Math.abs(diferenca) / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. Escreva uma observação para fechar.`, 422, "explicar_diferenca");
   }
-  const resumo = { totais: r.totais, troco: r.troco, suprimentos: r.suprimentos, sangrias: r.sangrias, comandasFechadas: r.comandasFechadas, faturado: r.faturado, comandasAbertas: r.comandasAbertas };
+  const resumo = { totais: r.totais, estornos: r.estornos, troco: r.troco, suprimentos: r.suprimentos, sangrias: r.sangrias, comandasFechadas: r.comandasFechadas, faturado: r.faturado, comandasAbertas: r.comandasAbertas };
   return db.$transaction(async (tx) => {
     const ok = await tx.caixa.updateMany({
       where: { id: c.id, status: "ABERTO" },

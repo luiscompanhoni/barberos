@@ -25,7 +25,9 @@
     "teste:financeiro": "tsx --env-file=.env scripts/teste-financeiro.ts",
     "teste:rh": "tsx --env-file=.env scripts/teste-rh.ts",
     "teste:despesas": "tsx --env-file=.env scripts/teste-despesas.ts",
-    "teste:checkout": "tsx --env-file=.env scripts/teste-checkout.ts"
+    "teste:checkout": "tsx --env-file=.env scripts/teste-checkout.ts",
+    "teste:estorno": "tsx --env-file=.env scripts/teste-estorno.ts",
+    "teste:cancelamento": "tsx --env-file=.env scripts/teste-cancelamento.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

@@ -9,6 +9,7 @@ import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
+import { estornosEfetivos, mensalidadesEstornadas, PAGAMENTO_RECEBIDO } from "@/lib/estornos/financeiro";
 import { dataPrevista, FORMAS_CONCILIACAO, situacaoConciliacao, taxaSobre, type FormaConciliacao } from "./regras";
 
 const PADRAO: Record<FormaConciliacao, { taxaBps: number; prazoDias: number }> = {
@@ -42,14 +43,17 @@ export async function conciliacao(de: string, ate: string) {
   const fim = new Date(instanteLocal(somarDias(ate, 1), 0, cfg.fuso));
   const janela = { gte: inicio, lt: fim };
   // Pago online (horario antes, link) entra como ONLINE pela data do pagamento; o lancamento
-  // que isso gera na comanda fica de fora (nao conta duas vezes).
-  const [pagamentos, antecipados, mensalidades, links, conferidas, tx] = await Promise.all([
-    db.pagamentoComanda.findMany({ where: { status: "PAGO", antecipadoId: null, linkPagamentoId: null, forma: { in: ["PIX", "DEBITO", "CREDITO"] }, pagoEm: janela }, select: { forma: true, valorCentavos: true, pagoEm: true } }),
-    db.pagamentoAntecipado.findMany({ where: { status: { in: ["PAGO", "CREDITADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
-    db.cobranca.findMany({ where: { status: "PAGA", pagaEm: janela }, select: { valorCentavos: true, pagaEm: true } }),
-    db.linkPagamento.findMany({ where: { status: "PAGO", pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
+  // que isso gera na comanda fica de fora (nao conta duas vezes). Estornado depois continua no dia em que
+  // foi pago; o estorno desconta no dia em que foi feito (a adquirente tira do repasse).
+  const estornadas = await mensalidadesEstornadas();
+  const [pagamentos, antecipados, mensalidades, links, conferidas, tx, estornos] = await Promise.all([
+    db.pagamentoComanda.findMany({ where: { ...PAGAMENTO_RECEBIDO, antecipadoId: null, linkPagamentoId: null, forma: { in: ["PIX", "DEBITO", "CREDITO"] }, pagoEm: janela }, select: { forma: true, valorCentavos: true, pagoEm: true } }),
+    db.pagamentoAntecipado.findMany({ where: { status: { in: ["PAGO", "CREDITADO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
+    db.cobranca.findMany({ where: { OR: [{ status: "PAGA" }, { status: "ESTORNADA", id: { in: estornadas } }], pagaEm: janela }, select: { valorCentavos: true, pagaEm: true } }),
+    db.linkPagamento.findMany({ where: { status: { in: ["PAGO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
     db.conciliacao.findMany({ where: { data: { gte: new Date(`${de}T00:00:00Z`), lte: new Date(`${ate}T00:00:00Z`) } } }),
     taxas(),
+    estornosEfetivos(janela),
   ]);
 
   const bruto = new Map<string, { valor: number; qtd: number }>();
@@ -62,23 +66,31 @@ export async function conciliacao(de: string, ate: string) {
   for (const a of antecipados) somar(dataLocal(a.pagoEm!, cfg.fuso), "ONLINE", a.valorCentavos);
   for (const m of mensalidades) somar(dataLocal(m.pagaEm!, cfg.fuso), "ONLINE", m.valorCentavos);
   for (const l of links) somar(dataLocal(l.pagoEm!, cfg.fuso), "ONLINE", l.valorCentavos);
+  const estornado = new Map<string, number>();
+  for (const e of estornos) {
+    if (e.forma === "DINHEIRO") continue; // dinheiro e conferido no caixa
+    const k = `${dataLocal(e.executadoEm!, cfg.fuso)}|${e.forma}`;
+    estornado.set(k, (estornado.get(k) ?? 0) + e.valorCentavos);
+  }
 
   type Linha = {
-    data: string; forma: FormaConciliacao; quantidade: number; brutoCentavos: number; taxaCentavos: number; liquidoCentavos: number;
+    data: string; forma: FormaConciliacao; quantidade: number; brutoCentavos: number; estornoCentavos: number; taxaCentavos: number; liquidoCentavos: number;
     previstoEm: string; recebidoCentavos: number | null; diferencaCentavos: number | null; status: "PENDENTE" | "CONFERIDO" | "DIVERGENTE"; observacao: string | null;
   };
   const linhas: Linha[] = [];
   for (let d = ate; d >= de; d = somarDias(d, -1)) {
     for (const forma of FORMAS_CONCILIACAO) {
       const b = bruto.get(`${d}|${forma}`);
+      const est = estornado.get(`${d}|${forma}`) ?? 0;
       const conf = conferidas.find((c) => c.forma === forma && c.data.toISOString().slice(0, 10) === d);
-      if (!b && !conf) continue;
+      if (!b && !conf && !est) continue;
       const t = tx.find((x) => x.forma === forma)!;
-      const valor = b?.valor ?? 0;
+      // Bruto ja descontado dos estornos do dia (pode ficar negativo: a adquirente desconta do repasse).
+      const valor = (b?.valor ?? 0) - est;
       const liquido = valor - taxaSobre(valor, t.taxaBps);
       const recebido = conf?.recebidoCentavos ?? null;
       linhas.push({
-        data: d, forma, quantidade: b?.qtd ?? 0, brutoCentavos: valor, taxaCentavos: valor - liquido, liquidoCentavos: liquido,
+        data: d, forma, quantidade: b?.qtd ?? 0, brutoCentavos: valor, estornoCentavos: est, taxaCentavos: valor - liquido, liquidoCentavos: liquido,
         previstoEm: dataPrevista(d, t.prazoDias), recebidoCentavos: recebido, diferencaCentavos: recebido === null ? null : recebido - liquido,
         status: situacaoConciliacao(liquido, recebido), observacao: conf?.observacao ?? null,
       });
@@ -88,7 +100,7 @@ export async function conciliacao(de: string, ate: string) {
   return {
     linhas,
     totais: {
-      bruto: soma((l) => l.brutoCentavos), liquido: soma((l) => l.liquidoCentavos),
+      bruto: soma((l) => l.brutoCentavos), estornos: soma((l) => l.estornoCentavos), liquido: soma((l) => l.liquidoCentavos),
       recebido: soma((l) => l.recebidoCentavos ?? 0), pendentes: linhas.filter((l) => l.status === "PENDENTE").length,
       divergentes: linhas.filter((l) => l.status === "DIVERGENTE").length,
     },

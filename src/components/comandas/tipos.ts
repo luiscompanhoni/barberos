@@ -37,10 +37,20 @@ export type Pagamento = {
   nsu: string | null;
   bandeira: string | null;
   criadoEm: string;
+  registradoPorId?: string | null;
+  /** Parte devolvida por estorno (igual ao valor = estornado inteiro). */
+  estornadoCentavos?: number;
+  estornadoEm?: string | null;
+};
+
+/** Pedido de estorno de um pagamento desta comanda. */
+export type EstornoComanda = {
+  id: string; tipo: "COMANDA" | "ANTECIPADO" | "LINK" | "MENSALIDADE"; referenciaId: string;
+  status: "PENDENTE" | "APROVADO" | "RECUSADO" | "EXECUTADO" | "FALHOU" | "MANUAL"; valorCentavos: number; motivo: string; instrucao: string | null;
 };
 
 export type Resumo = {
-  subtotal: number; desconto: number; total: number; pago: number;
+  subtotal: number; desconto: number; total: number; pago: number; estornado?: number;
   aguardando: number; falta: number; troco: number; podeFechar: boolean;
 };
 
@@ -59,6 +69,7 @@ export type Comanda = {
   /** Saldo do cliente (cashback + indicacao) que pode virar desconto nesta comanda. */
   saldoCliente?: number;
   /** Links de pagamento em aberto desta comanda. */
+  estornos?: EstornoComanda[];
   linksPagamento?: { id: string; token: string; url: string | null; valorCentavos: number; expiraEm: string; criadoEm: string }[];
 };
 

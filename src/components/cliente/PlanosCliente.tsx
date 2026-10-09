@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Check, ShieldCheck } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
@@ -14,9 +15,10 @@ type Plano = {
 type Atual = {
   id: string; status: string; valida: boolean; plano: { id: string; nome: string }; precoCentavos: number;
   formaPagamento: string; proximoVencimento: string | null;
+  pausada: boolean; pausadaAte: string | null; valeAte: string | null; desconto: { pct: number; ate: string } | null;
   cobrancaEmAberto: { valorCentavos: number; vencimento: string; status: string; link: string | null } | null;
 } | null;
-type Dados = { atual: Atual; planos: Plano[]; cpfCadastrado: string | null; emailCadastrado: string | null; motivosCancelamento: string[] };
+type Dados = { atual: Atual; planos: Plano[]; cpfCadastrado: string | null; emailCadastrado: string | null };
 
 const FORMAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão de crédito", BOLETO: "Boleto" };
 const FORMAS_CURTAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão", BOLETO: "Boleto" };
@@ -30,9 +32,6 @@ export function PlanosCliente() {
   const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState("");
   const [msg, setMsg] = useState<{ texto: string; erro?: boolean } | null>(null);
-  const [cancelando, setCancelando] = useState(false);
-  const [motivo, setMotivo] = useState("");
-  const [detalhe, setDetalhe] = useState("");
   const [enviando, setEnviando] = useState(false);
 
   const carregar = useCallback(() => api<Dados>("/api/cliente/assinatura").then(setD).catch((e) => setMsg({ texto: e.message, erro: true })), []);
@@ -80,18 +79,6 @@ export function PlanosCliente() {
     }
   }
 
-  async function cancelar() {
-    if (!motivo) return setMsg({ texto: "Conta pra gente o motivo.", erro: true });
-    try {
-      await api("/api/cliente/assinatura", { method: "DELETE", body: { motivo, detalhe: detalhe || undefined } });
-      setCancelando(false);
-      setMsg({ texto: "Assinatura cancelada. Seus horários já marcados continuam, como avulsos." });
-      carregar();
-    } catch (e) {
-      setMsg({ texto: (e as Error).message, erro: true });
-    }
-  }
-
   if (!d) return <p className="text-sm text-zinc-500">{msg?.texto ?? "Carregando..."}</p>;
   const { atual } = d;
   const destaque = planoEmDestaque(d.planos);
@@ -107,7 +94,7 @@ export function PlanosCliente() {
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.texto}</p>}
 
       {atual && (
-        <section className={atual.valida ? "cartao-destaque space-y-3" : "cartao space-y-3 border-red-200"}>
+        <section className={atual.valida || atual.pausada ? "cartao-destaque space-y-3" : "cartao space-y-3 border-red-200"}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs text-zinc-500">Sua assinatura</p>
@@ -115,18 +102,18 @@ export function PlanosCliente() {
               <p className="text-sm text-zinc-500">{reais(atual.precoCentavos)}/mês · {FORMAS[atual.formaPagamento] ?? atual.formaPagamento}</p>
             </div>
             <span className={atual.valida && atual.status !== "PENDENTE" ? "selo-ouro" : "rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-bold text-amber-800 uppercase"}>
-              {atual.status === "PENDENTE" ? "Aguardando pagamento" : atual.valida ? "Ativo" : "Suspenso"}
+              {atual.status === "PENDENTE" ? "Aguardando pagamento" : atual.pausada ? "Pausado" : atual.valeAte ? "Cancelado" : atual.valida ? "Ativo" : "Suspenso"}
             </span>
           </div>
           <div className="h-px bg-zinc-200" />
           {atual.status === "PENDENTE" ? (
             <p className="text-sm text-zinc-500">Assim que o primeiro pagamento cair, o plano ativa sozinho.</p>
-          ) : atual.valida ? (
+          ) : atual.valida && !atual.valeAte ? (
             <div className="flex items-center justify-between text-sm">
               <span className="text-zinc-500">Próxima mensalidade{atual.status === "ATRASADA" && " (atrasada)"}</span>
               <strong>{dataBr(atual.proximoVencimento) || "—"}</strong>
             </div>
-          ) : (
+          ) : atual.pausada || atual.valeAte ? null : (
             <p className="text-sm text-red-700">Mensalidade atrasada: o plano fica suspenso até o pagamento.</p>
           )}
           {atual.cobrancaEmAberto?.link && (
@@ -134,23 +121,17 @@ export function PlanosCliente() {
               Pagar {reais(atual.cobrancaEmAberto.valorCentavos)} · venc. {dataBr(atual.cobrancaEmAberto.vencimento)}
             </a>
           )}
-          {atual.status !== "PENDENTE" && !cancelando && (
-            <button className="text-xs font-semibold text-zinc-500 hover:text-zinc-900" onClick={() => setCancelando(true)}>Cancelar assinatura</button>
+          {atual.pausada && atual.pausadaAte && (
+            <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Plano pausado até {dataBr(atual.pausadaAte)}. Ele volta sozinho e nada é cobrado durante a pausa.</p>
           )}
-          {cancelando && (
-            <div className="space-y-3 rounded-xl bg-zinc-50 p-4 text-sm">
-              <p>Poxa! Antes de ir: se o problema for horário ou preço, fala com a gente no WhatsApp que a gente tenta resolver.</p>
-              <label className="rotulo" htmlFor="motivo">Por que você quer cancelar?</label>
-              <select id="motivo" className="campo" value={motivo} onChange={(e) => setMotivo(e.target.value)}>
-                <option value="">Escolha...</option>
-                {d.motivosCancelamento.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-              <input className="campo" placeholder="Quer contar mais? (opcional)" value={detalhe} onChange={(e) => setDetalhe(e.target.value)} />
-              <div className="flex flex-wrap gap-2">
-                <button className="btn-primario" onClick={() => setCancelando(false)}>Continuar assinante</button>
-                <button className="btn-perigo" onClick={cancelar}>Cancelar assinatura</button>
-              </div>
-            </div>
+          {atual.valeAte && (
+            <p className="rounded-xl bg-zinc-100 p-3 text-sm text-zinc-700">Cancelado: o plano vale até {dataBr(atual.valeAte)} e não haverá novas cobranças.</p>
+          )}
+          {atual.desconto && !atual.valeAte && (
+            <p className="text-xs text-ouro">Desconto de {atual.desconto.pct}% nas mensalidades até {dataBr(atual.desconto.ate)}.</p>
+          )}
+          {!atual.valeAte && (
+            <Link href="/c/planos/cancelar" className="inline-block text-xs font-semibold text-zinc-500 hover:text-zinc-900">Cancelar plano</Link>
           )}
         </section>
       )}

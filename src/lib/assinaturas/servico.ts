@@ -13,6 +13,8 @@ import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
 import { cobrancaEmAberto, linkAbsoluto, novoTokenPublico, sincronizarAssinatura } from "./cobrancas";
 import { gerarPixDoMes } from "./cartao-pix";
 import { assinaturaValida, cpfValido } from "./regras";
+import { estaPausada } from "./retencao-regras";
+import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 
 /** Assinaturas que ocupam vaga: ativas, atrasadas e pendentes recentes (link ainda valendo). */
 const PENDENTE_SEGURA_VAGA_MS = 3 * 86_400_000;
@@ -38,13 +40,18 @@ export async function situacaoDoCliente(clienteId: string) {
   });
   if (!a) return null;
   const aberta = await cobrancaEmAberto(a.id);
+  const pausada = estaPausada({
+    pausadaEm: a.pausadaEm, pausadaAte: a.pausadaAte?.toISOString().slice(0, 10) ?? null, hoje: dataLocal(Date.now(), cfg.fuso),
+  });
   const vencida = await db.cobranca.findFirst({
     where: { assinaturaId: a.id, status: { in: ["ATRASADA", "ESTORNADA"] } },
     orderBy: { vencimento: "asc" },
   });
   return {
     assinatura: a,
-    valida: assinaturaValida({
+    pausada,
+    // Pausado: nao usa o plano ate a pausa acabar.
+    valida: !pausada && assinaturaValida({
       status: a.status,
       vencimentoMaisAntigoEmAberto: vencida?.vencimento.getTime() ?? null,
       toleranciaDias: cfg.toleranciaAtrasoDias,
@@ -160,11 +167,17 @@ export async function assinar(p: {
  * Cancela no gateway e aqui. Horarios futuros que estavam pelo plano viram
  * avulsos (preco normal). Abre vaga: avisa o primeiro da lista de espera.
  */
-export async function cancelar(assinaturaId: string, motivo: string, usuarioId: string | null, opts: { avisar?: boolean } = {}) {
+export async function cancelar(
+  assinaturaId: string,
+  motivo: string,
+  usuarioId: string | null,
+  opts: { avisar?: boolean; semGateway?: boolean } = {},
+) {
   const a = await db.assinatura.findUnique({ where: { id: assinaturaId }, include: { cliente: true, plano: true } });
   if (!a) throw naoEncontrado("Assinatura");
   if (a.status === "CANCELADA") return a;
-  if (a.gatewayId) {
+  // CashBarber cobra por la (a equipe cancela no CashBarber); encerramento agendado ja parou a recorrencia.
+  if (a.gatewayId && !opts.semGateway && !a.encerraEm && !ehCashbarber(a.gatewayId)) {
     try {
       await (await gatewayPorId(a.gatewayId)).cancelarAssinatura(a.gatewayId);
     } catch (e) {

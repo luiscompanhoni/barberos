@@ -74,7 +74,11 @@ export async function sincronizarCobranca(cob: CobrancaGateway) {
   if (ultimaPaga) {
     const venc = ultimaPaga.vencimento.toISOString().slice(0, 10);
     dados.cicloInicio = ultimaPaga.vencimento;
-    dados.proximoVencimento = new Date(`${somarMes(venc)}T00:00:00Z`);
+    let proximo = somarMes(venc);
+    // Pausa empurrou o vencimento: a sincronizacao nao desfaz.
+    const atual = assinatura.proximoVencimento?.toISOString().slice(0, 10);
+    if (assinatura.pausadaAte && atual && atual > proximo) proximo = atual;
+    dados.proximoVencimento = new Date(`${proximo}T00:00:00Z`);
   }
   if (status === "ATIVA" && !assinatura.ativadaEm) dados.ativadaEm = new Date();
   await db.assinatura.update({ where: { id: assinatura.id }, data: dados });

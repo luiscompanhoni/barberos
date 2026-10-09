@@ -31,6 +31,7 @@ type Painel = {
     faltosos: { id: string; nome: string; telefone: string; faltas: number }[];
     assinaturasAtrasadas: { id: string; precoCentavos: number; cliente: { nome: string }; plano: { nome: string } }[];
     assinaturasPendentes: { id: string; criadaEm: string; cliente: { nome: string }; plano: { nome: string } }[];
+    estornosPendentes?: number;
     produtosAcabando: { id: string; nome: string; estoque: number; estoqueMinimo: number; unidade: string }[];
     esperas: { id: string; data: string; periodo: string; cliente: string }[];
     fuso: string;
@@ -82,7 +83,7 @@ export function PainelTela({ nome, dono }: { nome: string; dono: boolean }) {
   const { dia, mes, pendencias: pe, pico } = p;
   const variacao = mes && mes.anterior.centavos ? (mes.atual.centavos - mes.anterior.centavos) / mes.anterior.centavos : null;
   const hora = new Date().getHours();
-  const totalPend = pe.semBaixa.length + pe.conversas.length + pe.foraDoExpediente.length + pe.assinaturasAtrasadas.length + pe.produtosAcabando.length;
+  const totalPend = pe.semBaixa.length + pe.conversas.length + pe.foraDoExpediente.length + pe.assinaturasAtrasadas.length + pe.produtosAcabando.length + (pe.estornosPendentes ?? 0);
 
   async function cobrar(id: string) {
     try {
@@ -141,6 +142,13 @@ export function PainelTela({ nome, dono }: { nome: string; dono: boolean }) {
           <h2 className="font-semibold">Precisa de ação</h2>
           <span className="text-sm text-zinc-500">{totalPend ? `${totalPend} pendência(s)` : "tudo em dia"}</span>
         </div>
+
+        {!!pe.estornosPendentes && (
+          <Bloco titulo={dono ? "Estornos esperando a sua aprovação" : "Estornos esperando o dono"} qtd={pe.estornosPendentes}
+            acao={<Link className="text-sm underline" href="/financeiro?aba=estornos">{dono ? "aprovar ou recusar" : "ver pedidos"}</Link>}>
+            <li className="text-zinc-600">Todo estorno de dinheiro já recebido passa pelo dono.</li>
+          </Bloco>
+        )}
 
         {pe.conversas.length > 0 && (
           <Bloco titulo="Clientes esperando resposta no WhatsApp" qtd={pe.conversas.length} acao={<Link className="text-sm underline" href="/conversas">abrir conversas</Link>}>

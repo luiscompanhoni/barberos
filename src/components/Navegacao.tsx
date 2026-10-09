@@ -41,11 +41,14 @@ export function Navegacao({
   papel,
   links,
   nomeBarbearia,
+  selos = {},
 }: {
   nome: string;
   papel: string;
   nomeBarbearia: string;
   links: { href: string; rotulo: string }[];
+  /** Contador de pendencias por link (ex.: estornos esperando o dono). */
+  selos?: Record<string, number>;
 }) {
   const path = usePathname();
   const router = useRouter();
@@ -71,6 +74,7 @@ export function Navegacao({
       >
         <Icone size={17} className={ativo(l.href) ? "text-ouro" : ""} />
         {l.rotulo}
+        {!!selos[l.href] && <span className="ml-auto rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-black" title="Pendências">{selos[l.href]}</span>}
       </Link>
     );
   };
@@ -115,7 +119,8 @@ export function Navegacao({
         })}
         {links.length > 4 && (
           <button onClick={() => setMais(!mais)}
-            className={`flex min-w-16 flex-col items-center gap-1 py-1 text-[10px] ${mais ? "text-ouro" : "text-zinc-500"}`}>
+            className={`relative flex min-w-16 flex-col items-center gap-1 py-1 text-[10px] ${mais ? "text-ouro" : "text-zinc-500"}`}>
+            {links.slice(4).some((l) => selos[l.href]) && <span className="absolute right-4 top-0 h-2 w-2 rounded-full bg-amber-500" />}
             {mais ? <X size={18} /> : <Menu size={18} />}
             Mais
           </button>

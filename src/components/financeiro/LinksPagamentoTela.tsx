@@ -2,21 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Ban, CreditCard, Link2, MessageCircle, Plus, QrCode, RefreshCw } from "lucide-react";
+import { BotaoEstorno } from "@/components/estornos/BotaoEstorno";
 import { api, reais } from "@/lib/cliente-api";
 import { BotaoCopiar, NovoLinkModal, type LinkPainel } from "./NovoLinkModal";
 
 type Filtro = "PENDENTE" | "PAGO" | "FECHADO" | "TODOS";
-const FILTROS: { k: Filtro; r: string }[] = [{ k: "PENDENTE", r: "Em aberto" }, { k: "PAGO", r: "Pagos" }, { k: "FECHADO", r: "Cancelados/expirados" }, { k: "TODOS", r: "Todos" }];
+const FILTROS: { k: Filtro; r: string }[] = [{ k: "PENDENTE", r: "Em aberto" }, { k: "PAGO", r: "Pagos" }, { k: "FECHADO", r: "Cancelados/estornados" }, { k: "TODOS", r: "Todos" }];
 const SELO: Record<LinkPainel["status"], { r: string; c: string }> = {
   PENDENTE: { r: "Em aberto", c: "bg-amber-50 text-amber-800" },
   PAGO: { r: "Pago", c: "bg-emerald-50 text-emerald-700" },
   CANCELADO: { r: "Cancelado", c: "bg-zinc-100 text-zinc-600" },
   EXPIRADO: { r: "Expirado", c: "bg-zinc-100 text-zinc-600" },
+  ESTORNADO: { r: "Estornado", c: "bg-red-50 text-red-700" },
 };
 const quando = (d: string) => new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
 
 /** Links de pagamento: criar, copiar, mandar no WhatsApp, acompanhar e cancelar. */
-export function LinksPagamentoTela() {
+export function LinksPagamentoTela({ dono = false }: { dono?: boolean }) {
   const [links, setLinks] = useState<LinkPainel[] | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("PENDENTE");
   const [novo, setNovo] = useState(false);
@@ -44,7 +46,7 @@ export function LinksPagamentoTela() {
     }
   }
 
-  const lista = (links ?? []).filter((l) => filtro === "TODOS" || (filtro === "FECHADO" ? l.status === "CANCELADO" || l.status === "EXPIRADO" : l.status === filtro));
+  const lista = (links ?? []).filter((l) => filtro === "TODOS" || (filtro === "FECHADO" ? l.status === "CANCELADO" || l.status === "EXPIRADO" || l.status === "ESTORNADO" : l.status === filtro));
   const emAberto = (links ?? []).filter((l) => l.status === "PENDENTE");
   const pagos30 = (links ?? []).filter((l) => l.status === "PAGO" && l.pagoEm && agora - Date.parse(l.pagoEm) < 30 * 86_400_000);
 
@@ -87,6 +89,7 @@ export function LinksPagamentoTela() {
                 <p className="flex items-center gap-1.5 text-xs text-zinc-500">
                   {l.forma === "CARTAO" ? <CreditCard size={13} /> : <QrCode size={13} />}
                   {l.forma === "CARTAO" ? `Cartão${l.parcelas && l.parcelas > 1 ? ` em ${l.parcelas}x` : ""}` : "Pix"} · pago {l.pagoEm ? quando(l.pagoEm) : ""}
+                  <span className="ml-auto"><BotaoEstorno tipo="LINK" id={l.id} dono={dono} onFeito={carregar} /></span>
                 </p>
               )}
               {l.status === "PENDENTE" && (

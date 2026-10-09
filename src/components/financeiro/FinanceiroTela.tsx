@@ -4,18 +4,20 @@ import { useState } from "react";
 import { CaixaTela } from "./CaixaTela";
 import { ConciliacaoTela } from "./ConciliacaoTela";
 import { DespesasTela } from "./DespesasTela";
+import { EstornosTela } from "./EstornosTela";
 import { LinksPagamentoTela } from "./LinksPagamentoTela";
 import { ResumoTela } from "./ResumoTela";
 
-type Aba = "caixa" | "despesas" | "links" | "conciliacao" | "resumo";
+export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | "resumo";
 const ABAS: { k: Aba; r: string; dono?: boolean }[] = [
-  { k: "caixa", r: "Caixa" }, { k: "despesas", r: "Despesas" }, { k: "links", r: "Links de pagamento" },
+  { k: "caixa", r: "Caixa" }, { k: "despesas", r: "Despesas" }, { k: "links", r: "Links de pagamento" }, { k: "estornos", r: "Estornos" },
   { k: "conciliacao", r: "Conciliação" }, { k: "resumo", r: "Resumo do mês", dono: true },
 ];
 
-/** Financeiro: caixa, contas a pagar, links de pagamento, conciliacao e (so o dono) o resumo do mes. */
-export function FinanceiroTela({ dono }: { dono: boolean }) {
-  const [aba, setAba] = useState<Aba>("caixa");
+/** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (so o dono) o resumo do mes. */
+export function FinanceiroTela({ dono, abaInicial = "caixa", estornosPendentes = 0 }: { dono: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
+  const [aba, setAba] = useState<Aba>(abaInicial);
+  const [pendentes, setPendentes] = useState(estornosPendentes);
   const abas = ABAS.filter((a) => !a.dono || dono);
   return (
     <div className="space-y-4">
@@ -24,9 +26,18 @@ export function FinanceiroTela({ dono }: { dono: boolean }) {
         <h1 className="titulo-marca text-2xl">{ABAS.find((a) => a.k === aba)!.r}</h1>
       </div>
       <div className="flex flex-wrap gap-2 print:hidden">
-        {abas.map((a) => <button key={a.k} className={aba === a.k ? "btn-primario" : "btn"} onClick={() => setAba(a.k)}>{a.r}</button>)}
+        {abas.map((a) => (
+          <button key={a.k} className={aba === a.k ? "btn-primario" : "btn"} onClick={() => setAba(a.k)}>
+            {a.r}
+            {a.k === "estornos" && pendentes > 0 && (
+              <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-black" title="Pedidos de estorno esperando o dono">{pendentes}</span>
+            )}
+          </button>
+        ))}
       </div>
-      {aba === "caixa" ? <CaixaTela /> : aba === "despesas" ? <DespesasTela /> : aba === "links" ? <LinksPagamentoTela /> : aba === "conciliacao" ? <ConciliacaoTela dono={dono} /> : <ResumoTela />}
+      {aba === "caixa" ? <CaixaTela /> : aba === "despesas" ? <DespesasTela /> : aba === "links" ? <LinksPagamentoTela dono={dono} />
+        : aba === "estornos" ? <EstornosTela onMudou={() => fetch("/api/estornos").then((r) => r.json()).then((x) => setPendentes(x.pendentes?.filter((p: { status: string }) => p.status === "PENDENTE").length ?? 0)).catch(() => {})} />
+          : aba === "conciliacao" ? <ConciliacaoTela dono={dono} /> : <ResumoTela />}
     </div>
   );
 }

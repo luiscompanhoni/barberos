@@ -119,19 +119,28 @@ export async function sincronizarPedido(pedidoId: string) {
   return true;
 }
 
-/** Desiste de um pagamento: tira da maquininha (se estava esperando) ou desfaz um lancamento errado. */
+/**
+ * Desiste de um pagamento: tira da maquininha (se estava esperando: quem lancou ou a gerencia)
+ * ou, so o dono, desfaz um lancamento errado (sem dinheiro envolvido). Devolver dinheiro recebido
+ * e estorno (lib/estornos): a recepcao pede e o dono aprova.
+ */
 export async function cancelarPagamento(s: Sessao, pagamentoId: string) {
   const pg = await db.pagamentoComanda.findUnique({ where: { id: pagamentoId }, include: { comanda: { select: { status: true } } } });
   if (!pg) throw naoEncontrado("Pagamento");
   if (pg.comanda.status !== "ABERTA") throw new ErroNegocio("A comanda já foi fechada.");
   if (pg.status === "CANCELADO") return;
-  if (pg.antecipadoId) throw new ErroNegocio("Esse valor foi pago online antes do atendimento: não dá para desfazer aqui. Se precisar devolver, faça o estorno no painel do meio de pagamento.", 409, "antecipado");
-  if (pg.linkPagamentoId) throw new ErroNegocio("Esse valor foi pago pelo link de pagamento: não dá para desfazer aqui. Se precisar devolver, faça o estorno no painel do meio de pagamento.", 409, "link");
+  if (pg.antecipadoId) throw new ErroNegocio("Esse valor foi pago online antes do atendimento: não dá para desfazer. Para devolver, use “Pedir estorno”.", 409, "antecipado");
+  if (pg.linkPagamentoId) throw new ErroNegocio("Esse valor foi pago pelo link de pagamento: não dá para desfazer. Para devolver, use “Pedir estorno”.", 409, "link");
   if (pg.status === "PAGO") {
-    if (!ehGerente(s)) throw proibido();
-    if (pg.gatewayPedidoId && !pg.gatewayPedidoId.startsWith(PREFIXO_SIMULADO) && s.papel !== "DONO") {
-      throw new ErroNegocio("Pagamento aprovado na maquininha: só o dono desfaz (e o estorno é feito na maquininha).", 403, "proibido");
+    if (s.papel !== "DONO") throw new ErroNegocio("Pagamento já recebido: peça o estorno ao dono (botão “Pedir estorno”).", 403, "pedir_estorno");
+    if (pg.gatewayPedidoId && !pg.gatewayPedidoId.startsWith(PREFIXO_SIMULADO)) {
+      throw new ErroNegocio("Pagamento aprovado na maquininha: para devolver, use “Estornar”.", 409, "usar_estorno");
     }
+    if (pg.estornadoCentavos > 0) throw new ErroNegocio("Esse pagamento já tem estorno: não dá para desfazer.", 409, "estornado");
+    const pedido = await db.pedidoEstorno.findFirst({ where: { tipo: "COMANDA", referenciaId: pg.id, status: { in: ["PENDENTE", "APROVADO", "FALHOU"] } } });
+    if (pedido) throw new ErroNegocio("Esse pagamento tem um pedido de estorno em aberto: decida o pedido primeiro.", 409, "estorno_aberto");
+  } else if (pg.registradoPorId !== s.usuarioId && !ehGerente(s)) {
+    throw proibido();
   }
   if (pg.status === "AGUARDANDO" && pg.gatewayPedidoId && !pg.gatewayPedidoId.startsWith(PREFIXO_SIMULADO)) {
     await fecharPedido(pg.gatewayPedidoId, "canceled").catch((e) => {

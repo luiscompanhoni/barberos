@@ -4,6 +4,7 @@ import { Navegacao } from "@/components/Navegacao";
 import { AbasPainel } from "@/components/AbasPainel";
 import { provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { configuracao } from "@/lib/agenda/carregar";
+import { contarPendentes } from "@/lib/estornos/servico";
 
 export default async function LayoutApp({ children }: LayoutProps<"/">) {
   const s = await sessaoAtual();
@@ -43,9 +44,12 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
             : []),
         ];
 
+  // Selo de pendencias no menu: pedidos de estorno esperando o dono.
+  const selos: Record<string, number> = s.papel === "DONO" ? { "/financeiro": await contarPendentes() } : {};
+
   return (
     <div className="flex min-h-full flex-1 flex-col lg:flex-row">
-      <Navegacao nome={s.nome} papel={s.papel} links={links} nomeBarbearia={(await configuracao()).nomeBarbearia} />
+      <Navegacao nome={s.nome} papel={s.papel} links={links} selos={selos} nomeBarbearia={(await configuracao()).nomeBarbearia} />
       <main className="mx-auto w-full min-w-0 max-w-[1400px] flex-1 p-3 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-6">
         <AbasPainel links={links} chave={s.usuarioId} />
         {children}

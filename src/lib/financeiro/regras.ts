@@ -94,7 +94,7 @@ export function totaisDespesas(lista: DespesaResumo[], hoje: string, mes: string
 
 // ------------------------------------------------------------------ Extrato do caixa
 
-export type TipoLinhaExtrato = "ABERTURA" | "PAGAMENTO" | "TROCO" | "SANGRIA" | "SUPRIMENTO" | "DESPESA" | "FECHAMENTO";
+export type TipoLinhaExtrato = "ABERTURA" | "PAGAMENTO" | "TROCO" | "SANGRIA" | "SUPRIMENTO" | "DESPESA" | "ESTORNO" | "FECHAMENTO";
 export type EventoExtrato = {
   tipo: TipoLinhaExtrato; em: Date; descricao: string;
   /** Valor da linha (sempre positivo; o sentido vem do tipo). */
@@ -106,8 +106,8 @@ export type EventoExtrato = {
 };
 export type LinhaExtrato = EventoExtrato & { entrada: boolean; efeitoCentavos: number; saldoCentavos: number };
 
-const ORDEM_TIPO: Record<TipoLinhaExtrato, number> = { ABERTURA: 0, PAGAMENTO: 1, TROCO: 2, SUPRIMENTO: 3, SANGRIA: 3, DESPESA: 3, FECHAMENTO: 9 };
-const SAIDAS: TipoLinhaExtrato[] = ["TROCO", "SANGRIA", "DESPESA"];
+const ORDEM_TIPO: Record<TipoLinhaExtrato, number> = { ABERTURA: 0, PAGAMENTO: 1, TROCO: 2, SUPRIMENTO: 3, SANGRIA: 3, DESPESA: 3, ESTORNO: 3, FECHAMENTO: 9 };
+const SAIDAS: TipoLinhaExtrato[] = ["TROCO", "SANGRIA", "DESPESA", "ESTORNO"];
 
 /** Ordena os eventos e calcula o saldo de dinheiro na gaveta linha a linha. */
 export function montarExtrato(eventos: EventoExtrato[]): LinhaExtrato[] {

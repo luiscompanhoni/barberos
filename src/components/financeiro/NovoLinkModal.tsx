@@ -9,7 +9,7 @@ import { VALIDADES_LINK_DIAS } from "@/lib/pagamentos/checkout-regras";
 export type LinkPainel = {
   id: string; token: string; url: string; descricao: string; valorCentavos: number; nome: string; telefone: string;
   clienteId: string | null; comandaId: string | null; comandaNumero: number | null;
-  status: "PENDENTE" | "PAGO" | "CANCELADO" | "EXPIRADO"; forma: "PIX" | "CARTAO" | "BOLETO" | null;
+  status: "PENDENTE" | "PAGO" | "CANCELADO" | "EXPIRADO" | "ESTORNADO"; forma: "PIX" | "CARTAO" | "BOLETO" | null;
   parcelas: number | null; parcelasMax: number; pagoEm: string | null; expiraEm: string; criadoEm: string;
 };
 type ClienteBusca = { id: string; nome: string; telefone: string };

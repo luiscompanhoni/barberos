@@ -152,6 +152,7 @@ export function AgendaTela(p: {
           fuso={agenda.fuso}
           barbeiroNome={agenda.barbeiros.find((b) => b.id === aberto.barbeiroId)?.nome ?? ""}
           podeEditar={podeEditar(aberto.barbeiroId)}
+          papel={p.papel}
           onFechar={() => setAberto(null)}
           onAlterado={(msg) => { setAberto(null); setAviso({ texto: msg }); recarregar(); }}
         />

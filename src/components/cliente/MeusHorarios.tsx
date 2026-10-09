@@ -31,15 +31,16 @@ export function MeusHorarios() {
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [agora] = useState(() => Date.now());
-  const [plano, setPlano] = useState<{ nome: string; valida: boolean; status: string; link: string | null; vencimento: string | null } | null | undefined>(undefined);
+  const [plano, setPlano] = useState<{ nome: string; valida: boolean; status: string; link: string | null; vencimento: string | null; pausadaAte: string | null; valeAte: string | null } | null | undefined>(undefined);
 
   const carregar = useCallback(() => {
     api<{ proximos: Ag[]; historico: Ag[]; prazoAlteracaoMin: number; pagarAntes?: boolean; checkout?: boolean }>("/api/cliente/agendamentos").then(setDados).catch((e) => setErro(e.message));
     api<{ nome: string }>("/api/cliente/perfil").then(setPerfil).catch(() => {});
-    api<{ atual: { plano: { nome: string }; valida: boolean; status: string; proximoVencimento: string | null; cobrancaEmAberto: { link: string | null } | null } | null }>("/api/cliente/assinatura")
+    api<{ atual: { plano: { nome: string }; valida: boolean; status: string; proximoVencimento: string | null; cobrancaEmAberto: { link: string | null } | null; pausadaAte: string | null; valeAte: string | null } | null }>("/api/cliente/assinatura")
       .then((r) => setPlano(r.atual ? {
         nome: r.atual.plano.nome, valida: r.atual.valida, status: r.atual.status,
         link: r.atual.cobrancaEmAberto?.link ?? null, vencimento: r.atual.proximoVencimento,
+        pausadaAte: r.atual.pausadaAte, valeAte: r.atual.valeAte,
       } : null))
       .catch(() => setPlano(null));
   }, []);
@@ -102,24 +103,27 @@ export function MeusHorarios() {
         </Link>
       )}
       {plano && (
-        <section className={plano.valida ? "cartao-destaque" : "cartao border-red-200"}>
+        <section className={plano.valida || plano.pausadaAte ? "cartao-destaque" : "cartao border-red-200"}>
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-xs text-zinc-500">Seu plano</p>
               <h2 className="mt-1 text-xl font-bold">{plano.nome}</h2>
             </div>
             <span className={plano.valida ? "selo-ouro" : "rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-700 uppercase"}>
-              {plano.status === "PENDENTE" ? "Aguardando pagamento" : plano.valida ? "Ativo" : "Atrasado"}
+              {plano.status === "PENDENTE" ? "Aguardando pagamento" : plano.pausadaAte ? "Pausado" : plano.valeAte ? "Cancelado" : plano.valida ? "Ativo" : "Atrasado"}
             </span>
           </div>
           <div className="my-4 h-px bg-zinc-200" />
           <div className="flex items-center justify-between text-sm">
-            <span className="text-zinc-500">{plano.valida ? "Próxima mensalidade" : "Mensalidade em aberto"}</span>
+            <span className="text-zinc-500">{plano.pausadaAte ? "Pausado até" : plano.valeAte ? "Vale até" : plano.valida ? "Próxima mensalidade" : "Mensalidade em aberto"}</span>
             {plano.link && !plano.valida
               ? <a className="btn-primario" href={plano.link}>Pagar agora</a>
-              : <strong>{plano.vencimento ? new Date(plano.vencimento).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }) : "—"}</strong>}
+              : <strong>{plano.pausadaAte || plano.valeAte ? new Date((plano.pausadaAte ?? plano.valeAte)!).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }) : plano.vencimento ? new Date(plano.vencimento).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }) : "—"}</strong>}
           </div>
-          <Link href="/c/planos" className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-ouro">Ver meu plano <ArrowRight size={13} /></Link>
+          <div className="mt-3 flex items-center justify-between">
+            <Link href="/c/planos" className="inline-flex items-center gap-1 text-xs font-semibold text-ouro">Ver meu plano <ArrowRight size={13} /></Link>
+            {!plano.valeAte && <Link href="/c/planos/cancelar" className="text-xs font-semibold text-zinc-500">Cancelar plano</Link>}
+          </div>
         </section>
       )}
 

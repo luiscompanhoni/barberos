@@ -3,9 +3,12 @@
  * Receita das comandas conta pela data do fechamento; a parte paga antes pelo link fica fora dela porque
  * ja entra em "pagamentos antecipados" (pela data em que o cliente pagou). O mesmo vale para o que foi
  * pago por link de pagamento (entra em "links", pela data do pagamento). Assim nada conta duas vezes.
+ * Estorno: o recebimento original fica na data dele e o estorno desconta na data em que foi feito.
  */
 import { dataLocal } from "@/lib/agenda/tempo";
-import { resumoComanda } from "@/lib/comandas/regras";
+import { foiRecebido, resumoComanda } from "@/lib/comandas/regras";
+import { estornosEfetivos, mensalidadesEstornadas } from "@/lib/estornos/financeiro";
+import { somarPorForma } from "@/lib/estornos/regras";
 import { db } from "@/lib/db";
 import { janelaMes } from "./despesas";
 import { mesAnterior, serieDiaria, variacao } from "./regras";
@@ -13,12 +16,14 @@ import { mesAnterior, serieDiaria, variacao } from "./regras";
 async function numerosMes(mes: string) {
   const { gte, lt, fuso } = await janelaMes(mes);
   const janela = { gte, lt };
-  const [comandas, antecipados, cobrancas, links, despesas] = await Promise.all([
+  const estornadas = await mensalidadesEstornadas();
+  const [comandas, antecipados, cobrancas, links, despesas, estornos] = await Promise.all([
     db.comanda.findMany({ where: { status: "FECHADA", fechadaEm: janela }, include: { itens: true, pagamentos: true } }),
-    db.pagamentoAntecipado.findMany({ where: { status: { in: ["PAGO", "CREDITADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
-    db.cobranca.findMany({ where: { status: "PAGA", pagaEm: janela }, select: { valorCentavos: true, pagaEm: true } }),
-    db.linkPagamento.findMany({ where: { status: "PAGO", pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
+    db.pagamentoAntecipado.findMany({ where: { status: { in: ["PAGO", "CREDITADO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
+    db.cobranca.findMany({ where: { OR: [{ status: "PAGA" }, { status: "ESTORNADA", id: { in: estornadas } }], pagaEm: janela }, select: { valorCentavos: true, pagaEm: true } }),
+    db.linkPagamento.findMany({ where: { status: { in: ["PAGO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
     db.despesa.findMany({ where: { status: "PAGA", pagoEm: janela }, select: { categoria: true, valorCentavos: true, pagoEm: true } }),
+    estornosEfetivos(janela),
   ]);
 
   const porForma: Record<string, number> = { DINHEIRO: 0, PIX: 0, DEBITO: 0, CREDITO: 0 };
@@ -27,7 +32,7 @@ async function numerosMes(mes: string) {
   let pagoAntes = 0;
   let pagoPorLink = 0;
   for (const c of comandas) {
-    const pagos = c.pagamentos.filter((p) => p.status === "PAGO");
+    const pagos = c.pagamentos.filter(foiRecebido);
     const { troco } = resumoComanda(c.itens, c.pagamentos, c.descontoCentavos);
     let valor = -troco;
     porForma.DINHEIRO -= troco;
@@ -47,16 +52,20 @@ async function numerosMes(mes: string) {
   const totalLinks = links.reduce((t, l) => t + l.valorCentavos, 0);
   for (const l of links) receitasDia.push({ data: dataLocal(l.pagoEm!, fuso), valor: l.valorCentavos });
 
+  const totalEstornos = estornos.reduce((t, e) => t + e.valorCentavos, 0);
+  for (const e of estornos) receitasDia.push({ data: dataLocal(e.executadoEm!, fuso), valor: -e.valorCentavos });
+
   const porCategoria: Record<string, number> = {};
   for (const d of despesas) porCategoria[d.categoria] = (porCategoria[d.categoria] ?? 0) + d.valorCentavos;
   const totalDespesas = despesas.reduce((t, d) => t + d.valorCentavos, 0);
-  const receitas = totalComandas + totalAntecipados + totalMensalidades + totalLinks;
+  const receitas = totalComandas + totalAntecipados + totalMensalidades + totalLinks - totalEstornos;
   return {
     receitas: {
       comandas: { total: totalComandas, quantidade: comandas.length, porForma, pagoAntes, pagoPorLink },
       mensalidades: { total: totalMensalidades, quantidade: cobrancas.length },
       antecipados: { total: totalAntecipados, quantidade: antecipados.length },
       links: { total: totalLinks, quantidade: links.length },
+      estornos: { total: totalEstornos, quantidade: estornos.length, porForma: somarPorForma(estornos) },
       total: receitas,
     },
     despesas: { total: totalDespesas, quantidade: despesas.length, porCategoria },

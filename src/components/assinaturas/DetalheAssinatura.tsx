@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "@/components/Modal";
+import { BotaoEstorno } from "@/components/estornos/BotaoEstorno";
 import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
 import { FORMA, ROTULO } from "./AssinaturasTela";
+import { DESFECHO } from "./RetencaoPainel";
+import { ROTULO_MOTIVO, type Motivo } from "@/lib/assinaturas/retencao-regras";
 
 type Detalhe = {
   id: string;
@@ -21,6 +24,13 @@ type Detalhe = {
   cobrancas: { id: string; valorCentavos: number; vencimento: string; status: string; pagaEm: string | null; link: string | null }[];
   agendamentos: { id: string; inicio: string; status: string; servico: { nome: string } }[];
   simulado: boolean;
+  cashbarber: boolean;
+  pausadaEm: string | null;
+  pausadaAte: string | null;
+  encerraEm: string | null;
+  descontoRetencaoPct: number | null;
+  descontoRetencaoAte: string | null;
+  retencoes: { id: string; motivo: string; detalhe: string | null; desfecho: keyof typeof DESFECHO; origem: string; criadoEm: string }[];
 };
 
 const STATUS_COB: Record<string, string> = { PENDENTE: "Em aberto", PAGA: "Paga", ATRASADA: "Vencida", CANCELADA: "Cancelada", ESTORNADA: "Estornada" };
@@ -31,6 +41,7 @@ export function DetalheAssinatura(p: { id: string; dono: boolean; onFechar: () =
   const [msg, setMsg] = useState<{ texto: string; erro?: boolean } | null>(null);
   const [motivo, setMotivo] = useState("");
   const [cancelando, setCancelando] = useState(false);
+  const [motivoBase, setMotivoBase] = useState("");
 
   const carregar = useCallback(() => api<Detalhe>(`/api/assinaturas/${p.id}`).then(setD).catch((e) => setMsg({ texto: e.message, erro: true })), [p.id]);
   useEffect(() => {
@@ -64,6 +75,10 @@ export function DetalheAssinatura(p: { id: string; dono: boolean; onFechar: () =
           <dt className="text-zinc-500">CPF</dt><dd>{d.cliente.cpf ?? "—"}</dd>
           <dt className="text-zinc-500">Assinante desde</dt><dd>{dataBr(d.ativadaEm)}</dd>
           {d.status !== "CANCELADA" && (<><dt className="text-zinc-500">Próx. vencimento</dt><dd>{dataBr(d.proximoVencimento)}</dd></>)}
+          {d.status !== "CANCELADA" && d.pausadaEm && d.pausadaAte && (<><dt className="text-zinc-500">Pausada</dt><dd>até {dataBr(d.pausadaAte)} (volta sozinha)</dd></>)}
+          {d.status !== "CANCELADA" && d.encerraEm && (<><dt className="text-zinc-500">Cancelamento</dt><dd>pedido pelo cliente; encerra em {dataBr(d.encerraEm)} · {d.motivoCancelamento}</dd></>)}
+          {d.descontoRetencaoPct && d.descontoRetencaoAte && (<><dt className="text-zinc-500">Desconto retenção</dt><dd>{d.descontoRetencaoPct}% nas mensalidades até {dataBr(d.descontoRetencaoAte)}</dd></>)}
+          {d.cashbarber && (<><dt className="text-zinc-500">Cobrança</dt><dd>no CashBarber (cancelar também por lá)</dd></>)}
           {d.canceladaEm && (<><dt className="text-zinc-500">Cancelada em</dt><dd>{dataBr(d.canceladaEm)} · {d.motivoCancelamento}</dd></>)}
         </dl>
 
@@ -80,10 +95,26 @@ export function DetalheAssinatura(p: { id: string; dono: boolean; onFechar: () =
                 {c.link && (c.status === "PENDENTE" || c.status === "ATRASADA") && (
                   <button className="ml-auto text-xs underline" onClick={() => { navigator.clipboard?.writeText(c.link!); setMsg({ texto: "Link copiado." }); }}>copiar link</button>
                 )}
+                {c.status === "PAGA" && <span className="ml-auto"><BotaoEstorno tipo="MENSALIDADE" id={c.id} dono={!!p.dono} onFeito={carregar} /></span>}
               </li>
             ))}
           </ul>
         </div>
+
+        {d.retencoes.length > 0 && (
+          <div>
+            <p className="mb-1 font-medium">Pedidos de cancelamento</p>
+            <ul className="space-y-1 text-xs">
+              {d.retencoes.map((r) => (
+                <li key={r.id} className="flex flex-wrap items-center gap-2">
+                  <span className="text-zinc-500">{dataBr(r.criadoEm)}</span>
+                  <span>{ROTULO_MOTIVO[r.motivo as Motivo] ?? r.motivo}{r.detalhe ? `: "${r.detalhe}"` : ""}</span>
+                  <span className={`rounded px-2 py-0.5 ${DESFECHO[r.desfecho].cor}`}>{DESFECHO[r.desfecho].texto}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {d.agendamentos.length > 0 && (
           <p className="text-xs text-zinc-500">
@@ -100,10 +131,14 @@ export function DetalheAssinatura(p: { id: string; dono: boolean; onFechar: () =
         )}
         {cancelando && (
           <div className="space-y-2 rounded-lg bg-red-50 p-3">
-            <input className="campo" placeholder="Motivo do cancelamento" value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+            <select className="campo" value={motivoBase} onChange={(e) => { setMotivoBase(e.target.value); setMotivo(e.target.value); }}>
+              <option value="">Motivo...</option>
+              {Object.values(ROTULO_MOTIVO).map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+            <input className="campo" placeholder="Detalhe (opcional)" onChange={(e) => setMotivo(motivoBase && e.target.value.trim() ? `${motivoBase}: ${e.target.value.trim()}` : motivoBase || e.target.value)} />
             <div className="flex gap-2">
               <button className="btn" onClick={() => setCancelando(false)}>Voltar</button>
-              <button className="btn-perigo" onClick={() => motivo.trim() ? acao("cancelar", "Assinatura cancelada.", { motivo }) : setMsg({ texto: "Informe o motivo.", erro: true })}>
+              <button className="btn-perigo" onClick={() => motivo.trim() ? acao("cancelar", d.cashbarber ? "Assinatura cancelada aqui. Cancele também no CashBarber (a cobrança é feita lá)." : "Assinatura cancelada.", { motivo }) : setMsg({ texto: "Informe o motivo.", erro: true })}>
                 Confirmar cancelamento
               </button>
             </div>

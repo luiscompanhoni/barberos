@@ -33,6 +33,8 @@ export async function precificar(p: {
 }): Promise<Precificacao> {
   const sit = await situacaoDoCliente(p.clienteId);
   if (!sit || !sit.valida) return { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
+  // Cancelado com fim do ciclo: horario depois do fim nao entra no plano.
+  if (sit.assinatura.encerraEm && p.inicio >= sit.assinatura.encerraEm.getTime()) return { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
 
   const a = sit.assinatura;
   const regras: PlanoRegras = {

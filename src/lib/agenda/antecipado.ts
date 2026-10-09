@@ -79,6 +79,8 @@ export async function pagarAntecipado(p: {
   let atual = ag.antecipado;
   if (atual?.status === "PENDENTE") atual = (await sincronizarAntecipado(atual.id)) ?? atual;
   if (atual?.status === "PAGO") throw new ErroNegocio("Esse horário já está pago. ✅", 409, "ja_pago");
+  // Estornado: o registro guarda o historico do financeiro; o novo pagamento e no balcao.
+  if (atual?.status === "ESTORNADO") throw new ErroNegocio("O pagamento desse horário foi estornado: pague no balcão.", 409, "estornado");
   const tokenizado = g.cartao === "token" || !!p.cartaoToken;
   // Cartao no checkout do BarberOS ainda sem token: devolve a pagina do checkout (bot, botao "cartao").
   if (p.forma === "CARTAO" && g.cartao === "token" && !p.cartaoToken) {

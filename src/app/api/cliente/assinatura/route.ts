@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { exigirCliente } from "@/lib/auth/sessao";
 import { mascararCpf } from "@/lib/assinaturas/regras";
-import { assinar, cancelar, entrarNaListaDeEspera, situacaoDoCliente, vagasRestantes } from "@/lib/assinaturas/servico";
+import { assinar, entrarNaListaDeEspera, situacaoDoCliente, vagasRestantes } from "@/lib/assinaturas/servico";
 import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 import { MOTIVOS_CANCELAMENTO } from "@/lib/assinaturas/schemas";
+import { cancelarPeloCliente } from "@/lib/assinaturas/retencao";
+import { motivoPorTexto, ultimoDia } from "@/lib/assinaturas/retencao-regras";
 
 /** Planos disponiveis e a assinatura atual do cliente. */
 export const GET = rota(async () => {
@@ -30,6 +32,13 @@ export const GET = rota(async () => {
       precoCentavos: sit.assinatura.precoCentavos,
       formaPagamento: sit.assinatura.formaPagamento,
       proximoVencimento: sit.assinatura.proximoVencimento,
+      pausada: sit.pausada,
+      pausadaAte: sit.pausada ? sit.assinatura.pausadaAte : null,
+      // Cancelado no fim do ciclo: ultimo dia em que o plano vale.
+      valeAte: sit.assinatura.encerraEm ? ultimoDia(sit.assinatura.encerraEm.toISOString().slice(0, 10)) : null,
+      desconto: sit.assinatura.descontoRetencaoPct && sit.assinatura.descontoRetencaoAte && sit.assinatura.descontoRetencaoAte >= new Date(Date.now() - 86_400_000)
+        ? { pct: sit.assinatura.descontoRetencaoPct, ate: sit.assinatura.descontoRetencaoAte }
+        : null,
       cobrancaEmAberto: sit.cobrancaEmAberto && {
         valorCentavos: sit.cobrancaEmAberto.valorCentavos,
         vencimento: sit.cobrancaEmAberto.vencimento,
@@ -75,12 +84,14 @@ export const POST = rota(async (req: Request) => {
   return NextResponse.json({ link: r.link }, { status: 201 });
 });
 
-/** Cancelar pelo site (motivo obrigatorio: ajuda a barbearia a entender a saida). */
+/** Cancelar direto (sem a tela de ofertas): mesmo servico do fluxo com retencao. */
 export const DELETE = rota(async (req: Request) => {
   const s = await exigirCliente();
   const b = await corpo(req, z.object({ motivo: z.enum(MOTIVOS_CANCELAMENTO), detalhe: z.string().trim().max(200).optional() }));
   const sit = await situacaoDoCliente(s.clienteId);
   if (!sit) throw new ErroNegocio("Você não tem assinatura ativa.", 404);
-  await cancelar(sit.assinatura.id, b.detalhe ? `${b.motivo}: ${b.detalhe}` : b.motivo, s.usuarioId);
-  return NextResponse.json({ ok: true });
+  const r = await cancelarPeloCliente({
+    assinaturaId: sit.assinatura.id, motivo: motivoPorTexto(b.motivo), detalhe: b.detalhe, origem: "SITE", usuarioId: s.usuarioId,
+  });
+  return NextResponse.json({ ok: true, ...r });
 });

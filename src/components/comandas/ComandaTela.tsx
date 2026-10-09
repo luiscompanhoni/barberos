@@ -63,6 +63,11 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
             {c.status === "FECHADA" ? "Fechada" : "Cancelada"}
           </span>
         )}
+        {!!r.estornado && (
+          <span className={`${c.status === "ABERTA" ? "ml-auto " : ""}rounded-full bg-red-50 px-2.5 py-1 text-[10px] font-bold text-red-700 uppercase`} title="Parte do valor foi devolvida ao cliente">
+            {r.estornado >= r.pago + r.estornado ? "Estornada" : "Estorno parcial"}
+          </span>
+        )}
       </div>
 
       {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
@@ -142,7 +147,8 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
                 <span className="font-semibold">Total</span>
                 <span className="text-2xl font-black">{reais(r.total)}</span>
               </div>
-              {r.pago > 0 && <Linha rotulo="Recebido" valor={reais(r.pago)} />}
+              {!!r.estornado && <Linha rotulo="Estornado" valor={`− ${reais(r.estornado)}`} />}
+              {r.pago > 0 && <Linha rotulo={r.estornado ? "Ficou com a barbearia" : "Recebido"} valor={reais(r.pago)} />}
               {aberta && r.falta > 0 && r.pago + r.aguardando > 0 && <Linha rotulo="Falta" valor={reais(r.falta)} forte />}
               {r.troco > 0 && <Linha rotulo="Troco" valor={reais(r.troco)} forte />}
               {aberta && gerente && desconto === null && c.itens.length > 0 && (
@@ -185,6 +191,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
                 ocupado={ocupado}
                 onPagar={(p: { forma: Forma; valorCentavos: number; naMaquininha: boolean }) => executar(`/api/comandas/${id}/pagamentos`, p, "POST")}
                 onAcaoPagamento={(pid, acao) => executar(`/api/comandas/pagamentos/${pid}`, { acao })}
+                onEstorno={carregar}
               />
               {aberta && gerente && r.falta - emLinks > 0 && (
                 <button className="btn w-full" disabled={ocupado} onClick={() => setCobrarLink(true)}>
@@ -204,7 +211,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
             <button className="text-xs font-semibold text-zinc-500 hover:text-red-600" disabled={ocupado}
               onClick={() => {
                 const motivo = window.prompt(c.status === "FECHADA"
-                  ? "Cancelar comanda já fechada: os produtos voltam ao estoque e o dinheiro/estorno é devolvido por fora. Motivo:"
+                  ? "Cancelar comanda já fechada: os produtos voltam ao estoque. O dinheiro NÃO volta sozinho: use “Estornar” em cada pagamento. Motivo:"
                   : "Motivo do cancelamento:");
                 if (motivo && motivo.trim().length >= 2) executar(`/api/comandas/${id}`, { acao: "cancelar", motivo: motivo.trim() });
               }}>

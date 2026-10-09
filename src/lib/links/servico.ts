@@ -41,7 +41,9 @@ export type LinkPainel = ReturnType<typeof paraPainel>;
 
 /** Estado para a tela do checkout. */
 export function estadoCheckoutLink(l: LinkPagamento): EstadoCheckout {
-  const status = situacaoLink(l);
+  // Estornado aparece para o cliente como encerrado (cancelado).
+  const sit = situacaoLink(l);
+  const status = sit === "ESTORNADO" ? "CANCELADO" : sit;
   const aberto = status === "PENDENTE";
   const pix = aberto && l.forma === "PIX" && l.pixCopiaECola
     ? { copiaECola: l.pixCopiaECola, qrUrl: l.pixQrUrl, expiraEm: l.pixExpiraEm?.toISOString() ?? null }
@@ -129,7 +131,7 @@ export async function enviarLink(s: Sessao | null, id: string) {
 export async function cancelarLink(s: Sessao | null, id: string, motivo = "cancelado") {
   let l = await sincronizarLink(id);
   if (!l) throw naoEncontrado("Link");
-  if (l.status === "PAGO") throw new ErroNegocio("Esse link já foi pago: não dá para cancelar. Se precisar devolver, faça o estorno no painel da Pagar.me.", 409, "ja_pago");
+  if (l.status === "PAGO") throw new ErroNegocio("Esse link já foi pago: não dá para cancelar. Para devolver o dinheiro, use “Pedir estorno”.", 409, "ja_pago");
   if (l.status !== "PENDENTE") return l;
   if (l.gatewayId) await (await gatewayPorId(l.gatewayId)).cancelarCobrancaAvulsa?.(l.gatewayId).catch((e) => console.error("[links] cancelar no gateway", l?.gatewayId, e));
   const status = motivo === "expirado" ? ("EXPIRADO" as const) : ("CANCELADO" as const);
@@ -161,7 +163,7 @@ async function porToken(token: string) {
 /** Dados da pagina publica + estado do checkout (`conferir`: consulta o gateway se estiver em aberto). */
 export async function linkPublico(token: string, conferir = true) {
   let l = await porToken(token);
-  if (conferir && l.status !== "PAGO" && l.gatewayId) {
+  if (conferir && l.status === "PENDENTE" && l.gatewayId) {
     await sincronizarLink(l.id);
     l = await porToken(token);
   }
@@ -250,7 +252,8 @@ export async function pagarLink(token: string, p: { forma: Exclude<FormaPagament
 /** Consulta o gateway (webhook, pagina, rotina). Pagamento que chega atrasado ainda conta. */
 export async function sincronizarLink(id: string) {
   const l = await db.linkPagamento.findUnique({ where: { id } });
-  if (!l || l.status === "PAGO" || !l.gatewayId) return l;
+  // Pago ou estornado nao volta atras pela consulta ao gateway (o estorno nao vira "pago" de novo).
+  if (!l || l.status === "PAGO" || l.status === "ESTORNADO" || !l.gatewayId) return l;
   const g = await gatewayPorId(l.gatewayId);
   if (!g.buscarCobrancaAvulsa) return l;
   try {
@@ -274,7 +277,7 @@ type Tx = Prisma.TransactionClient;
 async function marcarLinkPago(id: string, pagoEm: string | null) {
   const r = await db.$transaction(async (tx: Tx) => {
     const quando = pagoEm ? new Date(pagoEm) : new Date();
-    const ok = await tx.linkPagamento.updateMany({ where: { id, status: { not: "PAGO" } }, data: { status: "PAGO", pagoEm: quando } });
+    const ok = await tx.linkPagamento.updateMany({ where: { id, status: { notIn: ["PAGO", "ESTORNADO"] } }, data: { status: "PAGO", pagoEm: quando } });
     if (!ok.count) return null;
     const l = await tx.linkPagamento.findUniqueOrThrow({ where: { id } });
     await auditar(tx, null, "link_pagamento_recebido", "link_pagamento", id, { valorCentavos: l.valorCentavos, forma: l.forma });

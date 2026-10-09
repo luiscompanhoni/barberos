@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Receipt } from "lucide-react";
 import { Modal } from "@/components/Modal";
+import { BotaoEstorno } from "@/components/estornos/BotaoEstorno";
 import { CadastroCliente } from "./CadastroCliente";
 import { api, reais } from "@/lib/cliente-api";
 import { minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
@@ -33,6 +34,7 @@ export function DetalheModal(p: {
   fuso: string;
   barbeiroNome: string;
   podeEditar: boolean;
+  papel?: string;
   onFechar: () => void;
   onAlterado: (msg: string) => void;
 }) {
@@ -114,6 +116,13 @@ export function DetalheModal(p: {
             </ul>
           )}
           {p.podeEditar && <CadastroCliente key={ag.cliente.id} clienteId={ag.cliente.id} inicial={resumo.cliente} />}
+        </div>
+      )}
+
+      {ag.pagoAntes && (p.papel === "DONO" || p.papel === "RECEPCAO") && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 p-3 text-sm">
+          <span className="flex-1">Pago online antes: {reais(ag.precoCentavos)}</span>
+          <BotaoEstorno tipo="ANTECIPADO" id={ag.id} dono={p.papel === "DONO"} />
         </div>
       )}
 

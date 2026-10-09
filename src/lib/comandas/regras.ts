@@ -2,19 +2,30 @@
  * Regras puras da comanda (sem banco): totais, troco e o que pode ser pago/fechado.
  */
 export type ItemRegra = { quantidade: number; precoUnitCentavos: number };
-export type PagamentoRegra = { forma: "DINHEIRO" | "PIX" | "CREDITO" | "DEBITO"; valorCentavos: number; status: "AGUARDANDO" | "PAGO" | "CANCELADO" };
+export type PagamentoRegra = {
+  forma: "DINHEIRO" | "PIX" | "CREDITO" | "DEBITO"; valorCentavos: number; status: "AGUARDANDO" | "PAGO" | "CANCELADO";
+  /** Parte ja devolvida por estorno (total = status CANCELADO com estornadoEm). */
+  estornadoCentavos?: number; estornadoEm?: Date | string | null;
+};
+
+/** O dinheiro chegou a entrar (pago, mesmo que estornado depois). Desfeito sem estorno nao conta. */
+export const foiRecebido = (p: Pick<PagamentoRegra, "status" | "estornadoEm">) => p.status === "PAGO" || (p.status === "CANCELADO" && !!p.estornadoEm);
 
 export function resumoComanda(itens: ItemRegra[], pagamentos: PagamentoRegra[], descontoCentavos = 0) {
   const subtotal = itens.reduce((s, i) => s + i.quantidade * i.precoUnitCentavos, 0);
   const desconto = Math.min(Math.max(0, descontoCentavos), subtotal);
   const total = subtotal - desconto;
-  const pago = pagamentos.filter((p) => p.status === "PAGO").reduce((s, p) => s + p.valorCentavos, 0);
+  const recebidos = pagamentos.filter(foiRecebido);
+  const bruto = recebidos.reduce((s, p) => s + p.valorCentavos, 0);
+  const estornado = recebidos.reduce((s, p) => s + (p.estornadoCentavos ?? 0), 0);
+  // Pago = o que ficou com a barbearia (bruto menos estornos).
+  const pago = bruto - estornado;
   const aguardando = pagamentos.filter((p) => p.status === "AGUARDANDO").reduce((s, p) => s + p.valorCentavos, 0);
   const falta = Math.max(0, total - pago - aguardando);
-  // Troco so existe quando o excesso veio em dinheiro.
-  const dinheiro = pagamentos.filter((p) => p.status === "PAGO" && p.forma === "DINHEIRO").reduce((s, p) => s + p.valorCentavos, 0);
-  const troco = Math.min(Math.max(0, pago - total), dinheiro);
-  return { subtotal, desconto, total, pago, aguardando, falta, troco, podeFechar: aguardando === 0 && pago >= total };
+  // Troco so existe quando o excesso veio em dinheiro (calculado no bruto: o troco ja foi dado).
+  const dinheiro = recebidos.filter((p) => p.forma === "DINHEIRO").reduce((s, p) => s + p.valorCentavos, 0);
+  const troco = Math.min(Math.max(0, bruto - total), dinheiro);
+  return { subtotal, desconto, total, pago, estornado, aguardando, falta, troco, podeFechar: aguardando === 0 && pago >= total };
 }
 
 /** Motivo pelo qual o pagamento nao pode ser lancado (ou null se pode). */

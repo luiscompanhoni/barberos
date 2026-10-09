@@ -3,11 +3,12 @@ import { exigirSessao } from "@/lib/auth/sessao";
 import { produtosAcabando, vendasDeHoje } from "@/lib/comandas/relatorio";
 import { esperasAtivas } from "@/lib/crescimento/espera";
 import { rota } from "@/lib/erros";
+import { contarPendentes } from "@/lib/estornos/servico";
 import { mapaDePico, pendencias, resumoDoDia, resumoDoMes } from "@/lib/painel";
 
 export const GET = rota(async () => {
   const s = await exigirSessao(["DONO", "RECEPCAO"]);
-  const [dia, pend, mes, pico, vendas, acabando, esperas] = await Promise.all([
+  const [dia, pend, mes, pico, vendas, acabando, esperas, estornos] = await Promise.all([
     resumoDoDia(),
     pendencias(),
     // Faturamento e mapa de pico sao do dono.
@@ -16,6 +17,7 @@ export const GET = rota(async () => {
     vendasDeHoje(),
     produtosAcabando(),
     esperasAtivas(),
+    contarPendentes(),
   ]);
-  return NextResponse.json({ dia, pendencias: { ...pend, produtosAcabando: acabando, esperas: esperas.map((e) => ({ id: e.id, data: e.data.toISOString().slice(0, 10), periodo: e.periodo, cliente: e.cliente.nome })) }, mes, pico, vendas });
+  return NextResponse.json({ dia, pendencias: { ...pend, estornosPendentes: estornos, produtosAcabando: acabando, esperas: esperas.map((e) => ({ id: e.id, data: e.data.toISOString().slice(0, 10), periodo: e.periodo, cliente: e.cliente.nome })) }, mes, pico, vendas });
 });

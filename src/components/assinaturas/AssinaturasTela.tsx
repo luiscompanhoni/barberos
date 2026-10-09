@@ -5,6 +5,7 @@ import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
 import { DetalheAssinatura } from "./DetalheAssinatura";
 import { NovaAssinatura } from "./NovaAssinatura";
+import { RetencaoPainel } from "./RetencaoPainel";
 
 type Status = "PENDENTE" | "ATIVA" | "ATRASADA" | "CANCELADA";
 export type ItemAssinatura = {
@@ -14,6 +15,9 @@ export type ItemAssinatura = {
   precoCentavos: number;
   proximoVencimento: string | null;
   criadaEm: string;
+  pausadaEm: string | null;
+  pausadaAte: string | null;
+  encerraEm: string | null;
   cliente: { id: string; nome: string; telefone: string; cpf: string | null };
   plano: { nome: string };
   cobrancas: { status: string; vencimento: string }[];
@@ -42,6 +46,7 @@ export function AssinaturasTela({ dono }: { dono: boolean }) {
   const [aberta, setAberta] = useState<string | null>(null);
   const [nova, setNova] = useState(false);
   const [erro, setErro] = useState("");
+  const [versao, setVersao] = useState(0);
 
   const carregar = useCallback(() => {
     const q = new URLSearchParams({ status, ...(busca.trim().length >= 2 ? { busca: busca.trim() } : {}) });
@@ -72,6 +77,8 @@ export function AssinaturasTela({ dono }: { dono: boolean }) {
           <Card rotulo="Aguardando 1º pagamento" valor={String(r.pendentes)} detalhe="link enviado, ainda não pago" />
         </section>
       )}
+
+      <RetencaoPainel dono={dono} onAbrir={setAberta} versao={versao} />
 
       {r && r.motivos.length > 0 && (
         <section className="cartao text-sm">
@@ -115,7 +122,11 @@ export function AssinaturasTela({ dono }: { dono: boolean }) {
                     <p className="text-xs text-zinc-500">{formatarTelefone(a.cliente.telefone)}</p>
                   </td>
                   <td className="px-3 py-2">{a.plano.nome}</td>
-                  <td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs ${ROTULO[a.status].cor}`}>{ROTULO[a.status].texto}</span></td>
+                  <td className="px-3 py-2">
+                    <span className={`rounded px-2 py-0.5 text-xs ${ROTULO[a.status].cor}`}>{ROTULO[a.status].texto}</span>
+                    {a.status !== "CANCELADA" && a.pausadaEm && a.pausadaAte && <span className="ml-1 rounded bg-sky-100 px-2 py-0.5 text-xs text-sky-800">Pausada até {dataBr(a.pausadaAte)}</span>}
+                    {a.status !== "CANCELADA" && a.encerraEm && <span className="ml-1 rounded bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600">Encerra {dataBr(a.encerraEm)}</span>}
+                  </td>
                   <td className="px-3 py-2">{reais(a.precoCentavos)} · {FORMA[a.formaPagamento]}</td>
                   <td className="px-3 py-2">{a.status === "CANCELADA" ? "—" : dataBr(a.proximoVencimento)}</td>
                 </tr>
@@ -126,7 +137,7 @@ export function AssinaturasTela({ dono }: { dono: boolean }) {
         </div>
       </section>
 
-      {aberta && <DetalheAssinatura id={aberta} dono={dono} onFechar={() => setAberta(null)} onAlterado={carregar} />}
+      {aberta && <DetalheAssinatura id={aberta} dono={dono} onFechar={() => setAberta(null)} onAlterado={() => { carregar(); setVersao((v) => v + 1); }} />}
       {nova && <NovaAssinatura onFechar={() => setNova(false)} onCriada={carregar} />}
     </div>
   );

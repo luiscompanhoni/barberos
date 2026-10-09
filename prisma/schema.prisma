@@ -456,8 +456,18 @@ model Assinatura {
   origem             OrigemAgendamento
   /// Codigo aleatorio para links publicos (ex.: pagina de cartao). Nao e o id.
   tokenPublico       String?           @unique
+  /// Pausa pedida pelo cliente: nao usa o plano ate pausadaAte e a cobranca anda os mesmos dias.
+  /// pausadaEm volta a null quando a rotina reativa (pausadaAte fica de historico).
+  pausadaEm          DateTime?         @db.Timestamptz(3)
+  pausadaAte         DateTime?         @db.Date
+  /// Cancelamento no fim do ciclo: a recorrencia ja parou; o plano vale ate o dia anterior a esta data.
+  encerraEm          DateTime?         @db.Date
+  /// Desconto de retencao: % nas mensalidades com vencimento ate descontoRetencaoAte.
+  descontoRetencaoPct Int?
+  descontoRetencaoAte DateTime?        @db.Date
   cobrancas          Cobranca[]
   agendamentos       Agendamento[]
+  retencoes          RetencaoAssinatura[]
 
   @@index([clienteId, status])
   @@index([planoId, status])
@@ -512,6 +522,57 @@ model ListaEsperaPlano {
 
   @@unique([planoId, clienteId])
   @@map("lista_espera_planos")
+}
+
+/// Motivo de saida do plano (cancelamento pelo cliente, bot ou equipe).
+enum MotivoSaida {
+  PRECO
+  NAO_USA
+  VIAGEM
+  MUDANCA
+  HORARIOS
+  INSATISFEITO
+  OUTRO
+}
+
+/// Como terminou a tentativa de cancelamento.
+enum DesfechoRetencao {
+  CANCELOU
+  DESCONTO
+  PAUSA
+  GERENTE
+}
+
+/// Ofertas de retencao configuradas pelo dono (linha unica, id = 1).
+model RetencaoConfig {
+  id            Int      @id @default(1)
+  descontoAtivo Boolean  @default(true)
+  descontoPct   Int      @default(20)
+  descontoMeses Int      @default(2)
+  pausaAtiva    Boolean  @default(true)
+  pausaMaxDias  Int      @default(60)
+  atualizadoEm  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("retencao_config")
+}
+
+/// Cada pedido de cancelamento e o que aconteceu (indicador do mes por motivo).
+model RetencaoAssinatura {
+  id           String            @id @default(cuid())
+  assinaturaId String
+  assinatura   Assinatura        @relation(fields: [assinaturaId], references: [id], onDelete: Cascade)
+  motivo       MotivoSaida
+  detalhe      String?
+  desfecho     DesfechoRetencao
+  origem       OrigemAgendamento
+  /// Oferta aplicada (desconto %/meses, dias de pausa) e datas.
+  dados        Json?
+  usuarioId    String?
+  criadoEm     DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@index([criadoEm])
+  @@index([assinaturaId, desfecho])
+  @@map("retencoes_assinatura")
 }
 
 /// So para PAGAMENTOS_PROVIDER=simulado: faz o papel do "lado do gateway" em testes locais.
@@ -649,25 +710,28 @@ model ItemComanda {
 }
 
 model PagamentoComanda {
-  id              String                 @id @default(cuid())
-  comandaId       String
-  comanda         Comanda                @relation(fields: [comandaId], references: [id], onDelete: Cascade)
-  forma           FormaRecebimento
-  valorCentavos   Int
-  status          StatusPagamentoComanda
+  id                String                 @id @default(cuid())
+  comandaId         String
+  comanda           Comanda                @relation(fields: [comandaId], references: [id], onDelete: Cascade)
+  forma             FormaRecebimento
+  valorCentavos     Int
+  status            StatusPagamentoComanda
   /// Pedido do Stone Connect (Pagar.me) quando cobrado na maquininha.
-  gatewayPedidoId String?                @unique
-  nsu             String?
-  bandeira        String?
-  registradoPorId String?
-  criadoEm        DateTime               @default(now()) @db.Timestamptz(3)
-  pagoEm          DateTime?              @db.Timestamptz(3)
+  gatewayPedidoId   String?                @unique
+  nsu               String?
+  bandeira          String?
+  registradoPorId   String?
+  criadoEm          DateTime               @default(now()) @db.Timestamptz(3)
+  pagoEm            DateTime?              @db.Timestamptz(3)
   /// Veio de um pagamento antecipado do horario (Pix/cartao online).
-  antecipadoId    String?                @unique
-  antecipado      PagamentoAntecipado?   @relation(fields: [antecipadoId], references: [id])
+  antecipadoId      String?                @unique
+  antecipado        PagamentoAntecipado?   @relation(fields: [antecipadoId], references: [id])
   /// Veio de um link de pagamento (comanda paga a distancia).
-  linkPagamentoId String?                @unique
-  linkPagamento   LinkPagamento?         @relation(fields: [linkPagamentoId], references: [id])
+  linkPagamentoId   String?                @unique
+  linkPagamento     LinkPagamento?         @relation(fields: [linkPagamentoId], references: [id])
+  /// Parte devolvida ao cliente por estorno aprovado pelo dono (igual ao valor = estorno total, status CANCELADO).
+  estornadoCentavos Int                    @default(0)
+  estornadoEm       DateTime?              @db.Timestamptz(3)
 
   @@index([comandaId])
   @@map("pagamentos_comanda")
@@ -801,6 +865,8 @@ enum StatusAntecipado {
   CANCELADO
   /// Pago, mas o horario foi cancelado: o valor virou saldo do cliente.
   CREDITADO
+  /// Pago e devolvido ao cliente (estorno aprovado pelo dono).
+  ESTORNADO
 }
 
 /// Pagamento online de um horario avulso, feito antes do atendimento.
@@ -1239,6 +1305,8 @@ enum StatusLinkPagamento {
   PAGO
   CANCELADO
   EXPIRADO
+  /// Pago e devolvido ao cliente (estorno aprovado pelo dono).
+  ESTORNADO
 }
 
 /// Cobranca avulsa enviada por link (/c/link/<token>): Pix ou cartao no checkout do BarberOS.
@@ -1280,4 +1348,72 @@ model LinkPagamento {
   @@index([comandaId])
   @@index([pagoEm])
   @@map("links_pagamento")
+}
+
+// ------------------------------------------------------------------ Estornos (aprovacao do dono)
+
+enum TipoEstorno {
+  /// Pagamento lancado na comanda (balcao ou maquininha).
+  COMANDA
+  /// Horario pago antes (online).
+  ANTECIPADO
+  /// Link de pagamento.
+  LINK
+  /// Mensalidade de assinatura.
+  MENSALIDADE
+}
+
+enum StatusEstorno {
+  /// Pedido pela recepcao, esperando o dono.
+  PENDENTE
+  /// Aprovado, executando no meio de pagamento.
+  APROVADO
+  RECUSADO
+  /// Dinheiro devolvido pelo sistema (gateway ou sangria).
+  EXECUTADO
+  /// O meio de pagamento recusou o estorno: o dono tenta de novo ou faz por fora.
+  FALHOU
+  /// Aprovado, mas devolvido por fora (painel da Celcash, na propria maquininha).
+  MANUAL
+}
+
+/// Todo estorno de dinheiro ja recebido passa pelo dono (pedido da recepcao ou estorno direto do dono).
+model PedidoEstorno {
+  id                    String        @id @default(cuid())
+  tipo                  TipoEstorno
+  /// Id do PagamentoComanda, PagamentoAntecipado, LinkPagamento ou Cobranca.
+  referenciaId          String
+  valorCentavos         Int
+  /// Valor do pagamento original (menor que ele = estorno parcial).
+  valorOriginalCentavos Int
+  motivo                String
+  status                StatusEstorno @default(PENDENTE)
+  /// Por onde o dinheiro volta: PAGARME, MAQUININHA, CELCASH, ASAAS, SIMULADO, DINHEIRO ou FORA (lancado sem integracao).
+  meio                  String
+  /// Forma no financeiro: DINHEIRO, PIX, DEBITO, CREDITO ou ONLINE.
+  forma                 String
+  /// Texto curto do que foi estornado (ex.: "Comanda #12 - Pix").
+  descricao             String
+  comandaId             String?
+  clienteNome           String?
+  pedidoPorId           String?
+  decididoPorId         String?
+  motivoDecisao         String?
+  /// Id do estorno no meio de pagamento (transacao de devolucao).
+  gatewayEstornoId      String?
+  /// O que fazer por fora (MANUAL) ou observacao do retorno do gateway.
+  instrucao             String?
+  erro                  String?
+  /// Sangria gerada no caixa (estorno em dinheiro).
+  movimentoCaixaId      String?       @unique
+  criadoEm              DateTime      @default(now()) @db.Timestamptz(3)
+  decididoEm            DateTime?     @db.Timestamptz(3)
+  executadoEm           DateTime?     @db.Timestamptz(3)
+  atualizadoEm          DateTime      @updatedAt @db.Timestamptz(3)
+
+  @@index([status, criadoEm])
+  @@index([tipo, referenciaId])
+  @@index([executadoEm])
+  @@index([comandaId])
+  @@map("pedidos_estorno")
 }

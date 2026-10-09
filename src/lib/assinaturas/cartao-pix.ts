@@ -14,6 +14,7 @@ import { pixVencido } from "@/lib/pagamentos/checkout-regras";
 import { gateway, gatewayPorId } from "@/lib/pagamentos/gateway";
 import { PREFIXO_PIX } from "@/lib/pagamentos/pagarme";
 import { cobrancaEmAberto, sincronizarAssinatura, sincronizarCobranca } from "./cobrancas";
+import { valorComRetencao } from "./retencao-regras";
 
 /** Gera (e salva) a cobranca Pix de um mes da assinatura. */
 export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
@@ -24,7 +25,11 @@ export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
   const cfg = await configuracao();
   const cob = await g.criarCobrancaPix({
     clienteGatewayId: a.gatewayClienteId,
-    valorCentavos: a.precoCentavos,
+    // Desconto de retencao nas mensalidades cobertas.
+    valorCentavos: valorComRetencao({
+      precoCentavos: a.precoCentavos, vencimento,
+      pct: a.descontoRetencaoPct, ate: a.descontoRetencaoAte?.toISOString().slice(0, 10) ?? null,
+    }),
     vencimento,
     descricao: `${a.plano.nome} - ${cfg.nomeBarbearia}`,
     referencia: a.gatewayId,

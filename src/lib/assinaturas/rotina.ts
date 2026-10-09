@@ -18,6 +18,7 @@ import { linkAbsoluto, sincronizarAssinatura, sincronizarCobranca } from "./cobr
 import { gerarPixDoMes } from "./cartao-pix";
 import { sincronizarAntecipadosPendentes } from "@/lib/agenda/antecipado";
 import { sincronizarLinksPendentes } from "@/lib/links/servico";
+import { encerrarCancelados, reativarPausas } from "./retencao-rotina";
 
 const DIAS_ANTES_PIX = 3;
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -31,6 +32,7 @@ export async function gerarPixDoProximoMes() {
       status: { in: ["ATIVA", "ATRASADA"] },
       gatewayId: { startsWith: PREFIXO_PIX },
       proximoVencimento: { lte: new Date(`${limite}T00:00:00Z`) },
+      encerraEm: null, // cancelado no fim do ciclo: sem proxima mensalidade
     },
     include: { cliente: true, plano: true },
   });
@@ -92,6 +94,9 @@ export async function sincronizarCelcash() {
 }
 
 export async function rodarRotinaDePagamentos() {
+  // Cancelamento com retencao: pausas que acabaram e planos no fim do ciclo.
+  const reativadas = await reativarPausas().catch((e) => { console.error("[rotina] pausas:", e); return 0; });
+  const encerradas = await encerrarCancelados().catch((e) => { console.error("[rotina] encerramentos:", e); return 0; });
   // Horarios pagos antes e links de pagamento (cada um no gateway do seu id).
   await sincronizarAntecipadosPendentes().catch((e) => console.error("[rotina] pagamentos antecipados:", e));
   await sincronizarLinksPendentes().catch((e) => console.error("[rotina] links de pagamento:", e));
@@ -104,7 +109,7 @@ export async function rodarRotinaDePagamentos() {
     : 0;
   // Asaas avisa o atraso sozinho; Pagar.me e Celcash nao: a rotina marca as vencidas.
   const vencidas = g.nome === "pagarme" || g.nome === "celcash" ? await marcarVencidas() : 0;
-  return { pix, vencidas, celcash };
+  return { pix, vencidas, celcash, reativadas, encerradas };
 }
 
 /** Liga a rotina uma vez por processo (chamado do instrumentation). */

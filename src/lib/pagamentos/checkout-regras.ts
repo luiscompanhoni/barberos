@@ -71,7 +71,7 @@ export function parcelasValidas(pedidas: number | undefined, max: number) {
 /** Valor de cada parcela (centavos, arredondado para cima: a soma nunca fica abaixo do total). */
 export const valorParcela = (totalCentavos: number, parcelas: number) => Math.ceil(totalCentavos / Math.max(1, parcelas));
 
-type LinkRegra = { status: "PENDENTE" | "PAGO" | "CANCELADO" | "EXPIRADO"; expiraEm: Date; valorCentavos: number };
+type LinkRegra = { status: "PENDENTE" | "PAGO" | "CANCELADO" | "EXPIRADO" | "ESTORNADO"; expiraEm: Date; valorCentavos: number };
 
 /** Situacao real do link (pendente com validade vencida conta como expirado). */
 export function situacaoLink(l: Pick<LinkRegra, "status" | "expiraEm">, agora = Date.now()): LinkRegra["status"] {
@@ -83,6 +83,7 @@ export function situacaoLink(l: Pick<LinkRegra, "status" | "expiraEm">, agora = 
 export function motivoLinkFechado(l: Pick<LinkRegra, "status" | "expiraEm">, agora = Date.now()) {
   switch (situacaoLink(l, agora)) {
     case "PAGO": return "Esse link já foi pago. ✅";
+    case "ESTORNADO": return "Esse pagamento foi estornado. Fale com a barbearia.";
     case "CANCELADO": return "Esse link de pagamento foi cancelado. Fale com a barbearia.";
     case "EXPIRADO": return "Esse link de pagamento expirou. Peça um novo para a barbearia.";
     default: return null;

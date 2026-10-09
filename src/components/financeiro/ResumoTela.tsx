@@ -12,7 +12,7 @@ type Resumo = {
   receitas: {
     comandas: { total: number; quantidade: number; porForma: Record<string, number>; pagoAntes: number; pagoPorLink?: number };
     mensalidades: { total: number; quantidade: number }; antecipados: { total: number; quantidade: number };
-    links?: { total: number; quantidade: number }; total: number;
+    links?: { total: number; quantidade: number }; estornos?: { total: number; quantidade: number; porForma: Record<string, number> }; total: number;
   };
   despesas: { total: number; quantidade: number; porCategoria: Record<string, number> };
   resultado: number; serie: Dia[];
@@ -144,6 +144,9 @@ export function ResumoTela() {
             <li className="flex justify-between py-1.5"><span>Pagamentos antecipados ({r.receitas.antecipados.quantidade})</span><b>{reais(r.receitas.antecipados.total)}</b></li>
             {!!r.receitas.links?.quantidade && (
               <li className="flex justify-between py-1.5"><span>Links de pagamento ({r.receitas.links.quantidade})</span><b>{reais(r.receitas.links.total)}</b></li>
+            )}
+            {!!r.receitas.estornos?.quantidade && (
+              <li className="flex justify-between py-1.5 text-red-600"><span>Estornos devolvidos ({r.receitas.estornos.quantidade})</span><b>− {reais(r.receitas.estornos.total)}</b></li>
             )}
             <li className="flex justify-between py-1.5 font-black"><span>Total</span><span>{reais(r.receitas.total)}</span></li>
           </ul>

@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { Banknote, CreditCard, LoaderCircle, QrCode, X } from "lucide-react";
+import { BotaoEstorno, SeloEstorno } from "@/components/estornos/BotaoEstorno";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
-import { FORMAS, ROTULO_FORMA, type Comanda, type Forma, type ModoMaquininha, type Pagamento } from "./tipos";
+import { FORMAS, ROTULO_FORMA, type Comanda, type EstornoComanda, type Forma, type ModoMaquininha, type Pagamento } from "./tipos";
 
 const ICONE: Record<Forma, typeof CreditCard> = { PIX: QrCode, CREDITO: CreditCard, DEBITO: CreditCard, DINHEIRO: Banknote };
 
 /** Pagamentos lancados + formulario para receber (divide em quantas formas precisar). */
-export function Recebimento({ comanda, maquininha, gerente, dono, ocupado, onPagar, onAcaoPagamento }: {
+export function Recebimento({ comanda, maquininha, gerente, dono, ocupado, onPagar, onAcaoPagamento, onEstorno }: {
   comanda: Comanda;
   maquininha: ModoMaquininha;
   gerente: boolean;
@@ -16,6 +17,7 @@ export function Recebimento({ comanda, maquininha, gerente, dono, ocupado, onPag
   ocupado: boolean;
   onPagar: (p: { forma: Forma; valorCentavos: number; naMaquininha: boolean; serial?: string }) => Promise<boolean>;
   onAcaoPagamento: (id: string, acao: "cancelar" | "conferir" | "simular") => void;
+  onEstorno?: () => void;
 }) {
   const r = comanda.resumo;
   const [forma, setForma] = useState<Forma>("PIX");
@@ -38,7 +40,10 @@ export function Recebimento({ comanda, maquininha, gerente, dono, ocupado, onPag
   };
   const aberta = comanda.status === "ABERTA";
   const integrada = maquininha !== "manual" && forma !== "DINHEIRO";
-  const vivos = comanda.pagamentos.filter((p) => p.status !== "CANCELADO");
+  // Estornados continuam na lista (com o selo), para ficar visivel na comanda.
+  const vivos = comanda.pagamentos.filter((p) => p.status !== "CANCELADO" || !!p.estornadoEm);
+  const estornosDe = (p: Pagamento) => (comanda.estornos ?? []).filter((e) =>
+    (e.tipo === "COMANDA" && e.referenciaId === p.id) || (e.tipo === "ANTECIPADO" && e.referenciaId === p.antecipadoId) || (e.tipo === "LINK" && e.referenciaId === p.linkPagamentoId));
 
   async function pagar(e: React.FormEvent) {
     e.preventDefault();
@@ -51,7 +56,12 @@ export function Recebimento({ comanda, maquininha, gerente, dono, ocupado, onPag
     <div className="space-y-3">
       {vivos.length > 0 && (
         <ul className="space-y-2">
-          {vivos.map((p) => <LinhaPagamento key={p.id} p={p} aberta={aberta} maquininha={maquininha} podeDesfazer={!p.antecipadoId && !p.linkPagamentoId && gerente && (dono || !p.gatewayPedidoId || p.gatewayPedidoId.startsWith("sim_"))} ocupado={ocupado} onAcao={onAcaoPagamento} />)}
+          {vivos.map((p) => (
+            <LinhaPagamento key={p.id} p={p} aberta={aberta} maquininha={maquininha} ocupado={ocupado} onAcao={onAcaoPagamento}
+              // Desfazer lancamento errado (sem dinheiro): so o dono. Devolver dinheiro e estorno.
+              podeDesfazer={dono && p.status === "PAGO" && !p.antecipadoId && !p.linkPagamentoId && !p.estornadoCentavos && (!p.gatewayPedidoId || p.gatewayPedidoId.startsWith("sim_"))}
+              estornos={estornosDe(p)} podeEstornar={gerente} dono={dono} onEstorno={onEstorno} />
+          ))}
         </ul>
       )}
 
@@ -92,11 +102,14 @@ export function Recebimento({ comanda, maquininha, gerente, dono, ocupado, onPag
   );
 }
 
-function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao }: {
+function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao, estornos, podeEstornar, dono, onEstorno }: {
   p: Pagamento; aberta: boolean; maquininha: ModoMaquininha; podeDesfazer: boolean; ocupado: boolean;
   onAcao: (id: string, acao: "cancelar" | "conferir" | "simular") => void;
+  estornos: EstornoComanda[]; podeEstornar: boolean; dono: boolean; onEstorno?: () => void;
 }) {
   const Icone = ICONE[p.forma];
+  const estornadoTotal = p.status === "CANCELADO" && !!p.estornadoEm;
+  const emAberto = estornos.some((e) => e.status === "PENDENTE" || e.status === "APROVADO" || e.status === "FALHOU");
   return (
     <li className={`rounded-xl border p-3 text-sm ${p.status === "AGUARDANDO" ? "border-ouro/50 bg-ouro/5" : "border-zinc-200"}`}>
       <div className="flex items-center gap-2">
@@ -105,9 +118,11 @@ function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao }
         {p.bandeira && <span className="text-xs text-zinc-500">{p.bandeira}</span>}
         {p.antecipadoId && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">pago online antes</span>}
         {p.linkPagamentoId && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">pago pelo link</span>}
-        <span className="ml-auto font-bold">{reais(p.valorCentavos)}</span>
+        {estornadoTotal && <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">estornado</span>}
+        <span className={`ml-auto font-bold ${estornadoTotal ? "text-zinc-400 line-through" : ""}`}>{reais(p.valorCentavos)}</span>
         {aberta && (p.status === "AGUARDANDO" || podeDesfazer) && (
-          <button disabled={ocupado} onClick={() => onAcao(p.id, "cancelar")} className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-red-600" aria-label="Cancelar pagamento" title="Cancelar">
+          <button disabled={ocupado} onClick={() => onAcao(p.id, "cancelar")} className="rounded p-1 text-zinc-500 hover:bg-zinc-100 hover:text-red-600"
+            aria-label={p.status === "AGUARDANDO" ? "Cancelar pagamento" : "Desfazer lançamento errado"} title={p.status === "AGUARDANDO" ? "Cancelar" : "Desfazer lançamento errado (não houve dinheiro)"}>
             <X size={14} />
           </button>
         )}
@@ -122,6 +137,19 @@ function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao }
         </div>
       )}
       {p.status === "PAGO" && p.nsu && <p className="mt-1 text-[11px] text-zinc-500">NSU {p.nsu}</p>}
+      {!!p.estornadoCentavos && !estornadoTotal && <p className="mt-1 text-[11px] font-semibold text-red-700">Estornado {reais(p.estornadoCentavos)} (parcial)</p>}
+      {estornos.length > 0 && (
+        <ul className="mt-2 space-y-1 text-[11px]">
+          {estornos.map((e) => (
+            <li key={e.id} className="flex flex-wrap items-center gap-1.5"><SeloEstorno status={e.status} /> {reais(e.valorCentavos)} · {e.motivo}
+              {e.instrucao && e.status === "MANUAL" && <span className="w-full text-violet-800">{e.instrucao}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {podeEstornar && (p.status === "PAGO" || !!p.estornadoEm) && (
+        <div className="mt-2 flex justify-end empty:hidden"><BotaoEstorno tipo="COMANDA" id={p.id} dono={dono} oculto={p.status !== "PAGO" || emAberto} onFeito={onEstorno} /></div>
+      )}
     </li>
   );
 }
