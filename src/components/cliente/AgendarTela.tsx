@@ -5,11 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, CalendarCheck, Clock3, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { SemVaga } from "./SemVaga";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 
 const FUSO = "America/Sao_Paulo";
-type Barbeiro = { id: string; nome: string; cor: string };
+type Barbeiro = { id: string; nome: string; cor: string; fotoVersao: number };
 type Servico = { id: string; nome: string; duracaoMin: number; precoCentavos: number; barbeiros: Barbeiro[] };
 type Catalogo = { nomeBarbearia: string; janelaDias: number; servicos: Servico[] };
 type Disp = { barbeiroId: string; nome: string; duracaoMin: number; precoCentavos: number; horarios: string[] };
@@ -139,18 +140,15 @@ export function AgendarTela() {
       {passo === 2 && servico && (
         <Passo eyebrow="Escolha o profissional" titulo="Com quem?">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <button className="cartao-clicavel p-5 text-center" onClick={() => setBarbeiroId(QUALQUER)}>
-              <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-zinc-200"><UserRound className="text-ouro" /></div>
-              <p className="mt-3 text-sm font-bold">Qualquer barbeiro</p>
+            <button className="cartao-clicavel px-4 py-6 text-center" onClick={() => setBarbeiroId(QUALQUER)}>
+              <div className="mx-auto grid h-24 w-24 place-items-center rounded-full border-2 border-zinc-300 bg-zinc-200"><UserRound size={34} className="text-ouro" /></div>
+              <p className="mt-4 text-sm font-bold">Qualquer barbeiro</p>
               <p className="mt-1 text-[11px] text-zinc-500">Mais horários</p>
             </button>
             {servico.barbeiros.map((b) => (
-              <button key={b.id} className="cartao-clicavel p-5 text-center" onClick={() => setBarbeiroId(b.id)}>
-                <div className="mx-auto grid h-14 w-14 place-items-center rounded-full border-2 text-sm font-bold text-zinc-900"
-                  style={{ borderColor: b.cor, background: `${b.cor}22` }}>
-                  {b.nome.slice(0, 2).toUpperCase()}
-                </div>
-                <p className="mt-3 text-sm font-bold">{b.nome}</p>
+              <button key={b.id} className="cartao-clicavel px-4 py-6 text-center" onClick={() => setBarbeiroId(b.id)}>
+                <FotoBarbeiro id={b.id} nome={b.nome} cor={b.cor} versao={b.fotoVersao} tamanho={96} className="mx-auto" />
+                <p className="mt-4 text-sm font-bold">{b.nome}</p>
               </button>
             ))}
           </div>

@@ -5,6 +5,7 @@ import { NavCliente } from "@/components/cliente/NavCliente";
 import { Marca } from "@/components/Marca";
 import { configuracao } from "@/lib/agenda/carregar";
 import { sessaoAtual } from "@/lib/auth/sessao";
+import { db } from "@/lib/db";
 
 export default async function LayoutCliente({ children }: { children: React.ReactNode }) {
   const s = await sessaoAtual();
@@ -21,7 +22,7 @@ export default async function LayoutCliente({ children }: { children: React.Reac
         </div>
       </header>
       <main className="mx-auto w-full max-w-2xl flex-1 px-5 py-6">{children}</main>
-      <NavCliente />
+      <NavCliente roleta={(await db.roletaConfig.findUnique({ where: { id: 1 }, select: { ativa: true } }))?.ativa ?? false} />
     </div>
   );
 }

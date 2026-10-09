@@ -6,9 +6,11 @@ process.env.WHATSAPP_PROVIDER = "simulador";
 import type { Sessao } from "@/lib/auth/sessao";
 import { carregarDia, configuracao, servicoDoBarbeiro } from "@/lib/agenda/carregar";
 import { dataLocal, instanteLocal, somarDias } from "@/lib/agenda/tempo";
-import { adicionarProduto, abrirComanda, cancelarComanda, detalheComanda } from "@/lib/comandas/servico";
+import { adicionarProduto, abrirComanda, cancelarComanda, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
 import { entrarNaEspera, opcoesDoDia } from "@/lib/crescimento/espera";
-import { codigoDoCliente, registrarIndicacao, usarBeneficio } from "@/lib/crescimento/indicacao";
+import { codigoDoCliente, registrarIndicacao } from "@/lib/crescimento/indicacao";
+import { extratoDoCliente, indicadosDoCliente, saldoDoCliente, usarSaldo } from "@/lib/crescimento/saldo";
+import { registrarPagamento } from "@/lib/comandas/maquininha";
 import { processarEsperas, processarIndicacoes, processarRetornos } from "@/lib/crescimento/rotina";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
@@ -46,7 +48,8 @@ async function main() {
     const [e1, e2, r1, r2, ind, novo] = await Promise.all(TELS.map((telefone, i) => db.cliente.create({ data: { telefone, nome: `Cresc Teste ${i + 1}` } })));
     const ids = [e1, e2, r1, r2, ind, novo].map((c) => c.id);
     const hoje = dataLocal(Date.now(), cfg.fuso);
-    const agora = Math.max(Date.now(), instanteLocal(hoje, 10 * 60, cfg.fuso)); // dentro do horario de aviso
+    // Dentro do horario de aviso (7h-21h), mesmo rodando de madrugada ou a noite.
+    const agora = Math.min(Math.max(Date.now(), instanteLocal(hoje, 10 * 60, cfg.fuso)), instanteLocal(hoje, 20 * 60, cfg.fuso));
 
     // ================= LISTA DE ESPERA
     // Dia com expediente e algum horario livre de verdade (a agenda de desenvolvimento tem atendimentos).
@@ -128,20 +131,46 @@ async function main() {
     const premio = await db.beneficio.findFirstOrThrow({ where: { clienteId: ind.id } });
     ok(premio.valorCentavos === 2000 && premio.status === "DISPONIVEL", "R$ 20 guardado para a próxima visita");
 
-    // Usar na comanda e devolver se a comanda for cancelada
-    const produto = await db.produto.findFirst({ where: { ativo: true, categoria: { in: ["BAR", "LOJA"] }, precoCentavos: { gt: 0 } } });
-    if (produto) {
+    // Saldo na comanda: usa, nao repete, devolve no cancelamento, divide o credito e gera cashback
+    const produtos = await db.produto.findMany({ where: { ativo: true, categoria: { in: ["BAR", "LOJA"] }, precoCentavos: { gt: 0 } }, orderBy: { precoCentavos: "asc" } });
+    if (produtos.length) {
+      const caro = produtos.at(-1)!, barato = produtos[0];
       const { id } = await abrirComanda(s, { clienteId: ind.id });
-      await adicionarProduto(s, id, produto.id, 3);
+      await adicionarProduto(s, id, caro.id, 3);
       const antes = await detalheComanda(id);
-      ok(antes.beneficios.length === 1, "comanda mostra o desconto disponível do cliente");
-      await usarBeneficio(s, premio.id, id);
+      ok(antes.saldoCliente === 2000, "comanda mostra o saldo do cliente (R$ 20)");
+      await usarSaldo(s, id);
       const depois = await detalheComanda(id);
-      ok(depois.resumo.desconto === Math.min(2000, antes.resumo.subtotal) && depois.beneficios.length === 0, `desconto aplicado (${depois.resumo.desconto})`);
-      const eDenovo = await falha(() => usarBeneficio(s, premio.id, id));
-      ok(eDenovo instanceof ErroNegocio, "não usa o mesmo desconto duas vezes");
+      ok(depois.resumo.desconto === Math.min(2000, antes.resumo.subtotal) && depois.saldoCliente === Math.max(0, 2000 - antes.resumo.subtotal), `saldo virou desconto (${depois.resumo.desconto})`);
+      const eDenovo = await falha(() => usarSaldo(s, id));
+      ok(eDenovo instanceof ErroNegocio, "sem saldo, não usa de novo");
       await cancelarComanda(s, id, "teste");
-      ok((await db.beneficio.findUniqueOrThrow({ where: { id: premio.id } })).status === "DISPONIVEL", "comanda cancelada devolve o desconto");
+      ok((await saldoDoCliente(ind.id)) === 2000, "comanda cancelada devolve o saldo");
+
+      // Credito maior que a conta: usa so a parte e o resto continua no saldo
+      if (barato.precoCentavos < 2000) {
+        const c2 = await abrirComanda(s, { clienteId: ind.id });
+        await adicionarProduto(s, c2.id, barato.id, 1);
+        await usarSaldo(s, c2.id);
+        ok((await saldoDoCliente(ind.id)) === 2000 - barato.precoCentavos, `usa só o necessário e sobra ${2000 - barato.precoCentavos} centavos`);
+        await cancelarComanda(s, c2.id, "teste");
+      }
+
+      // Cashback de 10% ao fechar; some se a comanda for cancelada
+      await db.configuracao.update({ where: { id: 1 }, data: { cashbackAtivo: true, cashbackPct: 10, cashbackValidadeDias: 90 } });
+      const c3 = await abrirComanda(s, { clienteId: novo.id });
+      await adicionarProduto(s, c3.id, barato.id, 2);
+      const total = (await detalheComanda(c3.id)).resumo.total;
+      await registrarPagamento(s, c3.id, { forma: "DINHEIRO", valorCentavos: total, naMaquininha: false });
+      const fechou = await fecharComanda(s, c3.id);
+      const cb = await db.beneficio.findFirst({ where: { comandaOrigemId: c3.id, motivo: "CASHBACK" } });
+      ok(fechou.cashbackCentavos === Math.floor(total / 10) && cb?.valorCentavos === fechou.cashbackCentavos && !!cb?.expiraEm, `cashback de 10% (${fechou.cashbackCentavos} centavos, com validade)`);
+      const extrato = await extratoDoCliente(novo.id);
+      ok(extrato.some((e) => e.origem === "Cashback" && e.geradoNaComanda !== null), "cashback aparece no extrato do cliente");
+      await cancelarComanda(s, c3.id, "teste");
+      ok((await db.beneficio.findUniqueOrThrow({ where: { id: cb!.id } })).status === "CANCELADO", "comanda cancelada cancela o cashback");
+      const indicados = await indicadosDoCliente(ind.id);
+      ok(indicados.length === 1 && indicados[0].veio && indicados[0].ganhouCentavos === 2000, "tela de indicações mostra o amigo e o prêmio");
     } else {
       console.log("(pulado) sem produto cadastrado para testar a comanda");
     }

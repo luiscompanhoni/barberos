@@ -137,6 +137,12 @@ export function agendarAutomacoes() {
     rodando = true;
     try {
       const r = await rodarAutomacoes();
+      // Checklist da equipe (lista da manha e resumo da noite).
+      const ck = await (await import("@/lib/checklist/servico")).rodarChecklist().catch((e) => {
+        console.error("[checklist] falhou:", e);
+        return { listas: 0, resumos: 0 };
+      });
+      if (ck.listas || ck.resumos) console.log(`[checklist] listas ${ck.listas}, resumos ${ck.resumos}`);
       const total = Object.values(r).reduce((a, b) => a + b, 0);
       if (total) console.log(`[automacoes] lembretes ${r.lembretes}, pós-falta ${r.faltas}, pós-atendimento ${r.pos}, reativação ${r.reativacao}, aniversário ${r.aniversario}, espera ${r.espera}, retorno ${r.retorno}, indicação ${r.indicacao}`);
     } catch (e) {

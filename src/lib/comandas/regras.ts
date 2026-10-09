@@ -36,3 +36,9 @@ export function saldoDepois(estoque: number, quantidade: number, minimo: number)
 export function descricaoServico(servico: string, barbeiro: string, peloPlano: boolean) {
   return `${servico} com ${barbeiro}${peloPlano ? " (plano)" : ""}`;
 }
+
+/** Cashback em centavos (arredonda para baixo; abaixo de 1 centavo nao gera nada). */
+export function valorCashback(totalCentavos: number, pct: number) {
+  if (totalCentavos <= 0 || pct <= 0) return 0;
+  return Math.floor((totalCentavos * Math.min(pct, 100)) / 100);
+}

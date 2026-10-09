@@ -1,13 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { abrirSessao } from "@/lib/auth/abrir-sessao";
 import { verificarCodigo } from "@/lib/auth/otp";
-import { cookies } from "next/headers";
-import { criarSessao } from "@/lib/auth/sessao";
-import { COOKIE_INDICACAO, registrarIndicacao } from "@/lib/crescimento/indicacao";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
 import { corpo } from "@/lib/validacao";
 
+/** Entrada por codigo (primeiro acesso / esqueci a senha). */
 export const POST = rota(async (req: Request) => {
   const b = await corpo(
     req,
@@ -26,19 +25,5 @@ export const POST = rota(async (req: Request) => {
   if (b.area === "cliente" && u.papel !== "CLIENTE") {
     throw new ErroNegocio("Esse número é da equipe. Entre pelo acesso da equipe.", 403);
   }
-  await criarSessao({
-    usuarioId: u.id,
-    papel: u.papel,
-    nome: u.nome,
-    barbeiroId: u.barbeiro?.ativo ? u.barbeiro.id : null,
-    clienteId: u.cliente?.id ?? null,
-  });
-  // Veio por um link de indicacao: liga ao amigo (so vale para cliente novo).
-  const jar = await cookies();
-  const codigo = jar.get(COOKIE_INDICACAO)?.value;
-  if (codigo && u.papel === "CLIENTE" && u.cliente) {
-    await registrarIndicacao(u.cliente.id, codigo, "SITE").catch(() => {});
-    jar.delete(COOKIE_INDICACAO);
-  }
-  return NextResponse.json({ ok: true, papel: u.papel, precisaNome: u.papel === "CLIENTE" && !u.nome.trim() });
+  return NextResponse.json(await abrirSessao(u));
 });

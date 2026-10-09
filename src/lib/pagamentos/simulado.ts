@@ -5,7 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { db } from "@/lib/db";
 import { somarMes } from "@/lib/assinaturas/regras";
-import type { CobrancaGateway, Gateway } from "./gateway";
+import type { CobrancaAvulsa, CobrancaGateway, Gateway } from "./gateway";
 
 const novoId = (p: string) => `${p}_${randomBytes(6).toString("hex")}`;
 const data = (d: Date) => d.toISOString().slice(0, 10);
@@ -76,3 +76,35 @@ export async function gerarProximaSimulada(assinaturaGatewayId: string) {
     },
   });
 }
+
+// Cobranca avulsa simulada (horario pago antes, link de pagamento): mesma tabela, sem assinatura.
+// Pix: codigo falso + pagina de teste. Cartao com token de teste (checkout em modo teste):
+// "token_recusado" e recusado, qualquer outro e aprovado na hora.
+export const TOKEN_TESTE_RECUSADO = "token_recusado";
+const avulsa = (c: Parameters<typeof converter>[0]): CobrancaAvulsa => {
+  const x = converter(c);
+  const recusada = x.status === "ATRASADA";
+  return {
+    id: x.id, status: x.status, pagaEm: x.pagaEm, link: x.link,
+    pixCopiaECola: c.id.startsWith("simpix") ? `00020126SIMULADO${c.id}` : null,
+    erro: recusada ? "O cartão não foi aceito (cartão de teste recusado)." : null,
+  };
+};
+simulado.criarCobrancaAvulsa = async (c) => {
+  const comToken = c.forma === "CARTAO" && !!c.cartaoToken;
+  if (comToken && process.env.NODE_ENV === "production") throw new Error("Cartão de teste não é aceito em produção.");
+  const recusado = comToken && c.cartaoToken === TOKEN_TESTE_RECUSADO;
+  const criada = avulsa(await db.cobrancaSimulada.create({
+    data: {
+      id: novoId(c.forma === "PIX" ? "simpix" : "simchg"), assinaturaGatewayId: `avulsa:${c.referencia}`, valorCentavos: c.valorCentavos,
+      vencimento: new Date(`${c.vencimento}T00:00:00Z`),
+      ...(comToken ? (recusado ? { status: "ATRASADA" as const } : { status: "PAGA" as const, pagaEm: new Date() }) : {}),
+    },
+  }));
+  // Validade do Pix (a tela de teste mostra a contagem como na Pagar.me).
+  return c.forma === "PIX" && c.pixValidadeSeg ? { ...criada, expiraEm: new Date(Date.now() + c.pixValidadeSeg * 1000).toISOString() } : criada;
+};
+simulado.buscarCobrancaAvulsa = async (id) => avulsa(await db.cobrancaSimulada.findUniqueOrThrow({ where: { id } }));
+simulado.cancelarCobrancaAvulsa = async (id) => {
+  await db.cobrancaSimulada.updateMany({ where: { id, status: "PENDENTE" }, data: { status: "CANCELADA" } });
+};

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  BarChart3, CalendarDays, ChartLine, CalendarRange, Clock3, CreditCard, LayoutDashboard, LogOut, Menu,
+  BarChart3, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Menu,
   MessageSquareText, Package, PanelLeft, Receipt, Settings, Smartphone, UserRound, X, type LucideIcon,
 } from "lucide-react";
 import { Marca } from "./Marca";
@@ -25,6 +25,11 @@ const ICONES: Record<string, LucideIcon> = {
   "/comandas": Receipt,
   "/estoque": Package,
   "/indicadores": ChartLine,
+  "/roleta": Dices,
+  "/financeiro": Landmark,
+  "/checklist": ClipboardCheck,
+  "/rh": BriefcaseBusiness,
+  "/whatsapp": Smartphone,
 };
 
 const iniciais = (nome: string) =>
@@ -73,10 +78,10 @@ export function Navegacao({
   const rodapeUsuario = (
     <div className="flex items-center gap-3 border-t border-zinc-200 pt-4">
       <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-zinc-200 text-xs font-bold text-ouro">{iniciais(nome)}</div>
-      <div className="min-w-0 flex-1">
+      <Link href="/conta" className="min-w-0 flex-1 hover:text-ouro" title="Minha conta e senha">
         <p className="truncate text-sm font-semibold">{nome}</p>
-        <p className="text-xs text-zinc-500">{PAPEIS[papel] ?? papel}</p>
-      </div>
+        <p className="text-xs text-zinc-500">{PAPEIS[papel] ?? papel} · minha conta</p>
+      </Link>
       <button onClick={sair} title="Sair" aria-label="Sair" className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900">
         <LogOut size={16} />
       </button>

@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, CalendarDays, CalendarPlus, Check, Clock3, Crown, History, Scissors } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { IndiqueEsperas } from "./IndiqueEsperas";
+import { PagarAntes } from "./PagarAntes";
+import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 
 type Ag = {
   id: string;
@@ -12,8 +14,9 @@ type Ag = {
   status: string;
   precoCentavos: number;
   assinaturaId?: string | null;
-  barbeiro: { id?: string; nome: string };
+  barbeiro: { id?: string; nome: string; cor?: string; fotoVersao?: number };
   servico: { id?: string; nome: string };
+  antecipado?: { status: string } | null;
 };
 
 const FUSO = "America/Sao_Paulo";
@@ -21,7 +24,7 @@ const STATUS: Record<string, string> = { CONCLUIDO: "Atendido", FALTOU: "Faltou"
 
 /** Pagina inicial do cliente: proximos horarios (com cancelar/remarcar) e historico. */
 export function MeusHorarios() {
-  const [dados, setDados] = useState<{ proximos: Ag[]; historico: Ag[]; prazoAlteracaoMin: number } | null>(null);
+  const [dados, setDados] = useState<{ proximos: Ag[]; historico: Ag[]; prazoAlteracaoMin: number; pagarAntes?: boolean; checkout?: boolean } | null>(null);
   const [perfil, setPerfil] = useState<{ nome: string } | null>(null);
   const [nome, setNome] = useState("");
   const [confirmar, setConfirmar] = useState<string | null>(null);
@@ -31,7 +34,7 @@ export function MeusHorarios() {
   const [plano, setPlano] = useState<{ nome: string; valida: boolean; status: string; link: string | null; vencimento: string | null } | null | undefined>(undefined);
 
   const carregar = useCallback(() => {
-    api<{ proximos: Ag[]; historico: Ag[]; prazoAlteracaoMin: number }>("/api/cliente/agendamentos").then(setDados).catch((e) => setErro(e.message));
+    api<{ proximos: Ag[]; historico: Ag[]; prazoAlteracaoMin: number; pagarAntes?: boolean; checkout?: boolean }>("/api/cliente/agendamentos").then(setDados).catch((e) => setErro(e.message));
     api<{ nome: string }>("/api/cliente/perfil").then(setPerfil).catch(() => {});
     api<{ atual: { plano: { nome: string }; valida: boolean; status: string; proximoVencimento: string | null; cobrancaEmAberto: { link: string | null } | null } | null }>("/api/cliente/assinatura")
       .then((r) => setPlano(r.atual ? {
@@ -149,13 +152,20 @@ export function MeusHorarios() {
                       </div>
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-bold">{a.servico.nome} com {a.barbeiro.nome}</p>
+                      <p className="flex items-center gap-2 font-bold">
+                        {a.barbeiro.id && <FotoBarbeiro id={a.barbeiro.id} nome={a.barbeiro.nome} cor={a.barbeiro.cor ?? "#d3ab45"} versao={a.barbeiro.fotoVersao ?? 0} tamanho={26} />}
+                        <span>{a.servico.nome} com {a.barbeiro.nome}</span>
+                      </p>
                       <p className="mt-1 flex items-center gap-2 text-xs text-zinc-500 first-letter:uppercase">
                         <Clock3 size={13} /> {d.toLocaleDateString("pt-BR", { weekday: "long", timeZone: FUSO })}, {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: FUSO })}
                       </p>
                       {a.assinaturaId
                         ? <span className="selo-ouro mt-3"><Check size={11} /> Pelo plano</span>
                         : <p className="mt-2 text-xs font-semibold text-zinc-700">{reais(a.precoCentavos)}</p>}
+                      {!a.assinaturaId && a.precoCentavos > 0 && (dados.pagarAntes || a.antecipado?.status === "PAGO") && (
+                        <PagarAntes agendamentoId={a.id} precoCentavos={a.precoCentavos} status={a.antecipado?.status ?? null} checkout={!!dados.checkout}
+                          aoPagar={() => { setAviso("Pagamento recebido! É só vir no horário."); carregar(); }} />
+                      )}
                     </div>
                   </div>
                   {Date.parse(a.inicio) - agora < dados.prazoAlteracaoMin * 60_000 ? (

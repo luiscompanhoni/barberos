@@ -24,10 +24,19 @@ export function modoMaquininha(): ModoMaquininha {
 export const PREFIXO_SIMULADO = "sim_";
 const TIPO: Partial<Record<FormaRecebimento, TipoPOS>> = { CREDITO: "credit", DEBITO: "debit", PIX: "pix" };
 
-function serialDaMaquininha() {
-  const s = process.env.STONE_POS_SERIAL?.split(",")[0]?.trim();
-  if (!s) throw new ErroNegocio("Número de série da maquininha não configurado (STONE_POS_SERIAL).", 500, "config");
-  return s;
+/** Maquininhas configuradas (STONE_POS_SERIAL separado por virgula; nomes opcionais em STONE_POS_NOMES). */
+export function maquininhas() {
+  const seriais = (process.env.STONE_POS_SERIAL ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const nomes = (process.env.STONE_POS_NOMES ?? "").split(",").map((x) => x.trim());
+  return seriais.map((serial, i) => ({ serial, nome: nomes[i] || `Maquininha ${i + 1} (final ${serial.slice(-4)})` }));
+}
+
+function serialDaMaquininha(escolhido?: string) {
+  const lista = maquininhas();
+  if (!lista.length) throw new ErroNegocio("Número de série da maquininha não configurado (STONE_POS_SERIAL).", 500, "config");
+  if (!escolhido) return lista[0].serial;
+  if (!lista.some((m) => m.serial === escolhido)) throw new ErroNegocio("Maquininha desconhecida.", 422, "maquininha");
+  return escolhido;
 }
 
 /**
@@ -37,7 +46,7 @@ function serialDaMaquininha() {
 export async function registrarPagamento(
   s: Sessao,
   comandaId: string,
-  p: { forma: FormaRecebimento; valorCentavos: number; naMaquininha: boolean },
+  p: { forma: FormaRecebimento; valorCentavos: number; naMaquininha: boolean; serial?: string },
 ) {
   const modo = modoMaquininha();
   const integrada = p.naMaquininha && p.forma !== "DINHEIRO" && modo !== "manual";
@@ -64,7 +73,7 @@ export async function registrarPagamento(
       valorCentavos: p.valorCentavos,
       descricao: `Comanda #${comanda.numero}`,
       tipo: TIPO[p.forma]!,
-      serial: serialDaMaquininha(),
+      serial: serialDaMaquininha(p.serial),
       cliente: { nome, email: process.env.EMAIL_BALCAO || "balcao@barberos.app" },
       metadata: { comanda_id: comandaId, pagamento_id: pagamento.id },
     });
@@ -116,6 +125,8 @@ export async function cancelarPagamento(s: Sessao, pagamentoId: string) {
   if (!pg) throw naoEncontrado("Pagamento");
   if (pg.comanda.status !== "ABERTA") throw new ErroNegocio("A comanda já foi fechada.");
   if (pg.status === "CANCELADO") return;
+  if (pg.antecipadoId) throw new ErroNegocio("Esse valor foi pago online antes do atendimento: não dá para desfazer aqui. Se precisar devolver, faça o estorno no painel do meio de pagamento.", 409, "antecipado");
+  if (pg.linkPagamentoId) throw new ErroNegocio("Esse valor foi pago pelo link de pagamento: não dá para desfazer aqui. Se precisar devolver, faça o estorno no painel do meio de pagamento.", 409, "link");
   if (pg.status === "PAGO") {
     if (!ehGerente(s)) throw proibido();
     if (pg.gatewayPedidoId && !pg.gatewayPedidoId.startsWith(PREFIXO_SIMULADO) && s.papel !== "DONO") {

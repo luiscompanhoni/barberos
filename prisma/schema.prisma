@@ -47,26 +47,34 @@ enum OrigemAgendamento {
 }
 
 model Usuario {
-  id        String    @id @default(cuid())
-  telefone  String    @unique
-  nome      String
-  papel     Papel
-  ativo     Boolean   @default(true)
-  criadoEm  DateTime  @default(now()) @db.Timestamptz(3)
-  barbeiro  Barbeiro?
-  cliente   Cliente?
+  id           String    @id @default(cuid())
+  telefone     String    @unique
+  nome         String
+  papel        Papel
+  ativo        Boolean   @default(true)
+  /// Nome de usuario opcional (equipe): entra com ele ou com o celular.
+  login        String?   @unique
+  /// scrypt (ver lib/auth/senha.ts). Vazio = ainda nao criou senha.
+  senhaHash    String?
+  /// Senha temporaria definida pelo dono: troca obrigatoria no proximo acesso.
+  trocarSenha  Boolean   @default(false)
+  senhaFalhas  Int       @default(0)
+  bloqueadoAte DateTime? @db.Timestamptz(3)
+  criadoEm     DateTime  @default(now()) @db.Timestamptz(3)
+  barbeiro     Barbeiro?
+  cliente      Cliente?
 
   @@map("usuarios")
 }
 
 model CodigoLogin {
-  id          String    @id @default(cuid())
-  telefone    String
-  codigoHash  String
-  expiraEm    DateTime  @db.Timestamptz(3)
-  tentativas  Int       @default(0)
-  usadoEm     DateTime? @db.Timestamptz(3)
-  criadoEm    DateTime  @default(now()) @db.Timestamptz(3)
+  id         String    @id @default(cuid())
+  telefone   String
+  codigoHash String
+  expiraEm   DateTime  @db.Timestamptz(3)
+  tentativas Int       @default(0)
+  usadoEm    DateTime? @db.Timestamptz(3)
+  criadoEm   DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([telefone, criadoEm])
   @@map("codigos_login")
@@ -74,17 +82,17 @@ model CodigoLogin {
 
 /// Linha unica (id = 1) com as regras gerais da barbearia.
 model Configuracao {
-  id                     Int    @id @default(1)
-  nomeBarbearia          String @default("Barbearia")
-  fuso                   String @default("America/Sao_Paulo")
-  granularidadeMin       Int    @default(15)
-  antecedenciaMinimaMin  Int    @default(60)
-  janelaAgendamentoDias  Int    @default(30)
-  intervaloEntreClientes Int    @default(0)
+  id                     Int     @id @default(1)
+  nomeBarbearia          String  @default("Barbearia")
+  fuso                   String  @default("America/Sao_Paulo")
+  granularidadeMin       Int     @default(15)
+  antecedenciaMinimaMin  Int     @default(60)
+  janelaAgendamentoDias  Int     @default(30)
+  intervaloEntreClientes Int     @default(0)
   /// Cliente so cancela/remarca sozinho ate X minutos antes.
-  prazoCancelamentoMin   Int    @default(120)
+  prazoCancelamentoMin   Int     @default(120)
   /// Maximo de agendamentos futuros por cliente (bot e site).
-  maxAgendamentosCliente Int    @default(2)
+  maxAgendamentosCliente Int     @default(2)
   endereco               String?
   botAtivo               Boolean @default(true)
   /// Dias apos o vencimento em que o assinante ainda usa o plano sem pagar.
@@ -92,62 +100,73 @@ model Configuracao {
 
   // ---- Automacoes (Fase 5)
   /// Lembrete na vespera: X horas antes (0 = desligado). Pede confirmacao.
-  lembreteHorasAntes     Int     @default(24)
+  lembreteHorasAntes      Int     @default(24)
   /// Lembrete perto do horario: X minutos antes (0 = desligado).
-  lembreteMinutosAntes   Int     @default(90)
+  lembreteMinutosAntes    Int     @default(90)
   /// Depois de uma falta, oferece remarcar.
-  avisoFalta             Boolean @default(true)
+  avisoFalta              Boolean @default(true)
   /// Com N faltas em X dias o cliente so marca com a equipe (0 = sem limite).
-  limiteFaltas           Int     @default(2)
-  janelaFaltasDias       Int     @default(60)
+  limiteFaltas            Int     @default(2)
+  janelaFaltasDias        Int     @default(60)
   /// Agradecimento depois do atendimento (com link de avaliacao, se houver).
-  posAtendimento         Boolean @default(false)
-  linkAvaliacao          String?
+  posAtendimento          Boolean @default(false)
+  linkAvaliacao           String?
   /// Chama de volta quem nao aparece ha X dias (0 = desligado).
-  reativacaoDias         Int     @default(0)
+  reativacaoDias          Int     @default(0)
   /// Parabens no dia do aniversario (com um presente opcional).
-  aniversario            Boolean @default(false)
-  presenteAniversario    String?
+  aniversario             Boolean @default(false)
+  presenteAniversario     String?
   /// Lembrete de retorno no ritmo de cada cliente (com horarios sugeridos).
-  retornoAtivo           Boolean @default(false)
+  retornoAtivo            Boolean @default(false)
   /// Indique e ganhe: premio de quem indica (quando o amigo faz o 1o atendimento) e de quem chega.
-  indicacaoAtiva         Boolean @default(false)
-  premioIndicadorCentavos Int    @default(2000)
-  premioIndicadoCentavos Int     @default(1000)
+  indicacaoAtiva          Boolean @default(false)
+  premioIndicadorCentavos Int     @default(2000)
+  premioIndicadoCentavos  Int     @default(1000)
+  /// Cashback: % do que o cliente gasta na comanda volta como saldo (vale por X dias).
+  cashbackAtivo           Boolean @default(false)
+  cashbackPct             Int     @default(5)
+  cashbackValidadeDias    Int     @default(90)
 
   @@map("configuracao")
 }
 
 model Barbeiro {
-  id           String             @id @default(cuid())
-  usuarioId    String             @unique
-  usuario      Usuario            @relation(fields: [usuarioId], references: [id])
-  nome         String
-  cor          String             @default("#378ADD")
-  ordem        Int                @default(0)
-  ativo        Boolean            @default(true)
+  id              String             @id @default(cuid())
+  usuarioId       String             @unique
+  usuario         Usuario            @relation(fields: [usuarioId], references: [id])
+  nome            String
+  cor             String             @default("#378ADD")
+  ordem           Int                @default(0)
+  ativo           Boolean            @default(true)
   /// Link secreto do calendario (.ics) para assinar no Google Agenda / celular.
-  tokenCalendario String?         @unique
-  servicos     BarbeiroServico[]
-  expediente   ExpedientePadrao[]
-  excecoes     ExcecaoAgenda[]
-  bloqueios    Bloqueio[]
-  agendamentos Agendamento[]
-  planos       PlanoBarbeiro[]
+  tokenCalendario String?            @unique
+  servicos        BarbeiroServico[]
+  expediente      ExpedientePadrao[]
+  excecoes        ExcecaoAgenda[]
+  bloqueios       Bloqueio[]
+  agendamentos    Agendamento[]
+  planos          PlanoBarbeiro[]
+  checklistPessoa ChecklistPessoa?
+  /// Foto (webp pequena, guardada no banco; servida em /api/barbeiros/<id>/foto).
+  fotoDados       Bytes?
+  fotoTipo        String?
+  /// Muda a cada foto nova (quebra o cache do navegador).
+  fotoVersao      Int                @default(0)
 
   @@map("barbeiros")
 }
 
 model Servico {
-  id            String            @id @default(cuid())
-  nome          String
-  duracaoMin    Int
-  precoCentavos Int
-  ordem         Int               @default(0)
-  ativo         Boolean           @default(true)
-  barbeiros     BarbeiroServico[]
-  agendamentos  Agendamento[]
-  planos        PlanoServico[]
+  id               String            @id @default(cuid())
+  nome             String
+  duracaoMin       Int
+  precoCentavos    Int
+  ordem            Int               @default(0)
+  ativo            Boolean           @default(true)
+  barbeiros        BarbeiroServico[]
+  agendamentos     Agendamento[]
+  planos           PlanoServico[]
+  comissaoServicos ComissaoServico[]
 
   @@map("servicos")
 }
@@ -209,63 +228,67 @@ model Bloqueio {
 }
 
 model Cliente {
-  id           String        @id @default(cuid())
-  telefone     String        @unique
-  nome         String
-  observacoes  String?
+  id                 String                @id @default(cuid())
+  telefone           String                @unique
+  nome               String
+  observacoes        String?
   /// Exigido pelo Asaas para cobrar. Nunca exibido inteiro na interface.
-  cpf          String?
-  email        String?
-  usuarioId    String?       @unique
-  usuario      Usuario?      @relation(fields: [usuarioId], references: [id])
-  criadoEm     DateTime      @default(now()) @db.Timestamptz(3)
-  agendamentos Agendamento[]
-  conversa     Conversa?
-  assinaturas  Assinatura[]
-  listaEspera  ListaEsperaPlano[]
-  comandas     Comanda[]
+  cpf                String?
+  email              String?
+  usuarioId          String?               @unique
+  usuario            Usuario?              @relation(fields: [usuarioId], references: [id])
+  criadoEm           DateTime              @default(now()) @db.Timestamptz(3)
+  agendamentos       Agendamento[]
+  conversa           Conversa?
+  assinaturas        Assinatura[]
+  listaEspera        ListaEsperaPlano[]
+  comandas           Comanda[]
   /// Pediu para nao receber mensagens automaticas (respondeu PARAR).
-  aceitaMensagens    Boolean   @default(true)
-  ultimaReativacaoEm DateTime? @db.Timestamptz(3)
+  aceitaMensagens    Boolean               @default(true)
+  ultimaReativacaoEm DateTime?             @db.Timestamptz(3)
   /// Para idade media e mensagem de aniversario (opcional).
-  dataNascimento     DateTime? @db.Date
+  dataNascimento     DateTime?             @db.Date
   /// Como conheceu a barbearia (canal de aquisicao) e detalhe (ex.: quem indicou).
   origem             OrigemCliente?
   origemDetalhe      String?
   /// Codigo curto do link "indique e ganhe" (criado na primeira vez que o cliente pede o link).
-  codigoIndicacao    String?   @unique
+  codigoIndicacao    String?               @unique
   esperas            EsperaHorario[]
-  indicacoesFeitas   Indicacao[] @relation("indicador")
-  indicadoPor        Indicacao?  @relation("indicado")
+  indicacoesFeitas   Indicacao[]           @relation("indicador")
+  indicadoPor        Indicacao?            @relation("indicado")
   beneficios         Beneficio[]
+  antecipados        PagamentoAntecipado[]
+  girosRoleta        RoletaGiro[]
+  linksPagamento     LinkPagamento[]
 
   @@map("clientes")
 }
 
 /// A exclusao "sem sobreposicao" por barbeiro e criada em SQL na migracao.
 model Agendamento {
-  id            String            @id @default(cuid())
-  barbeiroId    String
-  barbeiro      Barbeiro          @relation(fields: [barbeiroId], references: [id])
-  clienteId     String
-  cliente       Cliente           @relation(fields: [clienteId], references: [id])
-  servicoId     String
-  servico       Servico           @relation(fields: [servicoId], references: [id])
-  inicio        DateTime          @db.Timestamptz(3)
-  fim           DateTime          @db.Timestamptz(3)
-  status        StatusAgendamento @default(MARCADO)
-  origem        OrigemAgendamento
-  precoCentavos Int
-  observacao    String?
+  id             String               @id @default(cuid())
+  barbeiroId     String
+  barbeiro       Barbeiro             @relation(fields: [barbeiroId], references: [id])
+  clienteId      String
+  cliente        Cliente              @relation(fields: [clienteId], references: [id])
+  servicoId      String
+  servico        Servico              @relation(fields: [servicoId], references: [id])
+  inicio         DateTime             @db.Timestamptz(3)
+  fim            DateTime             @db.Timestamptz(3)
+  status         StatusAgendamento    @default(MARCADO)
+  origem         OrigemAgendamento
+  precoCentavos  Int
+  observacao     String?
   /// Cliente aceitou qualquer barbeiro: a recepcao pode trocar sem perguntar.
-  semPreferencia Boolean          @default(false)
+  semPreferencia Boolean              @default(false)
   /// Coberto por assinatura (preco zero).
-  assinaturaId  String?
-  assinatura    Assinatura?       @relation(fields: [assinaturaId], references: [id])
-  itemComanda   ItemComanda?
-  criadoPorId   String?
-  criadoEm      DateTime          @default(now()) @db.Timestamptz(3)
-  atualizadoEm  DateTime          @updatedAt @db.Timestamptz(3)
+  assinaturaId   String?
+  assinatura     Assinatura?          @relation(fields: [assinaturaId], references: [id])
+  itemComanda    ItemComanda?
+  antecipado     PagamentoAntecipado?
+  criadoPorId    String?
+  criadoEm       DateTime             @default(now()) @db.Timestamptz(3)
+  atualizadoEm   DateTime             @updatedAt @db.Timestamptz(3)
 
   @@index([barbeiroId, inicio])
   @@index([clienteId])
@@ -362,28 +385,28 @@ enum StatusCobranca {
 }
 
 model Plano {
-  id                    String           @id @default(cuid())
-  nome                  String
-  descricao             String?
-  precoCentavos         Int
-  ativo                 Boolean          @default(true)
-  ordem                 Int              @default(0)
+  id                     String             @id @default(cuid())
+  nome                   String
+  descricao              String?
+  precoCentavos          Int
+  ativo                  Boolean            @default(true)
+  ordem                  Int                @default(0)
   /// Limite de assinantes (null = sem limite).
-  vagas                 Int?
+  vagas                  Int?
   /// Dias minimos entre um uso e o proximo (null = livre).
-  intervaloMinDias      Int?
+  intervaloMinDias       Int?
   /// Quantos agendamentos pelo plano o cliente pode ter marcados ao mesmo tempo.
-  maxAgendamentosAbertos Int             @default(1)
+  maxAgendamentosAbertos Int                @default(1)
   /// Dias da semana em que o plano vale (0 = domingo). Vazio = todos.
-  diasSemana            Int[]            @default([])
+  diasSemana             Int[]              @default([])
   /// Desconto para assinantes em servicos fora do plano.
-  descontoExtrasPct     Int              @default(0)
-  formasPagamento       FormaPagamento[] @default([CARTAO, PIX, BOLETO])
-  criadoEm              DateTime         @default(now()) @db.Timestamptz(3)
-  servicos              PlanoServico[]
-  barbeiros             PlanoBarbeiro[]
-  assinaturas           Assinatura[]
-  listaEspera           ListaEsperaPlano[]
+  descontoExtrasPct      Int                @default(0)
+  formasPagamento        FormaPagamento[]   @default([CARTAO, PIX, BOLETO])
+  criadoEm               DateTime           @default(now()) @db.Timestamptz(3)
+  servicos               PlanoServico[]
+  barbeiros              PlanoBarbeiro[]
+  assinaturas            Assinatura[]
+  listaEspera            ListaEsperaPlano[]
 
   @@map("planos")
 }
@@ -412,27 +435,27 @@ model PlanoBarbeiro {
 }
 
 model Assinatura {
-  id                 String           @id @default(cuid())
+  id                 String            @id @default(cuid())
   clienteId          String
-  cliente            Cliente          @relation(fields: [clienteId], references: [id])
+  cliente            Cliente           @relation(fields: [clienteId], references: [id])
   planoId            String
-  plano              Plano            @relation(fields: [planoId], references: [id])
-  status             StatusAssinatura @default(PENDENTE)
+  plano              Plano             @relation(fields: [planoId], references: [id])
+  status             StatusAssinatura  @default(PENDENTE)
   formaPagamento     FormaPagamento
   /// Preco travado na adesao.
   precoCentavos      Int
-  gatewayId          String?          @unique
+  gatewayId          String?           @unique
   gatewayClienteId   String?
   /// Inicio do ciclo pago atual (conta os usos por ciclo).
-  cicloInicio        DateTime?        @db.Timestamptz(3)
-  proximoVencimento  DateTime?        @db.Date
-  criadaEm           DateTime         @default(now()) @db.Timestamptz(3)
-  ativadaEm          DateTime?        @db.Timestamptz(3)
-  canceladaEm        DateTime?        @db.Timestamptz(3)
+  cicloInicio        DateTime?         @db.Timestamptz(3)
+  proximoVencimento  DateTime?         @db.Date
+  criadaEm           DateTime          @default(now()) @db.Timestamptz(3)
+  ativadaEm          DateTime?         @db.Timestamptz(3)
+  canceladaEm        DateTime?         @db.Timestamptz(3)
   motivoCancelamento String?
   origem             OrigemAgendamento
   /// Codigo aleatorio para links publicos (ex.: pagina de cartao). Nao e o id.
-  tokenPublico       String?          @unique
+  tokenPublico       String?           @unique
   cobrancas          Cobranca[]
   agendamentos       Agendamento[]
 
@@ -442,27 +465,27 @@ model Assinatura {
 }
 
 model Cobranca {
-  id            String         @id @default(cuid())
+  id            String          @id @default(cuid())
   assinaturaId  String
-  assinatura    Assinatura     @relation(fields: [assinaturaId], references: [id], onDelete: Cascade)
-  gatewayId     String         @unique
+  assinatura    Assinatura      @relation(fields: [assinaturaId], references: [id], onDelete: Cascade)
+  gatewayId     String          @unique
   valorCentavos Int
-  vencimento    DateTime       @db.Date
-  status        StatusCobranca @default(PENDENTE)
-  pagaEm        DateTime?      @db.Timestamptz(3)
+  vencimento    DateTime        @db.Date
+  status        StatusCobranca  @default(PENDENTE)
+  pagaEm        DateTime?       @db.Timestamptz(3)
   link          String?
   forma         FormaPagamento?
   /// Pix: codigo copia e cola, imagem do QR e validade
   pixCopiaECola String?
   pixQrUrl      String?
-  expiraEm      DateTime?      @db.Timestamptz(3)
+  expiraEm      DateTime?       @db.Timestamptz(3)
   /// Boleto: link e linha digitavel
   boletoUrl     String?
   boletoLinha   String?
   /// Codigo aleatorio da pagina publica de pagamento (/c/pagar/<token>)
-  tokenPublico  String?        @unique
-  criadaEm      DateTime       @default(now()) @db.Timestamptz(3)
-  atualizadaEm  DateTime       @updatedAt @db.Timestamptz(3)
+  tokenPublico  String?         @unique
+  criadaEm      DateTime        @default(now()) @db.Timestamptz(3)
+  atualizadaEm  DateTime        @updatedAt @db.Timestamptz(3)
 
   @@index([assinaturaId, vencimento])
   @@map("cobrancas")
@@ -544,19 +567,19 @@ enum StatusPagamentoComanda {
 }
 
 model Produto {
-  id            String           @id @default(cuid())
+  id            String             @id @default(cuid())
   nome          String
   categoria     CategoriaProduto
-  precoCentavos Int              @default(0)
+  precoCentavos Int                @default(0)
   /// Custo de compra da ultima entrada (para valor do estoque e margem).
-  custoCentavos Int              @default(0)
+  custoCentavos Int                @default(0)
   /// Saldo atual. Pode ficar negativo se venderem sem dar entrada: o painel avisa.
-  estoque       Int              @default(0)
-  estoqueMinimo Int              @default(0)
-  unidade       String           @default("un")
-  codigoBarras  String?          @unique
-  ativo         Boolean          @default(true)
-  criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
+  estoque       Int                @default(0)
+  estoqueMinimo Int                @default(0)
+  unidade       String             @default("un")
+  codigoBarras  String?            @unique
+  ativo         Boolean            @default(true)
+  criadoEm      DateTime           @default(now()) @db.Timestamptz(3)
   movimentos    MovimentoEstoque[]
   itens         ItemComanda[]
 
@@ -599,6 +622,7 @@ model Comanda {
   fechadaEm        DateTime?          @db.Timestamptz(3)
   itens            ItemComanda[]
   pagamentos       PagamentoComanda[]
+  linksPagamento   LinkPagamento[]
 
   @@index([status, abertaEm])
   @@map("comandas")
@@ -638,6 +662,12 @@ model PagamentoComanda {
   registradoPorId String?
   criadoEm        DateTime               @default(now()) @db.Timestamptz(3)
   pagoEm          DateTime?              @db.Timestamptz(3)
+  /// Veio de um pagamento antecipado do horario (Pix/cartao online).
+  antecipadoId    String?                @unique
+  antecipado      PagamentoAntecipado?   @relation(fields: [antecipadoId], references: [id])
+  /// Veio de um link de pagamento (comanda paga a distancia).
+  linkPagamentoId String?                @unique
+  linkPagamento   LinkPagamento?         @relation(fields: [linkPagamentoId], references: [id])
 
   @@index([comandaId])
   @@map("pagamentos_comanda")
@@ -714,15 +744,15 @@ model EsperaHorario {
 
 /// Quem indicou quem. Um cliente so pode ter sido indicado uma vez.
 model Indicacao {
-  id           String    @id @default(cuid())
+  id           String            @id @default(cuid())
   indicadorId  String
-  indicador    Cliente   @relation("indicador", fields: [indicadorId], references: [id], onDelete: Cascade)
-  indicadoId   String    @unique
-  indicado     Cliente   @relation("indicado", fields: [indicadoId], references: [id], onDelete: Cascade)
+  indicador    Cliente           @relation("indicador", fields: [indicadorId], references: [id], onDelete: Cascade)
+  indicadoId   String            @unique
+  indicado     Cliente           @relation("indicado", fields: [indicadoId], references: [id], onDelete: Cascade)
   origem       OrigemAgendamento
   /// Quando o indicado fez o 1o atendimento (e o indicador ganhou o premio).
-  convertidaEm DateTime? @db.Timestamptz(3)
-  criadoEm     DateTime  @default(now()) @db.Timestamptz(3)
+  convertidaEm DateTime?         @db.Timestamptz(3)
+  criadoEm     DateTime          @default(now()) @db.Timestamptz(3)
   beneficios   Beneficio[]
 
   @@index([indicadorId])
@@ -737,21 +767,517 @@ enum StatusBeneficio {
 
 /// Credito de desconto do cliente (ex.: premio de indicacao), usado na comanda.
 model Beneficio {
-  id            String          @id @default(cuid())
-  clienteId     String
-  cliente       Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  descricao     String
-  valorCentavos Int
-  status        StatusBeneficio @default(DISPONIVEL)
-  /// INDICOU (premio de quem indicou) ou INDICADO (boas-vindas de quem chegou) ou MANUAL.
-  motivo        String
-  indicacaoId   String?
-  indicacao     Indicacao?      @relation(fields: [indicacaoId], references: [id], onDelete: SetNull)
-  comandaId     String?
-  criadoEm      DateTime        @default(now()) @db.Timestamptz(3)
-  usadoEm       DateTime?       @db.Timestamptz(3)
+  id                String          @id @default(cuid())
+  clienteId         String
+  cliente           Cliente         @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  descricao         String
+  valorCentavos     Int
+  status            StatusBeneficio @default(DISPONIVEL)
+  /// INDICOU (premio de quem indicou), INDICADO (boas-vindas), CASHBACK ou MANUAL.
+  motivo            String
+  indicacaoId       String?
+  indicacao         Indicacao?      @relation(fields: [indicacaoId], references: [id], onDelete: SetNull)
+  comandaId         String?
+  /// Cashback: comanda que gerou o credito (cancelou a comanda, o credito some).
+  comandaOrigemId   String?
+  /// Vencido nao entra no saldo.
+  expiraEm          DateTime?       @db.Timestamptz(3)
+  /// Parte usada de um credito maior: aponta para o credito de origem (que fica com o que sobrou).
+  origemBeneficioId String?
+  criadoEm          DateTime        @default(now()) @db.Timestamptz(3)
+  usadoEm           DateTime?       @db.Timestamptz(3)
 
   @@unique([indicacaoId, motivo])
+  @@unique([comandaOrigemId, motivo])
   @@index([clienteId, status])
   @@map("beneficios")
+}
+
+enum StatusAntecipado {
+  /// Link gerado, esperando o cliente pagar.
+  PENDENTE
+  PAGO
+  /// Desistiu antes de pagar (ou o horario foi cancelado sem pagamento).
+  CANCELADO
+  /// Pago, mas o horario foi cancelado: o valor virou saldo do cliente.
+  CREDITADO
+}
+
+/// Pagamento online de um horario avulso, feito antes do atendimento.
+model PagamentoAntecipado {
+  id               String            @id @default(cuid())
+  agendamentoId    String            @unique
+  agendamento      Agendamento       @relation(fields: [agendamentoId], references: [id])
+  clienteId        String
+  cliente          Cliente           @relation(fields: [clienteId], references: [id])
+  valorCentavos    Int
+  forma            FormaPagamento
+  status           StatusAntecipado  @default(PENDENTE)
+  /// Cobranca avulsa no gateway (ex.: "celchg_123").
+  gatewayId        String?           @unique
+  link             String?
+  pixCopiaECola    String?
+  pixQrUrl         String?
+  /// Validade do Pix gerado no checkout do BarberOS (Pagar.me).
+  pixExpiraEm      DateTime?         @db.Timestamptz(3)
+  pagoEm           DateTime?         @db.Timestamptz(3)
+  criadoEm         DateTime          @default(now()) @db.Timestamptz(3)
+  atualizadoEm     DateTime          @updatedAt @db.Timestamptz(3)
+  pagamentoComanda PagamentoComanda?
+
+  @@index([status])
+  @@map("pagamentos_antecipados")
+}
+
+/// Roleta de premios da area do cliente (configuracao unica, id = 1).
+model RoletaConfig {
+  id                  Int      @id @default(1)
+  ativa               Boolean  @default(false)
+  /// Giros ganhos por atendimento concluido (contados a partir de `inicioEm`).
+  girosPorAtendimento Int      @default(1)
+  /// Giro gratis a cada N dias (0 = desligado).
+  giroGratisDias      Int      @default(0)
+  /// Bonus de assinante nos premios em dinheiro (10 = x1.1).
+  bonusAssinantePct   Int      @default(10)
+  /// Validade do credito/brinde ganho (dias).
+  validadeDias        Int      @default(30)
+  /// So atendimentos a partir daqui dao giro (ligar a roleta nao gera giros do passado).
+  inicioEm            DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("roleta_config")
+}
+
+enum TipoPremioRoleta {
+  /// Credito em dinheiro no saldo do cliente.
+  CREDITO
+  /// Brinde retirado no balcao (ex.: cerveja, pomada).
+  BRINDE
+  /// "Nao foi dessa vez".
+  NADA
+}
+
+model RoletaPremio {
+  id            String           @id @default(cuid())
+  rotulo        String
+  tipo          TipoPremioRoleta
+  valorCentavos Int              @default(0)
+  /// Peso no sorteio (a chance e peso / soma dos pesos ativos).
+  peso          Int
+  cor           String
+  ordem         Int              @default(0)
+  ativo         Boolean          @default(true)
+  /// Maximo de vezes que pode sair por mes (null = sem limite).
+  limiteMensal  Int?
+  criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
+  giros         RoletaGiro[]
+
+  @@map("roleta_premios")
+}
+
+enum StatusGiro {
+  /// Brinde esperando a retirada no balcao.
+  A_RETIRAR
+  /// Credito no saldo, brinde entregue ou "nada".
+  CONCLUIDO
+  EXPIRADO
+}
+
+model RoletaGiro {
+  id            String           @id @default(cuid())
+  clienteId     String
+  cliente       Cliente          @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  premioId      String?
+  premio        RoletaPremio?    @relation(fields: [premioId], references: [id], onDelete: SetNull)
+  /// Copia do premio no momento do giro (o premio pode mudar depois).
+  rotulo        String
+  tipo          TipoPremioRoleta
+  valorCentavos Int              @default(0)
+  /// Multiplicador aplicado x100 (110 = x1.1).
+  multiplicador Int              @default(100)
+  /// "GRATIS" = giro gratis do periodo; "ATENDIMENTO" = ganho por visita.
+  origem        String
+  status        StatusGiro
+  beneficioId   String?
+  expiraEm      DateTime?        @db.Timestamptz(3)
+  entregueEm    DateTime?        @db.Timestamptz(3)
+  entreguePorId String?
+  criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@index([clienteId, criadoEm])
+  @@index([status])
+  @@map("roleta_giros")
+}
+
+// ======================= FINANCEIRO
+
+enum StatusCaixa {
+  ABERTO
+  FECHADO
+}
+
+enum TipoMovimentoCaixa {
+  /// Dinheiro tirado do caixa (deposito, pagamento de fornecedor, vale).
+  SANGRIA
+  /// Dinheiro colocado no caixa (reforco de troco).
+  SUPRIMENTO
+}
+
+/// Turno de caixa: abre com o fundo de troco, fecha com a contagem do dinheiro.
+model Caixa {
+  id                String           @id @default(cuid())
+  status            StatusCaixa      @default(ABERTO)
+  fundoCentavos     Int
+  abertoEm          DateTime         @default(now()) @db.Timestamptz(3)
+  abertoPorId       String?
+  fechadoEm         DateTime?        @db.Timestamptz(3)
+  fechadoPorId      String?
+  /// Dinheiro contado na gaveta no fechamento.
+  contadoCentavos   Int?
+  /// Dinheiro que deveria ter (fundo + entradas - troco - sangrias).
+  esperadoCentavos  Int?
+  /// contado - esperado (negativo = faltou).
+  diferencaCentavos Int?
+  /// Resumo congelado no fechamento (por forma de pagamento).
+  resumo            Json?
+  observacao        String?
+  movimentos        MovimentoCaixa[]
+
+  @@index([status])
+  @@index([abertoEm])
+  @@map("caixas")
+}
+
+model MovimentoCaixa {
+  id            String             @id @default(cuid())
+  caixaId       String
+  caixa         Caixa              @relation(fields: [caixaId], references: [id], onDelete: Cascade)
+  tipo          TipoMovimentoCaixa
+  valorCentavos Int
+  motivo        String
+  usuarioId     String?
+  criadoEm      DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@index([caixaId])
+  @@map("movimentos_caixa")
+}
+
+/// Taxa e prazo de cada meio de recebimento (para o liquido esperado na conciliacao).
+model TaxaRecebimento {
+  /// PIX, DEBITO, CREDITO ou ONLINE (Pix/cartao pelo link: mensalidades e pagos antes).
+  forma     String @id
+  /// Taxa em centesimos de % (199 = 1,99%).
+  taxaBps   Int    @default(0)
+  /// Dias ate cair na conta (D+N).
+  prazoDias Int    @default(0)
+
+  @@map("taxas_recebimento")
+}
+
+enum StatusConciliacao {
+  CONFERIDO
+  DIVERGENTE
+}
+
+/// Conferencia de um dia + meio de recebimento contra o extrato (o esperado e calculado na hora).
+model Conciliacao {
+  id               String            @id @default(cuid())
+  data             DateTime          @db.Date
+  forma            String
+  brutoCentavos    Int
+  liquidoCentavos  Int
+  recebidoCentavos Int
+  status           StatusConciliacao
+  observacao       String?
+  conferidoPorId   String?
+  conferidoEm      DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@unique([data, forma])
+  @@map("conciliacoes")
+}
+
+// ======================= CHECKLIST DA EQUIPE
+
+enum FuncaoChecklist {
+  DIARISTA
+  BARBEIRO
+  GERENTE
+}
+
+model ChecklistConfig {
+  id           Int     @id @default(1)
+  ativo        Boolean @default(false)
+  /// Hora (HH:MM) em que cada pessoa recebe a lista do dia no WhatsApp.
+  horaEnvio    String  @default("08:00")
+  /// Hora (HH:MM) do resumo de pendencias para o gerente.
+  horaResumo   String  @default("19:00")
+  /// Pontos perdidos quando o gerente da "re" (marcou feito sem fazer).
+  pontosRe     Int     @default(20)
+  /// Pontos para virar BLACK PLATINA e BLACK LEGEND (BLACK ELITE e o inicial).
+  nivelPlatina Int     @default(500)
+  nivelLegend  Int     @default(1500)
+
+  @@map("checklist_config")
+}
+
+/// Quem recebe checklist (diarista, barbeiros, gerente). Nao precisa ter login no sistema.
+model ChecklistPessoa {
+  id               String            @id @default(cuid())
+  nome             String
+  telefone         String
+  funcao           FuncaoChecklist
+  ativo            Boolean           @default(true)
+  /// Link pessoal para marcar as tarefas sem login (/t/<token>).
+  token            String            @unique
+  criadoEm         DateTime          @default(now()) @db.Timestamptz(3)
+  /// Ficha de RH (o cadastro de funcionario e o mesmo do checklist).
+  cargo            String?
+  salarioCentavos  Int               @default(0)
+  chavePix         String?
+  admissao         DateTime?         @db.Date
+  /// Barbeiro da agenda (comissao dos atendimentos).
+  barbeiroId       String?           @unique
+  barbeiro         Barbeiro?         @relation(fields: [barbeiroId], references: [id], onDelete: SetNull)
+  pontos           ChecklistPonto[]
+  lancamentosFolha FolhaLancamento[]
+  folhas           FolhaPagamento[]
+  itens            ChecklistItem[]
+
+  @@map("checklist_pessoas")
+}
+
+model ChecklistTarefa {
+  id         String          @id @default(cuid())
+  titulo     String
+  funcao     FuncaoChecklist
+  /// 0 = domingo ... 6 = sabado. Vazio = todos os dias.
+  diasSemana Int[]           @default([])
+  /// Horario sugerido (HH:MM), opcional.
+  horario    String?
+  ordem      Int             @default(0)
+  /// Pontos ganhos quando o gerente valida.
+  pontos     Int             @default(10)
+  ativo      Boolean         @default(true)
+  criadoEm   DateTime        @default(now()) @db.Timestamptz(3)
+  itens      ChecklistItem[]
+
+  @@map("checklist_tarefas")
+}
+
+/// Tarefa de uma pessoa num dia (gerada a partir das tarefas da funcao dela).
+model ChecklistItem {
+  id             String           @id @default(cuid())
+  pessoaId       String
+  pessoa         ChecklistPessoa  @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+  tarefaId       String?
+  tarefa         ChecklistTarefa? @relation(fields: [tarefaId], references: [id], onDelete: SetNull)
+  data           DateTime         @db.Date
+  titulo         String
+  horario        String?
+  ordem          Int              @default(0)
+  feito          Boolean          @default(false)
+  feitoEm        DateTime?        @db.Timestamptz(3)
+  /// "link" (a propria pessoa) ou o nome de quem marcou no painel.
+  feitoPor       String?
+  pontos         Int              @default(10)
+  /// Avaliacao do gerente: VALIDADO (ganha pontos) ou RE (marcou feito sem fazer: perde pontos).
+  avaliacao      AvaliacaoTarefa?
+  avaliadoEm     DateTime?        @db.Timestamptz(3)
+  avaliadoPor    String?
+  motivoRe       String?
+  checklistPonto ChecklistPonto?
+
+  @@unique([pessoaId, tarefaId, data])
+  @@index([data])
+  @@map("checklist_itens")
+}
+
+/// Mensagens do checklist ja enviadas (evita mandar duas vezes).
+model ChecklistEnvio {
+  id       String   @id @default(cuid())
+  /// "lista:<pessoaId>:<data>" ou "resumo:<data>"
+  chave    String   @unique
+  ok       Boolean  @default(true)
+  erro     String?
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+
+  @@map("checklist_envios")
+}
+
+enum AvaliacaoTarefa {
+  VALIDADO
+  RE
+}
+
+/// Extrato de pontos do funcionario (validacao, re ou ajuste manual).
+model ChecklistPonto {
+  id        String          @id @default(cuid())
+  pessoaId  String
+  pessoa    ChecklistPessoa @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+  /// Uma avaliacao por tarefa (reavaliar troca o lancamento).
+  itemId    String?         @unique
+  item      ChecklistItem?  @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  pontos    Int
+  descricao String
+  porNome   String?
+  criadoEm  DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@index([pessoaId, criadoEm])
+  @@map("checklist_pontos")
+}
+
+// ======================= RH: comissoes e folha
+
+enum TipoComissao {
+  /// Valor em centesimos de % (4000 = 40%) sobre o preco cobrado (avulso) ou de tabela (plano).
+  PERCENTUAL
+  /// Valor fixo em centavos por atendimento.
+  FIXO
+}
+
+/// Comissao de um servico. barbeiroId null = regra geral; com barbeiro = excecao para ele.
+model ComissaoServico {
+  id          String       @id @default(cuid())
+  servicoId   String
+  servico     Servico      @relation(fields: [servicoId], references: [id], onDelete: Cascade)
+  barbeiroId  String?
+  avulsoTipo  TipoComissao @default(PERCENTUAL)
+  avulsoValor Int          @default(0)
+  planoTipo   TipoComissao @default(FIXO)
+  planoValor  Int          @default(0)
+
+  @@unique([servicoId, barbeiroId])
+  @@map("comissoes_servico")
+}
+
+enum TipoLancamentoFolha {
+  ADICIONAL
+  BONUS
+  /// Adiantamento (vale): desconta na folha.
+  VALE
+  DESCONTO
+}
+
+model FolhaLancamento {
+  id               String              @id @default(cuid())
+  pessoaId         String
+  pessoa           ChecklistPessoa     @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+  /// Mes de referencia "AAAA-MM".
+  competencia      String
+  tipo             TipoLancamentoFolha
+  valorCentavos    Int
+  descricao        String
+  /// Vale pago com dinheiro do caixa (gera sangria).
+  movimentoCaixaId String?             @unique
+  porId            String?
+  criadoEm         DateTime            @default(now()) @db.Timestamptz(3)
+
+  @@index([competencia, pessoaId])
+  @@map("folha_lancamentos")
+}
+
+enum StatusFolha {
+  FECHADA
+  PAGA
+}
+
+/// Folha fechada de um funcionario num mes (valores congelados).
+model FolhaPagamento {
+  id                 String          @id @default(cuid())
+  competencia        String
+  pessoaId           String
+  pessoa             ChecklistPessoa @relation(fields: [pessoaId], references: [id], onDelete: Cascade)
+  salarioCentavos    Int
+  comissaoCentavos   Int
+  adicionaisCentavos Int
+  descontosCentavos  Int
+  liquidoCentavos    Int
+  detalhe            Json?
+  status             StatusFolha     @default(FECHADA)
+  pagoEm             DateTime?       @db.Timestamptz(3)
+  despesaId          String?         @unique
+  criadoEm           DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@unique([competencia, pessoaId])
+  @@map("folha_pagamentos")
+}
+
+// ======================= Despesas (contas a pagar)
+
+enum StatusDespesa {
+  PENDENTE
+  PAGA
+}
+
+model Despesa {
+  id               String        @id @default(cuid())
+  descricao        String
+  /// ALUGUEL, ENERGIA, AGUA, INTERNET, PRODUTOS, BAR, FORNECEDOR, FOLHA, COMISSAO, MARKETING, IMPOSTOS, MANUTENCAO, OUTROS
+  categoria        String
+  valorCentavos    Int
+  vencimento       DateTime      @db.Date
+  status           StatusDespesa @default(PENDENTE)
+  pagoEm           DateTime?     @db.Timestamptz(3)
+  /// DINHEIRO_CAIXA (sai do caixa como sangria), PIX, TRANSFERENCIA, BOLETO, CARTAO
+  formaPagamento   String?
+  fornecedor       String?
+  observacao       String?
+  /// Repete todo mes: ao pagar, cria a do mes seguinte.
+  recorrente       Boolean       @default(false)
+  movimentoCaixaId String?       @unique
+  criadoPorId      String?
+  criadoEm         DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([status, vencimento])
+  @@index([pagoEm])
+  @@map("despesas")
+}
+
+// ------------------------------------------------------------------ Links de pagamento (checkout online)
+
+enum StatusLinkPagamento {
+  PENDENTE
+  PAGO
+  CANCELADO
+  EXPIRADO
+}
+
+/// Cobranca avulsa enviada por link (/c/link/<token>): Pix ou cartao no checkout do BarberOS.
+model LinkPagamento {
+  id               String              @id @default(cuid())
+  /// Codigo publico do link (aleatorio, nao da para adivinhar).
+  token            String              @unique
+  descricao        String
+  valorCentavos    Int
+  clienteId        String?
+  cliente          Cliente?            @relation(fields: [clienteId], references: [id])
+  nome             String
+  telefone         String
+  /// Pedidos no checkout (exigencia do meio de pagamento) quando nao ha cadastro.
+  cpf              String?
+  email            String?
+  /// Pagar uma comanda aberta a distancia: pago, entra como pagamento da comanda.
+  comandaId        String?
+  comanda          Comanda?            @relation(fields: [comandaId], references: [id])
+  status           StatusLinkPagamento @default(PENDENTE)
+  /// Forma da tentativa atual (null = ainda nao escolheu).
+  forma            FormaPagamento?
+  /// Parcelas permitidas no cartao (1 = a vista) e as usadas no pagamento.
+  parcelasMax      Int                 @default(1)
+  parcelas         Int?
+  /// Pedido no gateway (ex.: "or_123" na Pagar.me).
+  gatewayId        String?             @unique
+  pixCopiaECola    String?
+  pixQrUrl         String?
+  pixExpiraEm      DateTime?           @db.Timestamptz(3)
+  pagoEm           DateTime?           @db.Timestamptz(3)
+  expiraEm         DateTime            @db.Timestamptz(3)
+  criadoPorId      String?
+  criadoEm         DateTime            @default(now()) @db.Timestamptz(3)
+  atualizadoEm     DateTime            @updatedAt @db.Timestamptz(3)
+  pagamentoComanda PagamentoComanda?
+
+  @@index([status, expiraEm])
+  @@index([comandaId])
+  @@index([pagoEm])
+  @@map("links_pagamento")
 }

@@ -8,9 +8,11 @@
  * - Pix: assinatura da Pagar.me nao aceita Pix, entao o BarberOS cria um pedido
  *   Pix por mes (ver lib/assinaturas/rotina.ts). A "assinatura" no gateway e so
  *   um marcador local: "pixrec_<id da assinatura>".
+ * - Cobranca avulsa (horario pago antes, link de pagamento): um pedido (order "or_...")
+ *   com Pix ou cartao tokenizado cobrado na hora (auth_and_capture).
  */
 import type { FormaPagamento } from "@prisma/client";
-import type { CobrancaGateway, Gateway } from "./gateway";
+import type { CobrancaAvulsa, CobrancaGateway, Gateway } from "./gateway";
 
 const BASE = "https://api.pagar.me/core/v5";
 export const PREFIXO_PIX = "pixrec_";
@@ -49,6 +51,9 @@ async function chamar<T>(metodo: string, caminho: string, corpo?: unknown): Prom
 // ---------------------------------------------------------------- conversoes
 
 type TransacaoPagarme = {
+  status?: string | null;
+  acquirer_message?: string | null;
+  gateway_response?: { code?: string; errors?: { message?: string }[] } | null;
   url?: string | null;
   pdf?: string | null;
   line?: string | null;
@@ -118,6 +123,24 @@ export function telefonePagarme(tel: string) {
   return { country_code: "55", area_code: d.slice(0, 2), number: d.slice(2) };
 }
 
+/**
+ * Endereco de cobranca do cartao: a Pagar.me recusa cartao sem ele ("billing | value is required").
+ * Usa o endereco da barbearia (COBRANCA_* no .env), ja que o cliente nao informa endereco.
+ */
+export function enderecoCobranca() {
+  const e = {
+    line_1: process.env.COBRANCA_ENDERECO?.trim(),
+    zip_code: process.env.COBRANCA_CEP?.replace(/D/g, ""),
+    city: process.env.COBRANCA_CIDADE?.trim(),
+    state: process.env.COBRANCA_UF?.trim().toUpperCase(),
+    country: "BR",
+  };
+  if (!e.line_1 || e.zip_code?.length !== 8 || !e.city || e.state?.length !== 2) {
+    throw new Error("Endereço de cobrança não configurado (COBRANCA_ENDERECO, COBRANCA_CEP, COBRANCA_CIDADE, COBRANCA_UF).");
+  }
+  return e;
+}
+
 /** Nome na fatura do cartao: ate 13 caracteres, sem acento nem simbolo. */
 export function descritorFatura(nome: string) {
   return nome.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9 ]/g, "").trim().slice(0, 13) || "BARBEARIA";
@@ -150,7 +173,7 @@ export const pagarme: Gateway = {
     const r = await chamar<{ id: string }>("POST", "/subscriptions", {
       customer_id: a.clienteGatewayId,
       payment_method: a.forma === "CARTAO" ? "credit_card" : "boleto",
-      ...(a.forma === "CARTAO" ? { card_token: a.cartaoToken } : { boleto_due_days: 3 }),
+      ...(a.forma === "CARTAO" ? { card_token: a.cartaoToken, card: { billing_address: enderecoCobranca() } } : { boleto_due_days: 3 }),
       interval: "month",
       interval_count: 1,
       billing_type: "prepaid",
@@ -207,9 +230,81 @@ export const pagarme: Gateway = {
   },
 
   async atualizarCartao(id, token) {
-    await chamar("PATCH", `/subscriptions/${encodeURIComponent(id)}/card`, { card_token: token });
+    await chamar("PATCH", `/subscriptions/${encodeURIComponent(id)}/card`, { card_token: token, card: { billing_address: enderecoCobranca() } });
+  },
+
+  async cancelarCobranca(id) {
+    await chamar("DELETE", `/charges/${encodeURIComponent(id)}`);
+  },
+
+  async criarCobrancaAvulsa(c) {
+    if (c.forma === "BOLETO") throw new Error("Pagar.me: cobrança avulsa só no Pix ou cartão.");
+    if (c.forma === "CARTAO" && !c.cartaoToken) throw new Error("Cartão não informado.");
+    const pagamento = c.forma === "PIX"
+      ? { payment_method: "pix", pix: { expires_in: Math.max(300, Math.round(c.pixValidadeSeg ?? 86_400)) } }
+      : {
+          payment_method: "credit_card",
+          credit_card: {
+            card_token: c.cartaoToken,
+            card: { billing_address: enderecoCobranca() },
+            installments: Math.min(12, Math.max(1, c.parcelas ?? 1)),
+            operation_type: "auth_and_capture",
+            statement_descriptor: descritorFatura(process.env.NOME_FATURA ?? c.descricao),
+          },
+        };
+    const r = await chamar<PedidoPagarme>("POST", "/orders", {
+      code: c.referencia.slice(0, 52),
+      customer_id: c.clienteGatewayId,
+      items: [{ code: "avulso", description: c.descricao.slice(0, 256), quantity: 1, amount: c.valorCentavos }],
+      payments: [pagamento],
+      metadata: { referencia: c.referencia },
+    });
+    return converterPedido(r);
+  },
+
+  async buscarCobrancaAvulsa(id) {
+    return converterPedido(await chamar<PedidoPagarme>("GET", `/orders/${encodeURIComponent(id)}`));
+  },
+
+  async cancelarCobrancaAvulsa(id) {
+    const r = await chamar<PedidoPagarme>("GET", `/orders/${encodeURIComponent(id)}`);
+    for (const ch of r.charges ?? []) {
+      if (ch.status === "pending" || ch.status === "processing") await chamar("DELETE", `/charges/${encodeURIComponent(ch.id)}`);
+    }
   },
 };
+
+// ---------------------------------------------------------------- cobranca avulsa (pedido)
+
+export type PedidoPagarme = { id: string; status: string; charges?: CobrancaPagarme[] };
+
+/** Texto da recusa do cartao para o cliente (a mensagem do banco quando vier). */
+export function motivoRecusa(t: TransacaoPagarme | null | undefined) {
+  const m = t?.acquirer_message?.trim() || t?.gateway_response?.errors?.[0]?.message?.trim();
+  return m ? `O cartão não foi aceito: ${m}` : "O cartão não foi aceito. Confira os dados ou tente outro cartão.";
+}
+
+/** Pedido avulso -> formato interno. Status pela cobranca mais recente (a paga, se houver). */
+export function converterPedido(o: PedidoPagarme): CobrancaAvulsa {
+  const charges = o.charges ?? [];
+  const ch = charges.find((c) => c.status === "paid" || c.status === "overpaid") ?? charges[charges.length - 1];
+  let status = ch ? traduzirStatus(ch.status) : "PENDENTE";
+  if (status === "PENDENTE" && o.status === "canceled") status = "CANCELADA";
+  if (status === "PENDENTE" && o.status === "failed") status = "ATRASADA";
+  const t = ch?.last_transaction ?? null;
+  const forma = ch?.payment_method ? (FORMA[ch.payment_method] ?? null) : null;
+  return {
+    id: o.id,
+    status,
+    pagaEm: status === "PAGA" ? (ch?.paid_at ?? new Date().toISOString()) : null,
+    link: null, // o checkout e o do BarberOS
+    forma,
+    pixCopiaECola: forma === "PIX" ? (t?.qr_code ?? null) : null,
+    pixQrUrl: forma === "PIX" ? (t?.qr_code_url ?? null) : null,
+    expiraEm: forma === "PIX" ? (t?.expires_at ?? null) : null,
+    erro: status === "ATRASADA" ? motivoRecusa(t) : null,
+  };
+}
 
 // ---------------------------------------------------------------- Stone Connect 2.0 (maquininha)
 // Doc: https://connect-stone.stone.com.br - o pedido criado aqui aparece na maquininha

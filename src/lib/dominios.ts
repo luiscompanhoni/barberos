@@ -24,3 +24,9 @@ export function ehHostPainel(host: string | null) {
 export function ehPaginaDoSite(path: string) {
   return path === "/" || path === "/assine" || path === "/entrar" || path === "/c" || path.startsWith("/c/") || path.startsWith("/i/");
 }
+
+/**
+ * Cookie "Secure" so quando o sistema e servido por https (o navegador descarta cookie
+ * Secure em http, e o login parece nao funcionar). Com o dominio + https, vira seguro sozinho.
+ */
+export const cookieSeguro = () => urlSite().startsWith("https://") && urlPainel().startsWith("https://");

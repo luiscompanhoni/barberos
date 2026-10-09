@@ -81,7 +81,7 @@ export function DetalheModal(p: {
     <Modal titulo={ag.cliente.nome} onFechar={p.onFechar}>
       <dl className="grid grid-cols-[110px_1fr] gap-y-1.5 text-sm">
         <dt className="text-zinc-500">Horário</dt><dd>{hora(ag.inicio)} às {hora(ag.fim)}</dd>
-        <dt className="text-zinc-500">Serviço</dt><dd>{ag.servico.nome} · {ag.assinante ? "pelo plano" : reais(ag.precoCentavos)}</dd>
+        <dt className="text-zinc-500">Serviço</dt><dd>{ag.servico.nome} · {ag.assinante ? "pelo plano" : reais(ag.precoCentavos)}{ag.pagoAntes && <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">pago online</span>}</dd>
         <dt className="text-zinc-500">Barbeiro</dt>
         <dd>{p.barbeiroNome}{ag.semPreferencia && <span className="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-800">sem preferência: pode trocar</span>}</dd>
         <dt className="text-zinc-500">Situação</dt><dd>{ROTULO_STATUS[ag.status]}</dd>

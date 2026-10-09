@@ -18,7 +18,14 @@
     "teste:pagarme": "tsx --env-file=.env scripts/teste-pagarme.ts",
     "teste:comandas": "tsx --env-file=.env scripts/teste-comandas.ts",
     "teste:automacoes": "tsx --env-file=.env scripts/teste-automacoes.ts",
-    "teste:crescimento": "tsx --env-file=.env scripts/teste-crescimento.ts"
+    "teste:crescimento": "tsx --env-file=.env scripts/teste-crescimento.ts",
+    "teste:login": "tsx --env-file=.env scripts/teste-login.ts",
+    "teste:antecipado": "tsx --env-file=.env scripts/teste-antecipado.ts",
+    "teste:roleta": "tsx --env-file=.env scripts/teste-roleta.ts",
+    "teste:financeiro": "tsx --env-file=.env scripts/teste-financeiro.ts",
+    "teste:rh": "tsx --env-file=.env scripts/teste-rh.ts",
+    "teste:despesas": "tsx --env-file=.env scripts/teste-despesas.ts",
+    "teste:checkout": "tsx --env-file=.env scripts/teste-checkout.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

@@ -10,7 +10,8 @@ DIR=/opt/barberos
 cd "$(dirname "$0")/.."
 
 PACOTE="$(mktemp -d)/barberos.tgz"
-git ls-files -co --exclude-standard -z | tar --null -T - -czf "$PACOTE"
+# Arquivos do projeto (versionados + novos, sem os ignorados), pulando os que nao existem mais no disco.
+git ls-files -co --exclude-standard -z | while IFS= read -r -d "" f; do [ -e "$f" ] && printf '%s\0' "$f"; done | tar --null -T - -czf "$PACOTE"
 echo ">> pacote: $(du -h "$PACOTE" | cut -f1)"
 scp -q "$PACOTE" "$ALVO:/tmp/barberos.tgz"
 
@@ -38,6 +39,9 @@ if [ ! -f .env ]; then
   chmod 600 .env
   echo ">> .env criado em $DIR/.env (preencha DONO_TELEFONE, ANTHROPIC_API_KEY...)"
 fi
+# Chave interna do WhatsApp nao oficial (Evolution): cria se faltar, inclusive em .env antigo.
+grep -q "^EVOLUTION_API_KEY=" .env || echo "EVOLUTION_API_KEY=" >> .env
+sed -i "s|^EVOLUTION_API_KEY=$|EVOLUTION_API_KEY=$(openssl rand -hex 24)|" .env
 if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
   ufw allow 80/tcp >/dev/null; ufw allow 443/tcp >/dev/null
 fi

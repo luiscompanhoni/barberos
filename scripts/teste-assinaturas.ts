@@ -1,5 +1,6 @@
 // Teste de integracao do ciclo da assinatura (gateway simulado) contra o banco de DESENVOLVIMENTO.
 // Cria e apaga os proprios dados. Rodar: npm run teste:assinaturas
+process.env.COBRANCA_ENDERECO ??= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ??= "89160161"; process.env.COBRANCA_CIDADE ??= "Rio do Sul"; process.env.COBRANCA_UF ??= "SC";
 import { db } from "@/lib/db";
 import { assinar, cancelar, situacaoDoCliente, entrarNaListaDeEspera } from "@/lib/assinaturas/servico";
 import { cobrancaEmAberto, processarEventoGateway } from "@/lib/assinaturas/cobrancas";
@@ -50,7 +51,11 @@ async function main() {
   ok(again.reaproveitada && again.link === r.link, "pedir de novo reaproveita a mesma cobrança");
 
   // 3. Antes de pagar, corte e cobrado normal
-  const sex = (h: number, dias = 0) => new Date(instanteLocal("2026-10-09", h * 60, FUSO) + dias * 86_400_000);
+  // Proxima sexta com pelo menos 2 dias de folga (o teste nao depende do dia em que roda).
+  const base = new Date(Date.now() + 2 * 86_400_000);
+  base.setUTCDate(base.getUTCDate() + ((5 - base.getUTCDay() + 7) % 7));
+  const SEXTA = base.toISOString().slice(0, 10);
+  const sex = (h: number, dias = 0) => new Date(instanteLocal(SEXTA, h * 60, FUSO) + dias * 86_400_000);
   const ag0 = await agendarPeloCliente({ telefone: A, nome: "x", barbeiroId: joao.id, servicoId: corte.id, inicio: sex(9), origem: "SITE" });
   ok(ag0.precoCentavos === 5000 && ag0.assinaturaId === null, "sem pagar: corte avulso R$ 50");
   await alterarStatus(ag0.id, "CANCELADO", dono);
@@ -107,7 +112,9 @@ async function main() {
   ok(sit === null && ag3b.assinaturaId === null && ag3b.precoCentavos === 5000, "cancelada: horário futuro virou avulso R$ 50");
 
   // 10. Vagas e lista de espera
-  await db.plano.update({ where: { id: pCombo.id }, data: { vagas: 1 } });
+  // Sobra exatamente 1 vaga (o banco de desenvolvimento pode ter assinantes de verdade nesse plano).
+  const ocupadas = await db.assinatura.count({ where: { planoId: pCombo.id, OR: [{ status: { in: ["ATIVA", "ATRASADA"] } }, { status: "PENDENTE", criadaEm: { gt: new Date(Date.now() - 3 * 86_400_000) } }] } });
+  await db.plano.update({ where: { id: pCombo.id }, data: { vagas: ocupadas + 1 } });
   const ra = await assinar({ clienteId: ca.id, planoId: pCombo.id, forma: "CARTAO", origem: "SITE" });
   aberta = await cobrancaEmAberto(ra.assinatura.id);
   await pagarSimulada(aberta!.gatewayId);

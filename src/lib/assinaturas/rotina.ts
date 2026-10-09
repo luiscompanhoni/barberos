@@ -2,16 +2,22 @@
  * Rotina das assinaturas (roda de hora em hora no servidor). Necessaria para
  * gateways sem recorrencia de Pix nem aviso de atraso (Pagar.me):
  * - gera o Pix do proximo mes 3 dias antes do vencimento e manda no WhatsApp;
- * - marca como vencida a cobranca que passou do dia sem pagamento.
+ * - marca como vencida a cobranca que passou do dia sem pagamento;
+ * - Celcash: busca o status das assinaturas na API (a conta so tem uma URL de webhook,
+ *   que pode estar em uso por outro sistema; a consulta garante que nada se perde).
+ *   Continua rodando depois da troca para a Pagar.me enquanto houver assinatura antiga da Celcash.
+ * - links de pagamento: confere os em aberto e expira os vencidos.
  */
 import { db } from "@/lib/db";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, somarDias } from "@/lib/agenda/tempo";
-import { gateway, provedorPagamento } from "@/lib/pagamentos/gateway";
+import { gateway } from "@/lib/pagamentos/gateway";
 import { PREFIXO_PIX } from "@/lib/pagamentos/pagarme";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
-import { linkAbsoluto, sincronizarCobranca } from "./cobrancas";
+import { linkAbsoluto, sincronizarAssinatura, sincronizarCobranca } from "./cobrancas";
 import { gerarPixDoMes } from "./cartao-pix";
+import { sincronizarAntecipadosPendentes } from "@/lib/agenda/antecipado";
+import { sincronizarLinksPendentes } from "@/lib/links/servico";
 
 const DIAS_ANTES_PIX = 3;
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -67,12 +73,38 @@ export async function marcarVencidas() {
   return vencidas.length;
 }
 
+/** Celcash: atualiza as cobrancas de cada assinatura feita pelo BarberOS (novas mensalidades e pagamentos). */
+export async function sincronizarCelcash() {
+  const ativas = await db.assinatura.findMany({
+    where: { gatewayId: { startsWith: "celsub_" }, status: { not: "CANCELADA" } },
+    select: { id: true },
+  });
+  let ok = 0;
+  for (const a of ativas) {
+    try {
+      await sincronizarAssinatura(a.id);
+      ok++;
+    } catch (e) {
+      console.error(`[rotina] falha ao consultar a Celcash (assinatura ${a.id}):`, e);
+    }
+  }
+  return ok;
+}
+
 export async function rodarRotinaDePagamentos() {
-  if (provedorPagamento() !== "pagarme") return { pix: 0, vencidas: 0 };
+  // Horarios pagos antes e links de pagamento (cada um no gateway do seu id).
+  await sincronizarAntecipadosPendentes().catch((e) => console.error("[rotina] pagamentos antecipados:", e));
+  await sincronizarLinksPendentes().catch((e) => console.error("[rotina] links de pagamento:", e));
+  // Assinaturas da Celcash (feitas antes da troca de provedor) seguem sincronizadas pela Celcash.
+  const celcash = await sincronizarCelcash();
   const g = await gateway();
-  const pix = g.pix === "avulso" ? await gerarPixDoProximoMes() : 0;
-  const vencidas = await marcarVencidas();
-  return { pix, vencidas };
+  // Pix mensal das assinaturas Pix da Pagar.me (pixrec_), mesmo se o provedor do env mudar.
+  const pix = g.pix === "avulso" || (await db.assinatura.count({ where: { gatewayId: { startsWith: PREFIXO_PIX }, status: { not: "CANCELADA" } } }))
+    ? await gerarPixDoProximoMes()
+    : 0;
+  // Asaas avisa o atraso sozinho; Pagar.me e Celcash nao: a rotina marca as vencidas.
+  const vencidas = g.nome === "pagarme" || g.nome === "celcash" ? await marcarVencidas() : 0;
+  return { pix, vencidas, celcash };
 }
 
 /** Liga a rotina uma vez por processo (chamado do instrumentation). */

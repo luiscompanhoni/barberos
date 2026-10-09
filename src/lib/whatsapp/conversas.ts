@@ -1,7 +1,7 @@
 import { Prisma, type AutorMensagem } from "@prisma/client";
 import { db } from "@/lib/db";
 import { publicar } from "@/lib/eventos";
-import { enviarTemplate, enviarTexto, provedorWhatsApp } from "./canal";
+import { enviarTemplate, enviarTexto, temJanela24h } from "./canal";
 
 const JANELA_24H_MS = 24 * 3_600_000;
 
@@ -68,7 +68,7 @@ export async function notificarCliente(telefone: string, texto: string) {
     : null;
   const dentroDaJanela = !!conversa.ultimaEntradaEm && Date.now() - conversa.ultimaEntradaEm.getTime() < JANELA_24H_MS;
 
-  if (dentroDaJanela || provedorWhatsApp() === "simulador") {
+  if (dentroDaJanela || !temJanela24h()) {
     return enviarNaConversa(conversa.id, texto, "SISTEMA");
   }
 

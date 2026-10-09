@@ -8,7 +8,7 @@ import { Prisma, type StatusAssinatura } from "@prisma/client";
 import { db } from "@/lib/db";
 import { urlSite } from "@/lib/dominios";
 import { publicar } from "@/lib/eventos";
-import { gateway, type CobrancaGateway } from "@/lib/pagamentos/gateway";
+import { gatewayPorId, type CobrancaGateway } from "@/lib/pagamentos/gateway";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
 import { somarMes } from "./regras";
 
@@ -117,7 +117,8 @@ export async function processarEventoGateway(eventoId: string, tipo: string, cob
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { repetido: true };
     throw e;
   }
-  const g = await gateway();
+  // O id diz o gateway (cobranca antiga da Celcash continua na Celcash).
+  const g = await gatewayPorId(cobrancaGatewayId);
   const cob = await g.buscarCobranca(cobrancaGatewayId);
   return { repetido: false, transicao: await sincronizarCobranca(cob) };
 }
@@ -126,7 +127,7 @@ export async function processarEventoGateway(eventoId: string, tipo: string, cob
 export async function sincronizarAssinatura(assinaturaId: string) {
   const a = await db.assinatura.findUniqueOrThrow({ where: { id: assinaturaId } });
   if (!a.gatewayId) return;
-  const g = await gateway();
+  const g = await gatewayPorId(a.gatewayId);
   for (const c of await g.cobrancasDaAssinatura(a.gatewayId)) await sincronizarCobranca(c);
 }
 

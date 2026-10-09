@@ -1,11 +1,38 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Camera, Trash2 } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { formatarTelefone } from "@/lib/telefone";
 import type { ServicoApi } from "@/components/agenda/EncaixeModal";
 
-type BarbeiroApi = { id: string; nome: string; cor: string; ativo: boolean; usuario: { telefone: string } };
+type BarbeiroApi = { id: string; nome: string; cor: string; ativo: boolean; fotoVersao: number; usuario: { telefone: string } };
+const LADO_FOTO = 320;
+
+/** Recorte central quadrado, redimensionado no navegador e exportado em webp (jpeg se nao houver webp). */
+async function prepararFoto(arquivo: File): Promise<string> {
+  const url = URL.createObjectURL(arquivo);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const lado = Math.min(img.naturalWidth, img.naturalHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = LADO_FOTO;
+    const ctx = canvas.getContext("2d");
+    if (!ctx || !lado) throw new Error("Não foi possível ler a imagem.");
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(img, (img.naturalWidth - lado) / 2, (img.naturalHeight - lado) / 2, lado, lado, 0, 0, LADO_FOTO, LADO_FOTO);
+    const webp = canvas.toDataURL("image/webp", 0.85);
+    return webp.startsWith("data:image/webp") ? webp : canvas.toDataURL("image/jpeg", 0.85);
+  } catch (e) {
+    throw e instanceof Error && e.message.startsWith("Não") ? e : new Error("Não foi possível ler a imagem. Use JPG, PNG ou WebP.");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 const CORES = ["#378ADD", "#1D9E75", "#D85A30", "#7F77DD", "#D4537E", "#BA7517", "#639922"];
 
 /** Painel do dono: cadastro de barbeiros e servicos (quem faz o que). */
@@ -15,6 +42,9 @@ export function EquipeTela() {
   const [erro, setErro] = useState("");
   const [nb, setNb] = useState({ nome: "", telefone: "" });
   const [ns, setNs] = useState({ nome: "", duracaoMin: "30", preco: "" });
+  const [fotoAlvo, setFotoAlvo] = useState<string | null>(null);
+  const [enviandoFoto, setEnviandoFoto] = useState<string | null>(null);
+  const arquivoRef = useRef<HTMLInputElement>(null);
 
   const carregar = useCallback(() => {
     api<BarbeiroApi[]>("/api/barbeiros").then(setBarbeiros).catch((e) => setErro(e.message));
@@ -26,6 +56,29 @@ export function EquipeTela() {
     setErro("");
     try { await fn(); carregar(); } catch (e) { setErro((e as Error).message); }
   }
+
+  const escolherFoto = (id: string) => {
+    setFotoAlvo(id);
+    arquivoRef.current?.click();
+  };
+
+  const enviarFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    const id = fotoAlvo;
+    if (!arquivo || !id) return;
+    setEnviandoFoto(id);
+    await acao(async () => {
+      const dataUrl = await prepararFoto(arquivo);
+      await api(`/api/barbeiros/${id}/foto`, { method: "PUT", body: { dataUrl } });
+    });
+    setEnviandoFoto(null);
+  };
+
+  const removerFoto = (b: BarbeiroApi) => {
+    if (!confirm(`Remover a foto de ${b.nome}?`)) return;
+    acao(() => api(`/api/barbeiros/${b.id}/foto`, { method: "DELETE" }));
+  };
 
   const novoBarbeiro = (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,22 +116,35 @@ export function EquipeTela() {
         <h2 className="font-semibold">Barbeiros</h2>
         <ul className="divide-y divide-zinc-100 text-sm">
           {barbeiros.map((b) => (
-            <li key={b.id} className="flex items-center gap-3 py-2">
-              <span className="h-3 w-3 rounded-full" style={{ background: b.cor }} />
+            <li key={b.id} className="flex flex-wrap items-center gap-3 py-2">
+              <button type="button" className="group relative rounded-full" onClick={() => escolherFoto(b.id)} disabled={enviandoFoto === b.id}
+                title={b.fotoVersao > 0 ? "Trocar foto" : "Adicionar foto"} aria-label={`${b.fotoVersao > 0 ? "Trocar" : "Adicionar"} foto de ${b.nome}`}>
+                <FotoBarbeiro id={b.id} nome={b.nome} cor={b.cor} versao={b.fotoVersao} tamanho={44} className={enviandoFoto === b.id ? "opacity-40" : ""} />
+                <span className="absolute -right-1 -bottom-1 grid h-5 w-5 place-items-center rounded-full border border-zinc-200 bg-white text-zinc-600 group-hover:text-ouro">
+                  <Camera size={11} />
+                </span>
+              </button>
               <span className={`font-medium ${b.ativo ? "" : "text-zinc-400 line-through"}`}>{b.nome}</span>
               <span className="text-zinc-500">{formatarTelefone(b.usuario.telefone)}</span>
-              <button className="ml-auto text-xs text-zinc-600 underline" onClick={() => acao(() => api(`/api/barbeiros/${b.id}`, { method: "PATCH", body: { ativo: !b.ativo } }))}>
+              {enviandoFoto === b.id && <span className="text-xs text-zinc-500">Enviando foto...</span>}
+              {b.fotoVersao > 0 && enviandoFoto !== b.id && (
+                <button className="ml-auto inline-flex items-center gap-1 text-xs text-zinc-600 underline" onClick={() => removerFoto(b)}>
+                  <Trash2 size={12} /> remover foto
+                </button>
+              )}
+              <button className={`${b.fotoVersao > 0 && enviandoFoto !== b.id ? "" : "ml-auto "}text-xs text-zinc-600 underline`} onClick={() => acao(() => api(`/api/barbeiros/${b.id}`, { method: "PATCH", body: { ativo: !b.ativo } }))}>
                 {b.ativo ? "desativar" : "reativar"}
               </button>
             </li>
           ))}
         </ul>
+        <input ref={arquivoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={enviarFoto} />
         <form onSubmit={novoBarbeiro} className="flex flex-wrap gap-2">
           <input className="campo max-w-48" placeholder="Nome" value={nb.nome} onChange={(e) => setNb({ ...nb, nome: e.target.value })} />
           <input className="campo max-w-48" placeholder="Celular (login)" inputMode="tel" value={nb.telefone} onChange={(e) => setNb({ ...nb, telefone: e.target.value })} />
           <button className="btn-primario">Adicionar barbeiro</button>
         </form>
-        <p className="text-xs text-zinc-500">O barbeiro entra no sistema com esse celular. Depois de cadastrar, configure os horários dele em Horários da equipe.</p>
+        <p className="text-xs text-zinc-500">Toque na foto para trocar. O barbeiro entra no sistema com esse celular. Depois de cadastrar, configure os horários dele em Horários da equipe.</p>
       </section>
 
       <section className="cartao space-y-3">

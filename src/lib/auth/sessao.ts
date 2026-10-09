@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import type { Papel } from "@prisma/client";
 import { db } from "@/lib/db";
+import { cookieSeguro } from "@/lib/dominios";
 import { naoAutorizado, proibido } from "@/lib/erros";
 import { assinarToken, COOKIE_SESSAO, DURACAO_SESSAO_S, lerToken, type Sessao } from "./token";
 
@@ -10,7 +11,7 @@ export async function criarSessao(s: Sessao) {
   (await cookies()).set(COOKIE_SESSAO, await assinarToken(s), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSeguro(),
     path: "/",
     maxAge: DURACAO_SESSAO_S,
   });

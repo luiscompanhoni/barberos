@@ -1,3 +1,4 @@
+import { aoCancelarHorario } from "./antecipado";
 import { Prisma, type OrigemAgendamento, type StatusAgendamento } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
@@ -246,7 +247,10 @@ export async function alterarStatus(id: string, status: StatusAgendamento, ator:
       return novo;
     });
     publicar({ tipo: "agenda", barbeiroIds: [ag.barbeiroId], datas: [dataLocal(ag.inicio, cfg.fuso)] });
-    if (status === "CANCELADO") void avisarMudanca(ag.id, "cancelado");
+    if (status === "CANCELADO") {
+      void avisarMudanca(ag.id, "cancelado");
+      void aoCancelarHorario(ag.id);
+    }
     return ag;
   } catch (e) {
     // Reativar um cancelado cujo horario ja foi ocupado.

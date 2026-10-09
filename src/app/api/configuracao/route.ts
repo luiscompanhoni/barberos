@@ -39,6 +39,9 @@ export const PATCH = rota(async (req: Request) => {
       indicacaoAtiva: z.boolean().optional(),
       premioIndicadorCentavos: z.number().int().min(0).max(100_000).optional(),
       premioIndicadoCentavos: z.number().int().min(0).max(100_000).optional(),
+      cashbackAtivo: z.boolean().optional(),
+      cashbackPct: z.number().int().min(1).max(50).optional(),
+      cashbackValidadeDias: z.number().int().min(7).max(365).optional(),
       presenteAniversario: z.string().trim().max(120).nullable().optional(),
     }),
   );

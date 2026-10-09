@@ -2,22 +2,24 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, Gift, Minus, Plus, Scissors, Trash2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Gift, Link2, Minus, Plus, Scissors, Trash2 } from "lucide-react";
+import { BotaoCopiar, NovoLinkModal } from "@/components/financeiro/NovoLinkModal";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
 import { Catalogo } from "./Catalogo";
 import { Recebimento } from "./Recebimento";
 import { nomeDaComanda, type Comanda, type Forma, type ModoMaquininha } from "./tipos";
 import { useAoVivo } from "./useAoVivo";
 
-type Resposta = { comanda: Comanda; maquininha?: ModoMaquininha; resultado?: { troco: number; alertas: string[] } | null };
+type Resposta = { comanda: Comanda; maquininha?: ModoMaquininha; resultado?: { troco: number; alertas: string[]; cashbackCentavos?: number } | null };
 
 export function ComandaTela({ id, papel }: { id: string; papel: string }) {
   const [c, setC] = useState<Comanda | null>(null);
   const [maquininha, setMaquininha] = useState<ModoMaquininha>("manual");
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
-  const [fechamento, setFechamento] = useState<{ troco: number; alertas: string[] } | null>(null);
+  const [fechamento, setFechamento] = useState<{ troco: number; alertas: string[]; cashbackCentavos?: number } | null>(null);
   const [desconto, setDesconto] = useState<string | null>(null);
+  const [cobrarLink, setCobrarLink] = useState(false);
   const gerente = papel === "DONO" || papel === "RECEPCAO";
 
   const carregar = useCallback(() => {
@@ -46,6 +48,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
   if (!c) return <p className="text-sm text-zinc-500">{erro || "Carregando..."}</p>;
   const r = c.resumo;
   const aberta = c.status === "ABERTA";
+  const emLinks = (c.linksPagamento ?? []).reduce((t, l) => t + l.valorCentavos, 0);
 
   return (
     <div className="space-y-4">
@@ -69,6 +72,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
           <div className="text-sm">
             <p className="font-bold">Comanda fechada.</p>
             {fechamento.troco > 0 && <p className="mt-1 text-lg font-black text-ouro">Troco: {reais(fechamento.troco)}</p>}
+            {!!fechamento.cashbackCentavos && <p className="mt-1">O cliente ganhou <b className="text-ouro">{reais(fechamento.cashbackCentavos)}</b> de cashback.</p>}
             {fechamento.alertas.map((a) => <p key={a} className="mt-1 text-amber-800">{a}</p>)}
           </div>
         </div>
@@ -149,25 +153,30 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
             </div>
           </section>
 
-          {aberta && !!c.beneficios?.length && (
-            <section className="cartao-destaque space-y-2">
-              <p className="flex items-center gap-2 text-sm font-semibold"><Gift size={16} className="text-ouro" /> Descontos do cliente</p>
-              <ul className="space-y-1.5 text-sm">
-                {c.beneficios.map((b) => (
-                  <li key={b.id} className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate">{b.descricao}</span>
-                    <b className="text-ouro">{reais(b.valorCentavos)}</b>
-                    <button className="btn py-1 text-xs" disabled={ocupado || c.itens.length === 0}
-                      onClick={() => executar(`/api/comandas/${id}`, { acao: "beneficio", beneficioId: b.id })}>Usar</button>
-                  </li>
-                ))}
-              </ul>
+          {aberta && !!c.saldoCliente && (
+            <section className="cartao-destaque flex flex-wrap items-center gap-3">
+              <Gift size={18} className="shrink-0 text-ouro" />
+              <div className="min-w-0 flex-1 text-sm">
+                <p className="font-semibold">Saldo do cliente: <span className="text-ouro">{reais(c.saldoCliente)}</span></p>
+                <p className="text-xs text-zinc-500">Cashback e indicações. Vira desconto nesta comanda.</p>
+              </div>
+              <button className="btn-primario" disabled={ocupado || c.itens.length === 0 || r.total === 0}
+                onClick={() => executar(`/api/comandas/${id}`, { acao: "saldo" })}>Usar saldo</button>
             </section>
           )}
 
           {(c.itens.length > 0 || c.pagamentos.length > 0) && (
             <section className="cartao space-y-3">
               <h2 className="rotulo">Pagamento</h2>
+              {(c.linksPagamento ?? []).map((l) => (
+                <div key={l.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-ouro/40 bg-ouro/5 p-3 text-sm">
+                  <Link2 size={16} className="text-ouro" />
+                  <span className="font-semibold">Link enviado</span>
+                  <span className="text-xs text-zinc-500">aguardando o cliente pagar</span>
+                  <span className="ml-auto font-bold">{reais(l.valorCentavos)}</span>
+                  {l.url && <BotaoCopiar texto={l.url} className="btn w-full py-1 text-xs" />}
+                </div>
+              ))}
               <Recebimento
                 comanda={c}
                 maquininha={maquininha}
@@ -177,6 +186,11 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
                 onPagar={(p: { forma: Forma; valorCentavos: number; naMaquininha: boolean }) => executar(`/api/comandas/${id}/pagamentos`, p, "POST")}
                 onAcaoPagamento={(pid, acao) => executar(`/api/comandas/pagamentos/${pid}`, { acao })}
               />
+              {aberta && gerente && r.falta - emLinks > 0 && (
+                <button className="btn w-full" disabled={ocupado} onClick={() => setCobrarLink(true)}>
+                  <Link2 size={15} /> Cobrar por link (Pix ou cartão à distância)
+                </button>
+              )}
               {aberta && (
                 <button className="btn-primario w-full py-3" disabled={ocupado || !r.podeFechar || c.itens.length === 0}
                   onClick={() => executar(`/api/comandas/${id}`, { acao: "fechar" })}>
@@ -199,6 +213,16 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
           )}
         </div>
       </div>
+      {cobrarLink && (
+        <NovoLinkModal
+          comanda={{
+            id: c.id, numero: c.numero, cliente: c.cliente, nomeAvulso: c.nomeAvulso,
+            faltaCentavos: r.falta - emLinks,
+          }}
+          onFechar={() => setCobrarLink(false)}
+          onCriado={() => carregar()}
+        />
+      )}
     </div>
   );
 }

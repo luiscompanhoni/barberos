@@ -7,13 +7,11 @@ import type { OrigemAgendamento } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { configuracao } from "@/lib/agenda/carregar";
 import { auditar } from "@/lib/auditoria";
-import type { Sessao } from "@/lib/auth/sessao";
-import { avisarComanda } from "@/lib/comandas/servico";
-import { resumoComanda } from "@/lib/comandas/regras";
 import { db } from "@/lib/db";
 import { urlSite } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { gerarCodigoIndicacao, normalizarCodigo, TEXTOS } from "./regras";
+import { disponiveis } from "./saldo";
 
 export const COOKIE_INDICACAO = "barberos_indicacao";
 
@@ -42,7 +40,7 @@ export async function painelDeIndicacao(clienteId: string) {
   const [cliente, indicacoes, beneficios] = await Promise.all([
     db.cliente.findUniqueOrThrow({ where: { id: clienteId }, select: { nome: true } }),
     db.indicacao.findMany({ where: { indicadorId: clienteId }, select: { convertidaEm: true } }),
-    db.beneficio.findMany({ where: { clienteId, status: "DISPONIVEL" }, select: { id: true, descricao: true, valorCentavos: true } }),
+    db.beneficio.findMany({ where: { clienteId, ...disponiveis() }, select: { id: true, descricao: true, valorCentavos: true } }),
   ]);
   return {
     ativa: true as const,
@@ -117,29 +115,3 @@ export async function converterIndicacoes(opts: { clienteIds?: string[] } = {}) 
   }
   return premiados;
 }
-
-/** Usa um beneficio na comanda aberta: vira desconto (ate o total da comanda). */
-export async function usarBeneficio(s: Sessao, beneficioId: string, comandaId: string) {
-  const r = await db.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${comandaId} FOR UPDATE`;
-    const [b, c] = await Promise.all([
-      tx.beneficio.findUnique({ where: { id: beneficioId } }),
-      tx.comanda.findUnique({ where: { id: comandaId }, include: { itens: true, pagamentos: true } }),
-    ]);
-    if (!b || !c) throw naoEncontrado(!b ? "Benefício" : "Comanda");
-    if (c.status !== "ABERTA") throw new ErroNegocio("Essa comanda já foi fechada.");
-    if (b.status !== "DISPONIVEL") throw new ErroNegocio("Esse benefício já foi usado.");
-    if (!c.clienteId || c.clienteId !== b.clienteId) throw new ErroNegocio("O benefício é de outro cliente.");
-    const { subtotal } = resumoComanda(c.itens, c.pagamentos, 0);
-    const desconto = Math.min(subtotal, c.descontoCentavos + b.valorCentavos);
-    if (desconto === c.descontoCentavos) throw new ErroNegocio("A comanda não tem valor para descontar.");
-    await tx.comanda.update({ where: { id: comandaId }, data: { descontoCentavos: desconto } });
-    await tx.beneficio.update({ where: { id: beneficioId }, data: { status: "USADO", usadoEm: new Date(), comandaId } });
-    await auditar(tx, s.usuarioId, "usar_beneficio", "comanda", comandaId, { beneficioId, valorCentavos: b.valorCentavos });
-    return { aplicado: desconto - c.descontoCentavos };
-  });
-  avisarComanda(comandaId);
-  return r;
-}
-
-

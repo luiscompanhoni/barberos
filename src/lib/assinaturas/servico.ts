@@ -8,7 +8,7 @@ import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { configuracao, servicoDoBarbeiro } from "@/lib/agenda/carregar";
 import { dataLocal } from "@/lib/agenda/tempo";
-import { gateway } from "@/lib/pagamentos/gateway";
+import { gateway, gatewayPorId, provedorPorId } from "@/lib/pagamentos/gateway";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
 import { cobrancaEmAberto, linkAbsoluto, novoTokenPublico, sincronizarAssinatura } from "./cobrancas";
 import { gerarPixDoMes } from "./cartao-pix";
@@ -114,10 +114,13 @@ export async function assinar(p: {
 
   let linkCartao: string | null = null;
   try {
-    const anterior = await db.assinatura.findFirst({
+    const anteriores = await db.assinatura.findMany({
       where: { clienteId: cliente.id, gatewayClienteId: { not: null } },
       select: { gatewayClienteId: true },
+      orderBy: { criadaEm: "desc" },
     });
+    // So reaproveita o cadastro do mesmo gateway (cliente antigo da Celcash vira cliente novo na Pagar.me).
+    const anterior = anteriores.find((x) => provedorPorId(x.gatewayClienteId!) === g.nome);
     const gatewayClienteId =
       anterior?.gatewayClienteId ??
       (await g.criarCliente({ nome: cliente.nome, cpf, telefone: cliente.telefone, email: email || null, referencia: cliente.id }));
@@ -163,7 +166,7 @@ export async function cancelar(assinaturaId: string, motivo: string, usuarioId: 
   if (a.status === "CANCELADA") return a;
   if (a.gatewayId) {
     try {
-      await (await gateway()).cancelarAssinatura(a.gatewayId);
+      await (await gatewayPorId(a.gatewayId)).cancelarAssinatura(a.gatewayId);
     } catch (e) {
       console.error("[assinaturas] falha ao cancelar no gateway:", e);
       throw new ErroNegocio("Não foi possível cancelar no meio de pagamento. Tente de novo.", 502, "gateway");

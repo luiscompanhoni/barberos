@@ -30,6 +30,10 @@ export type Pagamento = {
   valorCentavos: number;
   status: "AGUARDANDO" | "PAGO" | "CANCELADO";
   gatewayPedidoId: string | null;
+  /** Pago online antes do atendimento (link de Pix/cartao). */
+  antecipadoId?: string | null;
+  /** Pago a distancia pelo link de pagamento. */
+  linkPagamentoId?: string | null;
   nsu: string | null;
   bandeira: string | null;
   criadoEm: string;
@@ -52,8 +56,10 @@ export type Comanda = {
   itens: Item[];
   pagamentos: Pagamento[];
   resumo: Resumo;
-  /** Descontos do cliente (ex.: premio de indicacao) para usar nesta comanda. */
-  beneficios?: { id: string; descricao: string; valorCentavos: number }[];
+  /** Saldo do cliente (cashback + indicacao) que pode virar desconto nesta comanda. */
+  saldoCliente?: number;
+  /** Links de pagamento em aberto desta comanda. */
+  linksPagamento?: { id: string; token: string; url: string | null; valorCentavos: number; expiraEm: string; criadoEm: string }[];
 };
 
 export const FORMAS: { valor: Forma; rotulo: string }[] = [

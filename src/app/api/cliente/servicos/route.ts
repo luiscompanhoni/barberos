@@ -14,7 +14,7 @@ export const GET = rota(async () => {
       orderBy: [{ ordem: "asc" }, { nome: "asc" }],
       select: {
         id: true, nome: true, duracaoMin: true, precoCentavos: true,
-        barbeiros: { where: { barbeiro: { ativo: true } }, select: { barbeiro: { select: { id: true, nome: true, cor: true } } } },
+        barbeiros: { where: { barbeiro: { ativo: true } }, select: { barbeiro: { select: { id: true, nome: true, cor: true, fotoVersao: true } } } },
       },
     }),
   ]);

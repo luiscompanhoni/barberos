@@ -3,7 +3,7 @@ import { exigirSessao } from "@/lib/auth/sessao";
 import { modoMaquininha } from "@/lib/comandas/maquininha";
 import { schemaAcaoComanda } from "@/lib/comandas/schemas";
 import { adicionarAvulso, adicionarProduto, cancelarComanda, definirDesconto, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
-import { usarBeneficio } from "@/lib/crescimento/indicacao";
+import { usarSaldo } from "@/lib/crescimento/saldo";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
@@ -32,8 +32,8 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/comandas/
     case "fechar":
       extra = await fecharComanda(s, id);
       break;
-    case "beneficio":
-      await usarBeneficio(s, b.beneficioId, id); // resultado so e usado no "fechar"
+    case "saldo":
+      await usarSaldo(s, id); // resultado so e usado no "fechar"
       break;
     case "cancelar":
       await cancelarComanda(s, id, b.motivo);

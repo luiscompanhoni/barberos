@@ -5,7 +5,10 @@ import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { movimentar } from "./estoque";
-import { descricaoServico, erroNoPagamento, resumoComanda } from "./regras";
+import { configuracao } from "@/lib/agenda/carregar";
+import { linkAbsoluto } from "@/lib/assinaturas/cobrancas";
+import { aplicarNaComanda, sincronizarAntecipado } from "@/lib/agenda/antecipado";
+import { descricaoServico, erroNoPagamento, resumoComanda, valorCashback } from "./regras";
 
 type Tx = Prisma.TransactionClient;
 
@@ -13,6 +16,7 @@ const INCLUIR = {
   cliente: { select: { id: true, nome: true, telefone: true } },
   itens: { orderBy: { criadoEm: "asc" }, include: { produto: { select: { nome: true, categoria: true, estoque: true } } } },
   pagamentos: { orderBy: { criadoEm: "asc" } },
+  linksPagamento: { where: { status: "PENDENTE" }, orderBy: { criadoEm: "asc" }, select: { id: true, token: true, valorCentavos: true, expiraEm: true, criadoEm: true } },
 } satisfies Prisma.ComandaInclude;
 
 /** Trava a comanda ate o fim da transacao (dois caixas nao mexem ao mesmo tempo). */
@@ -25,15 +29,24 @@ async function travar(tx: Tx, comandaId: string, precisaAberta = true) {
 }
 
 const avisar = (comandaId: string) => publicar({ tipo: "comanda", comandaId });
+/** Comanda encerrada: links de pagamento dela em aberto deixam de valer (em segundo plano). */
+const encerrarLinks = (comandaId: string) =>
+  void import("@/lib/links/servico").then((m) => m.cancelarLinksDaComanda(comandaId)).catch((e) => console.error("[comandas] links", comandaId, e));
 const gerente = (s: Sessao) => s.papel === "DONO" || s.papel === "RECEPCAO";
 
 export async function detalheComanda(id: string) {
   const c = await db.comanda.findUnique({ where: { id }, include: INCLUIR });
   if (!c) throw naoEncontrado("Comanda");
-  const beneficios = c.clienteId && c.status === "ABERTA"
-    ? await db.beneficio.findMany({ where: { clienteId: c.clienteId, status: "DISPONIVEL" }, select: { id: true, descricao: true, valorCentavos: true } })
-    : [];
-  return { ...c, beneficios, resumo: resumoComanda(c.itens, c.pagamentos, c.descontoCentavos) };
+  // Saldo do cliente (cashback + indicacao) que ainda nao venceu, para usar como desconto.
+  const saldoCliente = c.clienteId && c.status === "ABERTA"
+    ? ((await db.beneficio.aggregate({
+        where: { clienteId: c.clienteId, status: "DISPONIVEL", OR: [{ expiraEm: null }, { expiraEm: { gt: new Date() } }] },
+        _sum: { valorCentavos: true },
+      }))._sum.valorCentavos ?? 0)
+    : 0;
+  // Links de pagamento em aberto (com o endereco publico para copiar).
+  const linksPagamento = c.linksPagamento.map((l) => ({ ...l, url: linkAbsoluto(`/c/link/${l.token}`) }));
+  return { ...c, linksPagamento, saldoCliente, resumo: resumoComanda(c.itens, c.pagamentos, c.descontoCentavos) };
 }
 
 /** Comandas abertas + as fechadas/canceladas de um dia (padrao: hoje). */
@@ -51,6 +64,11 @@ export async function listarComandas(desde: Date) {
  * se o cliente ja tem comanda aberta, o atendimento entra nela (ex.: corte + barba).
  */
 export async function abrirComanda(s: Sessao, a: { clienteId?: string | null; nomeAvulso?: string | null; agendamentoId?: string | null }) {
+  // Pagou antes pelo link e o aviso ainda nao chegou: confere agora.
+  if (a.agendamentoId) {
+    const ant = await db.pagamentoAntecipado.findUnique({ where: { agendamentoId: a.agendamentoId }, select: { id: true, status: true } });
+    if (ant?.status === "PENDENTE") await sincronizarAntecipado(ant.id);
+  }
   const r = await db.$transaction(async (tx) => {
     let clienteId = a.clienteId ?? null;
     let ag: Prisma.AgendamentoGetPayload<{ include: { servico: true; barbeiro: true; itemComanda: true } }> | null = null;
@@ -76,6 +94,8 @@ export async function abrirComanda(s: Sessao, a: { clienteId?: string | null; no
           barbeiroId: ag.barbeiroId,
         },
       });
+      const antecipado = await tx.pagamentoAntecipado.findUnique({ where: { agendamentoId: ag.id } });
+      if (antecipado?.status === "PAGO") await aplicarNaComanda(tx, comanda.id, antecipado);
     }
     if (!existente) await auditar(tx, s.usuarioId, "abrir", "comanda", comanda.id, { agendamentoId: a.agendamentoId ?? null });
     return { id: comanda.id, nova: !existente };
@@ -173,10 +193,22 @@ export async function fecharComanda(s: Sessao, comandaId: string) {
       if (m && m.saldoApos < 0) alertas.push(`${i.descricao}: estoque ficou negativo (${m.saldoApos}). Confira a contagem.`);
     }
     await tx.comanda.update({ where: { id: comandaId }, data: { status: "FECHADA", fechadaEm: new Date() } });
-    await auditar(tx, s.usuarioId, "fechar", "comanda", comandaId, { total: res.total, troco: res.troco });
-    return { troco: res.troco, alertas };
+    // Cashback: % do que o cliente pagou volta como saldo (uma vez por comanda).
+    const cfg = await configuracao();
+    const cashback = cfg.cashbackAtivo && c.clienteId ? valorCashback(res.total, cfg.cashbackPct) : 0;
+    if (cashback > 0) {
+      await tx.beneficio.create({
+        data: {
+          clienteId: c.clienteId!, descricao: `Cashback da comanda #${c.numero}`, valorCentavos: cashback, motivo: "CASHBACK",
+          comandaOrigemId: comandaId, expiraEm: new Date(Date.now() + cfg.cashbackValidadeDias * 86_400_000),
+        },
+      });
+    }
+    await auditar(tx, s.usuarioId, "fechar", "comanda", comandaId, { total: res.total, troco: res.troco, cashback });
+    return { troco: res.troco, alertas, cashbackCentavos: cashback };
   });
   avisar(comandaId);
+  encerrarLinks(comandaId);
   return r;
 }
 
@@ -200,9 +232,16 @@ export async function cancelarComanda(s: Sessao, comandaId: string, motivo: stri
     await tx.comanda.update({ where: { id: comandaId }, data: { status: "CANCELADA" } });
     // Desconto de indicacao usado nessa comanda volta para o cliente.
     await tx.beneficio.updateMany({ where: { comandaId, status: "USADO" }, data: { status: "DISPONIVEL", usadoEm: null, comandaId: null } });
+    // Cashback que essa comanda gerou e ainda nao foi usado deixa de valer.
+    const gerados = await tx.beneficio.findMany({ where: { comandaOrigemId: comandaId }, select: { id: true } });
+    if (gerados.length) {
+      const ids = gerados.map((g) => g.id);
+      await tx.beneficio.updateMany({ where: { status: "DISPONIVEL", OR: [{ id: { in: ids } }, { origemBeneficioId: { in: ids } }] }, data: { status: "CANCELADO" } });
+    }
     await auditar(tx, s.usuarioId, "cancelar", "comanda", comandaId, { motivo, estavaFechada: c.status === "FECHADA" });
   });
   avisar(comandaId);
+  encerrarLinks(comandaId);
 }
 
 export { avisar as avisarComanda, gerente as ehGerente };

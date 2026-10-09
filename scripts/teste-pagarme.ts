@@ -4,6 +4,7 @@
 process.env.PAGAMENTOS_PROVIDER = "pagarme";
 process.env.PAGARME_SECRET_KEY = "sk_test_falsa";
 
+process.env.COBRANCA_ENDERECO ??= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ??= "89160161"; process.env.COBRANCA_CIDADE ??= "Rio do Sul"; process.env.COBRANCA_UF ??= "SC";
 import { db } from "@/lib/db";
 import { _usarFetch } from "@/lib/pagamentos/pagarme";
 import { assinar, situacaoDoCliente } from "@/lib/assinaturas/servico";
@@ -33,6 +34,7 @@ _usarFetch((async (url: string, init?: RequestInit) => {
     return json({ id: nid("or"), charges: [ch] });
   }
   if (init?.method === "POST" && caminho === "/subscriptions") {
+    if (corpo.payment_method === "credit_card" && !corpo.card?.billing_address?.zip_code) return json({ message: "billing value is required" }, 422);
     if (corpo.card_token === "token_recusado") return json({ message: "Card declined" }, 422);
     const sub = nid("sub");
     const ch: Charge = { id: nid("ch"), amount: corpo.items[0].pricing_scheme.price, status: "paid", payment_method: "credit_card",

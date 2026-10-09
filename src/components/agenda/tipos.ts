@@ -13,6 +13,8 @@ export type AgendamentoApi = {
   cliente: { id: string; nome: string; telefone: string; observacoes: string | null };
   servico: { id: string; nome: string };
   assinante: boolean;
+  /** Pagou online antes do atendimento. */
+  pagoAntes?: boolean;
 };
 
 export type IntervaloIso = { inicio: string; fim: string };
@@ -20,7 +22,7 @@ export type IntervaloIso = { inicio: string; fim: string };
 export type AgendaApi = {
   fuso: string;
   granularidadeMin: number;
-  barbeiros: { id: string; nome: string; cor: string }[];
+  barbeiros: { id: string; nome: string; cor: string; fotoVersao: number }[];
   agendamentos: AgendamentoApi[];
   dias: {
     data: string;
@@ -34,6 +36,8 @@ export type Coluna = {
   titulo: string;
   subtitulo?: string;
   cor: string;
+  barbeiroNome: string;
+  fotoVersao: number;
   barbeiroId: string;
   data: string;
   janelas: IntervaloIso[];
@@ -70,6 +74,8 @@ export function montarColunas(agenda: AgendaApi, modo: "dia" | "semana"): Coluna
         titulo: modo === "dia" ? b.nome : d.toLocaleDateString("pt-BR", { weekday: "short", timeZone: "UTC" }),
         subtitulo: modo === "semana" ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }) : undefined,
         cor: b.cor,
+        barbeiroNome: b.nome,
+        fotoVersao: b.fotoVersao,
         barbeiroId: b.id,
         data: dia.data,
         janelas: info?.janelas ?? [],

@@ -4,6 +4,7 @@
  * autoatendimento: antecedencia minima, janela de dias, prazo para cancelar e
  * limite de agendamentos futuros.
  */
+import { aoCancelarHorario } from "./antecipado";
 import type { OrigemAgendamento } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
@@ -20,7 +21,7 @@ const ATIVOS_FUTUROS = ["MARCADO", "CONFIRMADO"] as const;
 export async function proximosDoCliente(clienteId: string) {
   return db.agendamento.findMany({
     where: { clienteId, status: { in: [...ATIVOS_FUTUROS] }, fim: { gt: new Date() } },
-    include: { barbeiro: { select: { id: true, nome: true } }, servico: { select: { id: true, nome: true } } },
+    include: { barbeiro: { select: { id: true, nome: true, cor: true, fotoVersao: true } }, servico: { select: { id: true, nome: true } }, antecipado: { select: { status: true, forma: true, link: true } } },
     orderBy: { inicio: "asc" },
   });
 }
@@ -139,6 +140,7 @@ export async function cancelarPeloCliente(clienteId: string, agendamentoId: stri
     await tx.agendamento.update({ where: { id: ag.id }, data: { status: "CANCELADO" } });
     await auditar(tx, null, "cancelar_pelo_cliente", "agendamento", ag.id);
   });
+  void aoCancelarHorario(ag.id);
   publicar({ tipo: "agenda", barbeiroIds: [ag.barbeiroId], datas: [dataLocal(ag.inicio, cfg.fuso)] });
   return ag;
 }

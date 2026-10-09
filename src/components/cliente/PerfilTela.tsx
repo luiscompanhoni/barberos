@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
+import { TrocarSenha } from "@/components/conta/TrocarSenha";
 
 type Perfil = { nome: string; telefone: string; observacoes: string | null; dataNascimento: string | null; origem: string | null; origemDetalhe: string | null };
 
@@ -46,7 +47,8 @@ export function PerfilTela() {
 
   if (!p) return <p className="text-sm text-zinc-500">{msg?.texto ?? "Carregando..."}</p>;
   return (
-    <form onSubmit={salvar} className="entrar-suave space-y-5">
+    <div className="entrar-suave space-y-5">
+      <form onSubmit={salvar} className="space-y-5">
       <div>
         <p className="eyebrow">Sua conta</p>
         <h1 className="titulo-marca mt-3 text-4xl">Seu <span className="text-ouro">perfil.</span></h1>
@@ -83,6 +85,8 @@ export function PerfilTela() {
       </div>
       {msg && <p className={`text-sm ${msg.erro ? "text-red-600" : "text-emerald-700"}`}>{msg.texto}</p>}
       <button className="btn-primario w-full py-3">Salvar</button>
-    </form>
+      </form>
+      <TrocarSenha equipe={false} />
+    </div>
   );
 }

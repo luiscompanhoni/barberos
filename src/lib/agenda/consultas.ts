@@ -9,7 +9,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
   const barbeiros = await db.barbeiro.findMany({
     where: { ativo: true, ...(filtroBarbeiroId ? { id: filtroBarbeiroId } : {}) },
     orderBy: [{ ordem: "asc" }, { nome: "asc" }],
-    select: { id: true, nome: true, cor: true },
+    select: { id: true, nome: true, cor: true, fotoVersao: true },
   });
   const ids = barbeiros.map((b) => b.id);
   const inicio = limitesDoDia(dataInicial, cfg.fuso).inicio;
@@ -26,6 +26,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
       include: {
         cliente: { select: { id: true, nome: true, telefone: true, observacoes: true } },
         servico: { select: { id: true, nome: true } },
+        antecipado: { select: { status: true } },
       },
       orderBy: { inicio: "asc" },
     }),
@@ -54,6 +55,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
       cliente: a.cliente,
       servico: a.servico,
       assinante: a.assinaturaId !== null,
+      pagoAntes: a.antecipado?.status === "PAGO",
     })),
     dias: porDia.map(({ data, mapa }) => ({
       data,

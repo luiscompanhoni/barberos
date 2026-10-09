@@ -19,6 +19,9 @@ type Cfg = {
   indicacaoAtiva: boolean;
   premioIndicadorCentavos: number;
   premioIndicadoCentavos: number;
+  cashbackAtivo: boolean;
+  cashbackPct: number;
+  cashbackValidadeDias: number;
 };
 type Log = {
   ultimas: { id: string; tipo: string; ok: boolean; erro: string | null; criadoEm: string; cliente: string }[];
@@ -58,12 +61,12 @@ export function AutomacoesTela() {
     e.preventDefault();
     try {
       const { lembreteHorasAntes, lembreteMinutosAntes, avisoFalta, limiteFaltas, janelaFaltasDias, posAtendimento, reativacaoDias, aniversario,
-        retornoAtivo, indicacaoAtiva, premioIndicadorCentavos, premioIndicadoCentavos } = c!;
+        retornoAtivo, indicacaoAtiva, premioIndicadorCentavos, premioIndicadoCentavos, cashbackAtivo, cashbackPct, cashbackValidadeDias } = c!;
       await api("/api/configuracao", {
         method: "PATCH",
         body: {
           lembreteHorasAntes, lembreteMinutosAntes, avisoFalta, limiteFaltas, janelaFaltasDias, posAtendimento, reativacaoDias, aniversario,
-          retornoAtivo, indicacaoAtiva, premioIndicadorCentavos, premioIndicadoCentavos,
+          retornoAtivo, indicacaoAtiva, premioIndicadorCentavos, premioIndicadoCentavos, cashbackAtivo, cashbackPct, cashbackValidadeDias,
           linkAvaliacao: c!.linkAvaliacao?.trim() || null, presenteAniversario: c!.presenteAniversario?.trim() || null,
         },
       });
@@ -129,6 +132,16 @@ export function AutomacoesTela() {
           <div className="grid grid-cols-2 gap-2">
             <Numero id="a-pi" rotulo="Quem indica ganha (R$)" valor={c.premioIndicadorCentavos / 100} onChange={(v) => campo("premioIndicadorCentavos", Math.max(0, Math.round(Number(v) * 100) || 0))} max={1000} />
             <Numero id="a-pn" rotulo="Amigo ganha (R$)" valor={c.premioIndicadoCentavos / 100} onChange={(v) => campo("premioIndicadoCentavos", Math.max(0, Math.round(Number(v) * 100) || 0))} max={1000} />
+          </div>
+        </Bloco>
+        <Bloco titulo="Cashback" ajuda="Uma % de tudo que o cliente paga na comanda (corte avulso, bar, loja) volta como saldo para a próxima visita. Aparece na tela Saldo do cliente e sai na comanda.">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="h-4 w-4" checked={c.cashbackAtivo} onChange={(e) => campo("cashbackAtivo", e.target.checked)} />
+            Dar cashback
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <Numero id="a-cbp" rotulo="Quanto volta (%)" valor={c.cashbackPct} onChange={(v) => num("cashbackPct", v)} max={50} />
+            <Numero id="a-cbv" rotulo="Vale por (dias)" valor={c.cashbackValidadeDias} onChange={(v) => num("cashbackValidadeDias", v)} max={365} />
           </div>
         </Bloco>
         <Bloco titulo="Chamar de volta quem sumiu" ajuda="Mensagem para quem não vem há X dias e não tem nada marcado (até 15 por vez). É promocional: use com moderação.">

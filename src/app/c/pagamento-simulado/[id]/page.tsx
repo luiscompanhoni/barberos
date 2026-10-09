@@ -22,7 +22,7 @@ export default async function PagamentoSimulado(props: PageProps<"/c/pagamento-s
         <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-900">
           Pagamento de TESTE (modo simulado). Nenhum dinheiro é cobrado. Em produção esta tela é a fatura do Asaas.
         </p>
-        <h1 className="text-lg font-semibold">{assinatura?.plano.nome ?? "Assinatura"}</h1>
+        <h1 className="text-lg font-semibold">{assinatura?.plano.nome ?? "Pagamento avulso"}</h1>
         <p className="text-sm text-zinc-600">{assinatura?.cliente.nome}</p>
         <p className="text-3xl font-semibold">{(c.valorCentavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
         <p className="text-sm text-zinc-500">Vencimento {c.vencimento.toISOString().slice(0, 10).split("-").reverse().join("/")}</p>

@@ -7,6 +7,7 @@ let respostas: unknown[] = [];
 
 beforeEach(() => {
   process.env.PAGARME_SECRET_KEY = "sk_test_abc";
+  process.env.COBRANCA_ENDERECO = "50, Rua Teste, Centro"; process.env.COBRANCA_CEP = "89160161"; process.env.COBRANCA_CIDADE = "Rio do Sul"; process.env.COBRANCA_UF = "SC";
   chamadas = [];
   respostas = [];
   _usarFetch((async (url: string, init?: RequestInit) => {
@@ -62,6 +63,8 @@ describe("chamadas a API", () => {
     expect(c.auth).toBe(`Basic ${Buffer.from("sk_test_abc:").toString("base64")}`);
     expect(c.corpo).toMatchObject({
       customer_id: "cus_1", payment_method: "credit_card", card_token: "token_abc", interval: "month", interval_count: 1,
+      // A Pagar.me recusa cartao sem endereco de cobranca ("billing | value is required").
+      card: { billing_address: { zip_code: "89160161", city: "Rio do Sul", state: "SC", country: "BR" } },
       items: [{ quantity: 1, pricing_scheme: { price: 9900 } }],
     });
   });

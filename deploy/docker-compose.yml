@@ -29,6 +29,7 @@ services:
     environment:
       DATABASE_URL: postgresql://barberos:${DB_SENHA}@db:5432/barberos
       NODE_ENV: production
+      EVOLUTION_URL: ${EVOLUTION_URL:-http://evolution:8080}
     depends_on:
       db:
         condition: service_healthy
@@ -42,12 +43,49 @@ services:
       - "443:443/udp"
     environment:
       CADDY_ENDERECOS: ${CADDY_ENDERECOS:-:80}
+      CADDY_IP: ${CADDY_IP:-http://ip-nao-configurado.invalid}
+      CADDY_IP_DESTINO: ${PAINEL_URL:-http://localhost}
+      CADDY_SNI: ${CADDY_IP:-sem-ip.invalid}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
     depends_on:
       - app
+
+  # WhatsApp nao oficial (QR code). So sobe com COMPOSE_PROFILES=evolution no .env.
+  # Sem porta publicada: so o sistema fala com ele. Guarda os dados no mesmo Postgres (schema proprio).
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    profiles: ["evolution"]
+    restart: unless-stopped
+    environment:
+      SERVER_URL: http://evolution:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-}
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://barberos:${DB_SENHA}@db:5432/barberos?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: barberos
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      CONFIG_SESSION_PHONE_CLIENT: BarberOS
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      DEL_INSTANCE: "false"
+      TELEMETRY_ENABLED: "false"
+      LANGUAGE: pt-BR
+      LOG_LEVEL: ERROR,WARN
+      TZ: America/Sao_Paulo
+    volumes:
+      - evolution:/evolution/instances
+    depends_on:
+      db:
+        condition: service_healthy
 
   # Copia do banco todo dia (03h), guarda 14 dias em /opt/barberos/backups.
   backup:
@@ -77,3 +115,4 @@ volumes:
   pg:
   caddy-data:
   caddy-config:
+  evolution:

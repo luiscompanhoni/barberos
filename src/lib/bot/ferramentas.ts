@@ -7,6 +7,7 @@ import { horariosDisponiveis } from "@/lib/agenda/consultas";
 import { agendarPeloCliente, cancelarPeloCliente, confirmarPeloCliente, proximosDoCliente, remarcarPeloCliente } from "@/lib/agenda/cliente";
 import { executarAssinatura, FERRAMENTAS_ASSINATURA, NOMES_ASSINATURA } from "./ferramentas-assinatura";
 import { executarCrescimento, FERRAMENTAS_CRESCIMENTO, NOMES_CRESCIMENTO } from "./ferramentas-crescimento";
+import { executarPagamento, FERRAMENTAS_PAGAMENTO, NOMES_PAGAMENTO } from "./ferramentas-pagamento";
 import { ORIGENS_CLIENTE, zNascimento } from "@/lib/validacao-cliente";
 import { dataLocal, hhmmParaMin, instanteLocal, minParaHhmm, minutosLocal, parseData, somarDias } from "@/lib/agenda/tempo";
 
@@ -147,6 +148,7 @@ export const FERRAMENTAS: Ferramenta[] = [
   },
   ...FERRAMENTAS_ASSINATURA,
   ...FERRAMENTAS_CRESCIMENTO,
+  ...FERRAMENTAS_PAGAMENTO,
 ];
 
 const zData = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -192,6 +194,7 @@ async function clienteDaConversa(ctx: ContextoBot) {
 async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promise<ResultadoFerramenta> {
   if (NOMES_ASSINATURA.has(nome)) return executarAssinatura(nome, entrada, ctx);
   if (NOMES_CRESCIMENTO.has(nome)) return executarCrescimento(nome, entrada, ctx);
+  if (NOMES_PAGAMENTO.has(nome)) return executarPagamento(nome, entrada, ctx);
   const cfg = await configuracao();
   switch (nome) {
     case "listar_servicos": {
@@ -269,6 +272,7 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
             data: descreverData(dataLocal(a.inicio, cfg.fuso)),
             horario: minParaHhmm(minutosLocal(a.inicio, cfg.fuso)),
             confirmado: a.status === "CONFIRMADO",
+            ...(a.assinaturaId ? { pelo_plano: true } : { valor: reais(a.precoCentavos), pago_antes: a.antecipado?.status === "PAGO" }),
           })),
         ),
       };

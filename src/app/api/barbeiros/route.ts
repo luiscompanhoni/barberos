@@ -10,7 +10,7 @@ export const GET = rota(async () => {
   await exigirSessao();
   const barbeiros = await db.barbeiro.findMany({
     orderBy: [{ ordem: "asc" }, { nome: "asc" }],
-    select: { id: true, nome: true, cor: true, ativo: true, ordem: true, usuario: { select: { telefone: true } } },
+    select: { id: true, nome: true, cor: true, ativo: true, ordem: true, fotoVersao: true, usuario: { select: { telefone: true } } },
   });
   return NextResponse.json(barbeiros);
 });
