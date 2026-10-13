@@ -9,7 +9,7 @@
  * Nada muda no status das assinaturas atuais e nenhuma mensagem sai.
  *
  * Ids fixos: rodar de novo nao duplica. Por padrao so mostra o que faria; --aplicar grava.
- * Rodar: DATABASE_URL=... npx tsx scripts/importar-mensalidades-cashbarber.ts <pasta-dos-csv> [--ate=2026-10-11] [--aplicar]
+ * Rodar: DATABASE_URL=... npx tsx scripts/importar-mensalidades-cashbarber.ts <pasta-dos-csv> [--ate=2026-10-11|agora] [--aplicar]
  */
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
@@ -54,16 +54,27 @@ const centavos = (s: string) => Math.round(Number(s.replace(/\./g, "").replace("
 const normal = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
 const hash = (...partes: string[]) => createHash("sha1").update(partes.join("|")).digest("hex").slice(0, 22);
 
+/** Linhas de todos os CSVs; janelas sobrepostas nao duplicam (cada linha conta o maximo de vezes de um arquivo so). */
 function ler(pasta: string, prefixo: string) {
-  return readdirSync(pasta).filter((f) => f.startsWith(prefixo) && f.endsWith(".csv"))
-    .flatMap((f) => lerCsv(readFileSync(join(pasta, f), "utf8")).slice(1).filter((l) => l.length >= 8));
+  const vezes = new Map<string, { linha: string[]; n: number }>();
+  for (const f of readdirSync(pasta).filter((f) => f.startsWith(prefixo) && f.endsWith(".csv"))) {
+    const noArquivo = new Map<string, number>();
+    for (const l of lerCsv(readFileSync(join(pasta, f), "utf8")).slice(1).filter((l) => l.length >= 8)) {
+      const k = l.join("\u0001");
+      noArquivo.set(k, (noArquivo.get(k) ?? 0) + 1);
+      if (!vezes.has(k)) vezes.set(k, { linha: l, n: 0 });
+    }
+    for (const [k, n] of noArquivo) vezes.get(k)!.n = Math.max(vezes.get(k)!.n, n);
+  }
+  return [...vezes.values()].flatMap(({ linha, n }) => Array.from({ length: n }, () => linha));
 }
 
 async function main() {
   const pasta = process.argv[2];
   if (!pasta) throw new Error("Informe a pasta com os CSVs.");
   const aplicar = process.argv.includes("--aplicar");
-  const ate = new Date(`${process.argv.find((a) => a.startsWith("--ate="))?.slice(6) ?? "2026-10-11"}T03:00:00Z`);
+  const ateArg = process.argv.find((a) => a.startsWith("--ate="))?.slice(6) ?? "2026-10-11";
+  const ate = ateArg === "agora" ? new Date() : new Date(`${ateArg}T03:00:00Z`);
 
   // Nome -> cliente: cadastro do BarberOS + nomes do historico de agendamentos (que traz o telefone).
   const clientes = await db.cliente.findMany({ select: { id: true, telefone: true, nome: true } });

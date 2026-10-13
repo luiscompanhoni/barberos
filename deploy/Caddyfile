@@ -12,6 +12,11 @@
 	reverse_proxy app:3000
 }
 
+# Endereco antigo do painel (CADDY_PAINEL_ANTIGO no .env, ex.: o provisorio sslip.io) vai para o novo.
+{$CADDY_PAINEL_ANTIGO} {
+	redir {$CADDY_IP_DESTINO}{uri}
+}
+
 # Quem digita so o IP do servidor (CADDY_IP no .env) vai para o painel. O Let's Encrypt
 # emite certificado de IP so no perfil "shortlived" (6 dias, o Caddy renova sozinho).
 {$CADDY_IP} {
