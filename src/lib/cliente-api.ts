@@ -26,3 +26,13 @@ export async function api<T = unknown>(
 
 export const reais = (centavos: number) =>
   (centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/** "12,50" / "1.234,50" / "12.5" -> centavos (NaN se invalido). */
+export function paraCentavos(texto: string) {
+  const t = texto.trim().replace(/[R$\s]/g, "");
+  const normal = t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : t;
+  return /^\d+(\.\d{0,2})?$/.test(normal) ? Math.round(Number(normal) * 100) : NaN;
+}
+
+/** Centavos -> "12,50" para preencher campo de valor. */
+export const centavosParaTexto = (c: number) => (c / 100).toFixed(2).replace(".", ",");

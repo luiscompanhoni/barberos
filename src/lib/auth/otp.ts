@@ -1,7 +1,7 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
-import { enviarTemplate } from "@/lib/whatsapp/canal";
+import { enviarTemplate, enviarTexto, provedorWhatsApp } from "@/lib/whatsapp/canal";
 
 const VALIDADE_MS = 5 * 60_000;
 const ESPERA_REENVIO_MS = 60_000;
@@ -30,6 +30,11 @@ async function entregar(telefone: string, codigo: string) {
     return;
   }
   if (provedor === "whatsapp") {
+    // Nao oficial: sem modelos, o codigo vai como texto comum.
+    if (provedorWhatsApp() === "evolution") {
+      await enviarTexto(telefone, `Seu código de acesso é *${codigo}*.\nVale por 5 minutos. Não passe para ninguém.`);
+      return;
+    }
     const template = process.env.WHATSAPP_TEMPLATE_CODIGO;
     if (!template) throw new Error("WHATSAPP_TEMPLATE_CODIGO não configurado.");
     // Template de autenticacao da Meta: corpo com o codigo + botao "copiar codigo".

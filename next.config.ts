@@ -4,6 +4,8 @@ const nextConfig: NextConfig = {
   // Build enxuto para rodar em Docker (Railway, Render, Fly.io ou VPS).
   output: "standalone",
   poweredByHeader: false,
+  // Painel no computador em painel.localhost:3000 (site em localhost:3000).
+  allowedDevOrigins: ["painel.localhost", "*.localhost"],
   async headers() {
     return [
       {

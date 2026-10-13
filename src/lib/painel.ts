@@ -80,13 +80,20 @@ export async function resumoDoMes() {
     });
     return { centavos: r._sum.precoCentavos ?? 0, atendimentos: r._count };
   };
-  const [atual, anterior, novos, faltas] = await Promise.all([
+  const [atual, anterior, novos, faltas, ativas, mrr, vendidas, canceladas] = await Promise.all([
     soma(inicioMes, fimHoje),
     soma(inicioPassado, fimPassado),
     db.cliente.count({ where: { criadoEm: { gte: new Date(inicioMes) } } }),
     db.agendamento.count({ where: { status: "FALTOU", inicio: { gte: new Date(inicioMes), lt: new Date(fimHoje) } } }),
+    db.assinatura.count({ where: { status: { in: ["ATIVA", "ATRASADA"] } } }),
+    db.assinatura.aggregate({ where: { status: { in: ["ATIVA", "ATRASADA"] } }, _sum: { precoCentavos: true } }),
+    db.assinatura.count({ where: { ativadaEm: { gte: new Date(inicioMes) } } }),
+    db.assinatura.count({ where: { canceladaEm: { gte: new Date(inicioMes) }, ativadaEm: { not: null } } }),
   ]);
-  return { atual, anterior, clientesNovos: novos, faltas };
+  return {
+    atual, anterior, clientesNovos: novos, faltas,
+    assinaturas: { ativas, receitaMensalCentavos: mrr._sum.precoCentavos ?? 0, vendidas, canceladas },
+  };
 }
 
 /** Lista "precisa de acao hoje": pendencias que a equipe resolve direto do painel. */
@@ -94,7 +101,7 @@ export async function pendencias() {
   const cfg = await configuracao();
   const agora = Date.now();
 
-  const [semBaixa, conversas, barbeiros, concluidos, futuros, faltosos] = await Promise.all([
+  const [semBaixa, conversas, barbeiros, concluidos, futuros, faltosos, atrasadas, pendentesAntigas] = await Promise.all([
     // Atendimento que ja terminou e ninguem marcou como concluido ou falta.
     db.agendamento.findMany({
       where: {
@@ -123,6 +130,17 @@ export async function pendencias() {
       where: { status: "FALTOU", inicio: { gt: new Date(agora - 60 * 24 * 60 * MIN) } },
       _count: true,
       having: { clienteId: { _count: { gte: 2 } } },
+    }),
+    db.assinatura.findMany({
+      where: { status: "ATRASADA" },
+      take: 15,
+      select: { id: true, precoCentavos: true, cliente: { select: { nome: true } }, plano: { select: { nome: true } } },
+    }),
+    // Assinou mas nao pagou o primeiro mes ha mais de 2 dias: vale lembrar.
+    db.assinatura.findMany({
+      where: { status: "PENDENTE", criadaEm: { lt: new Date(agora - 2 * 24 * 60 * MIN) } },
+      take: 15,
+      select: { id: true, criadaEm: true, cliente: { select: { nome: true } }, plano: { select: { nome: true } } },
     }),
   ]);
 
@@ -158,6 +176,8 @@ export async function pendencias() {
     })),
     sumidos,
     faltosos: clientesFaltosos.map((c) => ({ ...c, faltas: faltosos.find((f) => f.clienteId === c.id)?._count ?? 0 })),
+    assinaturasAtrasadas: atrasadas,
+    assinaturasPendentes: pendentesAntigas,
     fuso: cfg.fuso,
   };
 }

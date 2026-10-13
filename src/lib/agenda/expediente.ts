@@ -1,3 +1,4 @@
+import { aoCancelarHorario } from "./antecipado";
 import { Prisma, type TipoExcecao } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
@@ -215,7 +216,11 @@ export async function fecharAgenda(
       return b;
     });
     publicar({ tipo: "agenda", barbeiroIds: [...tocados], datas: [] });
-    for (const a of afetados) void avisarMudanca(a.id, res.get(a.id)!.acao === "cancelar" ? "cancelado" : "transferido");
+    for (const a of afetados) {
+      const cancelado = res.get(a.id)!.acao === "cancelar";
+      void avisarMudanca(a.id, cancelado ? "cancelado" : "transferido");
+      if (cancelado) void aoCancelarHorario(a.id);
+    }
     return { criado: true as const, bloqueio };
   } catch (e) {
     if (e instanceof Error && e.message.includes("agendamentos_sem_sobreposicao")) throw conflitoHorario();

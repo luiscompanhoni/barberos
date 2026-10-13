@@ -79,3 +79,49 @@ export function telefoneCanonico(waId: string): string {
   if (/^55\d{2}[6-9]\d{7}$/.test(d)) return `${d.slice(0, 4)}9${d.slice(4)}`;
   return d;
 }
+
+type ConteudoEvolution = {
+  conversation?: string;
+  extendedTextMessage?: { text?: string };
+  buttonsResponseMessage?: { selectedDisplayText?: string };
+  listResponseMessage?: { title?: string };
+  templateButtonReplyMessage?: { selectedDisplayText?: string };
+};
+type DadoEvolution = {
+  key?: { id?: string; remoteJid?: string; remoteJidAlt?: string; senderPn?: string; fromMe?: boolean };
+  pushName?: string;
+  message?: ConteudoEvolution;
+  messageType?: string;
+  messageTimestamp?: number | string;
+};
+
+/**
+ * Mensagens de clientes num POST da Evolution API (evento messages.upsert).
+ * Ignora as enviadas pelo proprio numero, grupos, status e canais.
+ */
+export function lerMensagensEvolution(payload: unknown): MensagemRecebida[] {
+  const p = payload as { event?: string; data?: DadoEvolution | DadoEvolution[] };
+  if (!p?.event || p.event.toLowerCase().replace("_", ".") !== "messages.upsert") return [];
+  const out: MensagemRecebida[] = [];
+  for (const d of Array.isArray(p.data) ? p.data : p.data ? [p.data] : []) {
+    const k = d.key;
+    if (!k?.id || k.fromMe) continue;
+    // Contas novas chegam com "@lid" (id interno); o numero vem em remoteJidAlt/senderPn.
+    let jid = k.remoteJid ?? "";
+    if (jid.endsWith("@lid")) jid = k.remoteJidAlt ?? k.senderPn ?? "";
+    if (!jid.endsWith("@s.whatsapp.net")) continue;
+    const m = d.message ?? {};
+    const texto =
+      m.conversation ?? m.extendedTextMessage?.text ?? m.buttonsResponseMessage?.selectedDisplayText ??
+      m.listResponseMessage?.title ?? m.templateButtonReplyMessage?.selectedDisplayText ?? null;
+    out.push({
+      wamid: k.id,
+      waId: jid.split("@")[0].split(":")[0],
+      nomePerfil: d.pushName?.trim() || null,
+      texto: texto?.trim() || null,
+      tipo: d.messageType ?? "desconhecido",
+      timestamp: Number(d.messageTimestamp ?? 0) * 1000,
+    });
+  }
+  return out;
+}

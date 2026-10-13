@@ -1,3 +1,4 @@
+import { aoCancelarHorario } from "./antecipado";
 import { Prisma, type OrigemAgendamento, type StatusAgendamento } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
@@ -5,6 +6,7 @@ import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { exigirGestaoBarbeiro, type Sessao } from "@/lib/auth/sessao";
 import { avisarMudanca } from "@/lib/whatsapp/avisos";
+import { precificar } from "@/lib/assinaturas/agenda";
 import { normalizarTelefone } from "@/lib/telefone";
 import { carregarDia, configuracao, servicoDoBarbeiro } from "./carregar";
 import { contido, sobrepoe, type Intervalo } from "./disponibilidade";
@@ -74,6 +76,8 @@ export type NovoAgendamento = {
   origem: OrigemAgendamento;
   observacao?: string;
   semPreferencia?: boolean;
+  /** Assinante aceitou pagar quando a regra do plano nao cobre. */
+  forcarAvulso?: boolean;
 };
 
 export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | null) {
@@ -96,7 +100,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
       throw new ErroNegocio(`Agendamentos precisam de ${cfg.antecedenciaMinimaMin} min de antecedência.`);
     }
     if (int.inicio > agora + cfg.janelaAgendamentoDias * 24 * 60 * MIN) {
-      throw new ErroNegocio(`Só e possível agendar até ${cfg.janelaAgendamentoDias} dias à frente.`);
+      throw new ErroNegocio(`Só é possível agendar até ${cfg.janelaAgendamentoDias} dias à frente.`);
     }
   }
 
@@ -104,6 +108,10 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
     const ag = await db.$transaction(async (tx) => {
       await validarEncaixe(tx, input.barbeiroId, int, { fuso: cfg.fuso, intervaloEntreClientes: cfg.intervaloEntreClientes });
       const clienteId = await resolverCliente(tx, input.cliente);
+      const preco = await precificar({
+        clienteId, servicoId: input.servicoId, barbeiroId: input.barbeiroId, inicio: int.inicio,
+        precoBase: sb.precoCentavos, fuso: cfg.fuso, forcarAvulso: input.forcarAvulso, c: tx,
+      });
       const criado = await tx.agendamento.create({
         data: {
           barbeiroId: input.barbeiroId,
@@ -112,7 +120,8 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
           inicio: new Date(int.inicio),
           fim: new Date(int.fim),
           origem: input.origem,
-          precoCentavos: sb.precoCentavos,
+          precoCentavos: preco.precoCentavos,
+          assinaturaId: preco.assinaturaId,
           observacao: input.observacao,
           semPreferencia: input.semPreferencia ?? false,
           criadoPorId: ator?.usuarioId,
@@ -193,7 +202,15 @@ export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, 
           fim: new Date(fim),
           barbeiroId,
           servicoId,
-          ...(servicoId !== atual.servicoId ? { precoCentavos: sb.precoCentavos } : {}),
+          ...(servicoId !== atual.servicoId
+            ? await (async () => {
+                const pr = await precificar({
+                  clienteId: atual.clienteId, servicoId, barbeiroId, inicio, precoBase: sb.precoCentavos,
+                  fuso: cfg.fuso, forcarAvulso: true, ignorarAgendamentoId: id, c: tx,
+                });
+                return { precoCentavos: pr.precoCentavos, assinaturaId: pr.assinaturaId };
+              })()
+            : {}),
         },
       });
       await auditar(tx, ator.usuarioId, "alterar", "agendamento", id, {
@@ -230,7 +247,10 @@ export async function alterarStatus(id: string, status: StatusAgendamento, ator:
       return novo;
     });
     publicar({ tipo: "agenda", barbeiroIds: [ag.barbeiroId], datas: [dataLocal(ag.inicio, cfg.fuso)] });
-    if (status === "CANCELADO") void avisarMudanca(ag.id, "cancelado");
+    if (status === "CANCELADO") {
+      void avisarMudanca(ag.id, "cancelado");
+      void aoCancelarHorario(ag.id);
+    }
     return ag;
   } catch (e) {
     // Reativar um cancelado cujo horario ja foi ocupado.

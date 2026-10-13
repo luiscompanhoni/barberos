@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { abrirSessao } from "@/lib/auth/abrir-sessao";
 import { verificarCodigo } from "@/lib/auth/otp";
-import { criarSessao } from "@/lib/auth/sessao";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
 import { corpo } from "@/lib/validacao";
 
+/** Entrada por codigo (primeiro acesso / esqueci a senha). */
 export const POST = rota(async (req: Request) => {
   const b = await corpo(
     req,
@@ -24,12 +25,5 @@ export const POST = rota(async (req: Request) => {
   if (b.area === "cliente" && u.papel !== "CLIENTE") {
     throw new ErroNegocio("Esse número é da equipe. Entre pelo acesso da equipe.", 403);
   }
-  await criarSessao({
-    usuarioId: u.id,
-    papel: u.papel,
-    nome: u.nome,
-    barbeiroId: u.barbeiro?.ativo ? u.barbeiro.id : null,
-    clienteId: u.cliente?.id ?? null,
-  });
-  return NextResponse.json({ ok: true, papel: u.papel, precisaNome: u.papel === "CLIENTE" && !u.nome.trim() });
+  return NextResponse.json(await abrirSessao(u));
 });

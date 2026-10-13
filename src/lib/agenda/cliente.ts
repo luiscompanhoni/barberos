@@ -4,11 +4,13 @@
  * autoatendimento: antecedencia minima, janela de dias, prazo para cancelar e
  * limite de agendamentos futuros.
  */
+import { aoCancelarHorario } from "./antecipado";
 import type { OrigemAgendamento } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
+import { precificar } from "@/lib/assinaturas/agenda";
 import { configuracao, servicoDoBarbeiro } from "./carregar";
 import { conflitoHorario, criarAgendamento, travarBarbeiro, validarEncaixe } from "./agendamentos";
 import { dataLocal } from "./tempo";
@@ -19,7 +21,7 @@ const ATIVOS_FUTUROS = ["MARCADO", "CONFIRMADO"] as const;
 export async function proximosDoCliente(clienteId: string) {
   return db.agendamento.findMany({
     where: { clienteId, status: { in: [...ATIVOS_FUTUROS] }, fim: { gt: new Date() } },
-    include: { barbeiro: { select: { id: true, nome: true } }, servico: { select: { id: true, nome: true } } },
+    include: { barbeiro: { select: { id: true, nome: true, cor: true, fotoVersao: true } }, servico: { select: { id: true, nome: true } }, antecipado: { select: { status: true, forma: true, link: true } } },
     orderBy: { inicio: "asc" },
   });
 }
@@ -57,6 +59,21 @@ function checarJanela(inicio: number, cfg: { antecedenciaMinimaMin: number; jane
   }
 }
 
+/** Quem faltou demais nos ultimos dias so marca falando com a equipe. */
+export async function checarFaltas(clienteId: string, cfg: { limiteFaltas: number; janelaFaltasDias: number }) {
+  if (cfg.limiteFaltas <= 0) return;
+  const faltas = await db.agendamento.count({
+    where: { clienteId, status: "FALTOU", inicio: { gt: new Date(Date.now() - cfg.janelaFaltasDias * 24 * 60 * MIN) } },
+  });
+  if (faltas >= cfg.limiteFaltas) {
+    throw new ErroNegocio(
+      `Como tivemos ${faltas} faltas nos últimos ${cfg.janelaFaltasDias} dias, esse horário precisa ser marcado com a equipe.`,
+      422,
+      "limite_faltas",
+    );
+  }
+}
+
 export async function agendarPeloCliente(p: {
   telefone: string;
   nome: string;
@@ -65,6 +82,7 @@ export async function agendarPeloCliente(p: {
   inicio: Date;
   origem: Extract<OrigemAgendamento, "BOT" | "SITE">;
   semPreferencia?: boolean;
+  forcarAvulso?: boolean;
 }) {
   const cfg = await configuracao();
   const cliente = await db.cliente.findUnique({ where: { telefone: p.telefone } });
@@ -79,6 +97,7 @@ export async function agendarPeloCliente(p: {
         "limite_cliente",
       );
     }
+    await checarFaltas(cliente.id, cfg);
     const sb = await servicoDoBarbeiro(p.barbeiroId, p.servicoId);
     if (sb) await checarChoqueDoCliente(cliente.id, p.inicio.getTime(), p.inicio.getTime() + sb.duracaoMin * MIN);
   }
@@ -91,6 +110,7 @@ export async function agendarPeloCliente(p: {
       cliente: cliente ? { id: cliente.id } : { telefone: p.telefone, nome: p.nome },
       origem: p.origem,
       semPreferencia: p.semPreferencia,
+      forcarAvulso: p.forcarAvulso,
     },
     null,
   );
@@ -120,12 +140,13 @@ export async function cancelarPeloCliente(clienteId: string, agendamentoId: stri
     await tx.agendamento.update({ where: { id: ag.id }, data: { status: "CANCELADO" } });
     await auditar(tx, null, "cancelar_pelo_cliente", "agendamento", ag.id);
   });
+  void aoCancelarHorario(ag.id);
   publicar({ tipo: "agenda", barbeiroIds: [ag.barbeiroId], datas: [dataLocal(ag.inicio, cfg.fuso)] });
   return ag;
 }
 
 /** Remarca mantendo o servico; pode trocar de barbeiro. */
-export async function remarcarPeloCliente(clienteId: string, agendamentoId: string, novoInicio: Date, barbeiroId?: string) {
+export async function remarcarPeloCliente(clienteId: string, agendamentoId: string, novoInicio: Date, barbeiroId?: string, forcarAvulso = false) {
   const { ag, cfg } = await doCliente(clienteId, agendamentoId);
   const destino = barbeiroId ?? ag.barbeiroId;
   const sb = await servicoDoBarbeiro(destino, ag.servicoId);
@@ -144,9 +165,13 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
         intervaloEntreClientes: cfg.intervaloEntreClientes,
         ignorarAgendamentoId: ag.id,
       });
+      const preco = await precificar({
+        clienteId, servicoId: ag.servicoId, barbeiroId: destino, inicio, precoBase: sb.precoCentavos,
+        fuso: cfg.fuso, forcarAvulso, ignorarAgendamentoId: ag.id, c: tx,
+      });
       const n = await tx.agendamento.update({
         where: { id: ag.id },
-        data: { inicio: new Date(inicio), fim: new Date(fim), barbeiroId: destino, precoCentavos: sb.precoCentavos },
+        data: { inicio: new Date(inicio), fim: new Date(fim), barbeiroId: destino, precoCentavos: preco.precoCentavos, assinaturaId: preco.assinaturaId },
       });
       await auditar(tx, null, "remarcar_pelo_cliente", "agendamento", ag.id, {
         de: ag.inicio.toISOString(),
@@ -165,4 +190,20 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
     if (e instanceof Error && e.message.includes("agendamentos_sem_sobreposicao")) throw conflitoHorario();
     throw e;
   }
+}
+
+/** Cliente confirma presenca (resposta ao lembrete). */
+export async function confirmarPeloCliente(clienteId: string, agendamentoId: string) {
+  const ag = await db.agendamento.findUnique({ where: { id: agendamentoId } });
+  if (!ag || ag.clienteId !== clienteId) throw naoEncontrado("Agendamento");
+  if (ag.status === "CONFIRMADO") return ag;
+  if (ag.status !== "MARCADO" || ag.inicio.getTime() < Date.now()) throw new ErroNegocio("Esse horário não pode mais ser confirmado.");
+  const cfg = await configuracao();
+  const novo = await db.$transaction(async (tx) => {
+    const n = await tx.agendamento.update({ where: { id: agendamentoId }, data: { status: "CONFIRMADO" } });
+    await auditar(tx, null, "confirmar_cliente", "agendamento", agendamentoId, {});
+    return n;
+  });
+  publicar({ tipo: "agenda", barbeiroIds: [novo.barbeiroId], datas: [dataLocal(novo.inicio, cfg.fuso)] });
+  return novo;
 }

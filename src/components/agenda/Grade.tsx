@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { horariosLivres } from "@/lib/agenda/disponibilidade";
 import { dataLocal, instanteLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
+import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { ROTULO_ORIGEM, ROTULO_STATUS, type AgendamentoApi, type Coluna, type Status } from "./tipos";
 
 const PX_MIN = 1.6; // 15 min = 24 px
@@ -160,12 +161,16 @@ export function Grade(props: {
         <div className="sticky left-0 top-0 z-30 border-b border-zinc-200 bg-white" />
         {colunas.map((c) => (
           <div key={c.chave} className="sticky top-0 z-20 border-b border-l border-zinc-200 bg-white px-2 py-2">
-            <div className="flex items-center gap-1.5 text-sm font-semibold capitalize">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: c.cor }} />
-              {c.titulo} {c.subtitulo && <span className="font-normal text-zinc-500">{c.subtitulo}</span>}
-            </div>
-            <div className="text-xs text-emerald-700">
-              {c.janelas.length === 0 ? <span className="text-zinc-400">Não trabalha</span> : `${livres(c)} horários livres`}
+            <div className="flex items-center gap-2">
+              <FotoBarbeiro id={c.barbeiroId} nome={c.barbeiroNome} cor={c.cor} versao={c.fotoVersao} tamanho={30} />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold capitalize">
+                  {c.titulo} {c.subtitulo && <span className="font-normal text-zinc-500">{c.subtitulo}</span>}
+                </div>
+                <div className="text-xs text-emerald-700">
+                  {c.janelas.length === 0 ? <span className="text-zinc-400">Não trabalha</span> : `${livres(c)} horários livres`}
+                </div>
+              </div>
             </div>
           </div>
         ))}
@@ -197,7 +202,7 @@ export function Grade(props: {
                 return (
                   <div key={b.id} className="absolute inset-x-1 rounded-md border border-dashed border-zinc-400 px-2 py-1 text-xs text-zinc-600"
                     style={{ top: y(Math.max(ini, iniDia)), height: (Math.min(fim, fimDia) - Math.max(ini, iniDia)) * PX_MIN,
-                      background: "repeating-linear-gradient(135deg,#f4f4f5,#f4f4f5 6px,#e4e4e7 6px,#e4e4e7 12px)" }}
+                      background: "repeating-linear-gradient(135deg,#141312,#141312 6px,#1c1b19 6px,#1c1b19 12px)" }}
                     onClick={(e) => e.stopPropagation()}>
                     Agenda fechada{b.motivo ? ` · ${b.motivo}` : ""}
                   </div>

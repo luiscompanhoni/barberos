@@ -3,7 +3,7 @@ import { z } from "zod";
 import { exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, rota } from "@/lib/erros";
-import { provedorWhatsApp } from "@/lib/whatsapp/canal";
+import { temJanela24h } from "@/lib/whatsapp/canal";
 import { enviarNaConversa } from "@/lib/whatsapp/conversas";
 import { corpo } from "@/lib/validacao";
 
@@ -15,7 +15,7 @@ export const POST = rota(async (req: Request, ctx: RouteContext<"/api/conversas/
   const c = await db.conversa.findUnique({ where: { id } });
   if (!c) throw naoEncontrado("Conversa");
   const janelaAberta = !!c.ultimaEntradaEm && Date.now() - c.ultimaEntradaEm.getTime() < 24 * 3_600_000;
-  if (!janelaAberta && provedorWhatsApp() === "cloud") {
+  if (!janelaAberta && temJanela24h()) {
     throw new ErroNegocio("O cliente não escreve há mais de 24h: o WhatsApp só permite mensagem livre depois que ele mandar algo.", 422);
   }
   if (c.estado !== "HUMANO") await db.conversa.update({ where: { id }, data: { estado: "HUMANO" } });

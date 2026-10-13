@@ -1,9 +1,12 @@
 /**
  * Envio de mensagens pelo WhatsApp.
  * - "cloud": WhatsApp Cloud API oficial da Meta (producao).
+ * - "evolution": nao oficial, pelo QR code (Evolution API no mesmo servidor).
  * - "simulador": nada sai do servidor; as mensagens ficam no banco e aparecem na
  *   tela /simulador (para testar sem conta na Meta).
  */
+
+import { enviarTextoEvolution } from "./evolution";
 
 export type ResultadoEnvio = { wamid: string | null };
 
@@ -16,9 +19,15 @@ export type TemplateWhatsApp = {
   botaoCodigo?: string;
 };
 
-export function provedorWhatsApp(): "cloud" | "simulador" {
-  return process.env.WHATSAPP_PROVIDER === "cloud" ? "cloud" : "simulador";
+export type ProvedorWhatsApp = "cloud" | "evolution" | "simulador";
+
+export function provedorWhatsApp(): ProvedorWhatsApp {
+  const p = process.env.WHATSAPP_PROVIDER;
+  return p === "cloud" || p === "evolution" ? p : "simulador";
 }
+
+/** So a API oficial tem a janela de 24h (fora dela, so modelo aprovado pela Meta). */
+export const temJanela24h = () => provedorWhatsApp() === "cloud";
 
 function configCloud() {
   const token = process.env.WHATSAPP_TOKEN;
@@ -41,12 +50,16 @@ async function postarCloud(corpo: Record<string, unknown>): Promise<ResultadoEnv
 }
 
 export async function enviarTexto(para: string, texto: string): Promise<ResultadoEnvio> {
-  if (provedorWhatsApp() === "simulador") return { wamid: null };
+  const p = provedorWhatsApp();
+  if (p === "simulador") return { wamid: null };
+  if (p === "evolution") return enviarTextoEvolution(para, texto);
   return postarCloud({ to: para, type: "text", text: { preview_url: false, body: texto.slice(0, 4096) } });
 }
 
 export async function enviarTemplate(para: string, t: TemplateWhatsApp): Promise<ResultadoEnvio> {
-  if (provedorWhatsApp() === "simulador") return { wamid: null };
+  const p = provedorWhatsApp();
+  if (p === "simulador") return { wamid: null };
+  if (p === "evolution") throw new Error("Modelos de mensagem só existem na API oficial.");
   const components: Record<string, unknown>[] = [
     { type: "body", parameters: t.parametros.map((text) => ({ type: "text", text })) },
   ];

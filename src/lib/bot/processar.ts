@@ -4,6 +4,8 @@ import { db } from "@/lib/db";
 import { publicar } from "@/lib/eventos";
 import { configuracao } from "@/lib/agenda/carregar";
 import { enviarNaConversa, registrarEntrada } from "@/lib/whatsapp/conversas";
+import { situacaoDoCliente } from "@/lib/assinaturas/servico";
+import { pediuParar } from "@/lib/automacoes/regras";
 import { executarTurno, type Modelo } from "./agente";
 import { contextoDaMensagem, promptSistema } from "./prompt";
 
@@ -42,6 +44,13 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
     return;
   }
 
+  // "PARAR": desliga as mensagens automaticas na hora, sem passar pelo modelo.
+  if (pediuParar(e.texto)) {
+    await db.cliente.updateMany({ where: { telefone: conversa.telefone }, data: { aceitaMensagens: false } });
+    await enviarNaConversa(conversa.id, "Pronto! Não vou mais mandar lembretes nem novidades. Se precisar marcar, é só chamar aqui. 🙂", "BOT");
+    return;
+  }
+
   const agora = Date.now();
   const sessaoValida =
     conversa.sessao &&
@@ -51,7 +60,11 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
     conversa.sessao.length < SESSAO_MAX_MENSAGENS &&
     agora - (await ultimaAtividade(conversa.id)) < SESSAO_INATIVA_MS;
   const historico = sessaoValida ? (conversa.sessao as unknown as Anthropic.Beta.BetaMessageParam[]) : [];
-  const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { nome: true } });
+  const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { id: true, nome: true } });
+  const sit = cliente ? await situacaoDoCliente(cliente.id) : null;
+  const plano = sit
+    ? `${sit.assinatura.plano.nome} (${sit.assinatura.status === "PENDENTE" ? "aguardando o primeiro pagamento" : sit.valida ? (sit.assinatura.status === "ATRASADA" ? "ativo, com mensalidade atrasada" : "ativo e em dia") : "suspenso por mensalidade atrasada"}${sit.assinatura.plano.descontoExtrasPct ? `; ${sit.assinatura.plano.descontoExtrasPct}% de desconto em avulsos e serviços fora do plano` : ""})`
+    : null;
 
   let resultado;
   try {
@@ -60,7 +73,8 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
       historico,
       contexto: contextoDaMensagem({
         agora, fuso: cfg.fuso, inicioDeSessao: historico.length === 0,
-        janelaDias: cfg.janelaAgendamentoDias, cliente: cliente?.nome.trim() ? cliente : null, nomePerfil: conversa.nomePerfil,
+        janelaDias: cfg.janelaAgendamentoDias, cliente: cliente?.nome.trim() ? cliente : null, nomePerfil: conversa.nomePerfil, plano,
+        avisos: await avisosRecentes(conversa.id, agora),
       }),
       texto: e.texto,
       ctx: { conversaId: conversa.id, telefone: conversa.telefone, nomePerfil: conversa.nomePerfil },
@@ -89,6 +103,27 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
     },
   });
   if (resultado.resposta) await enviarNaConversa(conversa.id, resultado.resposta, "BOT");
+}
+
+/** Mensagens automaticas (SISTEMA) desde a fala anterior do cliente: o lembrete que ele esta respondendo. */
+async function avisosRecentes(conversaId: string, agora: number) {
+  const recentes = await db.mensagem.findMany({
+    where: { conversaId, criadoEm: { gt: new Date(agora - 48 * 3_600_000) } },
+    orderBy: { criadoEm: "desc" },
+    take: 15,
+    select: { autor: true, texto: true },
+  });
+  const avisos: string[] = [];
+  let passouAtual = false;
+  for (const m of recentes) {
+    if (!passouAtual) {
+      passouAtual = m.autor === "CLIENTE"; // a primeira mensagem do cliente e a que chegou agora
+      continue;
+    }
+    if (m.autor === "CLIENTE") break;
+    if (m.autor === "SISTEMA") avisos.push(m.texto);
+  }
+  return avisos.slice(0, 3).reverse();
 }
 
 /** Hora da mensagem anterior a atual (para saber se a sessao "esfriou"). */

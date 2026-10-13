@@ -4,7 +4,11 @@ import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
 import { configuracao } from "@/lib/agenda/carregar";
 import { horariosDisponiveis } from "@/lib/agenda/consultas";
-import { agendarPeloCliente, cancelarPeloCliente, proximosDoCliente, remarcarPeloCliente } from "@/lib/agenda/cliente";
+import { agendarPeloCliente, cancelarPeloCliente, confirmarPeloCliente, proximosDoCliente, remarcarPeloCliente } from "@/lib/agenda/cliente";
+import { executarAssinatura, FERRAMENTAS_ASSINATURA, NOMES_ASSINATURA } from "./ferramentas-assinatura";
+import { executarCrescimento, FERRAMENTAS_CRESCIMENTO, NOMES_CRESCIMENTO } from "./ferramentas-crescimento";
+import { executarPagamento, FERRAMENTAS_PAGAMENTO, NOMES_PAGAMENTO } from "./ferramentas-pagamento";
+import { ORIGENS_CLIENTE, zNascimento } from "@/lib/validacao-cliente";
 import { dataLocal, hhmmParaMin, instanteLocal, minParaHhmm, minutosLocal, parseData, somarDias } from "@/lib/agenda/tempo";
 
 /** Quem esta conversando: o bot so enxerga e altera os dados deste telefone. */
@@ -50,6 +54,7 @@ export const FERRAMENTAS: Ferramenta[] = [
         horario: { type: "string", description: "HH:MM (24h)" },
         nome_cliente: { type: "string", description: "Nome do cliente, obrigatório se ele ainda não tem cadastro" },
         qualquer_barbeiro: { type: "boolean", description: "true se o cliente disse que tanto faz o barbeiro" },
+        avulso: { type: "boolean", description: "true só se o cliente aceitou pagar avulso depois que a regra do plano bloqueou" },
       },
       required: ["servico_id", "barbeiro_id", "data", "horario"],
       additionalProperties: false,
@@ -81,6 +86,7 @@ export const FERRAMENTAS: Ferramenta[] = [
         data: { type: "string", description: "AAAA-MM-DD" },
         horario: { type: "string", description: "HH:MM (24h)" },
         barbeiro_id: { type: "string", description: "Opcional: trocar de barbeiro" },
+        avulso: { type: "boolean", description: "true só se o cliente aceitou pagar avulso depois que a regra do plano bloqueou" },
       },
       required: ["agendamento_id", "data", "horario"],
       additionalProperties: false,
@@ -107,17 +113,56 @@ export const FERRAMENTAS: Ferramenta[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: "confirmar_presenca",
+    description: "Confirma que o cliente vai comparecer a um horário marcado (ex.: respondeu SIM ao lembrete). Use o id de meus_agendamentos.",
+    input_schema: {
+      type: "object",
+      properties: { agendamento_id: { type: "string" } },
+      required: ["agendamento_id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "receber_mensagens",
+    description: "Liga ou desliga as mensagens automáticas (lembretes e novidades) para este cliente. receber=false quando ele pedir para parar; true se pedir para voltar.",
+    input_schema: {
+      type: "object",
+      properties: { receber: { type: "boolean" } },
+      required: ["receber"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "salvar_perfil",
+    description: "Salva a data de nascimento e/ou como o cliente conheceu a barbearia. Use só com o que o cliente disse (não invente).",
+    input_schema: {
+      type: "object",
+      properties: {
+        data_nascimento: { type: "string", description: "AAAA-MM-DD" },
+        origem: { type: "string", enum: ["INDICACAO", "INSTAGRAM", "GOOGLE", "FACHADA", "WHATSAPP", "OUTRO"], description: "FACHADA = passou na frente" },
+        origem_detalhe: { type: "string", description: "Ex.: nome de quem indicou" },
+      },
+      additionalProperties: false,
+    },
+  },
+  ...FERRAMENTAS_ASSINATURA,
+  ...FERRAMENTAS_CRESCIMENTO,
+  ...FERRAMENTAS_PAGAMENTO,
 ];
 
 const zData = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const zHora = z.string().regex(/^\d{1,2}:\d{2}$/);
 const ENTRADAS = {
   consultar_horarios: z.object({ data: zData, servico_id: z.string(), barbeiro_id: z.string().optional() }),
-  agendar: z.object({ servico_id: z.string(), barbeiro_id: z.string(), data: zData, horario: zHora, nome_cliente: z.string().optional(), qualquer_barbeiro: z.boolean().optional() }),
+  agendar: z.object({ servico_id: z.string(), barbeiro_id: z.string(), data: zData, horario: zHora, nome_cliente: z.string().optional(), qualquer_barbeiro: z.boolean().optional(), avulso: z.boolean().optional() }),
   cancelar_agendamento: z.object({ agendamento_id: z.string() }),
-  remarcar_agendamento: z.object({ agendamento_id: z.string(), data: zData, horario: zHora, barbeiro_id: z.string().optional() }),
+  remarcar_agendamento: z.object({ agendamento_id: z.string(), data: zData, horario: zHora, barbeiro_id: z.string().optional(), avulso: z.boolean().optional() }),
   salvar_nome: z.object({ nome: z.string().trim().min(2).max(60) }),
   chamar_atendente: z.object({ motivo: z.string().max(300) }),
+  confirmar_presenca: z.object({ agendamento_id: z.string() }),
+  receber_mensagens: z.object({ receber: z.boolean() }),
+  salvar_perfil: z.object({ data_nascimento: zNascimento.optional(), origem: z.enum(ORIGENS_CLIENTE).optional(), origem_detalhe: z.string().trim().max(80).optional() }),
 };
 
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
@@ -147,6 +192,9 @@ async function clienteDaConversa(ctx: ContextoBot) {
 }
 
 async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promise<ResultadoFerramenta> {
+  if (NOMES_ASSINATURA.has(nome)) return executarAssinatura(nome, entrada, ctx);
+  if (NOMES_CRESCIMENTO.has(nome)) return executarCrescimento(nome, entrada, ctx);
+  if (NOMES_PAGAMENTO.has(nome)) return executarPagamento(nome, entrada, ctx);
   const cfg = await configuracao();
   switch (nome) {
     case "listar_servicos": {
@@ -199,7 +247,7 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
       const inicio = new Date(instanteLocal(e.data, hhmmParaMin(e.horario), cfg.fuso));
       if (cliente && !cliente.nome.trim()) await db.cliente.update({ where: { id: cliente.id }, data: { nome } });
       const ag = await agendarPeloCliente({
-        telefone: ctx.telefone, nome, barbeiroId: e.barbeiro_id, servicoId: e.servico_id, inicio, origem: "BOT", semPreferencia: e.qualquer_barbeiro,
+        telefone: ctx.telefone, nome, barbeiroId: e.barbeiro_id, servicoId: e.servico_id, inicio, origem: "BOT", semPreferencia: e.qualquer_barbeiro, forcarAvulso: e.avulso,
       });
       await ligarConversaAoCliente(ctx);
       const det = await db.agendamento.findUniqueOrThrow({
@@ -207,7 +255,7 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
         include: { barbeiro: { select: { nome: true } }, servico: { select: { nome: true } } },
       });
       return {
-        texto: `Agendado. id=${det.id}; ${det.servico.nome} com ${det.barbeiro.nome}, ${descreverData(e.data)} às ${e.horario}; ${reais(det.precoCentavos)}.`,
+        texto: `Agendado. id=${det.id}; ${det.servico.nome} com ${det.barbeiro.nome}, ${descreverData(e.data)} às ${e.horario}; ${det.assinaturaId ? "pelo plano de assinatura (sem custo)" : reais(det.precoCentavos)}.`,
       };
     }
     case "meus_agendamentos": {
@@ -223,6 +271,8 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
             barbeiro: a.barbeiro.nome,
             data: descreverData(dataLocal(a.inicio, cfg.fuso)),
             horario: minParaHhmm(minutosLocal(a.inicio, cfg.fuso)),
+            confirmado: a.status === "CONFIRMADO",
+            ...(a.assinaturaId ? { pelo_plano: true } : { valor: reais(a.precoCentavos), pago_antes: a.antecipado?.status === "PAGO" }),
           })),
         ),
       };
@@ -239,9 +289,31 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
       const cliente = await clienteDaConversa(ctx);
       if (!cliente) return { texto: "Cliente sem horários marcados.", erro: true };
       const inicio = new Date(instanteLocal(e.data, hhmmParaMin(e.horario), cfg.fuso));
-      const n = await remarcarPeloCliente(cliente.id, e.agendamento_id, inicio, e.barbeiro_id);
+      const n = await remarcarPeloCliente(cliente.id, e.agendamento_id, inicio, e.barbeiro_id, e.avulso);
       const b = await db.barbeiro.findUniqueOrThrow({ where: { id: n.barbeiroId }, select: { nome: true } });
-      return { texto: `Remarcado para ${descreverData(e.data)} às ${e.horario} com ${b.nome}.` };
+      return { texto: `Remarcado para ${descreverData(e.data)} às ${e.horario} com ${b.nome}; ${n.assinaturaId ? "pelo plano" : reais(n.precoCentavos)}.` };
+    }
+    case "confirmar_presenca": {
+      const e = ENTRADAS.confirmar_presenca.parse(entrada);
+      const cliente = await clienteDaConversa(ctx);
+      if (!cliente) return { texto: "Cliente sem horários marcados.", erro: true };
+      const a = await confirmarPeloCliente(cliente.id, e.agendamento_id);
+      return { texto: `Confirmado: ${descreverData(dataLocal(a.inicio, cfg.fuso))} às ${minParaHhmm(minutosLocal(a.inicio, cfg.fuso))}.` };
+    }
+    case "receber_mensagens": {
+      const e = ENTRADAS.receber_mensagens.parse(entrada);
+      const r = await db.cliente.updateMany({ where: { telefone: ctx.telefone }, data: { aceitaMensagens: e.receber } });
+      if (!r.count) return { texto: "Cliente sem cadastro: nada para mudar." };
+      return { texto: e.receber ? "Mensagens automáticas religadas." : "Pronto: não mandamos mais lembretes nem novidades. Ele ainda pode falar com a gente aqui quando quiser." };
+    }
+    case "salvar_perfil": {
+      const e = ENTRADAS.salvar_perfil.parse(entrada);
+      const r = await db.cliente.updateMany({
+        where: { telefone: ctx.telefone },
+        data: { dataNascimento: e.data_nascimento ?? undefined, origem: e.origem, origemDetalhe: e.origem_detalhe },
+      });
+      if (!r.count) return { texto: "Cliente sem cadastro ainda: salve o nome ou agende primeiro.", erro: true };
+      return { texto: "Salvo." };
     }
     case "salvar_nome": {
       const e = ENTRADAS.salvar_nome.parse(entrada);

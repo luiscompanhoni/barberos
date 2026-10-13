@@ -4,6 +4,8 @@
  */
 import { PrismaClient } from "@prisma/client";
 import { dataLocal, instanteLocal } from "../src/lib/agenda/tempo";
+import { criarPlanosExemplo } from "./planos-exemplo";
+import { criarProdutosExemplo } from "./produtos-exemplo";
 
 const db = new PrismaClient();
 const FUSO = "America/Sao_Paulo";
@@ -107,6 +109,9 @@ async function main() {
       });
     }
   }
+
+  await criarPlanosExemplo(db);
+  await criarProdutosExemplo(db);
 
   console.log("Seed pronto. Logins (código aparece no terminal do `npm run dev`):");
   console.log("  Dono      (11) 90000-0001");

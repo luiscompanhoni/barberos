@@ -32,11 +32,14 @@ async function main() {
   const corte = await db.servico.findFirstOrThrow({ where: { nome: "Corte" } });
   const nomes = ["Bruno", "Caio", "Davi", "Enzo", "Felipe", "Gabriel", "Heitor", "Igor", "Joaquim", "Kaique", "Leo", "Murilo", "Nicolas", "Otavio", "Paulo", "Renan", "Samuel", "Tiago", "Vitor", "Wesley"];
   const clientes = [];
+  // Idade e "como conheceu" variados, para os indicadores terem o que mostrar.
+  const ORIGENS = ["INDICACAO", "INSTAGRAM", "INSTAGRAM", "GOOGLE", "FACHADA", "WHATSAPP"] as const;
   for (const [i, nome] of nomes.entries()) {
+    const perfil = { dataNascimento: new Date(Date.UTC(1975 + ((i * 7) % 30), (i * 5) % 12, 1 + ((i * 11) % 27))), origem: i % 4 === 3 ? null : ORIGENS[i % ORIGENS.length] };
     clientes.push(await db.cliente.upsert({
       where: { telefone: `55119770000${String(i).padStart(2, "0")}` },
-      create: { telefone: `55119770000${String(i).padStart(2, "0")}`, nome: `${nome} (demo)` },
-      update: {},
+      create: { telefone: `55119770000${String(i).padStart(2, "0")}`, nome: `${nome} (demo)`, ...perfil },
+      update: perfil,
     }));
   }
 
