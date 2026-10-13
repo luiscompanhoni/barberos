@@ -49,10 +49,15 @@ async function postarCloud(corpo: Record<string, unknown>): Promise<ResultadoEnv
   return { wamid: json.messages?.[0]?.id ?? null };
 }
 
-export async function enviarTexto(para: string, texto: string): Promise<ResultadoEnvio> {
+/**
+ * `digitandoMs`: pausa antes de entregar (resposta do bot em bolhas). Na Evolution aparece
+ * "digitando..."; na API oficial so espera; no simulador nao espera (testes rapidos).
+ */
+export async function enviarTexto(para: string, texto: string, digitandoMs = 0): Promise<ResultadoEnvio> {
   const p = provedorWhatsApp();
   if (p === "simulador") return { wamid: null };
-  if (p === "evolution") return enviarTextoEvolution(para, texto);
+  if (p === "evolution") return enviarTextoEvolution(para, texto, digitandoMs);
+  if (digitandoMs > 0) await new Promise((r) => setTimeout(r, digitandoMs));
   return postarCloud({ to: para, type: "text", text: { preview_url: false, body: texto.slice(0, 4096) } });
 }
 

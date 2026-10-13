@@ -7,6 +7,7 @@ import { enviarNaConversa, registrarEntrada } from "@/lib/whatsapp/conversas";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { pediuParar } from "@/lib/automacoes/regras";
 import { executarTurno, type Modelo } from "./agente";
+import { dividirEmBolhas, tempoDigitando } from "./bolhas";
 import { contextoDaMensagem, promptSistema } from "./prompt";
 
 /** Sessao com o modelo reinicia depois desse tempo sem mensagens (ou se ficar longa demais). */
@@ -102,7 +103,10 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
       ...(resultado.passouParaHumano ? { estado: "HUMANO" } : {}),
     },
   });
-  if (resultado.resposta) await enviarNaConversa(conversa.id, resultado.resposta, "BOT");
+  // Em bolhas curtas, com "digitando..." antes de cada uma (como uma pessoa no WhatsApp).
+  for (const bolha of dividirEmBolhas(resultado.resposta)) {
+    await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: tempoDigitando(bolha) });
+  }
 }
 
 /** Mensagens automaticas (SISTEMA) desde a fala anterior do cliente: o lembrete que ele esta respondendo. */
