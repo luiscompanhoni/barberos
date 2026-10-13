@@ -41,24 +41,88 @@ export type Atendimento = { id: string; barbeiroId: string; servicoId: string; p
 type Soma = { qtd: number; base: number; comissao: number };
 const soma = (): Soma => ({ qtd: 0, base: 0, comissao: 0 });
 
-/** Agrupa por barbeiro: avulso, plano, total e o detalhe de cada atendimento. */
-export function resumirComissoes<A extends Atendimento>(atendimentos: A[], regras: RegraSalva[]) {
+/**
+ * Agrupa por barbeiro: avulso, plano, total e o detalhe de cada atendimento.
+ * `planoPeloPote`: o atendimento pelo plano e pago pelo pote de assinaturas (aqui fica zero).
+ */
+export function resumirComissoes<A extends Atendimento>(atendimentos: A[], regras: RegraSalva[], opts: { planoPeloPote?: boolean } = {}) {
   const porBarbeiro = new Map<string, { barbeiroId: string; avulso: Soma; plano: Soma; total: number; semRegra: number; detalhe: (A & { modalidade: Modalidade; base: number; comissao: number; regra: string })[] }>();
   for (const a of atendimentos) {
     const modalidade: Modalidade = a.plano ? "PLANO" : "AVULSO";
-    const regra = escolherRegra(regras, a.servicoId, a.barbeiroId);
-    const c = calcularComissao(regra, { modalidade, preco: a.preco, precoTabela: a.precoTabela });
+    const pote = a.plano && !!opts.planoPeloPote;
+    const regra = pote ? null : escolherRegra(regras, a.servicoId, a.barbeiroId);
+    const c = pote ? { base: a.precoTabela, comissao: 0, regra: "Pote de assinaturas" } : calcularComissao(regra, { modalidade, preco: a.preco, precoTabela: a.precoTabela });
     const g = porBarbeiro.get(a.barbeiroId) ?? { barbeiroId: a.barbeiroId, avulso: soma(), plano: soma(), total: 0, semRegra: 0, detalhe: [] };
     const s = a.plano ? g.plano : g.avulso;
     s.qtd++;
     s.base += c.base;
     s.comissao += c.comissao;
     g.total += c.comissao;
-    if (!regra) g.semRegra++;
+    if (!regra && !pote) g.semRegra++;
     g.detalhe.push({ ...a, modalidade, ...c });
     porBarbeiro.set(a.barbeiroId, g);
   }
   return [...porBarbeiro.values()];
+}
+
+// ---------------- pote de assinaturas
+
+export type AjustePote = { adicionalBps: number; diferenciadaBps: number | null };
+export type ConfigPote = { ativo: boolean; percentualBps: number; fichas: Record<string, number>; ajustes: Record<string, AjustePote> };
+
+/** % do barbeiro: o diferenciado substitui o do pote; senao, o do pote + adicional. */
+export function percentualDoBarbeiro(cfg: Pick<ConfigPote, "percentualBps" | "ajustes">, barbeiroId: string) {
+  const a = cfg.ajustes[barbeiroId];
+  return a?.diferenciadaBps ?? cfg.percentualBps + (a?.adicionalBps ?? 0);
+}
+
+/**
+ * Divide o pote pelos atendimentos de plano: cada barbeiro recebe receita x seu % x (fichas dele / fichas de todos).
+ * Servico sem fichas nao entra. Sem atendimentos, ninguem recebe.
+ */
+export function calcularPote(cfg: ConfigPote, receitaCentavos: number, atendimentos: { barbeiroId: string; servicoId: string }[]) {
+  const por = new Map<string, { qtd: number; fichas: number }>();
+  let fichasTotal = 0;
+  for (const a of atendimentos) {
+    const f = cfg.fichas[a.servicoId] ?? 0;
+    if (f <= 0) continue;
+    const x = por.get(a.barbeiroId) ?? { qtd: 0, fichas: 0 };
+    por.set(a.barbeiroId, { qtd: x.qtd + 1, fichas: x.fichas + f });
+    fichasTotal += f;
+  }
+  const barbeiros = [...por].map(([barbeiroId, x]) => {
+    const percentualBps = percentualDoBarbeiro(cfg, barbeiroId);
+    return { barbeiroId, ...x, percentualBps, comissao: Math.round((receitaCentavos * percentualBps * x.fichas) / (10000 * fichasTotal)) };
+  });
+  return { receitaCentavos, percentualBps: cfg.percentualBps, valorPote: Math.round((receitaCentavos * cfg.percentualBps) / 10000), fichasTotal, barbeiros };
+}
+
+// ---------------- comissao de produtos
+
+export type CategoriaComissao = "BAR" | "LOJA";
+export type FaixaProduto = { categoria: CategoriaComissao; minimoCentavos: number; percentualBps: number };
+
+/** Maior faixa alcancada na categoria (null = nao chegou na primeira). */
+export function faixaAlcancada(faixas: FaixaProduto[], categoria: CategoriaComissao, vendido: number) {
+  return faixas.filter((f) => f.categoria === categoria && vendido >= f.minimoCentavos).sort((a, b) => b.minimoCentavos - a.minimoCentavos)[0] ?? null;
+}
+
+/** Por barbeiro e categoria: total vendido no periodo e a comissao da faixa alcancada (sobre o total). */
+export function comissaoProdutos(vendas: { barbeiroId: string; categoria: CategoriaComissao; valorCentavos: number }[], faixas: FaixaProduto[]) {
+  const soma = new Map<string, number>();
+  for (const v of vendas) soma.set(`${v.barbeiroId}|${v.categoria}`, (soma.get(`${v.barbeiroId}|${v.categoria}`) ?? 0) + v.valorCentavos);
+  const por = new Map<string, { vendido: number; comissao: number; categorias: { categoria: CategoriaComissao; vendido: number; percentualBps: number; comissao: number }[] }>();
+  for (const [k, vendido] of soma) {
+    const [barbeiroId, categoria] = k.split("|") as [string, CategoriaComissao];
+    const percentualBps = faixaAlcancada(faixas, categoria, vendido)?.percentualBps ?? 0;
+    const comissao = Math.round((vendido * percentualBps) / 10000);
+    const x = por.get(barbeiroId) ?? { vendido: 0, comissao: 0, categorias: [] };
+    x.vendido += vendido;
+    x.comissao += comissao;
+    x.categorias.push({ categoria, vendido, percentualBps, comissao });
+    por.set(barbeiroId, x);
+  }
+  return por;
 }
 
 // ---------------- folha

@@ -8,7 +8,8 @@ import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
-import { REGRA_SUGERIDA, resumirComissoes, type Regra, type RegraSalva } from "./regras";
+import { regrasExtras } from "./pote";
+import { calcularPote, comissaoProdutos, REGRA_SUGERIDA, resumirComissoes, type CategoriaComissao, type Regra, type RegraSalva } from "./regras";
 
 const soRegra = (r: Regra): Regra => ({ avulsoTipo: r.avulsoTipo, avulsoValor: r.avulsoValor, planoTipo: r.planoTipo, planoValor: r.planoValor });
 
@@ -61,31 +62,55 @@ export async function salvarComissoes(s: Sessao, d: { gerais: Entrada[]; excecoe
   return configComissoes();
 }
 
-/** Relatorio de comissoes do periodo (datas locais "AAAA-MM-DD", inclusivas). */
+/**
+ * Relatorio de comissoes do periodo (datas locais "AAAA-MM-DD", inclusivas): servicos (avulso e plano),
+ * pote de assinaturas (quando ligado, no lugar da regra "pelo plano") e produtos vendidos (por faixa).
+ * O pote e calculado com todos os barbeiros (a fatia de um depende das fichas dos outros).
+ */
 export async function relatorioComissoes(inicio: string, fim: string, barbeiroId?: string) {
   if (fim < inicio) throw new ErroNegocio("A data final é antes da inicial.");
   const fuso = (await configuracao()).fuso;
-  const [ags, regras, barbeiros] = await Promise.all([
+  const janela = { gte: new Date(instanteLocal(inicio, 0, fuso)), lt: new Date(instanteLocal(somarDias(fim, 1), 0, fuso)) };
+  const [ags, regras, barbeiros, extras, receita, itens] = await Promise.all([
     db.agendamento.findMany({
-      where: {
-        status: "CONCLUIDO",
-        inicio: { gte: new Date(instanteLocal(inicio, 0, fuso)), lt: new Date(instanteLocal(somarDias(fim, 1), 0, fuso)) },
-        ...(barbeiroId ? { barbeiroId } : {}),
-      },
+      where: { status: "CONCLUIDO", inicio: janela },
       orderBy: { inicio: "asc" },
       select: { id: true, inicio: true, barbeiroId: true, servicoId: true, precoCentavos: true, assinaturaId: true, cliente: { select: { nome: true } }, servico: { select: { nome: true, precoCentavos: true } } },
     }),
     db.comissaoServico.findMany() as Promise<RegraSalva[]>,
     db.barbeiro.findMany({ select: { id: true, nome: true } }),
+    regrasExtras(),
+    db.cobranca.aggregate({ where: { status: "PAGA", pagaEm: janela }, _sum: { valorCentavos: true } }),
+    db.itemComanda.findMany({
+      where: { produtoId: { not: null }, barbeiroId: { not: null }, comanda: { status: "FECHADA", fechadaEm: janela } },
+      select: { barbeiroId: true, quantidade: true, precoUnitCentavos: true, produto: { select: { categoria: true } } },
+    }),
   ]);
-  const grupos = resumirComissoes(ags.map((a) => ({
+  const { pote, faixas } = extras;
+  const grupos = resumirComissoes(ags.filter((a) => !barbeiroId || a.barbeiroId === barbeiroId).map((a) => ({
     id: a.id, barbeiroId: a.barbeiroId, servicoId: a.servicoId, preco: a.precoCentavos, precoTabela: a.servico.precoCentavos, plano: !!a.assinaturaId,
     inicio: a.inicio, cliente: a.cliente.nome, servico: a.servico.nome,
-  })), regras);
+  })), regras, { planoPeloPote: pote.ativo });
+  const potes = pote.ativo ? calcularPote(pote, receita._sum.valorCentavos ?? 0, ags.filter((a) => a.assinaturaId)) : null;
+  const produtos = comissaoProdutos(itens.filter((i) => i.produto?.categoria === "BAR" || i.produto?.categoria === "LOJA").map((i) => ({
+    barbeiroId: i.barbeiroId!, categoria: i.produto!.categoria as CategoriaComissao, valorCentavos: i.quantidade * i.precoUnitCentavos,
+  })), faixas);
+
   const nomes = new Map(barbeiros.map((b) => [b.id, b.nome]));
-  const linhas = grupos.map((g) => ({
-    barbeiroId: g.barbeiroId, nome: nomes.get(g.barbeiroId) ?? "?", avulso: g.avulso, plano: g.plano, total: g.total, semRegra: g.semRegra,
-    atendimentos: g.detalhe.map((x) => ({ id: x.id, inicio: x.inicio, cliente: x.cliente, servico: x.servico, modalidade: x.modalidade, base: x.base, regra: x.regra, comissao: x.comissao })),
-  })).sort((a, b) => b.total - a.total);
-  return { inicio, fim, barbeiros: linhas, total: linhas.reduce((t, l) => t + l.total, 0) };
+  const ids = new Set([...grupos.map((g) => g.barbeiroId), ...(potes?.barbeiros.map((p) => p.barbeiroId) ?? []), ...produtos.keys()]);
+  const vazio = { qtd: 0, base: 0, comissao: 0 };
+  const linhas = [...ids].filter((id) => !barbeiroId || id === barbeiroId).map((id) => {
+    const g = grupos.find((x) => x.barbeiroId === id);
+    const p = potes?.barbeiros.find((x) => x.barbeiroId === id) ?? null;
+    const pr = produtos.get(id) ?? null;
+    return {
+      barbeiroId: id, nome: nomes.get(id) ?? "?", avulso: g?.avulso ?? vazio, plano: g?.plano ?? vazio, pote: p, produtos: pr,
+      total: (g?.total ?? 0) + (p?.comissao ?? 0) + (pr?.comissao ?? 0), semRegra: g?.semRegra ?? 0,
+      atendimentos: (g?.detalhe ?? []).map((x) => ({ id: x.id, inicio: x.inicio, cliente: x.cliente, servico: x.servico, modalidade: x.modalidade, base: x.base, regra: x.regra, comissao: x.comissao })),
+    };
+  }).sort((a, b) => b.total - a.total);
+  return {
+    inicio, fim, barbeiros: linhas, total: linhas.reduce((t, l) => t + l.total, 0),
+    pote: potes ? { receitaCentavos: potes.receitaCentavos, percentualBps: potes.percentualBps, valorPote: potes.valorPote, fichasTotal: potes.fichasTotal } : null,
+  };
 }

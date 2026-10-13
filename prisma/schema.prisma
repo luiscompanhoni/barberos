@@ -147,6 +147,7 @@ model Barbeiro {
   agendamentos    Agendamento[]
   planos          PlanoBarbeiro[]
   checklistPessoa ChecklistPessoa?
+  poteAjuste      PoteBarbeiro?
   /// Foto (webp pequena, guardada no banco; servida em /api/barbeiros/<id>/foto).
   fotoDados       Bytes?
   fotoTipo        String?
@@ -167,6 +168,7 @@ model Servico {
   agendamentos     Agendamento[]
   planos           PlanoServico[]
   comissaoServicos ComissaoServico[]
+  poteFicha        PoteFicha?
 
   @@map("servicos")
 }
@@ -1213,6 +1215,50 @@ model ComissaoServico {
 
   @@unique([servicoId, barbeiroId])
   @@map("comissoes_servico")
+}
+
+/// Pote de assinaturas (como o Dpote do CashBarber): no periodo, um % do que entrou de mensalidades
+/// e dividido entre os barbeiros pelas fichas dos atendimentos feitos pelo plano. Ligado, substitui a
+/// regra "pelo plano" de cada servico. Linha unica (id "pote").
+model PoteConfig {
+  id            String   @id @default("pote")
+  ativo         Boolean  @default(false)
+  /// % do faturamento de assinaturas que vira pote (3500 = 35%).
+  percentualBps Int      @default(3500)
+  atualizadoEm  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@map("pote_config")
+}
+
+/// Peso de cada servico feito pelo plano no pote (ex.: corte 40 fichas, barba 20). Sem linha = nao entra.
+model PoteFicha {
+  servicoId String  @id
+  servico   Servico @relation(fields: [servicoId], references: [id], onDelete: Cascade)
+  fichas    Int
+
+  @@map("pote_fichas")
+}
+
+/// Ajuste do barbeiro no pote: adicional soma ao % do pote; diferenciada substitui o % (null = sem).
+model PoteBarbeiro {
+  barbeiroId      String   @id
+  barbeiro        Barbeiro @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
+  adicionalBps    Int      @default(0)
+  diferenciadaBps Int?
+
+  @@map("pote_barbeiros")
+}
+
+/// Comissao de produto por faixa de venda no periodo, por categoria (BAR = conveniencia, LOJA).
+/// Vale a maior faixa alcancada, sobre tudo o que o barbeiro vendeu na categoria.
+model ComissaoProdutoFaixa {
+  id             String           @id @default(cuid())
+  categoria      CategoriaProduto
+  minimoCentavos Int
+  percentualBps  Int
+
+  @@unique([categoria, minimoCentavos])
+  @@map("comissao_produto_faixas")
 }
 
 enum TipoLancamentoFolha {

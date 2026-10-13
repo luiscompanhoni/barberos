@@ -44,7 +44,11 @@ export async function previaFolha(comp: string) {
       pagoEm: f?.pagoEm ?? null, despesaId: f?.despesaId ?? null,
       // Diferenca entre o congelado e o calculado agora (ex.: atendimento concluido depois de fechar).
       mudouDepois: !!congelado && congelado.liquido !== t.liquido,
-      comissaoDetalhe: com ? { avulso: com.avulso, plano: com.plano, semRegra: com.semRegra } : null,
+      comissaoDetalhe: com ? {
+        avulso: com.avulso, plano: com.plano, semRegra: com.semRegra,
+        pote: com.pote ? { qtd: com.pote.qtd, fichas: com.pote.fichas, percentualBps: com.pote.percentualBps, comissao: com.pote.comissao } : null,
+        produtos: com.produtos ? { vendido: com.produtos.vendido, comissao: com.produtos.comissao } : null,
+      } : null,
       lancamentos: ls.map((l) => ({ id: l.id, tipo: l.tipo, valorCentavos: l.valorCentavos, descricao: l.descricao, doCaixa: !!l.movimentoCaixaId, criadoEm: l.criadoEm })),
     };
   });

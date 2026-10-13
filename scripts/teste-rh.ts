@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { abrirCaixa, caixaAberto } from "@/lib/financeiro/caixa";
 import { relatorioComissoes, salvarComissoes } from "@/lib/rh/comissoes";
 import { fecharFolha, lancar, pagarFolha, previaFolha, reabrirFolha } from "@/lib/rh/folha";
+import { configExtras, salvarExtras } from "@/lib/rh/pote";
 import { salvarFicha } from "@/lib/rh/funcionarios";
 
 const ok = (c: boolean, msg: string) => { console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); if (!c) process.exitCode = 1; };
@@ -29,7 +30,11 @@ async function main() {
   const excecoesAntes = await db.comissaoServico.findMany({ where: { barbeiroId: { not: null } } });
   const jaAberto = await caixaAberto();
   if (jaAberto) await db.caixa.update({ where: { id: jaAberto.id }, data: { status: "FECHADO", fechadoEm: new Date(), observacao: "fechado pelo teste" } });
-  const ids = { pessoa: "", tarefas: [] as string[], usuario: "", barbeiro: "", servico: "", cliente: "", plano: "", assinatura: "", ags: [] as string[], caixas: [] as string[], despesas: [] as string[] };
+  const ids = { pessoa: "", tarefas: [] as string[], usuario: "", barbeiro: "", servico: "", cliente: "", plano: "", assinatura: "", ags: [] as string[], caixas: [] as string[], despesas: [] as string[], produto: "", comanda: "" };
+  const poteAntes = {
+    cfg: await db.poteConfig.findUnique({ where: { id: "pote" } }),
+    fichas: await db.poteFicha.findMany(), ajustes: await db.poteBarbeiro.findMany(), faixas: await db.comissaoProdutoFaixa.findMany(),
+  };
   try {
     // ================= PONTOS DO CHECKLIST
     await db.checklistConfig.update({ where: { id: 1 }, data: { pontosRe: 20, nivelPlatina: 50, nivelLegend: 100 } });
@@ -157,7 +162,45 @@ async function main() {
     ok(folha?.status === "PAGA" && folha.despesaId === desp?.id && !!folha.pagoEm, "folha fica PAGA ligada à despesa");
     ok((await falha(() => reabrirFolha(s, COMP, p.id)))?.codigo === "ja_paga", "folha paga não reabre");
     ok((await falha(() => pagarFolha(s, COMP, p.id)))?.codigo === "ja_paga", "não paga duas vezes");
+
+    // ================= POTE DE ASSINATURAS E PRODUTOS
+    // Atendimentos do barbeiro no mes: avulsos de R$ 60 (dia 5) e R$ 50 (dia 15), plano nos dias 12 e 31 (excecao: 50% avulso).
+    await db.cobranca.create({ data: { assinaturaId: as.id, gatewayId: "teste-rh-pote-1", valorCentavos: 100000, vencimento: new Date(`${COMP}-10T00:00:00Z`), status: "PAGA", pagaEm: new Date(instanteLocal(`${COMP}-10`, 600, fuso)) } });
+    ok((await falha(() => salvarExtras(s, { pote: { ativo: true, percentualBps: 3500, fichas: [], ajustes: [] }, faixas: [] })))?.message.includes("fichas") === true, "pote ligado sem fichas é recusado");
+    await salvarExtras(s, {
+      pote: { ativo: true, percentualBps: 3500, fichas: [{ servicoId: sv.id, fichas: 40 }], ajustes: [{ barbeiroId: b.id, adicionalBps: 500, diferenciadaBps: null }] },
+      faixas: [{ categoria: "LOJA", minimoCentavos: 10000, percentualBps: 500 }, { categoria: "LOJA", minimoCentavos: 12000, percentualBps: 1000 }, { categoria: "BAR", minimoCentavos: 10000, percentualBps: 100 }],
+    });
+    const prod = await db.produto.create({ data: { nome: "[teste rh] Pomada", categoria: "LOJA", precoCentavos: 5000 } });
+    ids.produto = prod.id;
+    const cm = await db.comanda.create({ data: { status: "FECHADA", abertaEm: new Date(instanteLocal(`${COMP}-20`, 600, fuso)), fechadaEm: new Date(instanteLocal(`${COMP}-20`, 620, fuso)), clienteId: cli.id } });
+    ids.comanda = cm.id;
+    await db.itemComanda.create({ data: { comandaId: cm.id, produtoId: prod.id, descricao: prod.nome, quantidade: 3, precoUnitCentavos: 5000, barbeiroId: b.id } });
+    const relPote = await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id);
+    rel = relPote.barbeiros[0];
+    ok(relPote.pote?.receitaCentavos === 100000 && relPote.pote.valorPote === 35000 && relPote.pote.fichasTotal === 80, `pote: 35% de R$ 1.000 = R$ 350, 80 fichas (${JSON.stringify(relPote.pote)})`);
+    ok(rel.pote?.qtd === 2 && rel.pote.percentualBps === 4000 && rel.pote.comissao === 40000, `barbeiro com +5% de adicional leva 40% do faturamento (único com fichas) (${rel.pote?.comissao})`);
+    ok(rel.plano.comissao === 0 && rel.atendimentos.filter((a) => a.modalidade === "PLANO").every((a) => a.regra === "Pote de assinaturas"), "pote ligado substitui a regra pelo plano");
+    ok(rel.produtos?.vendido === 15000 && rel.produtos.comissao === 1500, `produtos: R$ 150 na loja → faixa de 10% = R$ 15 (${rel.produtos?.comissao})`);
+    ok(rel.total === 5500 + 40000 + 1500, `total = avulso + pote + produtos (${rel.total})`);
+    const extras = await configExtras();
+    await salvarExtras(s, {
+      pote: { ...extras.pote, ativo: false, fichas: extras.pote.fichas.map(({ servicoId, fichas }) => ({ servicoId, fichas })), ajustes: extras.pote.ajustes.map(({ barbeiroId, adicionalBps, diferenciadaBps }) => ({ barbeiroId, adicionalBps, diferenciadaBps })) },
+      faixas: extras.faixas,
+    });
+    rel = (await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id)).barbeiros[0];
+    ok(rel.pote === null && rel.plano.comissao === 3000, `pote desligado volta a regra pelo plano (30% da tabela) (${rel.plano.comissao})`);
   } finally {
+    if (ids.comanda) await db.comanda.delete({ where: { id: ids.comanda } });
+    if (ids.produto) await db.produto.delete({ where: { id: ids.produto } });
+    await db.poteConfig.deleteMany({});
+    if (poteAntes.cfg) await db.poteConfig.create({ data: poteAntes.cfg });
+    await db.poteFicha.deleteMany({});
+    if (poteAntes.fichas.length) await db.poteFicha.createMany({ data: poteAntes.fichas });
+    await db.poteBarbeiro.deleteMany({});
+    if (poteAntes.ajustes.length) await db.poteBarbeiro.createMany({ data: poteAntes.ajustes });
+    await db.comissaoProdutoFaixa.deleteMany({});
+    if (poteAntes.faixas.length) await db.comissaoProdutoFaixa.createMany({ data: poteAntes.faixas });
     await db.despesa.deleteMany({ where: { id: { in: ids.despesas } } });
     await db.caixa.deleteMany({ where: { id: { in: ids.caixas } } });
     if (jaAberto) await db.caixa.update({ where: { id: jaAberto.id }, data: { status: "ABERTO", fechadoEm: null, observacao: null } });

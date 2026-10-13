@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { calcularComissao, csvFolha, escolherRegra, intervaloCompetencia, REGRA_SUGERIDA, resumirComissoes, totaisFolha, type RegraSalva } from "@/lib/rh/regras";
+import {
+  calcularComissao, calcularPote, comissaoProdutos, csvFolha, escolherRegra, faixaAlcancada, intervaloCompetencia, percentualDoBarbeiro,
+  REGRA_SUGERIDA, resumirComissoes, totaisFolha, type ConfigPote, type FaixaProduto, type RegraSalva,
+} from "@/lib/rh/regras";
 
 const geral: RegraSalva = { servicoId: "corte", barbeiroId: null, ...REGRA_SUGERIDA };
 const excecao: RegraSalva = { servicoId: "corte", barbeiroId: "joao", avulsoTipo: "PERCENTUAL", avulsoValor: 5000, planoTipo: "PERCENTUAL", planoValor: 3000 };
@@ -33,6 +36,61 @@ describe("comissoes", () => {
     expect(pedro.total).toBe(3500);
     expect(pedro.semRegra).toBe(1);
     expect(r.find((x) => x.barbeiroId === "joao")!.total).toBe(3000);
+  });
+});
+
+describe("pote de assinaturas", () => {
+  const cfg: ConfigPote = { ativo: true, percentualBps: 3500, fichas: { corte: 40, barba: 20 }, ajustes: {} };
+  it("divide 35% da receita pelas fichas (corte 40, barba 20)", () => {
+    // pote = 35% de R$ 1.000 = R$ 350; fichas: pedro 40+40+20 = 100, joao 40 = 40 (total 140)
+    const r = calcularPote(cfg, 100000, [
+      { barbeiroId: "pedro", servicoId: "corte" }, { barbeiroId: "pedro", servicoId: "corte" }, { barbeiroId: "pedro", servicoId: "barba" },
+      { barbeiroId: "joao", servicoId: "corte" }, { barbeiroId: "joao", servicoId: "sobrancelha" },
+    ]);
+    expect(r.valorPote).toBe(35000);
+    expect(r.fichasTotal).toBe(140);
+    expect(r.barbeiros.find((b) => b.barbeiroId === "pedro")).toEqual({ barbeiroId: "pedro", qtd: 3, fichas: 100, percentualBps: 3500, comissao: 25000 });
+    expect(r.barbeiros.find((b) => b.barbeiroId === "joao")).toEqual({ barbeiroId: "joao", qtd: 1, fichas: 40, percentualBps: 3500, comissao: 10000 });
+  });
+  it("adicional soma ao %; diferenciada substitui", () => {
+    const c = { ...cfg, ajustes: { ana: { adicionalBps: 500, diferenciadaBps: null }, ygor: { adicionalBps: 0, diferenciadaBps: 1500 } } };
+    expect(percentualDoBarbeiro(c, "ana")).toBe(4000);
+    expect(percentualDoBarbeiro(c, "ygor")).toBe(1500);
+    expect(percentualDoBarbeiro(c, "outro")).toBe(3500);
+    const r = calcularPote(c, 100000, [{ barbeiroId: "ana", servicoId: "corte" }, { barbeiroId: "ygor", servicoId: "corte" }]);
+    expect(r.barbeiros.find((b) => b.barbeiroId === "ana")!.comissao).toBe(20000); // 40% x metade
+    expect(r.barbeiros.find((b) => b.barbeiroId === "ygor")!.comissao).toBe(7500); // 15% x metade
+  });
+  it("sem atendimentos de plano com fichas, ninguém recebe", () => {
+    expect(calcularPote(cfg, 100000, [{ barbeiroId: "pedro", servicoId: "sobrancelha" }]).barbeiros).toEqual([]);
+  });
+  it("pote ligado: atendimento pelo plano fica zero no resumo e não conta como sem regra", () => {
+    const r = resumirComissoes([{ id: "1", barbeiroId: "pedro", servicoId: "barba", preco: 0, precoTabela: 5000, plano: true }], [geral], { planoPeloPote: true })[0];
+    expect(r.plano).toEqual({ qtd: 1, base: 5000, comissao: 0 });
+    expect(r.semRegra).toBe(0);
+    expect(r.detalhe[0].regra).toBe("Pote de assinaturas");
+  });
+});
+
+describe("comissão de produtos", () => {
+  const faixas: FaixaProduto[] = [
+    { categoria: "LOJA", minimoCentavos: 10000, percentualBps: 500 }, { categoria: "LOJA", minimoCentavos: 40000, percentualBps: 1000 },
+    { categoria: "LOJA", minimoCentavos: 100000, percentualBps: 1400 }, { categoria: "BAR", minimoCentavos: 10000, percentualBps: 100 },
+  ];
+  it("vale a maior faixa alcançada", () => {
+    expect(faixaAlcancada(faixas, "LOJA", 9999)).toBeNull();
+    expect(faixaAlcancada(faixas, "LOJA", 40000)?.percentualBps).toBe(1000);
+    expect(faixaAlcancada(faixas, "LOJA", 250000)?.percentualBps).toBe(1400);
+  });
+  it("% da faixa sobre tudo o que vendeu, por categoria", () => {
+    const r = comissaoProdutos([
+      { barbeiroId: "pedro", categoria: "LOJA", valorCentavos: 30000 }, { barbeiroId: "pedro", categoria: "LOJA", valorCentavos: 15000 },
+      { barbeiroId: "pedro", categoria: "BAR", valorCentavos: 8000 }, { barbeiroId: "joao", categoria: "BAR", valorCentavos: 12000 },
+    ], faixas);
+    expect(r.get("pedro")).toEqual({ vendido: 53000, comissao: 4500, categorias: [
+      { categoria: "LOJA", vendido: 45000, percentualBps: 1000, comissao: 4500 }, { categoria: "BAR", vendido: 8000, percentualBps: 0, comissao: 0 },
+    ] });
+    expect(r.get("joao")!.comissao).toBe(120);
   });
 });
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ComissoesConfig } from "./ComissoesConfig";
+import { ComissoesExtras } from "./ComissoesExtras";
 import { ComissoesRelatorio } from "./ComissoesRelatorio";
 import { FolhaTela } from "./FolhaTela";
 import { Funcionarios } from "./Funcionarios";
@@ -28,7 +29,7 @@ export function RhTela() {
       </div>
       {aba === "folha" && <FolhaTela />}
       {aba === "relatorio" && <ComissoesRelatorio />}
-      {aba === "regras" && <ComissoesConfig />}
+      {aba === "regras" && <div className="space-y-6"><ComissoesConfig /><ComissoesExtras /></div>}
       {aba === "funcionarios" && <Funcionarios />}
     </div>
   );
