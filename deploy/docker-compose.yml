@@ -46,6 +46,7 @@ services:
       CADDY_IP: ${CADDY_IP:-http://ip-nao-configurado.invalid}
       CADDY_IP_DESTINO: ${PAINEL_URL:-http://localhost}
       CADDY_SNI: ${CADDY_IP:-sem-ip.invalid}
+      CADDY_PAINEL_ANTIGO: ${CADDY_PAINEL_ANTIGO:-http://painel-antigo.invalid}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data

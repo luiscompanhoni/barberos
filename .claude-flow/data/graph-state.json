@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "updatedAt": 1791904410212,
+  "nodeCount": 1,
+  "nodes": {
+    "mem-barberos-projeto-----0": {
+      "id": "mem-barberos-projeto-----0",
+      "category": "barberos-projeto",
+      "confidence": 0.6000000000000001,
+      "accessCount": 2,
+      "createdAt": 1791904410199
+    }
+  },
+  "edges": [],
+  "pageRanks": {
+    "mem-barberos-projeto-----0": 1
+  }
+}

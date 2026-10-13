@@ -10,9 +10,13 @@
  * O que NAO acontece: nenhuma mensagem sai. Reativacao e retorno ficam marcados como "nao enviados" para a
  * ultima visita importada de cada cliente (so voltam a valer depois de uma visita nova no BarberOS).
  *
+ * Na troca de sistema: --ate=agora e --futuros trazem tambem os horarios ainda marcados no CashBarber
+ * (MARCADO/CONFIRMADO, recebem os lembretes do BarberOS). Agradecimento e aviso de falta dos atendimentos
+ * importados das ultimas horas ficam marcados como "nao enviados".
+ *
  * Ids fixos (cba_/cbc_): rodar de novo nao duplica. Por padrao so mostra o que faria; --aplicar grava.
  * Os CSVs tem dados pessoais: nao copiar para dentro do projeto.
- * Rodar: DATABASE_URL=... npx tsx scripts/importar-historico-cashbarber.ts <pasta-dos-csv> [--ate=2026-10-11] [--aplicar]
+ * Rodar: DATABASE_URL=... npx tsx scripts/importar-historico-cashbarber.ts <pasta-dos-csv> [--ate=2026-10-11|agora] [--futuros] [--aplicar]
  */
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
@@ -61,16 +65,32 @@ const id = (prefixo: string, ...partes: string[]) => `${prefixo}${createHash("sh
 
 const FORMA: Record<string, FormaRecebimento> = { Pix: "PIX", Dinheiro: "DINHEIRO", "Cartão de débito": "DEBITO", "Cartão de crédito": "CREDITO" };
 
+/**
+ * Linhas de todos os CSVs com o prefixo. Janelas que se sobrepoem trazem a mesma linha em dois arquivos:
+ * cada linha conta o maximo de vezes que aparece num arquivo so (linha repetida dentro do arquivo e real).
+ */
 function ler(pasta: string, prefixo: string) {
-  return readdirSync(pasta).filter((f) => f.startsWith(prefixo) && f.endsWith(".csv"))
-    .flatMap((f) => lerCsv(readFileSync(join(pasta, f), "utf8")).slice(1).filter((l) => l.length >= 8));
+  const vezes = new Map<string, { linha: string[]; n: number }>();
+  for (const f of readdirSync(pasta).filter((f) => f.startsWith(prefixo) && f.endsWith(".csv"))) {
+    const noArquivo = new Map<string, number>();
+    for (const l of lerCsv(readFileSync(join(pasta, f), "utf8")).slice(1).filter((l) => l.length >= 8)) {
+      const k = l.join("\u0001");
+      noArquivo.set(k, (noArquivo.get(k) ?? 0) + 1);
+      if (!vezes.has(k)) vezes.set(k, { linha: l, n: 0 });
+    }
+    for (const [k, n] of noArquivo) vezes.get(k)!.n = Math.max(vezes.get(k)!.n, n);
+  }
+  return [...vezes.values()].flatMap(({ linha, n }) => Array.from({ length: n }, () => linha));
 }
 
 async function main() {
   const pasta = process.argv[2];
   if (!pasta) throw new Error("Informe a pasta com os CSVs.");
   const aplicar = process.argv.includes("--aplicar");
-  const ate = new Date(`${process.argv.find((a) => a.startsWith("--ate="))?.slice(6) ?? "2026-10-11"}T03:00:00Z`);
+  const agora = new Date();
+  const ateArg = process.argv.find((a) => a.startsWith("--ate="))?.slice(6) ?? "2026-10-11";
+  const ate = ateArg === "agora" ? agora : new Date(`${ateArg}T03:00:00Z`);
+  const futuros = process.argv.includes("--futuros");
 
   // ---- cadastros do sistema
   const barbeiros = await db.barbeiro.findMany({ select: { id: true, nome: true } });
@@ -82,14 +102,16 @@ async function main() {
   for (const c of clientes) juntarNome(c.nome, c.id);
 
   // ---- agendamentos
-  type Ag = { id: string; barbeiroId: string; clienteId: string; inicio: Date; fim: Date; status: StatusAgendamento; origem: "SITE" | "RECEPCAO"; telefone: string };
+  type Ag = { id: string; barbeiroId: string; clienteId: string; inicio: Date; fim: Date; status: StatusAgendamento; origem: "SITE" | "RECEPCAO"; telefone: string; futuro: boolean };
   const novosClientes: Prisma.ClienteCreateManyInput[] = [];
   const ags = new Map<string, Ag>();
   let semTelefone = 0, semBarbeiro = 0, depoisDoCorte = 0;
   for (const l of ler(pasta, "agend_")) {
     const [, prof, cli, origem, , status, statusCliente, quando] = l;
     const inicio = instante(quando);
-    if (inicio >= ate) { depoisDoCorte++; continue; }
+    // Horario ainda por vir (so com --futuros): entra marcado; cancelado ou ja passado fica de fora.
+    const futuro = inicio >= ate && futuros && status === "Agendado" && inicio > agora && !statusCliente.startsWith("Cancelado");
+    if (inicio >= ate && !futuro) { depoisDoCorte++; continue; }
     const barbeiroId = barbeiroDe(prof);
     if (!barbeiroId) { semBarbeiro++; continue; }
     const partes = cli.split(" - ");
@@ -104,17 +126,18 @@ async function main() {
       porTelefone.set(telefone, clienteId);
     }
     juntarNome(nome, clienteId);
-    const st: StatusAgendamento = status === "Finalizado" ? "CONCLUIDO" : status === "Cancelado" && statusCliente !== "Faltou" ? "CANCELADO" : "FALTOU";
+    const st: StatusAgendamento = futuro ? (statusCliente.startsWith("Confirmado") ? "CONFIRMADO" : "MARCADO")
+      : status === "Finalizado" ? "CONCLUIDO" : status === "Cancelado" && statusCliente !== "Faltou" ? "CANCELADO" : "FALTOU";
     const chave = id("cba_", barbeiroId, telefone, quando);
     const ja = ags.get(chave);
     // Corte e barba no mesmo horario sao duas linhas no CashBarber: vira um atendimento so (o mais "forte").
     if (ja && (ja.status === "CONCLUIDO" || st !== "CONCLUIDO")) continue;
-    ags.set(chave, { id: chave, barbeiroId, clienteId, inicio, fim: inicio, status: st, origem: origem === "App" ? "SITE" : "RECEPCAO", telefone });
+    ags.set(chave, { id: chave, barbeiroId, clienteId, inicio, fim: inicio, status: st, origem: origem === "App" ? "SITE" : "RECEPCAO", telefone, futuro });
   }
 
   // Duracao: ate 40 min, cortada no proximo atendimento do mesmo barbeiro. Sobreposicao (encaixe no mesmo horario
   // ou choque com o que ja existe no BarberOS) nao cabe na agenda: o repetido fica de fora.
-  const existentes = await db.agendamento.findMany({ where: { status: { notIn: ["CANCELADO", "FALTOU"] }, inicio: { lt: ate } }, select: { id: true, barbeiroId: true, inicio: true, fim: true } });
+  const existentes = await db.agendamento.findMany({ where: { status: { notIn: ["CANCELADO", "FALTOU"] }, ...(futuros ? {} : { inicio: { lt: ate } }) }, select: { id: true, barbeiroId: true, inicio: true, fim: true } });
   const lista = [...ags.values()].sort((a, b) => a.barbeiroId.localeCompare(b.barbeiroId) || +a.inicio - +b.inicio);
   const ativos = lista.filter((a) => a.status !== "CANCELADO" && a.status !== "FALTOU");
   let encaixes = 0;
@@ -124,14 +147,15 @@ async function main() {
     a.fim = new Date(Math.min(+a.inicio + 40 * MIN, prox && prox.barbeiroId === a.barbeiroId ? +prox.inicio : Infinity));
   }
   for (const a of lista) if (+a.fim <= +a.inicio) a.fim = new Date(+a.inicio + 30 * MIN); // cancelados/faltas
-  const ocupado = new Map<string, { inicio: number; fim: number }[]>();
-  for (const e of existentes) ocupado.set(e.barbeiroId, [...(ocupado.get(e.barbeiroId) ?? []), { inicio: +e.inicio, fim: +e.fim }]);
+  // O que ja foi importado numa rodada anterior (mesmo id) nao conta como choque com ele mesmo.
+  const ocupado = new Map<string, { id: string; inicio: number; fim: number }[]>();
+  for (const e of existentes) ocupado.set(e.barbeiroId, [...(ocupado.get(e.barbeiroId) ?? []), { id: e.id, inicio: +e.inicio, fim: +e.fim }]);
   const final: Ag[] = [];
   for (const a of lista) {
     if (a.status === "CANCELADO" || a.status === "FALTOU") { final.push(a); continue; }
     const faixas = ocupado.get(a.barbeiroId) ?? [];
-    if (faixas.some((f) => +a.inicio < f.fim && f.inicio < +a.fim)) { encaixes++; continue; }
-    faixas.push({ inicio: +a.inicio, fim: +a.fim });
+    if (faixas.some((f) => f.id !== a.id && +a.inicio < f.fim && f.inicio < +a.fim)) { encaixes++; continue; }
+    faixas.push({ id: a.id, inicio: +a.inicio, fim: +a.fim });
     ocupado.set(a.barbeiroId, faixas);
     final.push(a);
   }
@@ -183,7 +207,7 @@ async function main() {
   for (const p of pags) { const m = diaLocal(p.pagoEm as Date).slice(0, 7); porMes.set(m, (porMes.get(m) ?? 0) + p.valorCentavos); }
   const st = (s: StatusAgendamento) => final.filter((a) => a.status === s).length;
   console.log(`corte: antes de ${ate.toISOString()} (fora: ${depoisDoCorte} agendamentos, ${comandasDepois} linhas de comanda)`);
-  console.log(`agendamentos: ${final.length} (concluídos ${st("CONCLUIDO")}, cancelados ${st("CANCELADO")}, faltas ${st("FALTOU")}) | sem telefone ${semTelefone} | sem barbeiro ${semBarbeiro} | encaixe/choque fora ${encaixes}`);
+  console.log(`agendamentos: ${final.length} (concluídos ${st("CONCLUIDO")}, cancelados ${st("CANCELADO")}, faltas ${st("FALTOU")}, marcados ${st("MARCADO") + st("CONFIRMADO")}) | sem telefone ${semTelefone} | sem barbeiro ${semBarbeiro} | encaixe/choque fora ${encaixes}`);
   console.log(`clientes novos: ${novosClientes.length}`);
   console.log(`comandas: ${cmCriar.length} | com cliente ${comCliente} | ligadas a atendimento ${ligadas} | pagamentos ${pags.length} | operações de caixa ignoradas ${operacoesCaixa}`);
   console.log("recebido por mês:", Object.fromEntries([...porMes].sort().map(([m, v]) => [m, (v / 100).toFixed(2)])));
@@ -202,7 +226,8 @@ async function main() {
   };
   const nCli = await lote(novosClientes, (d) => db.cliente.createMany({ data: d, skipDuplicates: true }));
   const nAg = await lote(final, (d) => db.agendamento.createMany({
-    data: d.map((a) => ({ id: a.id, barbeiroId: a.barbeiroId, clienteId: a.clienteId, servicoId: servico.id, inicio: a.inicio, fim: a.fim, status: a.status, origem: a.origem, precoCentavos: 0, observacao: MARCA, criadoEm: a.inicio })),
+    data: d.map((a) => ({ id: a.id, barbeiroId: a.barbeiroId, clienteId: a.clienteId, servicoId: servico.id, inicio: a.inicio, fim: a.fim, status: a.status, origem: a.origem, precoCentavos: 0,
+      observacao: a.futuro ? "Marcado no CashBarber (serviço não informado)" : MARCA, criadoEm: a.futuro ? agora : a.inicio })),
     skipDuplicates: true,
   }));
   const nCm = await lote(cmCriar, (d) => db.comanda.createMany({ data: d, skipDuplicates: true }));
@@ -217,6 +242,16 @@ async function main() {
     if (!importadas.has(`${u.clienteId}|${+u._max.inicio!}`)) continue;
     const chave = `${u.clienteId}:${u._max.inicio!.toISOString()}`;
     for (const tipo of ["REATIVACAO", "RETORNO"] as const) marcas.push({ tipo, chave, clienteId: u.clienteId, ok: false, erro: "Histórico importado do CashBarber: não enviado." });
+  }
+  // Atendimentos/faltas importados das ultimas horas: sem agradecimento nem aviso de falta (a rotina usa o dia UTC na chave).
+  const dias = [0, 1].map((n) => new Date(+agora + n * 86_400_000).toISOString().slice(0, 10));
+  for (const a of final) {
+    if (a.status === "CONCLUIDO" && +a.fim > +agora - 13 * 3_600_000) {
+      for (const d of dias) marcas.push({ tipo: "POS_ATENDIMENTO", chave: `${a.clienteId}:${d}`, clienteId: a.clienteId, agendamentoId: a.id, ok: false, erro: "Histórico importado do CashBarber: não enviado." });
+    }
+    if (a.status === "FALTOU" && +a.inicio > +agora - 25 * 3_600_000) {
+      marcas.push({ tipo: "POS_FALTA", chave: a.id, clienteId: a.clienteId, agendamentoId: a.id, ok: false, erro: "Histórico importado do CashBarber: não enviado." });
+    }
   }
   const nMarcas = await lote(marcas, (d) => db.automacaoEnviada.createMany({ data: d, skipDuplicates: true }));
   console.log(`\ngravado: clientes ${nCli}, agendamentos ${nAg}, comandas ${nCm}, itens ${nIt}, pagamentos ${nPg}, automações bloqueadas ${nMarcas}`);

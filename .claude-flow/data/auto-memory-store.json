@@ -1,0 +1,15 @@
+[
+  {
+    "id": "mem-barberos-projeto-----0",
+    "key": "-",
+    "content": "name: barberos-projeto\ndescription: \"BarberOS (sistema de barbearia) — decisoes do usuario, fases, stack e estado atual\"\nmetadata:\n  node_type: memory\n  type: project\n  originSessionId: 0571f795-42c1-46bc-a0c7-8e794faa623a\n  modified: 2026-10-13T14:59:59.867Z\n---\n\nBarberOS em `OneDrive/Área de Trabalho/BarberOS`: sistema para UMA barbearia (nao SaaS) com agenda por barbeiro, bot WhatsApp, area do cliente, assinaturas \"corte ilimitado\" e estoque (bar + produtos).\n\nDecisoes aceitas pelo usuario e…",
+    "summary": "---",
+    "namespace": "barberos-projeto",
+    "type": "semantic",
+    "metadata": {
+      "sourceFile": "C:\\Users\\User\\.claude\\projects\\C--Users-User-OneDrive--rea-de-Trabalho-BarberOS\\memory\\barberos-projeto.md",
+      "bootstrapped": true
+    },
+    "createdAt": 1791904410199
+  }
+]
