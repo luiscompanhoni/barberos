@@ -1,5 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { _usarFetch, converterCobranca, descritorFatura, pagarme, telefonePagarme, traduzirStatus } from "@/lib/pagamentos/pagarme";
+import { _usarFetch, converterCobranca, descritorFatura, motivoRecusaEstorno, pagarme, telefonePagarme, traduzirStatus } from "@/lib/pagamentos/pagarme";
+
+describe("estorno recusado", () => {
+  it("explica saldo insuficiente e repassa outros motivos", () => {
+    expect(motivoRecusaEstorno([{ message: "action_forbidden |  | Saldo insuficiente." }])).toMatch(/saldo insuficiente na conta/);
+    expect(motivoRecusaEstorno([{ message: "invalid | | Cartão expirado." }])).toBe("Pagar.me recusou o estorno: Cartão expirado.");
+    expect(motivoRecusaEstorno()).toBe("Pagar.me recusou o estorno.");
+  });
+});
 
 type Chamada = { url: string; metodo: string; corpo: unknown; auth: string | null };
 let chamadas: Chamada[] = [];
