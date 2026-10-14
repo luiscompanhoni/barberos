@@ -39,6 +39,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
                 { href: "/expediente", rotulo: "Horários" },
                 { href: "/equipe", rotulo: "Configurações" },
                 { href: "/whatsapp", rotulo: "WhatsApp" },
+                { href: "/auditoria", rotulo: "Auditoria" },
                 ...(provedorWhatsApp() === "simulador" ? [{ href: "/simulador", rotulo: "Simulador" }] : []),
               ]
             : []),

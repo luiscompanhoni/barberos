@@ -18,6 +18,10 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/usuarios/
     return NextResponse.json({ senha });
   }
   if (id === s.usuarioId) throw new ErroNegocio("Você não pode desativar o próprio acesso.");
-  await db.usuario.update({ where: { id }, data: { ativo: b.acao === "ativar" } });
+  await db.$transaction(async (tx) => {
+    const u = await tx.usuario.findUniqueOrThrow({ where: { id }, select: { ativo: true, nome: true } });
+    await tx.usuario.update({ where: { id }, data: { ativo: b.acao === "ativar" } });
+    await auditar(tx, s.usuarioId, b.acao, "usuario", id, { usuario: u.nome, antes: { ativo: u.ativo }, depois: { ativo: b.acao === "ativar" } });
+  });
   return NextResponse.json({ ok: true });
 });

@@ -2,9 +2,11 @@
  * Comissoes dos barbeiros: regra geral por servico (avulso e plano), excecao por barbeiro
  * e relatorio por periodo a partir dos agendamentos CONCLUIDO.
  */
+import type { Prisma } from "@prisma/client";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, instanteLocal, somarDias } from "@/lib/agenda/tempo";
 import { auditar } from "@/lib/auditoria";
+import { mudancas } from "@/lib/auditoria-regras";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { resumoComanda, type ItemRegra, type PagamentoRegra } from "@/lib/comandas/regras";
@@ -14,7 +16,7 @@ import { STATUS_EFETIVOS } from "@/lib/estornos/regras";
 import { adicionaisDoCalculo } from "./adicionais";
 import { regrasExtras } from "./pote";
 import {
-  calcularAssinaturas, comissaoProdutos, intervaloCompetencia, REGRA_SUGERIDA, resumirComissoes, SOMA, valorCobradoItem,
+  calcularAssinaturas, comissaoProdutos, descreverRegra, intervaloCompetencia, REGRA_SUGERIDA, resumirComissoes, SOMA, valorCobradoItem,
   type CategoriaComissao, type Regra, type RegraSalva,
 } from "./regras";
 
@@ -46,11 +48,28 @@ function validar(r: Regra) {
   }
 }
 
+/** Regras em texto, por "Servico" ou "Servico / Barbeiro" (para a auditoria mostrar antes -> depois). */
+async function regrasEmTexto(regras: (Regra & { servicoId: string; barbeiroId: string | null })[]) {
+  const [servicos, barbeiros] = await Promise.all([
+    db.servico.findMany({ select: { id: true, nome: true } }),
+    db.barbeiro.findMany({ select: { id: true, nome: true } }),
+  ]);
+  const sv = new Map(servicos.map((x) => [x.id, x.nome])), bb = new Map(barbeiros.map((x) => [x.id, x.nome]));
+  return Object.fromEntries(regras.map((r) => [
+    `${sv.get(r.servicoId) ?? r.servicoId}${r.barbeiroId ? ` / ${bb.get(r.barbeiroId) ?? r.barbeiroId}` : ""}`,
+    `avulso ${descreverRegra(r.avulsoTipo, r.avulsoValor, "AVULSO")} · plano ${descreverRegra(r.planoTipo, r.planoValor, "PLANO")}`,
+  ]));
+}
+
 /** Salva as regras gerais e substitui todas as excecoes. */
 export async function salvarComissoes(s: Sessao, d: { gerais: Entrada[]; excecoes: (Entrada & { barbeiroId: string })[] }) {
   [...d.gerais, ...d.excecoes].forEach(validar);
   const chaves = new Set(d.excecoes.map((e) => `${e.servicoId}:${e.barbeiroId}`));
   if (chaves.size !== d.excecoes.length) throw new ErroNegocio("Tem exceção repetida para o mesmo barbeiro e serviço.");
+  const antes = await regrasEmTexto(await db.comissaoServico.findMany());
+  const depois = await regrasEmTexto([...d.gerais.map((g) => ({ ...g, barbeiroId: null })), ...d.excecoes]);
+  // Excecao que saiu da lista aparece como removida.
+  const m = mudancas(antes, { ...Object.fromEntries(Object.keys(antes).map((k) => [k, null])), ...depois });
   await db.$transaction(async (tx) => {
     for (const g of d.gerais) {
       // Unique com NULL nao impede duplicata no Postgres: procura e atualiza.
@@ -64,7 +83,7 @@ export async function salvarComissoes(s: Sessao, d: { gerais: Entrada[]; excecoe
     }
     await tx.comissaoServico.deleteMany({ where: { barbeiroId: { not: null } } });
     if (d.excecoes.length) await tx.comissaoServico.createMany({ data: d.excecoes.map((e) => ({ servicoId: e.servicoId, barbeiroId: e.barbeiroId, ...soRegra(e) })) });
-    await auditar(tx, s.usuarioId, "rh_comissoes_configurar", "comissao", "servicos", { gerais: d.gerais.length, excecoes: d.excecoes.length });
+    if (m) await auditar(tx, s.usuarioId, "rh_comissoes_configurar", "comissao", "servicos", m as Prisma.InputJsonValue);
   });
   return configComissoes();
 }

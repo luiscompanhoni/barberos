@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Menu,
-  MessageSquareText, Package, PanelLeft, Receipt, Settings, Smartphone, UserRound, X, type LucideIcon,
+  MessageSquareText, Package, PanelLeft, Receipt, Settings, ShieldCheck, Smartphone, UserRound, X, type LucideIcon,
 } from "lucide-react";
 import { Marca } from "./Marca";
 
@@ -30,6 +30,7 @@ const ICONES: Record<string, LucideIcon> = {
   "/checklist": ClipboardCheck,
   "/rh": BriefcaseBusiness,
   "/whatsapp": Smartphone,
+  "/auditoria": ShieldCheck,
 };
 
 const iniciais = (nome: string) =>

@@ -297,16 +297,23 @@ model Agendamento {
   @@map("agendamentos")
 }
 
+/// Log de auditoria: so recebe linhas novas (um gatilho no banco recusa alterar ou apagar).
 model Auditoria {
-  id         String   @id @default(cuid())
-  usuarioId  String?
-  acao       String
-  entidade   String
-  entidadeId String
-  dados      Json?
-  criadoEm   DateTime @default(now()) @db.Timestamptz(3)
+  id          String   @id @default(cuid())
+  usuarioId   String?
+  acao        String
+  entidade    String
+  entidadeId  String
+  /// Detalhes; alteracoes guardam { antes, depois } so com os campos que mudaram.
+  dados       Json?
+  /// IP e aparelho (user agent) de quem fez, quando veio de uma requisicao.
+  ip          String?
+  dispositivo String?
+  criadoEm    DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([entidade, entidadeId])
+  @@index([criadoEm])
+  @@index([usuarioId, criadoEm])
   @@map("auditoria")
 }
 

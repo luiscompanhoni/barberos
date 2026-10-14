@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { auditarMudanca } from "@/lib/auditoria";
 import { exigirSessao } from "@/lib/auth/sessao";
 import { configuracao } from "@/lib/agenda/carregar";
 import { db } from "@/lib/db";
@@ -13,7 +14,7 @@ export const GET = rota(async () => {
 
 /** Dados da barbearia e regras de agendamento (valem para bot, site e recepcao). */
 export const PATCH = rota(async (req: Request) => {
-  await exigirSessao(["DONO"]);
+  const sessao = await exigirSessao(["DONO"]);
   const b = await corpo(
     req,
     z.object({
@@ -45,6 +46,9 @@ export const PATCH = rota(async (req: Request) => {
       presenteAniversario: z.string().trim().max(120).nullable().optional(),
     }),
   );
-  await configuracao(); // garante a linha
-  return NextResponse.json(await db.configuracao.update({ where: { id: 1 }, data: b }));
+  const atual = await configuracao(); // garante a linha
+  return NextResponse.json(await db.$transaction(async (tx) => {
+    await auditarMudanca(tx, sessao.usuarioId, "configurar", "configuracao", "barbearia", atual, b);
+    return tx.configuracao.update({ where: { id: 1 }, data: b });
+  }));
 });

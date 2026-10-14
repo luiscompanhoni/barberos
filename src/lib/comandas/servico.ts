@@ -155,7 +155,7 @@ export async function definirDesconto(s: Sessao, comandaId: string, descontoCent
     const { subtotal } = resumoComanda(c.itens, c.pagamentos, 0);
     if (descontoCentavos < 0 || descontoCentavos > subtotal) throw new ErroNegocio("Desconto maior que o total.");
     await tx.comanda.update({ where: { id: comandaId }, data: { descontoCentavos } });
-    await auditar(tx, s.usuarioId, "desconto", "comanda", comandaId, { descontoCentavos });
+    await auditar(tx, s.usuarioId, "desconto", "comanda", comandaId, { comanda: c.numero, antes: { descontoCentavos: c.descontoCentavos }, depois: { descontoCentavos } });
   });
   avisar(comandaId);
 }

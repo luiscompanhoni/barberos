@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { auditarMudanca } from "@/lib/auditoria";
 import { exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
 export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/servicos/[id]">) => {
-  await exigirSessao(["DONO"]);
+  const sessao = await exigirSessao(["DONO"]);
   const { id } = await ctx.params;
   const b = await corpo(
     req,
@@ -20,6 +21,7 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/servicos/
   );
   const { barbeiroIds, ...dados } = b;
   const s = await db.$transaction(async (tx) => {
+    const atual = await tx.servico.findUniqueOrThrow({ where: { id } });
     if (barbeiroIds) {
       await tx.barbeiroServico.deleteMany({ where: { servicoId: id, barbeiroId: { notIn: barbeiroIds } } });
       await tx.barbeiroServico.createMany({
@@ -27,6 +29,7 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/servicos/
         skipDuplicates: true,
       });
     }
+    await auditarMudanca(tx, sessao.usuarioId, "alterar", "servico", id, atual, dados, { servico: atual.nome });
     return tx.servico.update({ where: { id }, data: dados });
   });
   return NextResponse.json(s);

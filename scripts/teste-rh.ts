@@ -36,6 +36,8 @@ async function main() {
     cfg: await db.poteConfig.findUnique({ where: { id: "pote" } }),
     fichas: await db.poteFicha.findMany(), faixas: await db.comissaoProdutoFaixa.findMany(),
   };
+  // Comeca com a comissao das assinaturas desligada (o banco de dev pode estar com ela ligada); o finally restaura.
+  await db.poteConfig.updateMany({ data: { ativo: false } });
   try {
     // ================= PONTOS DO CHECKLIST
     await db.checklistConfig.update({ where: { id: 1 }, data: { pontosRe: 20, nivelPlatina: 50, nivelLegend: 100 } });

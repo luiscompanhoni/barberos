@@ -68,7 +68,8 @@ Equipe (dono e recepção; o que é só do dono está marcado):
 - Só o dono: **Indicadores** (`/indicadores`), **RH** (`/rh`), **Planos** (`/planos`), **Horários**
   (`/expediente`: semana padrão, folga, dia extra, horário diferente, fechar agenda), **Configurações**
   (`/equipe`: dados da barbearia, mensagens automáticas, acessos da equipe, barbeiros com foto e serviços), **WhatsApp**
-  (`/whatsapp`: conexão do número pelo QR code) e **Simulador** (`/simulador`, só com
+  (`/whatsapp`: conexão do número pelo QR code), **Auditoria** (`/auditoria`: quem mudou o quê, quando e de onde,
+  com o antes → depois) e **Simulador** (`/simulador`, só com
   `WHATSAPP_PROVIDER="simulador"`: conversa como se fosse um cliente, pelo mesmo caminho do webhook).
 - **Minha conta** (`/conta`, toda a equipe): senha e usuário de login.
 
@@ -470,7 +471,8 @@ abrir no Excel (fora da pasta do projeto).
 - Senhas guardadas com scrypt; login errado não revela se a conta existe. O sistema nunca vê o número do cartão.
 - Estorno nunca passa do valor pago, e quem aprova é o dono.
 - Webhook do WhatsApp só aceita chamadas assinadas pela Meta e ignora mensagens repetidas.
-- Toda alteração fica registrada na tabela `auditoria`.
+- Toda alteração fica registrada na tabela `auditoria` (quem, quando, IP, aparelho e o antes → depois dos campos
+  que mudaram). O banco recusa alterar ou apagar esse registro; o dono consulta em **Auditoria** no painel.
 
 ## Estrutura
 

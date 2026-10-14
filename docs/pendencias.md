@@ -51,15 +51,7 @@ Falta:
 - [ ] Matriz de permissões por ação: estorno, desconto, alteração de comissão, saldo, assinatura, caixa, folha,
       exclusão de dados.
 
-### 11. Log de auditoria 🟡
-Já existe: tabela `auditoria` com usuário, data/hora e dados em mais de 60 tipos de ação (caixa, comandas, estornos, RH,
-roleta, agenda, links, senhas...).
-
-Falta:
-- [ ] Tela para o dono consultar o log (filtro por pessoa, data, tipo).
-- [ ] Valor anterior → novo em todas as alterações (ex.: "R$ 65 → R$ 50").
-- [ ] IP/dispositivo nas ações críticas.
-- [ ] Log que não pode ser apagado (bloqueio no banco).
+### 11. Log de auditoria: ✅ feito (ver "Concluídos")
 
 ### 12. Erro de cartão 🟡
 Já existe: correção do CEP de cobrança da Pagar.me (com hífen, todo cartão falhava). Está no PR #2.
@@ -217,4 +209,11 @@ Falta:
   - Relatório com todos os campos e, num mês inteiro, salário, bônus, descontos e total a pagar.
   - Ajustes antigos convertidos sem mudar o percentual de ninguém.
   - Estorno feito depois do mês fechado desconta no mês em que foi feito (igual ao resumo financeiro).
+- **11. Log de auditoria:**
+  - Tela **Auditoria** (só o dono) com filtro por período, pessoa e tipo, agrupada por dia.
+  - Alterações de serviço, plano, produto, barbeiro, cliente, configuração, acesso, desconto de comanda, ficha do
+    funcionário, regras de comissão e roleta guardam o antes → depois só dos campos que mudaram (ex.: "preço:
+    R$ 65,00 → R$ 50,00").
+  - IP e aparelho de quem fez, em toda ação feita pelo painel ou pelo site (rotinas automáticas ficam sem).
+  - Bloqueio no banco: o registro não pode ser alterado, apagado nem truncado, nem por script.
 - **Item 18 (quase todo):** ver Fase B.

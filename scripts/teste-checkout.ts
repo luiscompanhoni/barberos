@@ -8,7 +8,7 @@ process.env.CELCASH_GALAX_HASH = "falso";
 delete process.env.CELCASH_AMBIENTE;
 process.env.WHATSAPP_PROVIDER = "simulador";
 
-process.env.COBRANCA_ENDERECO ??= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ??= "89160161"; process.env.COBRANCA_CIDADE ??= "Rio do Sul"; process.env.COBRANCA_UF ??= "SC";
+process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ||= "89160161"; process.env.COBRANCA_CIDADE ||= "Rio do Sul"; process.env.COBRANCA_UF ||= "SC";
 import type { Sessao } from "@/lib/auth/sessao";
 import { checkoutDoHorario, pagarAntecipado, sincronizarAntecipado } from "@/lib/agenda/antecipado";
 import { ativarComCartao, checkoutDaAssinatura, pagarPlanoComPix } from "@/lib/assinaturas/cartao-pix";
