@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Check, Gift, Plus, Save, Trash2 } from "lucide-react";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
+import { ResultadoRoleta } from "./ResultadoRoleta";
 import { RodaRoleta, rotacaoAlvo } from "./RodaRoleta";
 
 type Tipo = "CREDITO" | "BRINDE" | "NADA";
@@ -10,7 +11,7 @@ type Premio = { id?: string; chave: string; rotulo: string; tipo: Tipo; valor: s
 type Config = { ativa: boolean; girosPorAtendimento: number; giroGratisDias: number; bonusAssinantePct: number; validadeDias: number };
 type Painel = {
   config: Config;
-  premios: { id: string; rotulo: string; tipo: Tipo; valorCentavos: number; peso: number; cor: string; ativo: boolean; limiteMensal: number | null; saiuNoMes: number }[];
+  premios: { id: string; rotulo: string; tipo: Tipo; valorCentavos: number; custoCentavos: number; peso: number; cor: string; ativo: boolean; limiteMensal: number | null; saiuNoMes: number }[];
   aRetirar: { id: string; rotulo: string; cliente: string; telefone: string; criadoEm: string; expiraEm: string | null }[];
   ultimos: { id: string; rotulo: string; tipo: Tipo; valorCentavos: number; cliente: string; status: string; criadoEm: string }[];
   mes: { giros: number; creditoCentavos: number };
@@ -34,7 +35,9 @@ export function RoletaPainel({ dono }: { dono: boolean }) {
     setP(d);
     setCfg(d.config);
     setPremios(d.premios.map((x) => ({
-      id: x.id, chave: x.id, rotulo: x.rotulo, tipo: x.tipo, valor: x.valorCentavos ? centavosParaTexto(x.valorCentavos) : "", peso: x.peso,
+      // Valor do credito (dinheiro) ou custo do brinde: a mesma coluna.
+      id: x.id, chave: x.id, rotulo: x.rotulo, tipo: x.tipo, peso: x.peso,
+      valor: x.tipo === "CREDITO" && x.valorCentavos ? centavosParaTexto(x.valorCentavos) : x.tipo === "BRINDE" && x.custoCentavos ? centavosParaTexto(x.custoCentavos) : "",
       cor: x.cor, ativo: x.ativo, limite: x.limiteMensal === null ? "" : String(x.limiteMensal), saiuNoMes: x.saiuNoMes,
     })));
   }
@@ -79,6 +82,7 @@ export function RoletaPainel({ dono }: { dono: boolean }) {
           config: cfg,
           premios: premios.map((x) => ({
             ...(x.id ? { id: x.id } : {}), rotulo: x.rotulo.trim(), tipo: x.tipo, valorCentavos: x.tipo === "CREDITO" ? paraCentavos(x.valor) : 0,
+            custoCentavos: x.tipo === "BRINDE" && x.valor.trim() ? paraCentavos(x.valor) : 0,
             peso: Math.max(0, Math.round(x.peso)), cor: x.cor, ativo: x.ativo, limiteMensal: x.limite.trim() === "" ? null : Math.max(0, Math.round(Number(x.limite))),
           })),
         },
@@ -133,6 +137,8 @@ export function RoletaPainel({ dono }: { dono: boolean }) {
         </section>
       )}
 
+      {dono && <ResultadoRoleta />}
+
       {dono && (
         <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
           <div className="space-y-4">
@@ -157,7 +163,7 @@ export function RoletaPainel({ dono }: { dono: boolean }) {
               </div>
               <div className="hidden grid-cols-[auto_1fr_auto] gap-2 px-2 text-[10px] font-bold tracking-wider text-zinc-500 uppercase sm:grid">
                 <span className="w-9">Cor</span>
-                <span className="grid grid-cols-[1.3fr_1.2fr_.8fr_.7fr_.8fr] gap-2"><span>Texto na roda</span><span>Tipo</span><span>Valor R$</span><span>Peso</span><span>Limite/mês</span></span>
+                <span className="grid grid-cols-[1.3fr_1.2fr_.8fr_.7fr_.8fr] gap-2"><span>Texto na roda</span><span>Tipo</span><span>Valor/custo R$</span><span>Peso</span><span>Limite/mês</span></span>
                 <span className="w-[150px] pl-4">Chance</span>
               </div>
               <div className="space-y-2">
@@ -169,7 +175,9 @@ export function RoletaPainel({ dono }: { dono: boolean }) {
                       <select className="campo py-1.5" value={x.tipo} onChange={(e) => muda(x.chave, { tipo: e.target.value as Tipo })}>
                         {TIPOS.map((t) => <option key={t.v} value={t.v}>{t.r}</option>)}
                       </select>
-                      <input className="campo py-1.5" placeholder={x.tipo === "CREDITO" ? "R$" : "—"} disabled={x.tipo !== "CREDITO"} inputMode="decimal" value={x.tipo === "CREDITO" ? x.valor : ""} onChange={(e) => muda(x.chave, { valor: e.target.value })} title="Valor do crédito" />
+                      <input className="campo py-1.5" placeholder={x.tipo === "CREDITO" ? "R$" : x.tipo === "BRINDE" ? "custo R$" : "—"} disabled={x.tipo === "NADA"} inputMode="decimal"
+                        value={x.tipo === "NADA" ? "" : x.valor} onChange={(e) => muda(x.chave, { valor: e.target.value })}
+                        title={x.tipo === "BRINDE" ? "Quanto o brinde custa para a barbearia" : "Valor do crédito"} />
                       <input className="campo py-1.5" type="number" min={0} value={x.peso} onChange={(e) => muda(x.chave, { peso: Number(e.target.value) || 0 })} title="Peso no sorteio" />
                       <input className="campo py-1.5" type="number" min={0} placeholder="sem limite" value={x.limite} onChange={(e) => muda(x.chave, { limite: e.target.value })} title="Máximo por mês" />
                     </div>
@@ -183,7 +191,7 @@ export function RoletaPainel({ dono }: { dono: boolean }) {
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-zinc-500">Colunas: texto · tipo · valor · <b>peso</b> (a chance é o peso dividido pela soma dos pesos ativos) · limite por mês (ex.: corte grátis no máximo 2 por mês).</p>
+              <p className="text-xs text-zinc-500">Colunas: texto · tipo · valor (dinheiro) ou custo para a barbearia (brinde) · <b>peso</b> (a chance é o peso dividido pela soma dos pesos ativos) · limite por mês (ex.: corte grátis no máximo 2 por mês).</p>
               <button className="btn" onClick={() => setPremios((ps) => [...ps, { chave: `novo${++seq}`, rotulo: "", tipo: "CREDITO", valor: "", peso: 10, cor: CORES[ps.length % CORES.length], ativo: true, limite: "" }])}>
                 <Plus size={15} /> Adicionar prêmio
               </button>

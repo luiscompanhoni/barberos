@@ -5,24 +5,29 @@
  */
 import { randomInt } from "node:crypto";
 import type { RoletaPremio, TipoPremioRoleta } from "@prisma/client";
+import { configuracao } from "@/lib/agenda/carregar";
+import { dataLocal } from "@/lib/agenda/tempo";
 import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
+import { resumoComanda } from "@/lib/comandas/regras";
+import { disponiveis } from "@/lib/crescimento/saldo";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
-import { chances, comBonus, elegiveis, girosDisponiveis, multiplicador, sortear } from "./regras";
+import { resolverPeriodo } from "@/lib/indicadores/periodo";
+import { chances, comandasComResgate, comBonus, elegiveis, girosDisponiveis, multiplicador, retornoPorReal, sortear } from "./regras";
 
 const PADRAO: Omit<RoletaPremio, "id" | "criadoEm">[] = [
-  { rotulo: "R$ 5", tipo: "CREDITO", valorCentavos: 500, peso: 20, cor: "#8BC34A", ordem: 0, ativo: true, limiteMensal: null },
-  { rotulo: "R$ 2", tipo: "CREDITO", valorCentavos: 200, peso: 25, cor: "#26A69A", ordem: 1, ativo: true, limiteMensal: null },
-  { rotulo: "Tente de novo", tipo: "NADA", valorCentavos: 0, peso: 20, cor: "#7E57C2", ordem: 2, ativo: true, limiteMensal: null },
-  { rotulo: "R$ 10", tipo: "CREDITO", valorCentavos: 1000, peso: 10, cor: "#D81B60", ordem: 3, ativo: true, limiteMensal: null },
-  { rotulo: "Bebida grátis", tipo: "BRINDE", valorCentavos: 0, peso: 8, cor: "#1E88E5", ordem: 4, ativo: true, limiteMensal: null },
-  { rotulo: "R$ 15", tipo: "CREDITO", valorCentavos: 1500, peso: 5, cor: "#FB8C00", ordem: 5, ativo: true, limiteMensal: null },
-  { rotulo: "Corte grátis", tipo: "BRINDE", valorCentavos: 0, peso: 1, cor: "#E53935", ordem: 6, ativo: true, limiteMensal: 2 },
-  { rotulo: "R$ 3", tipo: "CREDITO", valorCentavos: 300, peso: 20, cor: "#43A047", ordem: 7, ativo: true, limiteMensal: null },
-  { rotulo: "Tente de novo", tipo: "NADA", valorCentavos: 0, peso: 15, cor: "#EC407A", ordem: 8, ativo: true, limiteMensal: null },
-  { rotulo: "R$ 25", tipo: "CREDITO", valorCentavos: 2500, peso: 2, cor: "#00ACC1", ordem: 9, ativo: true, limiteMensal: null },
+  { rotulo: "R$ 5", tipo: "CREDITO", valorCentavos: 500, peso: 20, cor: "#8BC34A", ordem: 0, ativo: true, limiteMensal: null, custoCentavos: 0 },
+  { rotulo: "R$ 2", tipo: "CREDITO", valorCentavos: 200, peso: 25, cor: "#26A69A", ordem: 1, ativo: true, limiteMensal: null, custoCentavos: 0 },
+  { rotulo: "Tente de novo", tipo: "NADA", valorCentavos: 0, peso: 20, cor: "#7E57C2", ordem: 2, ativo: true, limiteMensal: null, custoCentavos: 0 },
+  { rotulo: "R$ 10", tipo: "CREDITO", valorCentavos: 1000, peso: 10, cor: "#D81B60", ordem: 3, ativo: true, limiteMensal: null, custoCentavos: 0 },
+  { rotulo: "Bebida grátis", tipo: "BRINDE", valorCentavos: 0, peso: 8, cor: "#1E88E5", ordem: 4, ativo: true, limiteMensal: null, custoCentavos: 0 },
+  { rotulo: "R$ 15", tipo: "CREDITO", valorCentavos: 1500, peso: 5, cor: "#FB8C00", ordem: 5, ativo: true, limiteMensal: null, custoCentavos: 0 },
+  { rotulo: "Corte grátis", tipo: "BRINDE", valorCentavos: 0, peso: 1, cor: "#E53935", ordem: 6, ativo: true, limiteMensal: 2, custoCentavos: 0 },
+  { rotulo: "R$ 3", tipo: "CREDITO", valorCentavos: 300, peso: 20, cor: "#43A047", ordem: 7, ativo: true, limiteMensal: null, custoCentavos: 0 },
+  { rotulo: "Tente de novo", tipo: "NADA", valorCentavos: 0, peso: 15, cor: "#EC407A", ordem: 8, ativo: true, limiteMensal: null, custoCentavos: 0 },
+  { rotulo: "R$ 25", tipo: "CREDITO", valorCentavos: 2500, peso: 2, cor: "#00ACC1", ordem: 9, ativo: true, limiteMensal: null, custoCentavos: 0 },
 ];
 
 export async function configRoleta() {
@@ -117,6 +122,7 @@ export async function girar(clienteId: string) {
       data: {
         clienteId, premioId: premio.id, rotulo: premio.rotulo, tipo: premio.tipo, valorCentavos: valor || premio.valorCentavos,
         multiplicador: premio.tipo === "CREDITO" ? mult : 100, origem: g.gratis ? "GRATIS" : "ATENDIMENTO",
+        custoCentavos: premio.tipo === "BRINDE" ? premio.custoCentavos : 0,
         status: premio.tipo === "BRINDE" ? "A_RETIRAR" : "CONCLUIDO", beneficioId: beneficio?.id, expiraEm,
       },
     });
@@ -155,7 +161,11 @@ export async function painelRoleta() {
 }
 
 export type ConfigEntrada = { ativa: boolean; girosPorAtendimento: number; giroGratisDias: number; bonusAssinantePct: number; validadeDias: number };
-export type PremioEntrada = { id?: string; rotulo: string; tipo: TipoPremioRoleta; valorCentavos: number; peso: number; cor: string; ativo: boolean; limiteMensal: number | null };
+export type PremioEntrada = {
+  id?: string; rotulo: string; tipo: TipoPremioRoleta; valorCentavos: number; peso: number; cor: string; ativo: boolean; limiteMensal: number | null;
+  /** Custo interno do brinde (so BRINDE; dinheiro custa o que o cliente usar). */
+  custoCentavos?: number;
+};
 
 export async function salvarRoleta(s: Sessao, config: ConfigEntrada, premios: PremioEntrada[]) {
   if (premios.filter((p) => p.ativo).length < 2) throw new ErroNegocio("Deixe pelo menos 2 prêmios ativos na roleta.");
@@ -176,11 +186,16 @@ export async function salvarRoleta(s: Sessao, config: ConfigEntrada, premios: Pr
     // Premio que saiu da lista: desativa (mantem o historico dos giros).
     await tx.roletaPremio.updateMany({ where: { id: { notIn: ids } }, data: { ativo: false } });
     for (const [ordem, p] of premios.entries()) {
-      const dados = { rotulo: p.rotulo, tipo: p.tipo, valorCentavos: p.tipo === "NADA" ? 0 : p.valorCentavos, peso: p.peso, cor: p.cor, ativo: p.ativo, limiteMensal: p.limiteMensal, ordem };
+      const dados = {
+        rotulo: p.rotulo, tipo: p.tipo, valorCentavos: p.tipo === "NADA" ? 0 : p.valorCentavos, peso: p.peso, cor: p.cor, ativo: p.ativo, limiteMensal: p.limiteMensal, ordem,
+        custoCentavos: p.tipo === "BRINDE" ? (p.custoCentavos ?? 0) : 0,
+      };
       if (p.id) await tx.roletaPremio.update({ where: { id: p.id }, data: dados });
       else await tx.roletaPremio.create({ data: dados });
     }
-    await auditar(tx, s.usuarioId, "roleta_configurar", "configuracao", "roleta", { config, premios: premios.length });
+    await auditar(tx, s.usuarioId, "roleta_configurar", "configuracao", "roleta", {
+      antes: atual, depois: config, premios: premios.map((p) => ({ rotulo: p.rotulo, tipo: p.tipo, valorCentavos: p.valorCentavos, custoCentavos: p.custoCentavos ?? 0, peso: p.peso, ativo: p.ativo })),
+    });
   });
   return painelRoleta();
 }
@@ -193,4 +208,48 @@ export async function entregarBrinde(s: Sessao, giroId: string) {
     await tx.roletaGiro.update({ where: { id: giroId }, data: { status: "CONCLUIDO", entregueEm: new Date(), entreguePorId: s.usuarioId } });
     await auditar(tx, s.usuarioId, "roleta_entregar", "cliente", g.clienteId, { giroId, premio: g.rotulo });
   });
+}
+
+/**
+ * Custo x faturamento da roleta no periodo:
+ * - custo: brindes entregues (custo de cada um) + credito da roleta usado nas comandas;
+ * - faturamento: o que foi pago nas visitas com resgate (comanda em que usou credito da roleta, ou do mesmo dia em
+ *   que retirou um brinde);
+ * - saldo da roleta ainda em aberto (pode virar custo depois).
+ */
+export async function resultadoRoleta(chave: string | null) {
+  const fuso = (await configuracao()).fuso;
+  const p = resolverPeriodo(chave, fuso);
+  const janela = { gte: new Date(p.de), lt: new Date(p.ate) };
+  const [giros, brindes, creditos, aberto] = await Promise.all([
+    db.roletaGiro.groupBy({ by: ["tipo"], where: { criadoEm: janela }, _count: true }),
+    db.roletaGiro.findMany({ where: { tipo: "BRINDE", status: "CONCLUIDO", entregueEm: janela }, select: { clienteId: true, entregueEm: true, custoCentavos: true, premio: { select: { custoCentavos: true } } } }),
+    db.beneficio.findMany({ where: { motivo: "ROLETA", status: "USADO", usadoEm: janela }, select: { valorCentavos: true, comandaId: true } }),
+    db.beneficio.aggregate({ where: { motivo: "ROLETA", ...disponiveis() }, _sum: { valorCentavos: true }, _count: true }),
+  ]);
+  const comCredito = new Set(creditos.map((c) => c.comandaId).filter((x): x is string => !!x));
+  const candidatas = await db.comanda.findMany({
+    where: { status: "FECHADA", OR: [{ id: { in: [...comCredito] } }, { clienteId: { in: [...new Set(brindes.map((b) => b.clienteId))] }, fechadaEm: janela }] },
+    select: { id: true, clienteId: true, fechadaEm: true, descontoCentavos: true, itens: { select: { quantidade: true, precoUnitCentavos: true } }, pagamentos: { select: { forma: true, valorCentavos: true, status: true, estornadoCentavos: true, estornadoEm: true } } },
+  });
+  const visitas = comandasComResgate(
+    candidatas.map((c) => ({ ...c, dia: dataLocal(c.fechadaEm!, fuso) })), comCredito,
+    brindes.map((b) => ({ clienteId: b.clienteId, dia: dataLocal(b.entregueEm!, fuso) })),
+  );
+  const custoBrindes = brindes.reduce((t, b) => t + (b.custoCentavos || b.premio?.custoCentavos || 0), 0);
+  const creditoUsado = creditos.reduce((t, c) => t + c.valorCentavos, 0);
+  const custo = custoBrindes + creditoUsado;
+  const faturamento = visitas.reduce((t, c) => t + resumoComanda(c.itens, c.pagamentos, c.descontoCentavos).pago, 0);
+  const qtd = (tipo: TipoPremioRoleta) => giros.find((g) => g.tipo === tipo)?._count ?? 0;
+  return {
+    periodo: { chave: p.chave, rotulo: p.rotulo },
+    giros: { total: qtd("CREDITO") + qtd("BRINDE") + qtd("NADA"), credito: qtd("CREDITO"), brinde: qtd("BRINDE"), nada: qtd("NADA") },
+    brindes: { entregues: brindes.length, custoCentavos: custoBrindes, semCusto: brindes.filter((b) => !(b.custoCentavos || b.premio?.custoCentavos)).length },
+    creditos: { usos: creditos.length, usadoCentavos: creditoUsado },
+    custoCentavos: custo,
+    visitas: visitas.length,
+    faturamentoCentavos: faturamento,
+    retorno: retornoPorReal(faturamento, custo),
+    saldoAberto: { centavos: aberto._sum.valorCentavos ?? 0, creditos: aberto._count },
+  };
 }

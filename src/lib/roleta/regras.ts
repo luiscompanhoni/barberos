@@ -47,3 +47,18 @@ export function girosDisponiveis(p: {
   const gratis = proximoGratis !== null && proximoGratis <= p.agora;
   return { porAtendimento, gratis, total: porAtendimento + (gratis ? 1 : 0), proximoGratisEm: proximoGratis !== null && !gratis ? new Date(proximoGratis) : null };
 }
+
+/**
+ * Visitas com resgate de premio: comandas fechadas em que o cliente usou credito da roleta, ou do mesmo dia
+ * (data local "AAAA-MM-DD") em que ele retirou um brinde.
+ */
+export function comandasComResgate<C extends { id: string; clienteId: string | null; dia: string }>(
+  comandas: C[], comCredito: Set<string>, brindes: { clienteId: string; dia: string }[],
+) {
+  const retirou = new Set(brindes.map((b) => `${b.clienteId}|${b.dia}`));
+  return comandas.filter((c) => comCredito.has(c.id) || (!!c.clienteId && retirou.has(`${c.clienteId}|${c.dia}`)));
+}
+
+/** Quanto entrou por real de custo (2 casas; null sem custo). */
+export const retornoPorReal = (faturamentoCentavos: number, custoCentavos: number) =>
+  custoCentavos > 0 ? Math.round((faturamentoCentavos / custoCentavos) * 100) / 100 : null;

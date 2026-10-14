@@ -88,13 +88,7 @@ Falta:
 - [ ] Opt-in explícito e modelos de campanha aprovados na Meta. 👤
 - [ ] Custo por campanha.
 
-### 5. Antifraude da roleta 🟡
-Já existe: giro por cliente (telefone único), ID por prêmio, validade, status (a retirar, concluído, expirado),
-sorteio no servidor, limite mensal por prêmio, registro de quem entregou o brinde.
-
-Falta:
-- [ ] Custo interno de cada prêmio.
-- [ ] Relatório: custo da campanha × faturamento gerado.
+### 5. Antifraude da roleta: ✅ feito (ver "Concluídos")
 
 ### 4. Funil da campanha da roleta ⬜
 Hoje ficam registrados o giro, o prêmio, o atendimento e o valor gasto, mas não a origem.
@@ -204,6 +198,12 @@ Falta:
 - **22. Domínio oficial:** domínio, SSL automático (Caddy), `www` e endereço antigo redirecionando. E-mail no domínio
   só se precisar.
 - **25 (parte). Checklist da equipe:** tarefas por função, link sem login, pontos e faixas.
+- **5. Antifraude da roleta:**
+  - Um cliente por telefone e um ID por prêmio.
+  - Validade e situação (a retirar, concluído, expirado); não entrega duas vezes.
+  - Registro de quem entregou o brinde.
+  - Custo interno de cada brinde (copiado no giro).
+  - Relatório custo × faturamento com retorno por real e saldo da roleta em aberto.
 - **41. Motor de comissões:**
   - Nomes novos: Receita de Assinaturas, Receita Distribuível e Créditos de Atendimento.
   - A Receita Distribuível considera só mensalidades pagas, desconta os estornos do período e deixa as taxas com a

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chances, comBonus, elegiveis, girosDisponiveis, multiplicador, sortear } from "@/lib/roleta/regras";
+import { chances, comandasComResgate, comBonus, elegiveis, girosDisponiveis, multiplicador, retornoPorReal, sortear } from "@/lib/roleta/regras";
 
 const P = (id: string, peso: number, extra: Partial<{ ativo: boolean; limiteMensal: number | null }> = {}) => ({ id, peso, ativo: true, limiteMensal: null, ...extra });
 
@@ -53,5 +53,23 @@ describe("roleta: bonus e giros", () => {
     const recente = girosDisponiveis({ atendimentos: 0, girosPorAtendimento: 1, usadosPorAtendimento: 0, giroGratisDias: 7, ultimoGratis: new Date(agora - 3 * 86_400_000), agora });
     expect(recente.total).toBe(0);
     expect(recente.proximoGratisEm?.toISOString().slice(0, 10)).toBe("2026-10-14");
+  });
+});
+
+describe("roleta: custo x faturamento", () => {
+  it("visita com resgate: usou crédito da roleta ou retirou brinde no mesmo dia", () => {
+    const comandas = [
+      { id: "c1", clienteId: "ana", dia: "2026-10-10" }, // usou credito
+      { id: "c2", clienteId: "bia", dia: "2026-10-11" }, // retirou brinde no dia
+      { id: "c3", clienteId: "bia", dia: "2026-10-12" }, // outro dia: nao conta
+      { id: "c4", clienteId: null, dia: "2026-10-11" }, // sem cliente: nao conta
+    ];
+    const r = comandasComResgate(comandas, new Set(["c1"]), [{ clienteId: "bia", dia: "2026-10-11" }]);
+    expect(r.map((c) => c.id)).toEqual(["c1", "c2"]);
+  });
+  it("retorno por real de custo", () => {
+    expect(retornoPorReal(25000, 1000)).toBe(25);
+    expect(retornoPorReal(1000, 3000)).toBe(0.33);
+    expect(retornoPorReal(1000, 0)).toBeNull();
   });
 });

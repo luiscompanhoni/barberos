@@ -936,6 +936,8 @@ model RoletaPremio {
   ativo         Boolean          @default(true)
   /// Maximo de vezes que pode sair por mes (null = sem limite).
   limiteMensal  Int?
+  /// Custo interno do brinde para a barbearia (ex.: a cerveja custa R$ 4). Dinheiro custa o que o cliente usar do saldo.
+  custoCentavos Int              @default(0)
   criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
   giros         RoletaGiro[]
 
@@ -962,6 +964,8 @@ model RoletaGiro {
   valorCentavos Int              @default(0)
   /// Multiplicador aplicado x100 (110 = x1.1).
   multiplicador Int              @default(100)
+  /// Custo do brinde no momento do giro (o custo do premio pode mudar depois).
+  custoCentavos Int              @default(0)
   /// "GRATIS" = giro gratis do periodo; "ATENDIMENTO" = ganho por visita.
   origem        String
   status        StatusGiro

@@ -22,6 +22,7 @@ const zPremio = z.object({
   cor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   ativo: z.boolean(),
   limiteMensal: z.number().int().min(0).max(100_000).nullable(),
+  custoCentavos: z.number().int().min(0).max(1_000_000).optional(),
 });
 
 /** So o dono configura. */

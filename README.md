@@ -355,7 +355,12 @@ secreto por barbeiro (dá para trocar se vazar) e sem telefone de cliente. O Goo
 - **Roleta de prêmios** (`/roleta`; cliente em `/c/roleta`): o cliente ganha giros por atendimento concluído (e/ou
   um giro grátis a cada N dias). O dono define os prêmios (texto, valor, cor, limite por mês e chance), o bônus do
   assinante nos prêmios em dinheiro e a validade. O sorteio é feito no servidor. Dinheiro vira saldo; brinde fica
-  "a retirar" e a recepção entrega no balcão. `npm run teste:roleta`.
+  "a retirar" e a recepção entrega no balcão (fica registrado quem entregou). `npm run teste:roleta`.
+- **Custo × faturamento da roleta** (dono, na tela da roleta):
+  - Custo = custo interno dos brindes entregues (o dono informa o custo de cada brinde) + saldo da roleta usado.
+  - Faturamento = o que foi pago nas visitas em que o cliente usou um prêmio (crédito da roleta na comanda ou brinde
+    retirado no mesmo dia).
+  - Mostra também o retorno por real de custo e o saldo da roleta ainda não usado.
 
 ## Financeiro
 
