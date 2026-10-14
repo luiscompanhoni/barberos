@@ -238,8 +238,8 @@ o número do cartão (certificação PCI DSS). Por isso a cobrança é feita pel
 
 1. Peça a conta Pagar.me ao seu comercial da Stone e pegue as chaves de teste (`sk_test_`/`pk_test_`).
 2. `.env`: `PAGAMENTOS_PROVIDER="pagarme"`, `PAGARME_SECRET_KEY`, `PAGARME_PUBLIC_KEY`, `PAGARME_WEBHOOK_TOKEN`,
-   `SITE_URL`, `NOME_FATURA` e o endereço de cobrança da barbearia (`COBRANCA_ENDERECO`, `COBRANCA_CEP` só com
-   números, `COBRANCA_CIDADE`, `COBRANCA_UF`), que a Pagar.me exige no cartão.
+   `SITE_URL`, `NOME_FATURA` e o endereço de cobrança da barbearia (`COBRANCA_ENDERECO`, `COBRANCA_CEP`,
+   `COBRANCA_CIDADE`, `COBRANCA_UF`), que a Pagar.me exige no cartão.
 3. Na dashboard da Pagar.me: cadastre o domínio do sistema (exigido para o cartão) e o webhook
    `https://SEU-DOMINIO/api/pagamentos/pagarme/webhook?token=<PAGARME_WEBHOOK_TOKEN>` com os eventos
    `charge.*`, `invoice.*`, `order.*` e `subscription.canceled`.
