@@ -275,6 +275,7 @@ model Cliente {
   antecipados        PagamentoAntecipado[]
   girosRoleta        RoletaGiro[]
   linksPagamento     LinkPagamento[]
+  enviosCampanha     CampanhaEnvio[]
 
   @@map("clientes")
 }
@@ -1505,4 +1506,56 @@ model PedidoEstorno {
   @@index([executadoEm])
   @@index([comandaId])
   @@map("pedidos_estorno")
+}
+
+enum StatusCampanha {
+  ATIVA
+  PAUSADA
+  ENCERRADA
+}
+
+enum StatusEnvioCampanha {
+  /// Lote liberado, esperando a vez (a rotina manda respeitando o limite diario).
+  FILA
+  ENVIADO
+  FALHOU
+  /// Nao mandou: marcou horario, pediu para parar ou a campanha foi encerrada antes.
+  PULADO
+}
+
+/// Campanha no WhatsApp para segmentos da base, liberada em lotes e com limite de envios por dia.
+model Campanha {
+  id              String          @id @default(cuid())
+  nome            String
+  /// Segmentos somados (chaves de lib/campanhas/regras.ts, ex.: ["ate30", "d31a60"]).
+  segmentos       String[]
+  /// Texto com {nome}, {barbearia} e {link}.
+  mensagem        String
+  limiteDiario    Int
+  /// Quantos dos avisados costumam marcar (bps): com a capacidade da agenda, sugere o tamanho do lote.
+  taxaRespostaBps Int             @default(2000)
+  status          StatusCampanha  @default(ATIVA)
+  criadoPorId     String?
+  criadoEm        DateTime        @default(now()) @db.Timestamptz(3)
+  envios          CampanhaEnvio[]
+
+  @@map("campanhas")
+}
+
+model CampanhaEnvio {
+  id         String              @id @default(cuid())
+  campanhaId String
+  campanha   Campanha            @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  clienteId  String
+  cliente    Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  lote       Int
+  status     StatusEnvioCampanha @default(FILA)
+  liberadoEm DateTime            @default(now()) @db.Timestamptz(3)
+  enviadoEm  DateTime?           @db.Timestamptz(3)
+  /// Erro do envio ou motivo de ter pulado.
+  erro       String?
+
+  @@unique([campanhaId, clienteId])
+  @@index([status, campanhaId])
+  @@map("campanha_envios")
 }

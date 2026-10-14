@@ -65,7 +65,7 @@ Equipe (dono, gerente e recepção; o que depende do papel está marcado):
 - **Semana** (`/semana`).
 - **Assinaturas** (`/assinaturas`), **Estoque** (`/estoque`), **Financeiro** (`/financeiro`),
   **Checklist** (`/checklist`) e **Roleta** (`/roleta`): ver as seções abaixo.
-- Dono e gerente: **Planos** (`/planos`), **Horários** (`/expediente`: semana padrão, folga, dia extra, horário
+- Dono e gerente: **Campanhas** (`/campanhas`: segmentos, capacidade da agenda e campanhas em lotes), **Planos** (`/planos`), **Horários** (`/expediente`: semana padrão, folga, dia extra, horário
   diferente, fechar agenda) e **Configurações** (`/equipe`: dados da barbearia, mensagens automáticas, barbeiros com
   foto e serviços).
 - Pela matriz de permissões: **Indicadores** (`/indicadores`, quem pode ver o resultado) e **RH** (`/rh`, quem pode
@@ -350,6 +350,27 @@ secreto por barbeiro (dá para trocar se vazar) e sem telefone de cliente. O Goo
   novo, uma vez por pessoa e ninguém indica a si mesmo. Ligar e definir os valores em Configurações.
 - `npm run teste:crescimento` roda as três contra o banco de desenvolvimento.
 
+## Campanhas: segmentos e capacidade da agenda
+
+Em **Campanhas** (`/campanhas`, dono e gerente):
+
+- **Capacidade da agenda** nos próximos 3, 7 e 14 dias: horas livres e vagas por barbeiro (expediente menos folgas,
+  agenda fechada e horários marcados, a partir da antecedência mínima), os horários ociosos de cada um e a frase
+  "Capacidade disponível para aproximadamente X novos agendamentos". A vaga tem o tamanho do serviço que mais sai
+  (com a duração própria de cada barbeiro e o intervalo entre clientes).
+- **Segmentos** com o tamanho de cada grupo: veio nos últimos 30 dias, 31–60, 61–90, 91–180, +180, assinantes,
+  ex-assinantes, perdidos (+90 dias), novos (1ª visita nos últimos 30 dias) e cadastrados que nunca vieram. Mostra
+  também quantos podem receber agora (aceitam mensagens e não têm horário marcado).
+- **Campanha** = segmentos somados + mensagem (`{nome}`, `{barbearia}`, `{link}`; o "responda PARAR" entra sozinho)
+  + limite por dia. O dono libera **lotes**: o sistema sugere o tamanho pela agenda livre dos próximos 7 dias e pela
+  porcentagem de quem costuma marcar (ex.: 40 vagas ÷ 20% = 200 mensagens), sem passar do limite do dia. Os mais
+  recentes vêm primeiro. A rotina das automações manda aos poucos (até 20 a cada 5 min, só das 8h às 21h); quem
+  marcou horário ou pediu PARAR depois do lote é pulado. A primeira campanha sugerida é só para quem veio nos últimos
+  60 dias.
+- Cada campanha mostra fila, enviados hoje/limite, enviados, quem **marcou** até 14 dias depois de receber, quem pediu
+  para parar e falhas. Pausar segura a fila; encerrar cancela quem ainda não recebeu.
+- `npm run teste:campanhas` roda o fluxo contra o banco de desenvolvimento.
+
 ## Saldo, cashback e roleta
 
 - **Saldo do cliente** (`/c/saldo`): soma do cashback, dos prêmios da roleta e das indicações que ainda não venceram,
@@ -461,7 +482,7 @@ abrir no Excel (fora da pasta do projeto).
 - `npm test`: testes unitários (Vitest, sem banco).
 - `npm run teste:<área>`: fluxos completos contra o banco de desenvolvimento, com gateways falsos (sem chamadas
   reais): `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`, `automacoes`,
-  `crescimento`, `login`, `roleta`, `financeiro`, `despesas`, `estorno`, `rh` e `permissoes`.
+  `crescimento`, `login`, `roleta`, `financeiro`, `despesas`, `estorno`, `rh`, `permissoes` e `campanhas`.
 
 ## Papéis e permissões
 

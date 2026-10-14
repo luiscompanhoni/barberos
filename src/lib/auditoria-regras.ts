@@ -24,7 +24,7 @@ export function mudancas(atual: Registro, novos: Registro, ignorar: string[] = [
 }
 
 export const ENTIDADES: Record<string, string> = {
-  adicional_comissao: "Comissão diferenciada", agendamento: "Atendimento", assinatura: "Assinatura", barbeiro: "Barbeiro",
+  adicional_comissao: "Comissão diferenciada", agendamento: "Atendimento", campanha: "Campanha", assinatura: "Assinatura", barbeiro: "Barbeiro",
   bloqueio: "Agenda fechada", caixa: "Caixa", checklist: "Checklist", checklist_item: "Tarefa do checklist", checklist_pessoa: "Funcionário",
   cliente: "Cliente", comanda: "Comanda", comissao: "Comissão", configuracao: "Configuração", despesa: "Despesa", estorno: "Estorno",
   financeiro: "Financeiro", folha: "Folha", folha_lancamento: "Lançamento da folha", folha_pagamento: "Folha", link_pagamento: "Link de pagamento",
@@ -42,7 +42,7 @@ const ACOES: Record<string, string> = {
   estorno_executado: "executou", estorno_falhou: "falhou", estorno_manual: "marcou como feito por fora", estorno_pedido: "pediu", estorno_recusado: "recusou",
   excecao: "mudou o horário do dia", expediente: "mudou a semana padrão", fechar: "fechou", fechar_agenda: "fechou a agenda", fechar_caixa: "fechou o caixa",
   foto_remover: "removeu a foto", foto_trocar: "trocou a foto", gerar_pagamento_antecipado: "gerou pagamento antecipado", indicacao: "registrou indicação",
-  link_pagamento_recebido: "recebeu", pagamento: "registrou pagamento", pagamento_antecipado_creditado: "creditou o pago antes",
+  liberar_lote: "liberou um lote", link_pagamento_recebido: "recebeu", pausar: "pausou", retomar: "retomou", encerrar: "encerrou", pagamento: "registrou pagamento", pagamento_antecipado_creditado: "creditou o pago antes",
   pagamento_antecipado_recebido: "recebeu o pago antes", papel: "mudou o papel", permissoes: "mudou as permissões", pagar_link_pagamento: "pagou", reabrir_agenda: "reabriu a agenda", remarcar_pelo_cliente: "remarcou (cliente)",
   remover_excecao: "voltou ao horário padrão", remover_item: "removeu item", rh_adicional_criar: "registrou", rh_adicional_encerrar: "encerrou",
   rh_adicional_excluir: "apagou", rh_comissoes_configurar: "mudou as regras", rh_comissoes_extras: "mudou assinaturas e produtos", rh_ficha: "mudou a ficha",

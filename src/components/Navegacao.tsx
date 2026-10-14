@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  BarChart3, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Menu,
+  BarChart3, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Megaphone, Menu,
   MessageSquareText, Package, PanelLeft, Receipt, Settings, ShieldCheck, Smartphone, UserRound, X, type LucideIcon,
 } from "lucide-react";
 import { Marca } from "./Marca";
@@ -31,6 +31,7 @@ const ICONES: Record<string, LucideIcon> = {
   "/rh": BriefcaseBusiness,
   "/whatsapp": Smartphone,
   "/auditoria": ShieldCheck,
+  "/campanhas": Megaphone,
 };
 
 const iniciais = (nome: string) =>

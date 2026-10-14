@@ -93,20 +93,9 @@ indicação, plano e histórico. Partes vazias não aparecem.
 Falta:
 - [ ] Loja (depende do item 20).
 
-### 2. Segmentação da base para lançamento ⬜
-Hoje: os indicadores mostram base ativa/sumindo/perdida, e a automação "chamar de volta" manda até 15 por rodada.
+### 2. Segmentação da base para lançamento: ✅ feito (ver "Concluídos")
 
-Falta:
-- [ ] Segmentos automáticos com tamanho de cada grupo: 0–30, 31–60, 61–90, 91–180, +180 dias, assinante,
-      ex-assinante, perdido, novo.
-- [ ] Campanha por segmento, em lotes, com limite diário de envio. Primeira campanha: só quem veio nos últimos 60 dias.
-
-### 3. Painel de capacidade antes de cada campanha ⬜
-Hoje: o painel mostra o tempo livre de hoje e os indicadores mostram a ocupação passada.
-
-Falta:
-- [ ] Horários livres nos próximos 3, 7 e 14 dias, por barbeiro, com os horários ociosos.
-- [ ] Sugestão "capacidade para ~X novos agendamentos", usada para limitar o lote da campanha.
+### 3. Painel de capacidade antes de cada campanha: ✅ feito (ver "Concluídos")
 
 ### 41. Motor de comissões: ✅ feito (ver "Concluídos")
 
@@ -202,6 +191,12 @@ Falta:
   - Relatório com todos os campos e, num mês inteiro, salário, bônus, descontos e total a pagar.
   - Ajustes antigos convertidos sem mudar o percentual de ninguém.
   - Estorno feito depois do mês fechado desconta no mês em que foi feito (igual ao resumo financeiro).
+- **2. Segmentação da base:** tela Campanhas com o tamanho de cada grupo (0–30, 31–60, 61–90, 91–180, +180 dias,
+  assinante, ex-assinante, perdido, novo e quem nunca veio) e quantos podem receber. Campanha por segmentos, liberada
+  em lotes, com limite diário; a primeira sugerida é para quem veio nos últimos 60 dias. Mostra enviados, quem marcou
+  depois e quem pediu para parar.
+- **3. Capacidade antes da campanha:** vagas e horas livres nos próximos 3, 7 e 14 dias por barbeiro, com os horários
+  ociosos e "capacidade para ~X novos agendamentos". O lote sugerido sai dessa capacidade.
 - **10. Sistema geral de permissões:**
   - Papéis: dono (proprietário), gerente (administrador), recepção e barbeiro. O dono cria acessos de gerente e muda
     o papel de quem já tem acesso.
