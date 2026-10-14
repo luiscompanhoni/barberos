@@ -10,6 +10,7 @@ import { cancelarPagamento } from "@/lib/comandas/maquininha";
 import { abrirComanda, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
 import { db } from "@/lib/db";
 import { pagarSimulada } from "@/lib/pagamentos/simulado";
+import { horarioLivre } from "./util-teste";
 
 const ok = (c: boolean, msg: string) => { console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); if (!c) process.exitCode = 1; };
 const falha = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error & { codigo?: string }; } };
@@ -41,8 +42,8 @@ async function main() {
   const servico = await db.servico.findFirstOrThrow({ where: { ativo: true } });
   const cliente = await db.cliente.create({ data: { telefone: TEL, nome: "Teste Antecipado", cpf: "40563771038", email: "teste@example.com" } });
   let minuto = 0;
-  const marcar = (extra: { assinaturaId?: string; inicio?: Date } = {}) => {
-    const inicio = extra.inicio ?? new Date(Date.now() + (3 * 86_400_000) + (minuto += 120) * 60_000);
+  const marcar = async (extra: { assinaturaId?: string; inicio?: Date } = {}) => {
+    const inicio = extra.inicio ?? await horarioLivre(barbeiro.id, new Date(Date.now() + (3 * 86_400_000) + (minuto += 120) * 60_000));
     return db.agendamento.create({
       data: { barbeiroId: barbeiro.id, clienteId: cliente.id, servicoId: servico.id, inicio, fim: new Date(inicio.getTime() + 30 * 60_000), precoCentavos: 4321, origem: "SITE", status: "MARCADO" },
     });
@@ -109,7 +110,7 @@ async function main() {
     await db.agendamento.update({ where: { id: ag5.id }, data: { assinaturaId: assinatura.id } });
     ok((await falha(() => pagarAntecipado({ clienteId: cliente.id, agendamentoId: ag5.id, forma: "PIX" })))?.codigo === "nao_pode", "horário pelo plano não tem pagamento antecipado");
   }
-  const ag6 = await marcar({ inicio: new Date(Date.now() - 3_600_000) });
+  const ag6 = await marcar({ inicio: await horarioLivre(barbeiro.id, new Date(Date.now() - 3_600_000), 30, -30) });
   ok((await falha(() => pagarAntecipado({ clienteId: cliente.id, agendamentoId: ag6.id, forma: "PIX" })))?.codigo === "nao_pode", "horário que já começou não paga online");
   const outro = await db.cliente.findFirstOrThrow({ where: { NOT: { id: cliente.id } } });
   ok((await falha(() => pagarAntecipado({ clienteId: outro.id, agendamentoId: ag4.id, forma: "PIX" }))) !== null, "cliente não paga horário de outra pessoa");
@@ -124,5 +125,6 @@ async function main() {
 }
 
 main()
-  .catch((e) => { console.error(e); process.exitCode = 1; })
+  // Quebrou no meio: apaga o que criou (o telefone do teste esta na faixa do teste-cancelamento).
+  .catch(async (e) => { console.error(e); process.exitCode = 1; await limpar().catch(() => {}); })
   .finally(() => db.$disconnect());
