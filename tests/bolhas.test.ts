@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dividirEmBolhas, tempoDigitando } from "@/lib/bot/bolhas";
+import { dividirEmBolhas, tempoDigitando, tempoLendo } from "@/lib/bot/bolhas";
 
 describe("resposta do bot em bolhas", () => {
   it("cada parágrafo vira uma mensagem", () => {
@@ -17,9 +17,14 @@ describe("resposta do bot em bolhas", () => {
     expect(dividirEmBolhas("  oi  \n\n\n \n tudo certo? ")).toEqual(["oi", "tudo certo?"]);
     expect(dividirEmBolhas("")).toEqual([]);
   });
-  it("digitando proporcional ao tamanho, entre 1,2 s e 4 s", () => {
-    expect(tempoDigitando("ok")).toBe(1200);
-    expect(tempoDigitando("x".repeat(100))).toBe(2500);
-    expect(tempoDigitando("x".repeat(1000))).toBe(4000);
+  it("digitando proporcional ao tamanho, entre 2 s e 7 s", () => {
+    expect(tempoDigitando("ok")).toBe(2000);
+    expect(tempoDigitando("x".repeat(100))).toBe(4000);
+    expect(tempoDigitando("x".repeat(1000))).toBe(7000);
+  });
+  it("antes de responder, o tempo de ler: de 3 a 7 s", () => {
+    expect(tempoLendo(0)).toBe(3000);
+    expect(tempoLendo(0.5)).toBe(5000);
+    expect(tempoLendo(1)).toBe(7000);
   });
 });

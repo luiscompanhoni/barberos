@@ -26,7 +26,7 @@ async function chamar<T>(metodo: string, caminho: string, corpo?: unknown): Prom
     method: metodo,
     headers: { apikey: chave, "Content-Type": "application/json" },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(30_000), // o envio do bot espera o "digitando..." (ate ~14 s)
   });
   const json = (await r.json().catch(() => ({}))) as T;
   return { status: r.status, json };
