@@ -98,16 +98,15 @@ Falta:
       agendou → compareceu → resgatou → quanto gastou.
 - [ ] Dashboard de conversão do funil.
 
-### 6. +1 giro na tela inicial ⬜
-- [ ] Mostrar o giro/prêmio pendente na tela inicial do cliente, com "Girar agora" e depois "Agendar para resgatar".
-- [ ] Testar o fluxo inteiro em iPhone e Android.
+### 6. +1 giro na tela inicial: ✅ feito (ver "Concluídos")
+- [ ] Testar num iPhone e num Android de verdade (já testado com tela de iPhone e Android emulada no Chromium). 👤
 
 ### 7. Home do cliente 🟡
-Já existe: próximos horários (remarcar/cancelar), plano, lista de espera, saldo e indicação; menu com Agendar,
-Planos, Roleta, Saldo e Perfil.
+Feito: nova ordem com plano em aberto no topo, giros e prêmios da roleta, próximos horários, agendar, saldo e
+indicação, plano e histórico. Partes vazias não aparecem.
 
 Falta:
-- [ ] Reorganizar: próximo horário, "Agendar", prêmios/giros, saldo, plano, indicação, loja e histórico, sem excesso.
+- [ ] Loja (depende do item 20).
 
 ### 2. Segmentação da base para lançamento ⬜
 Hoje: os indicadores mostram base ativa/sumindo/perdida, e a automação "chamar de volta" manda até 15 por rodada.
@@ -204,6 +203,10 @@ Falta:
   - Registro de quem entregou o brinde.
   - Custo interno de cada brinde (copiado no giro).
   - Relatório custo × faturamento com retorno por real e saldo da roleta em aberto.
+- **6. +1 giro na tela inicial:**
+  - Giro esperando aparece em destaque na tela inicial, com "Girar agora".
+  - Depois de resgatar o prêmio, vem "Agendar para resgatar".
+  - Brinde a retirar fica na tela inicial com "Agendar para resgatar".
 - **41. Motor de comissões:**
   - Nomes novos: Receita de Assinaturas, Receita Distribuível e Créditos de Atendimento.
   - A Receita Distribuível considera só mensalidades pagas, desconta os estornos do período e deixa as taxas com a

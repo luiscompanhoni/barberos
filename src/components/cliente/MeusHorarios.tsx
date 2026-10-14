@@ -6,6 +6,7 @@ import { ArrowRight, CalendarDays, CalendarPlus, Check, Clock3, Crown, History, 
 import { api, reais } from "@/lib/cliente-api";
 import { IndiqueEsperas } from "./IndiqueEsperas";
 import { PagarAntes } from "./PagarAntes";
+import { RoletaChamada } from "./RoletaChamada";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 
 type Ag = {
@@ -22,7 +23,10 @@ type Ag = {
 const FUSO = "America/Sao_Paulo";
 const STATUS: Record<string, string> = { CONCLUIDO: "Atendido", FALTOU: "Faltou", CANCELADO: "Cancelado", MARCADO: "Marcado", CONFIRMADO: "Confirmado" };
 
-/** Pagina inicial do cliente: proximos horarios (com cancelar/remarcar) e historico. */
+/**
+ * Pagina inicial do cliente, na ordem do que mais importa: plano com pagamento em aberto, giro/premio da roleta,
+ * proximos horarios (cancelar/remarcar), agendar, saldo e indicacao, plano e historico.
+ */
 export function MeusHorarios() {
   const [dados, setDados] = useState<{ proximos: Ag[]; historico: Ag[]; prazoAlteracaoMin: number; pagarAntes?: boolean; checkout?: boolean } | null>(null);
   const [perfil, setPerfil] = useState<{ nome: string } | null>(null);
@@ -83,15 +87,8 @@ export function MeusHorarios() {
     );
   }
 
-  const hojeTexto = new Date(agora).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: FUSO });
-
-  return (
-    <div className="entrar-suave space-y-8">
-      <div>
-        <p className="eyebrow first-letter:uppercase">{hojeTexto}</p>
-        <h1 className="titulo-marca mt-3 text-4xl">Olá, <span className="text-ouro">{perfil.nome.split(" ")[0]}.</span></h1>
-      </div>
-
+  const cartaoPlano = (
+    <>
       {plano === null && (
         <Link href="/c/planos" className="cartao-clicavel flex items-center gap-4">
           <Crown className="shrink-0 text-ouro" size={22} />
@@ -126,8 +123,22 @@ export function MeusHorarios() {
           </div>
         </section>
       )}
+    </>
+  );
+  // Mensalidade em aberto ou esperando o 1o pagamento: sobe para o topo (precisa de acao).
+  const planoUrgente = !!plano && !plano.valida && !plano.pausadaAte;
 
-      <Link href="/c/agendar" className="btn-primario w-full py-3.5"><CalendarPlus size={17} /> Agendar horário</Link>
+  const hojeTexto = new Date(agora).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: FUSO });
+
+  return (
+    <div className="entrar-suave space-y-8">
+      <div>
+        <p className="eyebrow first-letter:uppercase">{hojeTexto}</p>
+        <h1 className="titulo-marca mt-3 text-4xl">Olá, <span className="text-ouro">{perfil.nome.split(" ")[0]}.</span></h1>
+      </div>
+
+      {planoUrgente && cartaoPlano}
+      <RoletaChamada />
 
       {aviso && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{aviso}</p>}
       {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
@@ -195,7 +206,11 @@ export function MeusHorarios() {
         )}
       </section>
 
+      <Link href="/c/agendar" className="btn-primario w-full py-3.5"><CalendarPlus size={17} /> Agendar horário</Link>
+
       <IndiqueEsperas />
+
+      {!planoUrgente && cartaoPlano}
 
       {dados.historico.length > 0 && (
         <section>
