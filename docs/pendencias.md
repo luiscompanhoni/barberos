@@ -104,9 +104,6 @@ Falta:
       do servidor e um teste de restauração.
 - [ ] LGPD ⬜: termos de uso, política de privacidade, consentimento e pedido de exclusão/exportação dos dados.
 - [ ] 38. Ambiente de teste separado (homologação) ⬜: nunca testar na base real.
-- [ ] Testes automáticos no GitHub a cada PR (testes, lint, build) ⬜.
-- [ ] Página de erro interno (500) em português ⬜.
-- [ ] Trocar no README os exemplos `blackbarber.com.br` pelos domínios reais ⬜.
 
 ---
 
@@ -197,6 +194,12 @@ Falta:
   depois e quem pediu para parar.
 - **3. Capacidade antes da campanha:** vagas e horas livres nos próximos 3, 7 e 14 dias por barbeiro, com os horários
   ociosos e "capacidade para ~X novos agendamentos". O lote sugerido sai dessa capacidade.
+- **Qualidade:**
+  - CI no GitHub (`.github/workflows/ci.yml`) a cada push na main e em cada PR: tipos, lint, testes unitários,
+    migrações num banco limpo (e se o schema bate com elas), os 16 testes de fluxo (`npm run teste:todos`) e build.
+  - Páginas de erro em português (`error.tsx` e `global-error.tsx`) com um código que aparece no log do servidor
+    (`[erro] codigo=...`).
+  - Exemplos de domínio no README, `.env.example` e `deploy/` trocados por `appblackbarber.com`.
 - **10. Sistema geral de permissões:**
   - Papéis: dono (proprietário), gerente (administrador), recepção e barbeiro. O dono cria acessos de gerente e muda
     o papel de quem já tem acesso.

@@ -101,7 +101,7 @@ indicações), roleta de prêmios e perfil com preferências de corte e senha.
    exclusivo da barbearia.
 2. Preencha no `.env`: `WHATSAPP_PROVIDER="cloud"`, `WHATSAPP_TOKEN` (token permanente de usuário do sistema),
    `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET` e um `WHATSAPP_VERIFY_TOKEN` inventado por você.
-3. Configure o webhook com a URL pública `https://SEU-DOMINIO/api/whatsapp/webhook`, o mesmo verify token, e
+3. Configure o webhook com a URL pública `https://painel.appblackbarber.com/api/whatsapp/webhook`, o mesmo verify token, e
    assine o campo `messages`.
 4. Crie e aguarde aprovação de dois templates:
    - Autenticação (código de acesso, com botão "copiar código") → `WHATSAPP_TEMPLATE_CODIGO`; depois mude
@@ -141,13 +141,15 @@ bash scripts/deploy.sh root@IP-DO-VPS
 - Nas próximas, só troca o código: o `.env` e os backups do servidor ficam.
 - Backup: cópia do banco todo dia às 03h em `/opt/barberos/backups`, guardada por 14 dias.
 - O banco não fica exposto: só os containers falam com ele.
+- Erro inesperado: a pessoa vê "Algo deu errado" com um código; no servidor,
+  `cd /opt/barberos && docker compose logs app | grep "codigo=<código>"` mostra a linha `[erro]` com a rota e a causa.
 
 Variáveis principais (a lista completa e comentada está em `deploy/env.producao.exemplo`):
 
 | Variável | Valor |
 |---|---|
 | `SITE_URL`, `PAINEL_URL` | endereço do site e do painel, com https (ver "Site e painel") |
-| `CADDY_ENDERECOS` | domínios que o Caddy atende (ex.: `blackbarber.com.br, www.blackbarber.com.br, painel.blackbarber.com.br`); `:80` para testar só pelo IP |
+| `CADDY_ENDERECOS` | domínios que o Caddy atende (ex.: `appblackbarber.com, www.appblackbarber.com, painel.appblackbarber.com`); `:80` para testar só pelo IP |
 | `DONO_TELEFONE`, `DONO_NOME`, `NOME_BARBEARIA` | criam o dono no primeiro deploy (depois podem sair) |
 | `ANTHROPIC_API_KEY` | chave do Claude |
 | `WHATSAPP_*`, `OTP_PROVIDER` | ver "Bot do WhatsApp". Enquanto `OTP_PROVIDER="console"`, o código de login aparece só no log do servidor (`docker compose logs app`) |
@@ -245,7 +247,7 @@ o número do cartão (certificação PCI DSS). Por isso a cobrança é feita pel
    `SITE_URL`, `NOME_FATURA` e o endereço de cobrança da barbearia (`COBRANCA_ENDERECO`, `COBRANCA_CEP`,
    `COBRANCA_CIDADE`, `COBRANCA_UF`), que a Pagar.me exige no cartão.
 3. Na dashboard da Pagar.me: cadastre o domínio do sistema (exigido para o cartão) e o webhook
-   `https://SEU-DOMINIO/api/pagamentos/pagarme/webhook?token=<PAGARME_WEBHOOK_TOKEN>` com os eventos
+   `https://painel.appblackbarber.com/api/pagamentos/pagarme/webhook?token=<PAGARME_WEBHOOK_TOKEN>` com os eventos
    `charge.*`, `invoice.*`, `order.*` e `subscription.canceled`.
 4. `npm run teste:pagarme` e `npm run teste:checkout` rodam os fluxos contra uma Pagar.me falsa (sem chamadas reais).
 5. Faça um teste real no ambiente de teste da Pagar.me antes de trocar para as chaves de produção.
@@ -261,7 +263,7 @@ Estornos e ofertas de retenção da Celcash são feitos à mão pela equipe.
 
 1. Crie a conta (use o sandbox para testar) e gere a chave em Integrações → Chave de API.
 2. `.env`: `PAGAMENTOS_PROVIDER="asaas"`, `ASAAS_API_KEY`, `ASAAS_AMBIENTE="sandbox"` (ou `producao`) e `SITE_URL`.
-3. Em Integrações → Webhooks, cadastre `https://SEU-DOMINIO/api/pagamentos/webhook` com um token seu e coloque o
+3. Em Integrações → Webhooks, cadastre `https://painel.appblackbarber.com/api/pagamentos/webhook` com um token seu e coloque o
    mesmo token em `ASAAS_WEBHOOK_TOKEN`. Marque os eventos de cobrança.
 
 ## Estoque e comanda (Fase 4)
@@ -480,6 +482,9 @@ abrir no Excel (fora da pasta do projeto).
 ## Testes
 
 - `npm test`: testes unitários (Vitest, sem banco).
+- `npm run teste:todos`: roda todos os testes de fluxo abaixo e falha se algum quebrar. O CI do GitHub
+  (`.github/workflows/ci.yml`) roda tipos, lint, testes unitários, migrações num banco limpo, os testes de fluxo e o
+  build em cada push na `main` e em cada PR.
 - `npm run teste:<área>`: fluxos completos contra o banco de desenvolvimento, com gateways falsos (sem chamadas
   reais): `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`, `automacoes`,
   `crescimento`, `login`, `roleta`, `financeiro`, `despesas`, `estorno`, `rh`, `permissoes` e `campanhas`.

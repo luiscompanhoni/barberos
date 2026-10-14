@@ -1,3 +1,15 @@
+import type { Instrumentation } from "next";
+
+/**
+ * Erro no servidor: uma linha com o codigo que aparece na tela "Algo deu errado" (digest), para achar no log
+ * com `docker compose logs app | grep "codigo=..."`. Sem a query (pode ter token de webhook ou de link).
+ */
+export const onRequestError: Instrumentation.onRequestError = async (err, request, context) => {
+  const digest = typeof err === "object" && err !== null && "digest" in err ? String(err.digest) : "-";
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(`[erro] codigo=${digest} ${request.method} ${request.path.split("?")[0]} (${context.routeType} ${context.routePath}): ${msg}`);
+};
+
 /**
  * Roda uma vez quando o servidor sobe. Em producao:
  * - confere configuracoes obrigatorias (falha cedo em vez de quebrar no meio do uso);

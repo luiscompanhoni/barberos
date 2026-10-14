@@ -14,6 +14,7 @@
     "criar-dono": "tsx prisma/criar-dono.ts",
     "db:planos": "tsx prisma/planos-exemplo.ts",
     "db:produtos": "tsx --env-file=.env prisma/produtos-exemplo.ts",
+    "teste:todos": "bash scripts/testes-integracao.sh",
     "teste:assinaturas": "tsx --env-file=.env scripts/teste-assinaturas.ts",
     "teste:pagarme": "tsx --env-file=.env scripts/teste-pagarme.ts",
     "teste:comandas": "tsx --env-file=.env scripts/teste-comandas.ts",
