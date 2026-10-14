@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAcesso } from "@/components/AcessoContexto";
 import { ComissoesConfig } from "./ComissoesConfig";
 import { ComissoesExtras } from "./ComissoesExtras";
 import { ComissoesRelatorio } from "./ComissoesRelatorio";
@@ -15,9 +16,11 @@ const ABAS = [
 ] as const;
 type Aba = (typeof ABAS)[number]["v"];
 
-/** RH: folha do mes, relatorio e regras de comissao, fichas dos funcionarios. */
+/** RH: folha do mes, relatorio e regras de comissao, fichas dos funcionarios (cada aba conforme a permissao). */
 export function RhTela() {
-  const [aba, setAba] = useState<Aba>("folha");
+  const pode = useAcesso().permissoes;
+  const abas = ABAS.filter((a) => (a.v === "relatorio" ? pode.folha || pode.comissao : a.v === "regras" ? pode.comissao : pode.folha));
+  const [aba, setAba] = useState<Aba>(abas[0]?.v ?? "relatorio");
   return (
     <div className="space-y-4">
       <div>
@@ -25,7 +28,7 @@ export function RhTela() {
         <h1 className="titulo-marca text-2xl">RH</h1>
       </div>
       <div className="flex flex-wrap gap-2">
-        {ABAS.map((a) => <button key={a.v} className={aba === a.v ? "btn-primario" : "btn"} onClick={() => setAba(a.v)}>{a.r}</button>)}
+        {abas.map((a) => <button key={a.v} className={aba === a.v ? "btn-primario" : "btn"} onClick={() => setAba(a.v)}>{a.r}</button>)}
       </div>
       {aba === "folha" && <FolhaTela />}
       {aba === "relatorio" && <ComissoesRelatorio />}

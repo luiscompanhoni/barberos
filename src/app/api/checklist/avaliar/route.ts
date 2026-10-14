@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { avaliarItem } from "@/lib/checklist/pontos";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
 /** Gerente valida a tarefa (ganha pontos), da re (perde pontos) ou desfaz (null). */
 export const POST = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
   const b = await corpo(req, z.object({
     itemId: z.string().max(40),
     avaliacao: z.enum(["VALIDADO", "RE"]).nullable(),

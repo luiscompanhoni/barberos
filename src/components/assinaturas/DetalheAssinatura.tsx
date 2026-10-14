@@ -36,7 +36,7 @@ type Detalhe = {
 const STATUS_COB: Record<string, string> = { PENDENTE: "Em aberto", PAGA: "Paga", ATRASADA: "Vencida", CANCELADA: "Cancelada", ESTORNADA: "Estornada" };
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
-export function DetalheAssinatura(p: { id: string; dono: boolean; onFechar: () => void; onAlterado: () => void }) {
+export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFechar: () => void; onAlterado: () => void }) {
   const [d, setD] = useState<Detalhe | null>(null);
   const [msg, setMsg] = useState<{ texto: string; erro?: boolean } | null>(null);
   const [motivo, setMotivo] = useState("");
@@ -95,7 +95,7 @@ export function DetalheAssinatura(p: { id: string; dono: boolean; onFechar: () =
                 {c.link && (c.status === "PENDENTE" || c.status === "ATRASADA") && (
                   <button className="ml-auto text-xs underline" onClick={() => { navigator.clipboard?.writeText(c.link!); setMsg({ texto: "Link copiado." }); }}>copiar link</button>
                 )}
-                {c.status === "PAGA" && <span className="ml-auto"><BotaoEstorno tipo="MENSALIDADE" id={c.id} dono={!!p.dono} onFeito={carregar} /></span>}
+                {c.status === "PAGA" && <span className="ml-auto"><BotaoEstorno tipo="MENSALIDADE" id={c.id} onFeito={carregar} /></span>}
               </li>
             ))}
           </ul>
@@ -126,7 +126,7 @@ export function DetalheAssinatura(p: { id: string; dono: boolean; onFechar: () =
           <div className="flex flex-wrap gap-2">
             {temAberta && <button className="btn-primario" onClick={() => acao("cobrar", "Cobrança enviada no WhatsApp.")}>Cobrar no WhatsApp</button>}
             <button className="btn" onClick={() => acao("sincronizar", "Status atualizado com o meio de pagamento.")}>Atualizar status</button>
-            {p.dono && !cancelando && <button className="btn-perigo" onClick={() => setCancelando(true)}>Cancelar assinatura</button>}
+            {p.podeCancelar && !cancelando && <button className="btn-perigo" onClick={() => setCancelando(true)}>Cancelar assinatura</button>}
           </div>
         )}
         {cancelando && (

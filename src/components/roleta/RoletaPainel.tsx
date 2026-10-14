@@ -23,7 +23,7 @@ const quando = (d: string) => new Date(d).toLocaleString("pt-BR", { day: "2-digi
 let seq = 0;
 
 /** Painel da roleta: liga/desliga, regras dos giros, premios e chances, brindes a entregar. */
-export function RoletaPainel({ dono }: { dono: boolean }) {
+export function RoletaPainel({ podeConfigurar, verResultado }: { podeConfigurar: boolean; verResultado: boolean }) {
   const [p, setP] = useState<Painel | null>(null);
   const [cfg, setCfg] = useState<Config | null>(null);
   const [premios, setPremios] = useState<Premio[]>([]);
@@ -117,7 +117,7 @@ export function RoletaPainel({ dono }: { dono: boolean }) {
           <h1 className="titulo-marca text-2xl">Roleta de prêmios</h1>
           <p className="text-sm text-zinc-500">Este mês: {p.mes.giros} giros · {reais(p.mes.creditoCentavos)} em saldo dado</p>
         </div>
-        {dono && (
+        {podeConfigurar && (
           <button className="btn-primario" disabled={salvando} onClick={salvar}><Save size={16} /> {salvando ? "Salvando…" : "Salvar"}</button>
         )}
       </div>
@@ -137,9 +137,9 @@ export function RoletaPainel({ dono }: { dono: boolean }) {
         </section>
       )}
 
-      {dono && <ResultadoRoleta />}
+      {verResultado && <ResultadoRoleta />}
 
-      {dono && (
+      {podeConfigurar && (
         <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
           <div className="space-y-4">
             <section className="cartao space-y-3">

@@ -18,7 +18,7 @@ const SELO: Record<LinkPainel["status"], { r: string; c: string }> = {
 const quando = (d: string) => new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
 
 /** Links de pagamento: criar, copiar, mandar no WhatsApp, acompanhar e cancelar. */
-export function LinksPagamentoTela({ dono = false }: { dono?: boolean }) {
+export function LinksPagamentoTela() {
   const [links, setLinks] = useState<LinkPainel[] | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("PENDENTE");
   const [novo, setNovo] = useState(false);
@@ -89,7 +89,7 @@ export function LinksPagamentoTela({ dono = false }: { dono?: boolean }) {
                 <p className="flex items-center gap-1.5 text-xs text-zinc-500">
                   {l.forma === "CARTAO" ? <CreditCard size={13} /> : <QrCode size={13} />}
                   {l.forma === "CARTAO" ? `Cartão${l.parcelas && l.parcelas > 1 ? ` em ${l.parcelas}x` : ""}` : "Pix"} · pago {l.pagoEm ? quando(l.pagoEm) : ""}
-                  <span className="ml-auto"><BotaoEstorno tipo="LINK" id={l.id} dono={dono} onFeito={carregar} /></span>
+                  <span className="ml-auto"><BotaoEstorno tipo="LINK" id={l.id} onFeito={carregar} /></span>
                 </p>
               )}
               {l.status === "PENDENTE" && (

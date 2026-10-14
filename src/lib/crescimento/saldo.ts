@@ -3,6 +3,7 @@
  * o saldo e a soma dos disponiveis que ainda nao venceram. Usado na comanda como desconto.
  */
 import { auditar } from "@/lib/auditoria";
+import { exigirPermissao } from "@/lib/auth/permissoes";
 import type { Sessao } from "@/lib/auth/sessao";
 import { resumoComanda } from "@/lib/comandas/regras";
 import { avisarComanda } from "@/lib/comandas/servico";
@@ -40,6 +41,7 @@ export async function saldoDoCliente(clienteId: string) {
 
 /** Usa o saldo do cliente na comanda aberta (vira desconto, ate o valor que ainda tem para descontar). */
 export async function usarSaldo(s: Sessao, comandaId: string) {
+  await exigirPermissao(s, "saldo");
   const r = await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${comandaId} FOR UPDATE`;
     const c = await tx.comanda.findUnique({ where: { id: comandaId }, include: { itens: true, pagamentos: true } });

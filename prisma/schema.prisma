@@ -9,6 +9,8 @@ datasource db {
 
 enum Papel {
   DONO
+  /// Administrador/gerente: o que a recepcao faz + cadastros, horarios e configuracoes; o resto pela matriz de permissoes.
+  GERENTE
   RECEPCAO
   BARBEIRO
   CLIENTE
@@ -65,6 +67,17 @@ model Usuario {
   cliente      Cliente?
 
   @@map("usuarios")
+}
+
+/// Matriz de permissoes por acao (lib/auth/permissoes-regras.ts). Sem linha = padrao do papel; o dono pode tudo.
+model PermissaoPapel {
+  papel        Papel
+  permissao    String
+  permitido    Boolean
+  atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
+
+  @@id([papel, permissao])
+  @@map("permissoes_papel")
 }
 
 model CodigoLogin {

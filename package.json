@@ -27,6 +27,7 @@
     "teste:despesas": "tsx --env-file=.env scripts/teste-despesas.ts",
     "teste:checkout": "tsx --env-file=.env scripts/teste-checkout.ts",
     "teste:estorno": "tsx --env-file=.env scripts/teste-estorno.ts",
+    "teste:permissoes": "tsx --env-file=.env scripts/teste-permissoes.ts",
     "teste:cancelamento": "tsx --env-file=.env scripts/teste-cancelamento.ts"
   },
   "dependencies": {

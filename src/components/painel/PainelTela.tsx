@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useAcesso } from "@/components/AcessoContexto";
 import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
 
@@ -57,7 +58,9 @@ function corPico(v: number | null) {
   return "bg-ouro";
 }
 
-export function PainelTela({ nome, dono }: { nome: string; dono: boolean }) {
+export function PainelTela({ nome }: { nome: string }) {
+  const { permissoes } = useAcesso();
+  const verResultado = permissoes.resultado;
   const [p, setP] = useState<Painel | null>(null);
   const [erro, setErro] = useState("");
 
@@ -107,7 +110,7 @@ export function PainelTela({ nome, dono }: { nome: string; dono: boolean }) {
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metrica rotulo="Ocupação hoje" valor={pct(dia.ocupacao)} detalhe={`${Math.floor(dia.livresMin / 60)}h${String(dia.livresMin % 60).padStart(2, "0")} livres na agenda`}
-          barra={dia.ocupacao} link={dono ? "/indicadores?periodo=7d#ocupacao" : undefined} />
+          barra={dia.ocupacao} link={verResultado ? "/indicadores?periodo=7d#ocupacao" : undefined} />
         <Metrica rotulo="Previsto hoje" valor={reais(dia.previstoCentavos)} detalhe={`${reais(dia.realizadoCentavos)} já concluído · ${dia.concluidos}/${dia.atendimentos}`} />
         {mes ? (
           <>
@@ -144,8 +147,8 @@ export function PainelTela({ nome, dono }: { nome: string; dono: boolean }) {
         </div>
 
         {!!pe.estornosPendentes && (
-          <Bloco titulo={dono ? "Estornos esperando a sua aprovação" : "Estornos esperando o dono"} qtd={pe.estornosPendentes}
-            acao={<Link className="text-sm underline" href="/financeiro?aba=estornos">{dono ? "aprovar ou recusar" : "ver pedidos"}</Link>}>
+          <Bloco titulo={permissoes.estorno ? "Estornos esperando a sua aprovação" : "Estornos esperando o dono"} qtd={pe.estornosPendentes}
+            acao={<Link className="text-sm underline" href="/financeiro?aba=estornos">{permissoes.estorno ? "aprovar ou recusar" : "ver pedidos"}</Link>}>
             <li className="text-zinc-600">Todo estorno de dinheiro já recebido passa pelo dono.</li>
           </Bloco>
         )}
@@ -247,12 +250,12 @@ export function PainelTela({ nome, dono }: { nome: string; dono: boolean }) {
         <div className="cartao space-y-2">
           <div className="flex items-baseline justify-between">
             <h2 className="font-semibold">Hoje por barbeiro</h2>
-            {dono && <Link href="/indicadores#ocupacao" className="text-xs font-semibold text-ouro">Ver detalhes →</Link>}
+            {verResultado && <Link href="/indicadores#ocupacao" className="text-xs font-semibold text-ouro">Ver detalhes →</Link>}
           </div>
           {dia.porBarbeiro.map((b) => (
             <div key={b.id} className="space-y-1">
               <div className="flex justify-between text-sm">
-                {dono ? <Link href={`/indicadores/barbeiro/${b.id}`} className="hover:text-ouro">{b.nome}</Link> : <span>{b.nome}</span>}
+                {verResultado ? <Link href={`/indicadores/barbeiro/${b.id}`} className="hover:text-ouro">{b.nome}</Link> : <span>{b.nome}</span>}
                 <span className="text-zinc-500">{b.ocupacao === null ? "folga" : `${b.atendimentos} atend. · ${pct(b.ocupacao)}`}</span>
               </div>
               <div className="h-2 rounded-full bg-zinc-100">
@@ -262,7 +265,7 @@ export function PainelTela({ nome, dono }: { nome: string; dono: boolean }) {
           ))}
         </div>
 
-        {dono && pico && (
+        {verResultado && pico && (
           <div className="cartao space-y-2 overflow-x-auto">
             <div className="flex flex-wrap items-baseline gap-2">
               <h2 className="font-semibold">Horários de pico</h2>

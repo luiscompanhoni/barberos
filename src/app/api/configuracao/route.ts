@@ -1,20 +1,20 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auditarMudanca } from "@/lib/auditoria";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { configuracao } from "@/lib/agenda/carregar";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
 export const GET = rota(async () => {
-  await exigirSessao(["DONO"]);
+  await exigirSessao(GESTAO);
   return NextResponse.json(await configuracao());
 });
 
 /** Dados da barbearia e regras de agendamento (valem para bot, site e recepcao). */
 export const PATCH = rota(async (req: Request) => {
-  const sessao = await exigirSessao(["DONO"]);
+  const sessao = await exigirSessao(GESTAO);
   const b = await corpo(
     req,
     z.object({

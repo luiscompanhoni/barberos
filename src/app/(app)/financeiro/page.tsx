@@ -1,16 +1,21 @@
 import { redirect } from "next/navigation";
 import { FinanceiroTela, type Aba } from "@/components/financeiro/FinanceiroTela";
-import { sessaoAtual } from "@/lib/auth/sessao";
+import { pode } from "@/lib/auth/permissoes";
+import { BALCAO, GESTAO, sessaoAtual } from "@/lib/auth/sessao";
 import { contarPendentes } from "@/lib/estornos/servico";
 
 export const dynamic = "force-dynamic";
 
 const ABAS: Aba[] = ["caixa", "despesas", "links", "estornos", "conciliacao", "resumo"];
 
-/** Caixa, despesas, links, estornos e conciliacao (dono e gerente/recepcao); resumo do mes so o dono. */
+/** Caixa, despesas, links, estornos e conciliacao (dono, gerente e recepcao); resumo do mes com a permissao "resultado". */
 export default async function Financeiro({ searchParams }: PageProps<"/financeiro">) {
   const s = (await sessaoAtual())!;
-  if (s.papel !== "DONO" && s.papel !== "RECEPCAO") redirect("/");
+  if (!BALCAO.includes(s.papel)) redirect("/");
   const { aba } = await searchParams;
-  return <FinanceiroTela dono={s.papel === "DONO"} abaInicial={ABAS.find((a) => a === aba && (a !== "resumo" || s.papel === "DONO")) ?? "caixa"} estornosPendentes={await contarPendentes()} />;
+  const verResultado = await pode(s, "resultado");
+  return (
+    <FinanceiroTela verResultado={verResultado} gestao={GESTAO.includes(s.papel)} estornosPendentes={await contarPendentes()}
+      abaInicial={ABAS.find((a) => a === aba && (a !== "resumo" || verResultado)) ?? "caixa"} />
+  );
 }

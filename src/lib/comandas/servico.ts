@@ -1,6 +1,7 @@
 import type { FormaRecebimento, Prisma } from "@prisma/client";
 import { auditar } from "@/lib/auditoria";
-import type { Sessao } from "@/lib/auth/sessao";
+import { exigirPermissao, permissoesDe } from "@/lib/auth/permissoes";
+import { BALCAO, type Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
@@ -33,7 +34,7 @@ const avisar = (comandaId: string) => publicar({ tipo: "comanda", comandaId });
 /** Comanda encerrada: links de pagamento dela em aberto deixam de valer (em segundo plano). */
 const encerrarLinks = (comandaId: string) =>
   void import("@/lib/links/servico").then((m) => m.cancelarLinksDaComanda(comandaId)).catch((e) => console.error("[comandas] links", comandaId, e));
-const gerente = (s: Sessao) => s.papel === "DONO" || s.papel === "RECEPCAO";
+const gerente = (s: Sessao) => BALCAO.includes(s.papel);
 
 export async function detalheComanda(id: string) {
   const c = await db.comanda.findUnique({ where: { id }, include: INCLUIR });
@@ -149,7 +150,7 @@ export async function alterarItem(s: Sessao, itemId: string, quantidade: number)
 }
 
 export async function definirDesconto(s: Sessao, comandaId: string, descontoCentavos: number) {
-  if (!gerente(s)) throw proibido();
+  await exigirPermissao(s, "desconto");
   await db.$transaction(async (tx) => {
     const c = await travar(tx, comandaId);
     const { subtotal } = resumoComanda(c.itens, c.pagamentos, 0);
@@ -216,15 +217,16 @@ export async function fecharComanda(s: Sessao, comandaId: string) {
 }
 
 /**
- * Cancela. Aberta: so sem pagamento recebido. Fechada (so o dono): devolve os produtos ao estoque;
+ * Cancela. Aberta: so sem pagamento recebido. Fechada (permissao "excluir"): devolve os produtos ao estoque;
  * o dinheiro/cartao ja recebido precisa ser devolvido por fora (estorno na maquininha).
  */
 export async function cancelarComanda(s: Sessao, comandaId: string, motivo: string) {
+  const podeFechada = (await permissoesDe(s.papel)).excluir;
   await db.$transaction(async (tx) => {
     const c = await travar(tx, comandaId, false);
     if (c.status === "CANCELADA") return;
     if (c.status === "FECHADA") {
-      if (s.papel !== "DONO") throw new ErroNegocio("Só o dono cancela comanda já fechada.", 403, "proibido");
+      if (!podeFechada) throw new ErroNegocio("Só o dono (ou quem tem a permissão de excluir) cancela comanda já fechada.", 403, "proibido");
       for (const i of c.itens) {
         if (i.produtoId) await movimentar(tx, { produtoId: i.produtoId, tipo: "ESTORNO", quantidade: i.quantidade, usuarioId: s.usuarioId, comandaId, motivo: `Cancelou comanda #${c.numero}` });
       }

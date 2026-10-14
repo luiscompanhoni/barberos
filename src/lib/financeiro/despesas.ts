@@ -5,6 +5,7 @@
 import { configuracao } from "@/lib/agenda/carregar";
 import { colunaParaData, dataLocal, dataParaColuna, instanteLocal } from "@/lib/agenda/tempo";
 import { auditar } from "@/lib/auditoria";
+import { exigirPermissao } from "@/lib/auth/permissoes";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
@@ -81,6 +82,7 @@ export async function editarDespesa(s: Sessao, id: string, p: DadosDespesa) {
 }
 
 export async function excluirDespesa(s: Sessao, id: string) {
+  await exigirPermissao(s, "excluir");
   const d = await buscar(id);
   if (d.status !== "PENDENTE") throw new ErroNegocio("Despesa já paga não pode ser excluída. Estorne o pagamento antes.", 409, "paga");
   await db.$transaction(async (tx) => {
@@ -142,6 +144,7 @@ export async function pagarDespesa(s: Sessao, id: string, p: { forma: FormaDespe
 
 /** Volta a despesa para pendente. Se saiu do caixa, so com aquele caixa ainda aberto (o movimento e removido). */
 export async function estornarDespesa(s: Sessao, id: string) {
+  await exigirPermissao(s, "excluir");
   const d = await buscar(id);
   if (d.status !== "PAGA") throw new ErroNegocio("Essa despesa não está paga.", 409, "pendente");
   const mov = d.movimentoCaixaId ? await db.movimentoCaixa.findUnique({ where: { id: d.movimentoCaixaId }, include: { caixa: true } }) : null;

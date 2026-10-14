@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auditarMudanca } from "@/lib/auditoria";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { schemaProduto } from "@/lib/comandas/schemas";
 import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
@@ -9,7 +9,7 @@ import { corpo } from "@/lib/validacao";
 
 /** Edita o cadastro. O saldo so muda por movimento (entrada, ajuste...). */
 export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/produtos/[id]">) => {
-  const sessao = await exigirSessao(["DONO"]);
+  const sessao = await exigirSessao(GESTAO);
   const { id } = await ctx.params;
   const b = await corpo(req, schemaProduto.partial().extend({ ativo: z.boolean().optional() }));
   if (b.codigoBarras) {

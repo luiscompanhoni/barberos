@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { Marca } from "./Marca";
 
-const PAPEIS: Record<string, string> = { DONO: "Dono", RECEPCAO: "Recepção", BARBEIRO: "Barbeiro" };
+const PAPEIS: Record<string, string> = { DONO: "Dono", GERENTE: "Gerente", RECEPCAO: "Recepção", BARBEIRO: "Barbeiro" };
 
 const ICONES: Record<string, LucideIcon> = {
   "/painel": LayoutDashboard,

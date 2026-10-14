@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { exigirSessaoCom } from "@/lib/auth/permissoes";
 import { rota } from "@/lib/erros";
 import { configExtras, salvarExtras } from "@/lib/rh/pote";
 import { corpo, zId } from "@/lib/validacao";
@@ -11,12 +11,12 @@ const zPct = z.number().int().min(0).max(10_000);
 
 /** Comissao das assinaturas, comissao diferenciada e faixas de comissao de produtos (so o dono). */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO"]);
+  await exigirSessaoCom("comissao", "folha");
   return NextResponse.json(await configExtras());
 });
 
 export const PUT = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO"]);
+  const s = await exigirSessaoCom("comissao");
   const b = await corpo(req, z.object({
     assinaturas: z.object({
       ativo: z.boolean(),

@@ -9,11 +9,11 @@ import { FORMAS, ROTULO_FORMA, type Comanda, type EstornoComanda, type Forma, ty
 const ICONE: Record<Forma, typeof CreditCard> = { PIX: QrCode, CREDITO: CreditCard, DEBITO: CreditCard, DINHEIRO: Banknote };
 
 /** Pagamentos lancados + formulario para receber (divide em quantas formas precisar). */
-export function Recebimento({ comanda, maquininha, gerente, dono, ocupado, onPagar, onAcaoPagamento, onEstorno }: {
+export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupado, onPagar, onAcaoPagamento, onEstorno }: {
   comanda: Comanda;
   maquininha: ModoMaquininha;
   gerente: boolean;
-  dono: boolean;
+  aprovaEstorno: boolean;
   ocupado: boolean;
   onPagar: (p: { forma: Forma; valorCentavos: number; naMaquininha: boolean; serial?: string }) => Promise<boolean>;
   onAcaoPagamento: (id: string, acao: "cancelar" | "conferir" | "simular") => void;
@@ -58,9 +58,9 @@ export function Recebimento({ comanda, maquininha, gerente, dono, ocupado, onPag
         <ul className="space-y-2">
           {vivos.map((p) => (
             <LinhaPagamento key={p.id} p={p} aberta={aberta} maquininha={maquininha} ocupado={ocupado} onAcao={onAcaoPagamento}
-              // Desfazer lancamento errado (sem dinheiro): so o dono. Devolver dinheiro e estorno.
-              podeDesfazer={dono && p.status === "PAGO" && !p.antecipadoId && !p.linkPagamentoId && !p.estornadoCentavos && (!p.gatewayPedidoId || p.gatewayPedidoId.startsWith("sim_"))}
-              estornos={estornosDe(p)} podeEstornar={gerente} dono={dono} onEstorno={onEstorno} />
+              // Desfazer lancamento errado (sem dinheiro): so quem aprova estornos. Devolver dinheiro e estorno.
+              podeDesfazer={aprovaEstorno && p.status === "PAGO" && !p.antecipadoId && !p.linkPagamentoId && !p.estornadoCentavos && (!p.gatewayPedidoId || p.gatewayPedidoId.startsWith("sim_"))}
+              estornos={estornosDe(p)} podeEstornar={gerente} onEstorno={onEstorno} />
           ))}
         </ul>
       )}
@@ -102,10 +102,10 @@ export function Recebimento({ comanda, maquininha, gerente, dono, ocupado, onPag
   );
 }
 
-function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao, estornos, podeEstornar, dono, onEstorno }: {
+function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao, estornos, podeEstornar, onEstorno }: {
   p: Pagamento; aberta: boolean; maquininha: ModoMaquininha; podeDesfazer: boolean; ocupado: boolean;
   onAcao: (id: string, acao: "cancelar" | "conferir" | "simular") => void;
-  estornos: EstornoComanda[]; podeEstornar: boolean; dono: boolean; onEstorno?: () => void;
+  estornos: EstornoComanda[]; podeEstornar: boolean; onEstorno?: () => void;
 }) {
   const Icone = ICONE[p.forma];
   const estornadoTotal = p.status === "CANCELADO" && !!p.estornadoEm;
@@ -148,7 +148,7 @@ function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao, 
         </ul>
       )}
       {podeEstornar && (p.status === "PAGO" || !!p.estornadoEm) && (
-        <div className="mt-2 flex justify-end empty:hidden"><BotaoEstorno tipo="COMANDA" id={p.id} dono={dono} oculto={p.status !== "PAGO" || emAberto} onFeito={onEstorno} /></div>
+        <div className="mt-2 flex justify-end empty:hidden"><BotaoEstorno tipo="COMANDA" id={p.id} oculto={p.status !== "PAGO" || emAberto} onFeito={onEstorno} /></div>
       )}
     </li>
   );

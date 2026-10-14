@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { exigirSessaoCom } from "@/lib/auth/permissoes";
 import { rota } from "@/lib/erros";
 import { criarAdicional, listarAdicionais } from "@/lib/rh/adicionais";
 import { corpo, zData, zId } from "@/lib/validacao";
@@ -9,12 +9,12 @@ export const dynamic = "force-dynamic";
 
 /** Comissao diferenciada por barbeiro (so o dono: mexe em pagamento). */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO"]);
+  await exigirSessaoCom("comissao", "folha");
   return NextResponse.json(await listarAdicionais());
 });
 
 export const POST = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO"]);
+  const s = await exigirSessaoCom("comissao");
   const b = await corpo(req, z.object({
     barbeiroId: zId,
     modalidade: z.enum(["ASSINATURA", "AVULSO"]),

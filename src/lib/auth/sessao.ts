@@ -41,7 +41,12 @@ export async function sessaoAtual(): Promise<Sessao | null> {
   };
 }
 
-export const EQUIPE: Papel[] = ["DONO", "RECEPCAO", "BARBEIRO"];
+export const EQUIPE: Papel[] = ["DONO", "GERENTE", "RECEPCAO", "BARBEIRO"];
+/** Dono e gerente: cadastros (servicos, planos, produtos, barbeiros), horarios de todos e configuracoes. */
+export const GESTAO: Papel[] = ["DONO", "GERENTE"];
+/** Quem atende no balcao: gestao + recepcao (caixa, comandas, financeiro do dia, assinaturas...). */
+export const BALCAO: Papel[] = ["DONO", "GERENTE", "RECEPCAO"];
+/** Acoes sensiveis (estorno, desconto, folha...) dependem tambem da matriz de permissoes (lib/auth/permissoes.ts). */
 
 export async function exigirSessao(papeis: Papel[] = EQUIPE): Promise<Sessao> {
   const s = await sessaoAtual();
@@ -50,9 +55,9 @@ export async function exigirSessao(papeis: Papel[] = EQUIPE): Promise<Sessao> {
   return s;
 }
 
-/** Dono e recepcao mexem em qualquer agenda; barbeiro so na propria. */
+/** Dono, gerente e recepcao mexem em qualquer agenda; barbeiro so na propria. */
 export function podeGerirBarbeiro(s: Sessao, barbeiroId: string): boolean {
-  if (s.papel === "DONO" || s.papel === "RECEPCAO") return true;
+  if (BALCAO.includes(s.papel)) return true;
   return s.papel === "BARBEIRO" && s.barbeiroId === barbeiroId;
 }
 
@@ -60,9 +65,9 @@ export function exigirGestaoBarbeiro(s: Sessao, barbeiroId: string) {
   if (!podeGerirBarbeiro(s, barbeiroId)) throw proibido();
 }
 
-/** Expediente, folgas e fechar agenda: so o dono ou o proprio barbeiro. */
+/** Expediente, folgas e fechar agenda: dono, gerente ou o proprio barbeiro. */
 export function podeConfigurarBarbeiro(s: Sessao, barbeiroId: string): boolean {
-  return s.papel === "DONO" || (s.papel === "BARBEIRO" && s.barbeiroId === barbeiroId);
+  return GESTAO.includes(s.papel) || (s.papel === "BARBEIRO" && s.barbeiroId === barbeiroId);
 }
 
 export function exigirConfigBarbeiro(s: Sessao, barbeiroId: string) {

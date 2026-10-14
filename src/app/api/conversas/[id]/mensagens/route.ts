@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, rota } from "@/lib/erros";
 import { temJanela24h } from "@/lib/whatsapp/canal";
@@ -9,7 +9,7 @@ import { corpo } from "@/lib/validacao";
 
 /** Resposta da equipe. Assume a conversa (o bot para de responder). */
 export const POST = rota(async (req: Request, ctx: RouteContext<"/api/conversas/[id]/mensagens">) => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   const { id } = await ctx.params;
   const { texto } = await corpo(req, z.object({ texto: z.string().trim().min(1).max(4000) }));
   const c = await db.conversa.findUnique({ where: { id } });

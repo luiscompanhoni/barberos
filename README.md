@@ -53,7 +53,7 @@ para cada pessoa da equipe em **Configurações** (`/equipe`), e ela troca no pr
 O painel tem uma barra de abas no topo (até 8): troca de tela sem abrir abas do navegador e lembra a última página e
 a rolagem de cada uma.
 
-Equipe (dono e recepção; o que é só do dono está marcado):
+Equipe (dono, gerente e recepção; o que depende do papel está marcado):
 - **Painel** (`/painel`): o que precisa de ação agora e o mapa de horários de pico.
 - **Recepção** (`/recepcao`): uma coluna por barbeiro, horários livres em destaque. Clique no vazio para encaixar;
   arraste para mudar horário ou barbeiro; puxe a borda de baixo para mudar a duração. Atualiza ao vivo.
@@ -65,9 +65,12 @@ Equipe (dono e recepção; o que é só do dono está marcado):
 - **Semana** (`/semana`).
 - **Assinaturas** (`/assinaturas`), **Estoque** (`/estoque`), **Financeiro** (`/financeiro`),
   **Checklist** (`/checklist`) e **Roleta** (`/roleta`): ver as seções abaixo.
-- Só o dono: **Indicadores** (`/indicadores`), **RH** (`/rh`), **Planos** (`/planos`), **Horários**
-  (`/expediente`: semana padrão, folga, dia extra, horário diferente, fechar agenda), **Configurações**
-  (`/equipe`: dados da barbearia, mensagens automáticas, acessos da equipe, barbeiros com foto e serviços), **WhatsApp**
+- Dono e gerente: **Planos** (`/planos`), **Horários** (`/expediente`: semana padrão, folga, dia extra, horário
+  diferente, fechar agenda) e **Configurações** (`/equipe`: dados da barbearia, mensagens automáticas, barbeiros com
+  foto e serviços).
+- Pela matriz de permissões: **Indicadores** (`/indicadores`, quem pode ver o resultado) e **RH** (`/rh`, quem pode
+  mexer na folha ou nas comissões).
+- Só o dono: **Acessos** e **Permissões** (em Configurações), **WhatsApp**
   (`/whatsapp`: conexão do número pelo QR code), **Auditoria** (`/auditoria`: quem mudou o quê, quando e de onde,
   com o antes → depois) e **Simulador** (`/simulador`, só com
   `WHATSAPP_PROVIDER="simulador"`: conversa como se fosse um cliente, pelo mesmo caminho do webhook).
@@ -458,7 +461,30 @@ abrir no Excel (fora da pasta do projeto).
 - `npm test`: testes unitários (Vitest, sem banco).
 - `npm run teste:<área>`: fluxos completos contra o banco de desenvolvimento, com gateways falsos (sem chamadas
   reais): `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`, `automacoes`,
-  `crescimento`, `login`, `roleta`, `financeiro`, `despesas`, `estorno` e `rh`.
+  `crescimento`, `login`, `roleta`, `financeiro`, `despesas`, `estorno`, `rh` e `permissoes`.
+
+## Papéis e permissões
+
+Papéis: **Dono** (proprietário, pode tudo), **Gerente** (administrador), **Recepção** e **Barbeiro**. O dono cria
+os acessos e muda o papel de cada um em Configurações → Acessos da equipe.
+
+As ações sensíveis ficam numa matriz que o dono liga e desliga por papel (Configurações → Permissões). O padrão:
+
+| Ação | Gerente | Recepção | Barbeiro |
+|---|---|---|---|
+| Aprovar e fazer estornos (sem isso, só pede) | não | não | — |
+| Dar desconto na comanda | sim | sim | não |
+| Usar o saldo do cliente | sim | sim | sim |
+| Cancelar assinaturas e mudar ofertas de retenção | não | não | — |
+| Mexer no caixa (abrir, fechar, sangria, suprimento) | sim | sim | — |
+| Alterar comissões | não | não | — |
+| Folha e salários | não | não | — |
+| Excluir e desfazer lançamentos (comanda fechada, conta a pagar, despesa paga) | não | não | — |
+| Ver faturamento e resultado (resumo do mês, indicadores, pico, resultado da roleta) | sim | não | — |
+
+A mudança vale na hora (o papel e as permissões são lidos a cada requisição) e vai para a auditoria com o antes →
+depois. Acessos, permissões, WhatsApp e auditoria são sempre só do dono. As regras ficam em
+`src/lib/auth/permissoes-regras.ts`; o servidor confere tudo, e a tela só esconde o que a pessoa não pode fazer.
 
 ## Regras garantidas pelo sistema
 
@@ -466,10 +492,11 @@ abrir no Excel (fora da pasta do projeto).
 - Atendimento só cabe dentro do expediente do dia e fora de períodos fechados.
 - Cliente (bot e site): antecedência mínima, até N dias à frente, no máximo 2 horários futuros, sem dois
   horários no mesmo período, e só altera/cancela até 2h antes (configurável na tabela `configuracao`).
-- Barbeiro só altera a própria agenda; recepção mexe em atendimentos mas não em expediente; dono faz tudo;
-  cliente só vê e altera os próprios horários.
+- Barbeiro só altera a própria agenda; recepção mexe em atendimentos mas não em expediente; gerente também cuida de
+  cadastros, horários e configurações; dono faz tudo; cliente só vê e altera os próprios horários.
+- Ações sensíveis seguem a matriz de permissões que o dono edita (ver "Papéis e permissões").
 - Senhas guardadas com scrypt; login errado não revela se a conta existe. O sistema nunca vê o número do cartão.
-- Estorno nunca passa do valor pago, e quem aprova é o dono.
+- Estorno nunca passa do valor pago, e quem aprova é o dono (ou quem ele autorizar na matriz de permissões).
 - Webhook do WhatsApp só aceita chamadas assinadas pela Meta e ignora mensagens repetidas.
 - Toda alteração fica registrada na tabela `auditoria` (quem, quando, IP, aparelho e o antes → depois dos campos
   que mudaram). O banco recusa alterar ou apagar esse registro; o dono consulta em **Auditoria** no painel.

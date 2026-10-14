@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal } from "@/lib/agenda/tempo";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { exigirSessaoCom } from "@/lib/auth/permissoes";
 import { rota } from "@/lib/erros";
 import { FORMAS_PAGAMENTO, fecharFolha, pagarFolha, previaFolha, reabrirFolha } from "@/lib/rh/folha";
 import { corpo, parametros, zId } from "@/lib/validacao";
@@ -12,14 +12,14 @@ const zComp = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Competência no forma
 
 /** Folha da competencia (padrao: mes atual). So o dono. */
 export const GET = rota(async (req: Request) => {
-  await exigirSessao(["DONO"]);
+  await exigirSessaoCom("folha");
   const q = parametros(req, z.object({ competencia: zComp.optional() }));
   return NextResponse.json(await previaFolha(q.competencia ?? dataLocal(Date.now(), (await configuracao()).fuso).slice(0, 7)));
 });
 
 /** Fechar a folha do mes, marcar como paga ou reabrir (por funcionario). */
 export const POST = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO"]);
+  const s = await exigirSessaoCom("folha");
   const b = await corpo(req, z.discriminatedUnion("acao", [
     z.object({ acao: z.literal("fechar"), competencia: zComp, pessoaId: zId.optional() }),
     z.object({ acao: z.literal("pagar"), competencia: zComp, pessoaId: zId, forma: z.enum(FORMAS_PAGAMENTO).default("PIX") }),

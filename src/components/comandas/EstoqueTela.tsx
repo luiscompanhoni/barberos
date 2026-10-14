@@ -15,7 +15,7 @@ type Relatorio = {
 };
 type Filtro = "TODOS" | Produto["categoria"] | "ACABANDO";
 
-export function EstoqueTela({ dono }: { dono: boolean }) {
+export function EstoqueTela({ podeCadastrar }: { podeCadastrar: boolean }) {
   const [produtos, setProdutos] = useState<Produto[] | null>(null);
   const [rel, setRel] = useState<Relatorio | null>(null);
   const [filtro, setFiltro] = useState<Filtro>("TODOS");
@@ -50,7 +50,7 @@ export function EstoqueTela({ dono }: { dono: boolean }) {
           <p className="eyebrow">Bar e loja</p>
           <h1 className="titulo-marca text-2xl">Estoque</h1>
         </div>
-        {dono && <button className="btn-primario ml-auto" onClick={() => setEditar("novo")}><Plus size={15} /> Novo produto</button>}
+        {podeCadastrar && <button className="btn-primario ml-auto" onClick={() => setEditar("novo")}><Plus size={15} /> Novo produto</button>}
       </div>
 
       {rel && (
@@ -124,7 +124,7 @@ export function EstoqueTela({ dono }: { dono: boolean }) {
                           <option value="PERDA">Perda</option>
                         </select>
                         <button className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100" onClick={() => setHistorico(p)} title="Histórico" aria-label="Histórico"><History size={15} /></button>
-                        {dono && <button className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100" onClick={() => setEditar(p)} title="Editar" aria-label="Editar"><Pencil size={15} /></button>}
+                        {podeCadastrar && <button className="rounded-lg p-1.5 text-zinc-500 hover:bg-zinc-100" onClick={() => setEditar(p)} title="Editar" aria-label="Editar"><Pencil size={15} /></button>}
                       </div>
                     </td>
                   </tr>
@@ -135,7 +135,7 @@ export function EstoqueTela({ dono }: { dono: boolean }) {
         </div>
       )}
 
-      {dono && inativos.length > 0 && (
+      {podeCadastrar && inativos.length > 0 && (
         <details className="text-sm text-zinc-500">
           <summary className="cursor-pointer">Desativados ({inativos.length})</summary>
           <ul className="mt-2 space-y-1">

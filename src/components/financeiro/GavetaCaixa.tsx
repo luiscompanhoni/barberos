@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Wallet, X } from "lucide-react";
+import { useAcesso } from "@/components/AcessoContexto";
 import { CaixaTela } from "./CaixaTela";
 
 const DURACAO_MS = 220;
 
 /** Atalho do caixa na recepcao: botao fixo que abre uma aba lateral com o caixa compacto. */
-export function GavetaCaixa({ papel }: { papel: string }) {
+export function GavetaCaixa() {
+  const podeMexer = useAcesso().permissoes.caixa;
   const [montada, setMontada] = useState(false);
   const [visivel, setVisivel] = useState(false);
   const painelRef = useRef<HTMLDivElement>(null);
@@ -37,7 +39,7 @@ export function GavetaCaixa({ papel }: { papel: string }) {
     return () => { window.removeEventListener("keydown", esc); document.body.style.overflow = overflow; };
   }, [montada]);
 
-  if (papel !== "DONO" && papel !== "RECEPCAO") return null;
+  if (!podeMexer) return null;
 
   return (
     <>

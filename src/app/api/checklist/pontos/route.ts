@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { ajustarPontos, classificacao } from "@/lib/checklist/pontos";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
@@ -9,13 +9,13 @@ export const dynamic = "force-dynamic";
 
 /** Classificacao da equipe (pontos, faixa e progresso). */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   return NextResponse.json(await classificacao());
 });
 
 /** Ajuste manual de pontos, com motivo. */
 export const POST = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
   const b = await corpo(req, z.object({
     pessoaId: z.string().max(40),
     pontos: z.number().int().min(-10000).max(10000).refine((n) => n !== 0, "Pontos não pode ser zero"),

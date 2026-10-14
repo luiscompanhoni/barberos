@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { pode } from "@/lib/auth/permissoes";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { produtosAcabando, vendasDeHoje } from "@/lib/comandas/relatorio";
 import { esperasAtivas } from "@/lib/crescimento/espera";
 import { rota } from "@/lib/erros";
@@ -7,13 +8,14 @@ import { contarPendentes } from "@/lib/estornos/servico";
 import { mapaDePico, pendencias, resumoDoDia, resumoDoMes } from "@/lib/painel";
 
 export const GET = rota(async () => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
+  const verResultado = await pode(s, "resultado");
   const [dia, pend, mes, pico, vendas, acabando, esperas, estornos] = await Promise.all([
     resumoDoDia(),
     pendencias(),
-    // Faturamento e mapa de pico sao do dono.
-    s.papel === "DONO" ? resumoDoMes() : null,
-    s.papel === "DONO" ? mapaDePico() : null,
+    // Faturamento e mapa de pico: so quem pode ver o resultado.
+    verResultado ? resumoDoMes() : null,
+    verResultado ? mapaDePico() : null,
     vendasDeHoje(),
     produtosAcabando(),
     esperasAtivas(),

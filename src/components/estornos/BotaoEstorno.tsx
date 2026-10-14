@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Undo2 } from "lucide-react";
+import { useAcesso } from "@/components/AcessoContexto";
 import { Modal } from "@/components/Modal";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
 import { ROTULO_MEIO, ROTULO_STATUS, type MeioEstorno, type StatusEstorno, type TipoEstorno } from "@/lib/estornos/regras";
@@ -25,12 +26,13 @@ export function SeloEstorno({ status }: { status: StatusEstorno }) {
 }
 
 /**
- * "Pedir estorno" (recepcao) ou "Estornar" (dono) de um pagamento recebido.
+ * "Pedir estorno" (recepcao) ou "Estornar" (dono ou quem tem a permissao de estorno) de um pagamento recebido.
  * `oculto` esconde so o botao (o modal aberto continua ate fechar); `onFeito` roda ao fechar o resultado.
  */
-export function BotaoEstorno({ tipo, id, dono, className = "btn py-1 text-xs", oculto = false, onFeito }: {
-  tipo: TipoEstorno; id: string; dono: boolean; className?: string; oculto?: boolean; onFeito?: () => void;
+export function BotaoEstorno({ tipo, id, className = "btn py-1 text-xs", oculto = false, onFeito }: {
+  tipo: TipoEstorno; id: string; className?: string; oculto?: boolean; onFeito?: () => void;
 }) {
+  const dono = useAcesso().permissoes.estorno;
   const [aberto, setAberto] = useState(false);
   return (
     <>

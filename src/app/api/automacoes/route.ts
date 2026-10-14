@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 
 /** Ultimas mensagens automaticas enviadas e o total por tipo nos ultimos 7 dias. */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   const [ultimas, porTipo, semMensagens] = await Promise.all([
     db.automacaoEnviada.findMany({ orderBy: { criadoEm: "desc" }, take: 40 }),
     db.automacaoEnviada.groupBy({ by: ["tipo"], where: { criadoEm: { gt: new Date(Date.now() - 7 * 24 * 3_600_000) } }, _count: true }),

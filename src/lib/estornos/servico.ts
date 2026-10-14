@@ -1,10 +1,11 @@
 /**
- * Estornos: a recepcao pede (fica PENDENTE e o dono e avisado no WhatsApp); o dono aprova,
- * recusa ou estorna direto. Aprovado, o sistema executa (ver executar.ts).
+ * Estornos: a recepcao pede (fica PENDENTE e quem aprova e avisado no WhatsApp); o dono (ou quem tem a permissao
+ * "estorno") aprova, recusa ou estorna direto. Aprovado, o sistema executa (ver executar.ts).
  */
 import type { PedidoEstorno, Prisma } from "@prisma/client";
 import { auditar } from "@/lib/auditoria";
-import type { Sessao } from "@/lib/auth/sessao";
+import { pode, telefonesCom } from "@/lib/auth/permissoes";
+import { BALCAO, type Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { urlPainel } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
@@ -15,8 +16,9 @@ import { executarEstorno, registrarManual } from "./executar";
 import { aceitaParcial, erroNoPedido, limiteEstorno, STATUS_ATIVOS, textoAvisoDono, type TipoEstorno } from "./regras";
 
 type Tx = Prisma.TransactionClient;
-const ehDono = (s: Sessao) => s.papel === "DONO";
-const exigirGerente = (s: Sessao) => { if (s.papel !== "DONO" && s.papel !== "RECEPCAO") throw proibido(); };
+/** Quem aprova estorno (dono ou papel com a permissao); os outros do balcao so pedem. */
+const aprova = (s: Sessao) => pode(s, "estorno");
+const exigirGerente = (s: Sessao) => { if (!BALCAO.includes(s.papel)) throw proibido(); };
 
 /** Quanto ainda da para estornar do alvo (desconta pedidos em andamento e ja estornados). */
 async function limiteDoAlvo(tx: Tx | typeof db, a: Alvo) {
@@ -44,10 +46,11 @@ export async function infoAlvo(s: Sessao, tipo: TipoEstorno, id: string) {
 }
 
 /**
- * Recepcao: cria o pedido PENDENTE e avisa o dono. Dono: estorna direto (aprovado por ele) e executa.
+ * Recepcao: cria o pedido PENDENTE e avisa quem aprova. Quem aprova: estorna direto (aprovado por ele) e executa.
  */
 export async function pedirEstorno(s: Sessao, p: { tipo: TipoEstorno; referenciaId: string; valorCentavos: number; motivo: string }) {
   exigirGerente(s);
+  const direto = await aprova(s);
   const motivo = p.motivo.trim();
   const pedido = await db.$transaction(async (tx) => {
     const alvo = await carregarAlvo(p.tipo, p.referenciaId, tx);
@@ -65,29 +68,29 @@ export async function pedirEstorno(s: Sessao, p: { tipo: TipoEstorno; referencia
       data: {
         tipo: a.tipo, referenciaId: a.referenciaId, valorCentavos: p.valorCentavos, valorOriginalCentavos: a.valorOriginal, motivo,
         meio: a.meio, forma: a.forma, descricao: a.descricao, comandaId: a.comandaId, clienteNome: a.clienteNome, pedidoPorId: s.usuarioId,
-        ...(ehDono(s) ? { status: "APROVADO" as const, decididoPorId: s.usuarioId, decididoEm: agora, motivoDecisao: "Estorno direto do dono" } : {}),
+        ...(direto ? { status: "APROVADO" as const, decididoPorId: s.usuarioId, decididoEm: agora, motivoDecisao: s.papel === "DONO" ? "Estorno direto do dono" : "Estorno direto (com permissão)" } : {}),
       },
     });
-    await auditar(tx, s.usuarioId, ehDono(s) ? "estorno_direto" : "estorno_pedido", "estorno", novo.id, {
+    await auditar(tx, s.usuarioId, direto ? "estorno_direto" : "estorno_pedido", "estorno", novo.id, {
       tipo: a.tipo, referenciaId: a.referenciaId, valorCentavos: p.valorCentavos, motivo, meio: a.meio,
     });
     return novo;
   });
-  if (ehDono(s)) return paraTela(await executarEstorno(s, pedido.id));
+  if (direto) return paraTela(await executarEstorno(s, pedido.id));
   await avisarDonos(s, pedido);
   return paraTela(pedido);
 }
 
-/** Aviso no WhatsApp de cada dono ativo (com o link do painel). Nao trava o pedido. */
+/** Aviso no WhatsApp de quem aprova estornos (dono e papeis com a permissao), com o link do painel. Nao trava o pedido. */
 async function avisarDonos(s: Sessao, p: PedidoEstorno) {
-  const donos = await db.usuario.findMany({ where: { papel: "DONO", ativo: true }, select: { telefone: true } });
+  const donos = (await telefonesCom("estorno")).map((telefone) => ({ telefone }));
   const texto = textoAvisoDono({ pedidoPor: s.nome, descricao: p.descricao, valorCentavos: p.valorCentavos, motivo: p.motivo, link: `${urlPainel()}/financeiro?aba=estornos` });
   await Promise.all(donos.map((d) => notificarCliente(d.telefone, texto).catch((e) => console.error("[estornos] aviso ao dono", e))));
 }
 
 /** Dono decide: aprovar (executa), recusar (com motivo), tentar de novo (falhou) ou registrar que devolveu por fora. */
 export async function decidirEstorno(s: Sessao, id: string, d: { acao: "aprovar" | "recusar" | "tentar" | "manual"; motivo?: string | null }) {
-  if (!ehDono(s)) throw new ErroNegocio("Só o dono aprova ou recusa estornos.", 403, "proibido");
+  if (!(await aprova(s))) throw new ErroNegocio("Só o dono (ou quem tem a permissão de estorno) aprova ou recusa estornos.", 403, "proibido");
   const p = await db.pedidoEstorno.findUnique({ where: { id } });
   if (!p) throw naoEncontrado("Pedido de estorno");
   const motivo = d.motivo?.trim() || null;
@@ -138,7 +141,7 @@ export async function listarEstornos(s: Sessao) {
   const ids = [...pendentes, ...historico].flatMap((p) => [p.pedidoPorId, p.decididoPorId]).filter((x): x is string => !!x);
   const nomes = new Map((await db.usuario.findMany({ where: { id: { in: ids } }, select: { id: true, nome: true } })).map((u) => [u.id, u.nome]));
   const com = (p: PedidoEstorno) => paraTela({ ...p, pedidoPor: nomes.get(p.pedidoPorId ?? "") ?? null, decididoPor: nomes.get(p.decididoPorId ?? "") ?? null });
-  return { pendentes: pendentes.map(com), historico: historico.map(com), dono: ehDono(s) };
+  return { pendentes: pendentes.map(com), historico: historico.map(com), dono: await aprova(s) };
 }
 
 /** Selo do painel: pedidos esperando o dono. */

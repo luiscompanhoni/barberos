@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { lancarMovimento } from "@/lib/comandas/estoque";
 import { schemaMovimento } from "@/lib/comandas/schemas";
 import { db } from "@/lib/db";
@@ -8,7 +8,7 @@ import { corpo } from "@/lib/validacao";
 
 /** Historico do produto (ultimos 100 movimentos). */
 export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/produtos/[id]/movimentos">) => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   const { id } = await ctx.params;
   const movimentos = await db.movimentoEstoque.findMany({ where: { produtoId: id }, orderBy: { criadoEm: "desc" }, take: 100 });
   const usuarios = await db.usuario.findMany({
@@ -21,7 +21,7 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/produtos/[
 
 /** Entrada (compra), consumo, perda ou ajuste de contagem. */
 export const POST = rota(async (req: Request, ctx: RouteContext<"/api/produtos/[id]/movimentos">) => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
   const { id } = await ctx.params;
   const b = await corpo(req, schemaMovimento);
   const m = await lancarMovimento(s.usuarioId, { produtoId: id, ...b });

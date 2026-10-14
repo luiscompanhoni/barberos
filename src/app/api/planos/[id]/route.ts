@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auditarMudanca } from "@/lib/auditoria";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
@@ -11,7 +11,7 @@ import { schemaPlano } from "@/lib/assinaturas/schemas";
  * preco travado na assinatura.
  */
 export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/planos/[id]">) => {
-  const sessao = await exigirSessao(["DONO"]);
+  const sessao = await exigirSessao(GESTAO);
   const { id } = await ctx.params;
   const { servicos, barbeiroIds, ...dados } = await corpo(req, schemaPlano.partial());
   const plano = await db.$transaction(async (tx) => {

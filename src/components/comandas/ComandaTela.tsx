@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, CheckCircle2, Gift, Link2, Minus, Plus, Scissors, Trash2 } from "lucide-react";
+import { useAcesso } from "@/components/AcessoContexto";
 import { BotaoCopiar, NovoLinkModal } from "@/components/financeiro/NovoLinkModal";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
 import { Catalogo } from "./Catalogo";
@@ -20,7 +21,8 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
   const [fechamento, setFechamento] = useState<{ troco: number; alertas: string[]; cashbackCentavos?: number } | null>(null);
   const [desconto, setDesconto] = useState<string | null>(null);
   const [cobrarLink, setCobrarLink] = useState(false);
-  const gerente = papel === "DONO" || papel === "RECEPCAO";
+  const gerente = papel === "DONO" || papel === "GERENTE" || papel === "RECEPCAO";
+  const pode = useAcesso().permissoes;
 
   const carregar = useCallback(() => {
     api<Resposta>(`/api/comandas/${id}`).then((r) => { setC(r.comanda); if (r.maquininha) setMaquininha(r.maquininha); }).catch((e) => setErro(e.message));
@@ -151,7 +153,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
               {r.pago > 0 && <Linha rotulo={r.estornado ? "Ficou com a barbearia" : "Recebido"} valor={reais(r.pago)} />}
               {aberta && r.falta > 0 && r.pago + r.aguardando > 0 && <Linha rotulo="Falta" valor={reais(r.falta)} forte />}
               {r.troco > 0 && <Linha rotulo="Troco" valor={reais(r.troco)} forte />}
-              {aberta && gerente && desconto === null && c.itens.length > 0 && (
+              {aberta && pode.desconto && desconto === null && c.itens.length > 0 && (
                 <button className="text-xs font-semibold text-zinc-500 hover:text-zinc-900" onClick={() => setDesconto(r.desconto ? centavosParaTexto(r.desconto) : "")}>
                   {r.desconto ? "Mudar desconto" : "Dar desconto"}
                 </button>
@@ -159,7 +161,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
             </div>
           </section>
 
-          {aberta && !!c.saldoCliente && (
+          {aberta && !!c.saldoCliente && pode.saldo && (
             <section className="cartao-destaque flex flex-wrap items-center gap-3">
               <Gift size={18} className="shrink-0 text-ouro" />
               <div className="min-w-0 flex-1 text-sm">
@@ -187,7 +189,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
                 comanda={c}
                 maquininha={maquininha}
                 gerente={gerente}
-                dono={papel === "DONO"}
+                aprovaEstorno={pode.estorno}
                 ocupado={ocupado}
                 onPagar={(p: { forma: Forma; valorCentavos: number; naMaquininha: boolean }) => executar(`/api/comandas/${id}/pagamentos`, p, "POST")}
                 onAcaoPagamento={(pid, acao) => executar(`/api/comandas/pagamentos/${pid}`, { acao })}
@@ -207,7 +209,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
             </section>
           )}
 
-          {((aberta && gerente) || (c.status === "FECHADA" && papel === "DONO")) && (
+          {((aberta && gerente) || (c.status === "FECHADA" && pode.excluir)) && (
             <button className="text-xs font-semibold text-zinc-500 hover:text-red-600" disabled={ocupado}
               onClick={() => {
                 const motivo = window.prompt(c.status === "FECHADA"

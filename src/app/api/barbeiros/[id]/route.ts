@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auditarMudanca } from "@/lib/auditoria";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { corpo } from "@/lib/validacao";
 
 export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/barbeiros/[id]">) => {
-  const sessao = await exigirSessao(["DONO"]);
+  const sessao = await exigirSessao(GESTAO);
   const { id } = await ctx.params;
   const b = await corpo(
     req,

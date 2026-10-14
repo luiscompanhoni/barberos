@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { assinar } from "@/lib/assinaturas/servico";
 import { mascararCpf } from "@/lib/assinaturas/regras";
 import { configuracao } from "@/lib/agenda/carregar";
@@ -13,7 +13,7 @@ import { corpo, parametros } from "@/lib/validacao";
 
 /** Lista de assinaturas + numeros do mes (dono e recepcao). */
 export const GET = rota(async (req: Request) => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   const { status, busca } = parametros(
     req,
     z.object({ status: z.enum(["PENDENTE", "ATIVA", "ATRASADA", "CANCELADA", "TODAS"]).default("TODAS"), busca: z.string().trim().max(60).optional() }),
@@ -61,7 +61,7 @@ export const GET = rota(async (req: Request) => {
 
 /** Venda no balcao: gera a assinatura e manda o link de pagamento pelo WhatsApp. */
 export const POST = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
   const b = await corpo(
     req,
     z.object({

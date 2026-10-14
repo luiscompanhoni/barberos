@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
-import { sessaoAtual } from "@/lib/auth/sessao";
+import { AcessoProvider } from "@/components/AcessoContexto";
+import { permissoesDe } from "@/lib/auth/permissoes";
+import { GESTAO, sessaoAtual } from "@/lib/auth/sessao";
 import { Navegacao } from "@/components/Navegacao";
 import { AbasPainel } from "@/components/AbasPainel";
 import { provedorWhatsApp } from "@/lib/whatsapp/canal";
@@ -10,6 +12,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
   const s = await sessaoAtual();
   if (!s) redirect("/entrar");
   if (s.papel === "CLIENTE") redirect("/c");
+  const permissoes = await permissoesDe(s.papel);
 
   const links =
     s.papel === "BARBEIRO"
@@ -31,13 +34,17 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
           { href: "/financeiro", rotulo: "Financeiro" },
           { href: "/checklist", rotulo: "Checklist" },
           { href: "/roleta", rotulo: "Roleta" },
-          ...(s.papel === "DONO"
+          ...(permissoes.resultado ? [{ href: "/indicadores", rotulo: "Indicadores" }] : []),
+          ...(permissoes.folha || permissoes.comissao ? [{ href: "/rh", rotulo: "RH" }] : []),
+          ...(GESTAO.includes(s.papel)
             ? [
-                { href: "/indicadores", rotulo: "Indicadores" },
-                { href: "/rh", rotulo: "RH" },
                 { href: "/planos", rotulo: "Planos" },
                 { href: "/expediente", rotulo: "Horários" },
                 { href: "/equipe", rotulo: "Configurações" },
+              ]
+            : []),
+          ...(s.papel === "DONO"
+            ? [
                 { href: "/whatsapp", rotulo: "WhatsApp" },
                 { href: "/auditoria", rotulo: "Auditoria" },
                 ...(provedorWhatsApp() === "simulador" ? [{ href: "/simulador", rotulo: "Simulador" }] : []),
@@ -45,15 +52,15 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
             : []),
         ];
 
-  // Selo de pendencias no menu: pedidos de estorno esperando o dono.
-  const selos: Record<string, number> = s.papel === "DONO" ? { "/financeiro": await contarPendentes() } : {};
+  // Selo de pendencias no menu: pedidos de estorno esperando quem aprova.
+  const selos: Record<string, number> = permissoes.estorno ? { "/financeiro": await contarPendentes() } : {};
 
   return (
     <div className="flex min-h-full flex-1 flex-col lg:flex-row">
       <Navegacao nome={s.nome} papel={s.papel} links={links} selos={selos} nomeBarbearia={(await configuracao()).nomeBarbearia} />
       <main className="mx-auto w-full min-w-0 max-w-[1400px] flex-1 p-3 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-6">
         <AbasPainel links={links} chave={s.usuarioId} />
-        {children}
+        <AcessoProvider valor={{ papel: s.papel, permissoes }}>{children}</AcessoProvider>
       </main>
     </div>
   );

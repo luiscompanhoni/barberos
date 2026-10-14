@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { schemaProduto } from "@/lib/comandas/schemas";
 import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
@@ -17,7 +17,7 @@ export const GET = rota(async (req: Request) => {
 });
 
 export const POST = rota(async (req: Request) => {
-  await exigirSessao(["DONO"]);
+  await exigirSessao(GESTAO);
   const b = await corpo(req, schemaProduto);
   if (b.codigoBarras && (await db.produto.findUnique({ where: { codigoBarras: b.codigoBarras } }))) {
     throw new ErroNegocio("Já existe produto com esse código de barras.");

@@ -42,14 +42,7 @@ Falta:
 
 ### 9. Estorno só com autorização do dono: ✅ feito (ver "Concluídos")
 
-### 10. Sistema geral de permissões 🟡
-Já existe: papéis Dono, Recepção, Barbeiro e Cliente, com limites fixos no código (ex.: barbeiro só mexe na própria
-agenda; recepção pede estorno, só o dono aprova; RH e resumo financeiro só o dono).
-
-Falta:
-- [ ] Papel Gerente/Administrador.
-- [ ] Matriz de permissões por ação: estorno, desconto, alteração de comissão, saldo, assinatura, caixa, folha,
-      exclusão de dados.
+### 10. Sistema geral de permissões: ✅ feito (ver "Concluídos")
 
 ### 11. Log de auditoria: ✅ feito (ver "Concluídos")
 
@@ -209,6 +202,14 @@ Falta:
   - Relatório com todos os campos e, num mês inteiro, salário, bônus, descontos e total a pagar.
   - Ajustes antigos convertidos sem mudar o percentual de ninguém.
   - Estorno feito depois do mês fechado desconta no mês em que foi feito (igual ao resumo financeiro).
+- **10. Sistema geral de permissões:**
+  - Papéis: dono (proprietário), gerente (administrador), recepção e barbeiro. O dono cria acessos de gerente e muda
+    o papel de quem já tem acesso.
+  - Gerente: o que a recepção faz + serviços, barbeiros, produtos, planos, horários de todos, roleta e configurações.
+  - Matriz de permissões (Configurações → Permissões, só o dono): estorno, desconto, saldo, assinatura, caixa,
+    comissão, folha, exclusão e resultado, por papel. O padrão mantém o que já valia, com uma exceção: excluir conta
+    a pagar e estornar despesa paga agora precisam da permissão "excluir" (a recepção fazia).
+  - O servidor confere cada ação; a tela esconde o que a pessoa não pode. Toda mudança vai para a auditoria.
 - **11. Log de auditoria:**
   - Tela **Auditoria** (só o dono) com filtro por período, pessoa e tipo, agrupada por dia.
   - Alterações de serviço, plano, produto, barbeiro, cliente, configuração, acesso, desconto de comanda, ficha do

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { exigirPermissao } from "@/lib/auth/permissoes";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { cobrancaEmAberto, cobrarPeloWhatsApp, linkAbsoluto, processarEventoGateway, sincronizarAssinatura } from "@/lib/assinaturas/cobrancas";
 import { mascararCpf } from "@/lib/assinaturas/regras";
 import { cancelar } from "@/lib/assinaturas/servico";
@@ -14,7 +15,7 @@ import { atrasarSimulada, gerarProximaSimulada, pagarSimulada } from "@/lib/paga
 import { corpo } from "@/lib/validacao";
 
 export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinaturas/[id]">) => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   const { id } = await ctx.params;
   const a = await db.assinatura.findUnique({
     where: { id },
@@ -41,7 +42,7 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinatura
  * e fazem o papel do gateway (para testar sem Asaas).
  */
 export const POST = rota(async (req: Request, ctx: RouteContext<"/api/assinaturas/[id]">) => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
   const { id } = await ctx.params;
   const b = await corpo(
     req,
@@ -60,7 +61,7 @@ export const POST = rota(async (req: Request, ctx: RouteContext<"/api/assinatura
       await sincronizarAssinatura(id);
       return NextResponse.json({ ok: true });
     case "cancelar":
-      if (s.papel !== "DONO") throw new ErroNegocio("Só o dono cancela assinaturas.", 403);
+      await exigirPermissao(s, "assinatura");
       if (!b.motivo) throw new ErroNegocio("Informe o motivo do cancelamento.");
       await cancelar(id, b.motivo, s.usuarioId);
       await registrarCancelamentoDaEquipe(id, motivoPorTexto(b.motivo), b.motivo.split(":").slice(1).join(":").trim() || (motivoPorTexto(b.motivo) === "OUTRO" ? b.motivo : null), s.usuarioId);

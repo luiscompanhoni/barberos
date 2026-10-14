@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { exigirSessao } from "@/lib/auth/sessao";
 import { configuracao } from "@/lib/agenda/carregar";
+import { exigirSessaoCom } from "@/lib/auth/permissoes";
 import { rota } from "@/lib/erros";
 import { indicadoresDeAssinaturas, indicadoresDoBar } from "@/lib/indicadores/assinaturas-bar";
 import { rankingDaEquipe } from "@/lib/indicadores/barbeiro";
@@ -10,7 +10,7 @@ import { resolverPeriodo } from "@/lib/indicadores/periodo";
 
 /** Indicadores do negocio no periodo (?periodo=7d|30d|mes|mes_passado|90d|ano). So o dono. */
 export const GET = rota(async (req: Request) => {
-  await exigirSessao(["DONO"]);
+  await exigirSessaoCom("resultado");
   const cfg = await configuracao();
   const p = resolverPeriodo(new URL(req.url).searchParams.get("periodo"), cfg.fuso);
   const [negocio, assinaturas, equipe] = await Promise.all([indicadoresDoNegocio(p), indicadoresDeAssinaturas(p), rankingDaEquipe(p)]);

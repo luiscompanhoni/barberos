@@ -9,7 +9,7 @@ import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
 
 const PAGINA = 50;
-const PAPEL: Record<string, string> = { DONO: "dono", RECEPCAO: "recepção", BARBEIRO: "barbeiro", CLIENTE: "cliente" };
+const PAPEL: Record<string, string> = { DONO: "dono", GERENTE: "gerente", RECEPCAO: "recepção", BARBEIRO: "barbeiro", CLIENTE: "cliente" };
 
 /** `depois`: cursor "instante|id" da ultima linha da pagina anterior (linhas no mesmo milissegundo nao se perdem). */
 export async function consultarAuditoria(f: { de: string; ate: string; usuarioId?: string | null; entidade?: string | null; depois?: string | null }) {
