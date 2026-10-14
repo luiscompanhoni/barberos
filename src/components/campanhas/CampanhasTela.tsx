@@ -11,10 +11,10 @@ import { FunilCampanha } from "./FunilCampanha";
 type Seg = { chave: string; rotulo: string; total: number; podemReceber: number };
 type Campanha = {
   id: string; nome: string; segmentos: string[]; mensagem: string; limiteDiario: number; taxaRespostaBps: number;
-  status: "ATIVA" | "PAUSADA" | "ENCERRADA"; roleta: boolean; criadoEm: string; criadoPor: string | null;
+  status: "ATIVA" | "PAUSADA" | "ENCERRADA"; jogo: { id: string; nome: string } | null; criadoEm: string; criadoPor: string | null;
   fila: number; enviados: number; falhas: number; pulados: number; enviadosHoje: number; marcaram: number; pararam: number; elegiveis: number;
 };
-type Dados = { clientes: number; aceitamMensagens: number; segmentos: Seg[]; campanhas: Campanha[]; mensagemPadrao: string; mensagemPadraoRoleta: string };
+type Dados = { clientes: number; aceitamMensagens: number; segmentos: Seg[]; campanhas: Campanha[]; mensagemPadrao: string; mensagemPadraoRoleta: string; jogos: { id: string; nome: string }[] };
 
 const ROTULO = Object.fromEntries(SEGMENTOS.map((s) => [s.chave, s.rotulo]));
 const STATUS = { ATIVA: "Ativa", PAUSADA: "Pausada", ENCERRADA: "Encerrada" };
@@ -99,7 +99,7 @@ function CartaoCampanha({ c, vagas7, onAgir }: { c: Campanha; vagas7: number | n
         <div className="min-w-0 flex-1">
           <p className="font-semibold">
             <Megaphone size={15} className="mr-1 inline text-ouro" />{c.nome}
-            {c.roleta && <span className="ml-2 rounded-full bg-ouro/15 px-2 py-0.5 text-[11px] font-semibold text-ouro">Roleta</span>}
+            {c.jogo && <span className="ml-2 rounded-full bg-ouro/15 px-2 py-0.5 text-[11px] font-semibold text-ouro">{c.jogo.nome}</span>}
           </p>
           <p className="text-xs text-zinc-500">{c.segmentos.map((s) => ROTULO[s] ?? s).join(" + ")} · até {c.limiteDiario}/dia{c.criadoPor ? ` · criada por ${c.criadoPor}` : ""}</p>
         </div>
@@ -154,7 +154,7 @@ function CartaoCampanha({ c, vagas7, onAgir }: { c: Campanha; vagas7: number | n
 
 function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boolean) => void }) {
   // Primeira campanha: so quem veio nos ultimos 60 dias.
-  const [f, setF] = useState({ nome: "", segmentos: ["ate30", "d31a60"], mensagem: dados.mensagemPadrao, limiteDiario: "50", taxa: "20", roleta: false });
+  const [f, setF] = useState({ nome: "", segmentos: ["ate30", "d31a60"], mensagem: dados.mensagemPadrao, limiteDiario: "50", taxa: "20", jogoId: "" });
   const [elegiveis, setElegiveis] = useState<number | null>(null);
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -170,7 +170,7 @@ function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boo
     e.preventDefault();
     setOcupado(true);
     try {
-      await api("/api/campanhas", { method: "POST", body: { nome: f.nome, segmentos: f.segmentos, mensagem: f.mensagem, limiteDiario: Number(f.limiteDiario), taxaRespostaBps: Math.round(Number(f.taxa.replace(",", ".")) * 100), roleta: f.roleta } });
+      await api("/api/campanhas", { method: "POST", body: { nome: f.nome, segmentos: f.segmentos, mensagem: f.mensagem, limiteDiario: Number(f.limiteDiario), taxaRespostaBps: Math.round(Number(f.taxa.replace(",", ".")) * 100), jogoId: f.jogoId || null } });
       onFechar(true);
     } catch (e) {
       setErro((e as Error).message);
@@ -183,14 +183,15 @@ function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boo
     <form onSubmit={criar} className="cartao space-y-3">
       <h2 className="font-semibold">Nova campanha</h2>
       <div><label className="rotulo">Nome</label><input className="campo" placeholder="Ex.: Lançamento do app — base recente" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></div>
-      <label className="flex items-start gap-2 text-sm">
-        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#d3ab45]" checked={f.roleta}
-          onChange={(e) => setF({ ...f, roleta: e.target.checked, mensagem: e.target.checked ? dados.mensagemPadraoRoleta : dados.mensagemPadrao })} />
-        <span>
-          <b>Campanha da roleta</b>: o link abre a roleta com 1 giro de presente, sem precisar entrar no app.
-          <span className="block text-xs text-zinc-500">O funil mostra quem abriu, girou, ganhou, criou conta, agendou, veio e resgatou.</span>
-        </span>
-      </label>
+      <div>
+        <label className="rotulo">Presente no link</label>
+        <select className="campo" value={f.jogoId}
+          onChange={(e) => setF({ ...f, jogoId: e.target.value, mensagem: e.target.value ? dados.mensagemPadraoRoleta : dados.mensagemPadrao })}>
+          <option value="">Sem jogo: o link abre a agenda</option>
+          {dados.jogos.map((j) => <option key={j.id} value={j.id}>1 jogada na {j.nome}</option>)}
+        </select>
+        <p className="mt-1 text-xs text-zinc-500">Com jogo, o link abre o jogo com 1 jogada de presente, sem precisar entrar no app. O funil mostra quem abriu, jogou, ganhou, criou conta, agendou, veio e resgatou.{!dados.jogos.length && " Ligue um jogo na tela Jogos para poder escolher."}</p>
+      </div>
       <div>
         <label className="rotulo">Quem recebe (soma dos grupos marcados)</label>
         <div className="grid gap-1 sm:grid-cols-2">
@@ -206,7 +207,7 @@ function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boo
       <div>
         <label className="rotulo">Mensagem</label>
         <textarea className="campo min-h-28" value={f.mensagem} onChange={(e) => setF({ ...f, mensagem: e.target.value })} />
-        <p className="text-xs text-zinc-500">Use {"{nome}"} (primeiro nome), {"{barbearia}"} e {"{link}"} ({f.roleta ? "abre a roleta" : "abre a agenda"}; cada cliente recebe o seu, para o funil saber quem clicou). O “responda PARAR” entra sozinho no fim.</p>
+        <p className="text-xs text-zinc-500">Use {"{nome}"} (primeiro nome), {"{barbearia}"} e {"{link}"} ({f.jogoId ? "abre o jogo" : "abre a agenda"}; cada cliente recebe o seu, para o funil saber quem clicou). O “responda PARAR” entra sozinho no fim.</p>
       </div>
       <div className="flex flex-wrap gap-3">
         <div><label className="rotulo">Limite por dia</label><input className="campo w-28" inputMode="numeric" value={f.limiteDiario} onChange={(e) => setF({ ...f, limiteDiario: e.target.value.replace(/\D/g, "") })} /></div>

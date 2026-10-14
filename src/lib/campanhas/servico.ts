@@ -10,6 +10,7 @@ import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { urlSite } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
+import { noAr } from "@/lib/jogos/motor";
 import { notificarCliente } from "@/lib/whatsapp/conversas";
 import { CHAVES_SEGMENTO, montarMensagem, segmentosDoCliente, SEGMENTOS, type Segmento } from "./regras";
 
@@ -69,18 +70,19 @@ export async function previa(segmentos: string[], agora = Date.now()) {
   return { elegiveis: (await elegiveis(segmentos, null, agora)).length };
 }
 
-export type DadosCampanha = { nome: string; segmentos: string[]; mensagem: string; limiteDiario: number; taxaRespostaBps: number; roleta?: boolean };
+export type DadosCampanha = { nome: string; segmentos: string[]; mensagem: string; limiteDiario: number; taxaRespostaBps: number; jogoId?: string | null };
 
 export async function criarCampanha(s: Sessao, d: DadosCampanha) {
   const segmentos = [...new Set(d.segmentos)];
   if (!segmentos.length || segmentos.some((x) => !CHAVES_SEGMENTO.includes(x as Segmento))) throw new ErroNegocio("Escolha pelo menos um segmento.");
-  if (d.roleta) {
-    if (!d.mensagem.includes("{link}")) throw new ErroNegocio("Coloque {link} na mensagem: é por ele que o cliente abre a roleta.");
-    if (!(await db.roletaConfig.findUnique({ where: { id: 1 } }))?.ativa) throw new ErroNegocio("Ligue a roleta (tela Roleta) antes de criar a campanha.", 409);
+  if (d.jogoId) {
+    if (!d.mensagem.includes("{link}")) throw new ErroNegocio("Coloque {link} na mensagem: é por ele que o cliente abre o jogo.");
+    const jogo = await db.jogo.findUnique({ where: { id: d.jogoId } });
+    if (!jogo || !noAr(jogo)) throw new ErroNegocio("Ligue o jogo (tela Jogos) antes de criar a campanha.", 409);
   }
   return db.$transaction(async (tx) => {
-    const c = await tx.campanha.create({ data: { ...d, roleta: !!d.roleta, segmentos, criadoPorId: s.usuarioId } });
-    await auditar(tx, s.usuarioId, "criar", "campanha", c.id, { nome: d.nome, segmentos, limiteDiario: d.limiteDiario, roleta: !!d.roleta });
+    const c = await tx.campanha.create({ data: { ...d, jogoId: d.jogoId || null, segmentos, criadoPorId: s.usuarioId } });
+    await auditar(tx, s.usuarioId, "criar", "campanha", c.id, { nome: d.nome, segmentos, limiteDiario: d.limiteDiario, jogo: d.jogoId || null });
     return c;
   });
 }
@@ -124,7 +126,7 @@ export async function listarCampanhas(agora = Date.now()) {
   const cfg = await configuracao();
   const inicioHoje = new Date(instanteLocal(dataLocal(agora, cfg.fuso), 0, cfg.fuso));
   const [cs, porStatus, hoje, marcaram, pararam] = await Promise.all([
-    db.campanha.findMany({ orderBy: { criadoEm: "desc" }, take: 50 }),
+    db.campanha.findMany({ orderBy: { criadoEm: "desc" }, take: 50, include: { jogo: { select: { id: true, nome: true } } } }),
     db.campanhaEnvio.groupBy({ by: ["campanhaId", "status"], _count: { _all: true } }),
     db.campanhaEnvio.groupBy({ by: ["campanhaId"], where: { enviadoEm: { gte: inicioHoje }, status: { in: ["ENVIADO", "FALHOU"] } }, _count: { _all: true } }),
     db.$queryRaw<{ campanhaId: string; n: number }[]>`
@@ -149,7 +151,7 @@ export async function listarCampanhas(agora = Date.now()) {
     const enviados = conta("ENVIADO");
     return {
       id: c.id, nome: c.nome, segmentos: c.segmentos, mensagem: c.mensagem, limiteDiario: c.limiteDiario, taxaRespostaBps: c.taxaRespostaBps,
-      status: c.status, roleta: c.roleta, criadoEm: c.criadoEm, criadoPor: c.criadoPorId ? nomes.get(c.criadoPorId) ?? null : null,
+      status: c.status, jogo: c.jogo, criadoEm: c.criadoEm, criadoPor: c.criadoPorId ? nomes.get(c.criadoPorId) ?? null : null,
       fila: conta("FILA"), enviados, falhas: conta("FALHOU"), pulados: conta("PULADO"),
       enviadosHoje: hoje.find((x) => x.campanhaId === c.id)?._count._all ?? 0,
       marcaram: n(marcaram, c.id), pararam: n(pararam, c.id),

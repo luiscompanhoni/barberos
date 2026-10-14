@@ -10,6 +10,7 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { linkAbsoluto } from "@/lib/assinaturas/cobrancas";
 import { aplicarNaComanda, sincronizarAntecipado } from "@/lib/agenda/antecipado";
 import { estornosDaComanda } from "@/lib/estornos/servico";
+import { devolverPremiosDaComanda } from "@/lib/jogos/comanda";
 import { descricaoServico, erroNoPagamento, resumoComanda, valorCashback } from "./regras";
 
 type Tx = Prisma.TransactionClient;
@@ -50,7 +51,15 @@ export async function detalheComanda(id: string) {
   const linksPagamento = c.linksPagamento.map((l) => ({ ...l, url: linkAbsoluto(`/c/link/${l.token}`) }));
   // Pedidos de estorno dos pagamentos desta comanda (pendentes e feitos).
   const estornos = await estornosDaComanda(id);
-  return { ...c, linksPagamento, saldoCliente, estornos, resumo: resumoComanda(c.itens, c.pagamentos, c.descontoCentavos) };
+  // Premios de jogo: os abertos do cliente (para validar) e os ja usados nesta comanda.
+  const premios = c.clienteId
+    ? await db.premioGanho.findMany({
+        where: { OR: [{ comandaId: id }, ...(c.status === "ABERTA" ? [{ clienteId: c.clienteId, status: { in: ["DISPONIVEL" as const, "RESERVADO" as const] }, tipo: { not: "CREDITO" as const }, OR: [{ expiraEm: null }, { expiraEm: { gt: new Date() } }, { status: "RESERVADO" as const }] }] : [])] },
+        orderBy: { criadoEm: "asc" },
+        select: { id: true, codigo: true, rotulo: true, tipo: true, raridade: true, icone: true, percentual: true, valorCentavos: true, status: true, expiraEm: true, descontoAplicadoCentavos: true, comandaId: true },
+      })
+    : [];
+  return { ...c, linksPagamento, saldoCliente, estornos, premios, resumo: resumoComanda(c.itens, c.pagamentos, c.descontoCentavos) };
 }
 
 /** Comandas abertas + as fechadas/canceladas de um dia (padrao: hoje). */
@@ -237,6 +246,8 @@ export async function cancelarComanda(s: Sessao, comandaId: string, motivo: stri
     await tx.comanda.update({ where: { id: comandaId }, data: { status: "CANCELADA" } });
     // Desconto de indicacao usado nessa comanda volta para o cliente.
     await tx.beneficio.updateMany({ where: { comandaId, status: "USADO" }, data: { status: "DISPONIVEL", usadoEm: null, comandaId: null } });
+    // Premio de jogo validado nessa comanda (servico gratis, desconto, brinde) volta para o cliente.
+    await devolverPremiosDaComanda(tx, comandaId);
     // Cashback que essa comanda gerou e ainda nao foi usado deixa de valer.
     const gerados = await tx.beneficio.findMany({ where: { comandaOrigemId: comandaId }, select: { id: true } });
     if (gerados.length) {

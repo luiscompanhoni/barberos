@@ -25,7 +25,7 @@ export default async function LayoutCliente({ children }: { children: React.Reac
         </div>
       </header>
       <main className="mx-auto w-full max-w-2xl flex-1 px-5 py-6">{children}</main>
-      <NavCliente roleta={(await db.roletaConfig.findUnique({ where: { id: 1 }, select: { ativa: true } }))?.ativa ?? false} />
+      <NavCliente jogos={(await db.jogo.count({ where: { ativo: true } })) > 0} />
     </div>
   );
 }

@@ -22,7 +22,7 @@
     "teste:crescimento": "tsx --env-file=.env scripts/teste-crescimento.ts",
     "teste:login": "tsx --env-file=.env scripts/teste-login.ts",
     "teste:antecipado": "tsx --env-file=.env scripts/teste-antecipado.ts",
-    "teste:roleta": "tsx --env-file=.env scripts/teste-roleta.ts",
+    "teste:jogos": "tsx --env-file=.env scripts/teste-jogos.ts",
     "teste:financeiro": "tsx --env-file=.env scripts/teste-financeiro.ts",
     "teste:rh": "tsx --env-file=.env scripts/teste-rh.ts",
     "teste:despesas": "tsx --env-file=.env scripts/teste-despesas.ts",

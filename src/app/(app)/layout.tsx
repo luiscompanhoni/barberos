@@ -33,7 +33,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
           { href: "/estoque", rotulo: "Estoque" },
           { href: "/financeiro", rotulo: "Financeiro" },
           { href: "/checklist", rotulo: "Checklist" },
-          { href: "/roleta", rotulo: "Roleta" },
+          { href: "/jogos", rotulo: "Jogos" },
           ...(permissoes.resultado ? [{ href: "/indicadores", rotulo: "Indicadores" }] : []),
           ...(permissoes.folha || permissoes.comissao ? [{ href: "/rh", rotulo: "RH" }] : []),
           ...(GESTAO.includes(s.papel)

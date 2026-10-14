@@ -81,7 +81,7 @@ export async function usarSaldo(s: Sessao, comandaId: string) {
   return r;
 }
 
-const ORIGEM: Record<string, string> = { CASHBACK: "Cashback", INDICOU: "Indicação", INDICADO: "Boas-vindas", MANUAL: "Crédito", ROLETA: "Roleta" };
+const ORIGEM: Record<string, string> = { CASHBACK: "Cashback", INDICOU: "Indicação", INDICADO: "Boas-vindas", MANUAL: "Crédito", ROLETA: "Roleta", JOGO: "Jogos" };
 
 /** Extrato do cliente: cada credito com origem, situacao e onde foi usado. */
 export async function extratoDoCliente(clienteId: string) {

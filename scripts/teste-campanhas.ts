@@ -9,7 +9,7 @@ import { funilCampanha } from "@/lib/campanhas/funil";
 import { landingDaCampanha, marcarAppAberto, registrarClique } from "@/lib/campanhas/link";
 import { criarCampanha, liberarLote, listarCampanhas, mudarStatus, processarCampanhas } from "@/lib/campanhas/servico";
 import { db } from "@/lib/db";
-import { girarPelaCampanha } from "@/lib/roleta/servico";
+import { garantirJogos, jogarPelaCampanha } from "@/lib/jogos/motor";
 import { registrarStatus } from "@/lib/whatsapp/status";
 
 const ok = (c: boolean, msg: string) => { console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); if (!c) process.exitCode = 1; };
@@ -27,7 +27,8 @@ async function limpar() {
   await db.pagamentoComanda.deleteMany({ where: { comandaId: { in: comandas } } });
   await db.itemComanda.deleteMany({ where: { comandaId: { in: comandas } } });
   await db.comanda.deleteMany({ where: { id: { in: comandas } } });
-  await db.roletaGiro.deleteMany({ where: { clienteId: { in: ids } } });
+  await db.premioGanho.deleteMany({ where: { clienteId: { in: ids } } });
+  await db.jogada.deleteMany({ where: { clienteId: { in: ids } } });
   await db.beneficio.deleteMany({ where: { clienteId: { in: ids } } });
   await db.agendamento.deleteMany({ where: { clienteId: { in: ids } } });
   await db.assinatura.deleteMany({ where: { clienteId: { in: ids } } });
@@ -45,7 +46,8 @@ async function main() {
   const barbeiro = await db.barbeiro.findFirstOrThrow({ where: { ativo: true } });
   const servico = await db.servico.findFirstOrThrow({ where: { ativo: true } });
   const plano = await db.plano.findFirstOrThrow();
-  const roletaAntes = await db.roletaConfig.findUnique({ where: { id: 1 } });
+  await garantirJogos();
+  const roletaAntes = await db.jogo.findUniqueOrThrow({ where: { id: "roleta" } });
   try {
     const cliente = (tel: string, nome: string, aceitaMensagens = true) => db.cliente.create({ data: { telefone: tel, nome, aceitaMensagens } });
     const visita = (clienteId: string, quando: number, status: "CONCLUIDO" | "MARCADO" = "CONCLUIDO") => db.agendamento.create({
@@ -117,9 +119,9 @@ async function main() {
     // ================= FUNIL DA CAMPANHA DA ROLETA
     // 5 dias depois: o horario da Ana (agora + 3 dias) ja passou e ela volta a poder receber.
     const depois = agora + 5 * D;
-    await db.roletaConfig.upsert({ where: { id: 1 }, create: { id: 1, ativa: true }, update: { ativa: true } });
-    ok((await falha(() => criarCampanha(s, { ...base, nome: `${TAG} roleta sem link`, segmentos: ["ate30"], mensagem: "Oi {nome}, gire a roleta!", roleta: true })))?.message.includes("{link}") === true, "campanha da roleta sem {link} é recusada");
-    const cRol = await criarCampanha(s, { ...base, limiteDiario: 50, nome: `${TAG} roleta`, segmentos: ["ate30", "d31a60"], mensagem: "Oi, {nome}! Gire: {link}", roleta: true });
+    await db.jogo.update({ where: { id: "roleta" }, data: { ativo: true } });
+    ok((await falha(() => criarCampanha(s, { ...base, nome: `${TAG} roleta sem link`, segmentos: ["ate30"], mensagem: "Oi {nome}, gire a roleta!", jogoId: "roleta" })))?.message.includes("{link}") === true, "campanha da roleta sem {link} é recusada");
+    const cRol = await criarCampanha(s, { ...base, limiteDiario: 50, nome: `${TAG} roleta`, segmentos: ["ate30", "d31a60"], mensagem: "Oi, {nome}! Gire: {link}", jogoId: "roleta" });
     await liberarLote(s, cRol.id, 10, depois, { clienteIds: [a.id, b.id] });
     const fila = await db.campanhaEnvio.findMany({ where: { campanhaId: cRol.id } });
     ok(fila.length === 2 && fila.every((e) => e.token && e.token.length >= 16) && new Set(fila.map((e) => e.token)).size === 2, "cada mensagem tem o seu link (token)");
@@ -137,14 +139,14 @@ async function main() {
 
     // Pagina do link, clique e giro de presente
     const land = await landingDaCampanha(tokenA);
-    ok(land?.nome === "Ana" && !!land.roleta && !land.roleta.giro && land.roleta.premios.length > 0, "página do link: nome, roleta e prêmios, ainda sem giro");
+    ok(land?.nome === "Ana" && !!land.jogo && !land.jogo.jogada && land.jogo.fatias.length > 0, "página do link: nome, roleta e prêmios, ainda sem jogada");
     await registrarClique(tokenA);
-    const g1 = await girarPelaCampanha(tokenA);
-    const g2 = await girarPelaCampanha(tokenA);
-    ok(!g1.jaGirou && g2.jaGirou && g2.rotulo === g1.rotulo && (await db.roletaGiro.count({ where: { clienteId: a.id, origem: "CAMPANHA" } })) === 1, "um giro por link: abrir de novo mostra o mesmo prêmio");
-    await girarPelaCampanha(tokenB);
+    const g1 = await jogarPelaCampanha(tokenA);
+    const g2 = await jogarPelaCampanha(tokenA);
+    ok(!g1.jaJogou && g2.jaJogou && g2.jogada.id === g1.jogada.id && (await db.jogada.count({ where: { clienteId: a.id, origem: "CAMPANHA" } })) === 1, "uma jogada por link: abrir de novo mostra o mesmo prêmio");
+    await jogarPelaCampanha(tokenB);
     ok(!!(await db.campanhaEnvio.findFirstOrThrow({ where: { token: tokenB } })).clicouEm, "girar sem a visita registrada também conta o clique");
-    ok((await falha(() => girarPelaCampanha("token-que-nao-existe-123")))?.codigo === "nao_encontrado", "link inventado não gira");
+    ok((await falha(() => jogarPelaCampanha("token-que-nao-existe-123")))?.codigo === "nao_encontrado", "link inventado não gira");
 
     // Abriu o app, criou conta, agendou, veio e resgatou
     await marcarAppAberto(a.id, depois + 3_600_000);
@@ -156,15 +158,16 @@ async function main() {
     await db.comanda.create({
       data: { clienteId: a.id, status: "FECHADA", fechadaEm: new Date(depois + 2 * D), itens: { create: [{ descricao: "Corte", precoUnitCentavos: 5000, agendamentoId: agA.id }] }, pagamentos: { create: [{ forma: "PIX", valorCentavos: 5000, status: "PAGO", pagoEm: new Date(depois + 2 * D) }] } },
     });
-    const giroA = await db.roletaGiro.findFirstOrThrow({ where: { clienteId: a.id, origem: "CAMPANHA" } });
-    if (giroA.tipo === "CREDITO" && giroA.beneficioId) await db.beneficio.update({ where: { id: giroA.beneficioId }, data: { status: "USADO", usadoEm: new Date(depois + 2 * D) } });
-    if (giroA.tipo === "BRINDE") await db.roletaGiro.update({ where: { id: giroA.id }, data: { status: "CONCLUIDO", entregueEm: new Date(depois + 2 * D) } });
+    const giroA = await db.jogada.findFirstOrThrow({ where: { clienteId: a.id, origem: "CAMPANHA" }, include: { premios: true } });
+    const premioA = giroA.premios[0];
+    if (premioA?.tipo === "CREDITO" && premioA.beneficioId) await db.beneficio.update({ where: { id: premioA.beneficioId }, data: { status: "USADO", usadoEm: new Date(depois + 2 * D) } });
+    if (premioA && premioA.tipo !== "CREDITO") await db.premioGanho.update({ where: { id: premioA.id }, data: { status: "UTILIZADO", utilizadoEm: new Date(depois + 2 * D) } });
 
     const funil = await funilCampanha(cRol.id);
     const etapa = Object.fromEntries(funil.etapas.map((e) => [e.chave, e.qtd]));
     ok(etapa.enviadas === 2 && etapa.entregues === 1 && etapa.lidas === 1 && etapa.clicaram === 2 && etapa.giraram === 2, `funil: 2 enviadas → 1 entregue/lida → 2 abriram → 2 giraram (${JSON.stringify(etapa)})`);
     ok(etapa.app === 1 && etapa.conta === 1 && etapa.agendaram === 1 && etapa.compareceram === 1, "funil: 1 abriu o app, tem conta, agendou e veio");
-    ok(etapa.resgataram === (giroA.tipo === "NADA" ? 0 : 1), `funil: resgate do prêmio (${giroA.tipo})`);
+    ok(etapa.resgataram === (premioA ? 1 : 0), `funil: resgate do prêmio (${premioA?.tipo ?? "nada"})`);
     ok(funil.faturadoCentavos === 5000 && funil.comandas === 1 && funil.ticketMedioCentavos === 5000, "funil: R$ 50 faturados na comanda do atendimento");
 
     // ================= CAPACIDADE (estrutura)
@@ -173,7 +176,7 @@ async function main() {
     ok(h3.dias === 3 && h7.dias === 7 && h14.dias === 14 && h3.vagas <= h7.vagas && h7.vagas <= h14.vagas, "capacidade: 3 ≤ 7 ≤ 14 dias");
     ok(h7.porBarbeiro.reduce((t, b) => t + b.vagas, 0) === h7.vagas, "capacidade: total = soma dos barbeiros");
   } finally {
-    if (roletaAntes) await db.roletaConfig.update({ where: { id: 1 }, data: { ativa: roletaAntes.ativa } });
+    await db.jogo.update({ where: { id: "roleta" }, data: { ativo: roletaAntes.ativo, contarDesde: roletaAntes.contarDesde } });
     await limpar();
   }
   console.log(process.exitCode ? "\nAlgum teste FALHOU." : "\nTodos os testes passaram.");

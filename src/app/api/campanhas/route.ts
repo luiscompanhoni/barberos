@@ -4,6 +4,7 @@ import { exigirSessao, GESTAO } from "@/lib/auth/sessao";
 import { MENSAGEM_PADRAO, MENSAGEM_PADRAO_ROLETA } from "@/lib/campanhas/regras";
 import { criarCampanha, listarCampanhas, resumoSegmentos } from "@/lib/campanhas/servico";
 import { rota } from "@/lib/erros";
+import { listarJogos, noAr } from "@/lib/jogos/motor";
 import { corpo } from "@/lib/validacao";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +12,12 @@ export const dynamic = "force-dynamic";
 /** Segmentos da base (tamanhos) e campanhas com os numeros de cada uma. */
 export const GET = rota(async () => {
   await exigirSessao(GESTAO);
-  const [segmentos, campanhas] = await Promise.all([resumoSegmentos(), listarCampanhas()]);
-  return NextResponse.json({ ...segmentos, campanhas, mensagemPadrao: MENSAGEM_PADRAO, mensagemPadraoRoleta: MENSAGEM_PADRAO_ROLETA });
+  const [segmentos, campanhas, jogos] = await Promise.all([resumoSegmentos(), listarCampanhas(), listarJogos()]);
+  return NextResponse.json({
+    ...segmentos, campanhas, mensagemPadrao: MENSAGEM_PADRAO, mensagemPadraoRoleta: MENSAGEM_PADRAO_ROLETA,
+    // Jogos no ar que podem ir de presente no link.
+    jogos: jogos.filter((j) => noAr(j)).map((j) => ({ id: j.id, nome: j.nome })),
+  });
 });
 
 export const POST = rota(async (req: Request) => {
@@ -23,7 +28,7 @@ export const POST = rota(async (req: Request) => {
     mensagem: z.string().trim().min(10).max(900),
     limiteDiario: z.number().int().min(1).max(500),
     taxaRespostaBps: z.number().int().min(100).max(10_000),
-    roleta: z.boolean().default(false),
+    jogoId: z.string().max(40).nullable().default(null),
   }));
   return NextResponse.json(await criarCampanha(s, b), { status: 201 });
 });

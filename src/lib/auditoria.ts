@@ -5,7 +5,7 @@ import { mudancas } from "./auditoria-regras";
 type Tx = Prisma.TransactionClient;
 
 /** IP e aparelho de quem fez, quando a acao vem de uma requisicao (rotinas e scripts ficam sem). */
-async function origem() {
+export async function origemDaRequisicao() {
   try {
     const h = await headers();
     // O Caddy troca o X-Forwarded-For pelo IP real do cliente: o primeiro da lista e confiavel.
@@ -26,7 +26,7 @@ export async function auditar(
   entidadeId: string,
   dados?: Prisma.InputJsonValue,
 ) {
-  await tx.auditoria.create({ data: { usuarioId, acao, entidade, entidadeId, dados, ...(await origem()) } });
+  await tx.auditoria.create({ data: { usuarioId, acao, entidade, entidadeId, dados, ...(await origemDaRequisicao()) } });
 }
 
 /** Registra uma alteracao com { antes, depois } so dos campos que mudaram (nada mudou = nao registra). */

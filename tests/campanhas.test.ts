@@ -56,8 +56,8 @@ describe("campanhas: funil", () => {
     l({ entregue: true }),
     l(),
   ];
-  it("roleta: todas as etapas, % das enviadas e da etapa anterior", () => {
-    const f = montarFunil(linhas, { roleta: true, statusDisponivel: true });
+  it("com jogo: todas as etapas, % das enviadas e da etapa anterior", () => {
+    const f = montarFunil(linhas, { jogo: "Roleta Black", statusDisponivel: true });
     expect(f.map((e) => [e.chave, e.qtd])).toEqual([
       ["enviadas", 4], ["entregues", 3], ["lidas", 2], ["clicaram", 2], ["giraram", 2], ["ganharam", 1],
       ["app", 1], ["conta", 1], ["agendaram", 1], ["compareceram", 1], ["resgataram", 1],
@@ -69,7 +69,7 @@ describe("campanhas: funil", () => {
     expect(e.conta.detalhe).toBe("1 criada(s) depois da mensagem");
   });
   it("campanha comum sem confirmacao do WhatsApp: sem giro/premio/resgate e entregue/lida sem numero", () => {
-    const f = montarFunil(linhas, { roleta: false, statusDisponivel: false });
+    const f = montarFunil(linhas, { jogo: null, statusDisponivel: false });
     expect(f.map((e) => e.chave)).toEqual(["enviadas", "entregues", "lidas", "clicaram", "app", "conta", "agendaram", "compareceram"]);
     const e = Object.fromEntries(f.map((x) => [x.chave, x]));
     expect(e.entregues.qtd).toBeNull();

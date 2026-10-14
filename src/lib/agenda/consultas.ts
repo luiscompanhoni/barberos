@@ -27,6 +27,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
         cliente: { select: { id: true, nome: true, telefone: true, observacoes: true } },
         servico: { select: { id: true, nome: true } },
         antecipado: { select: { status: true } },
+        premiosGanhos: { where: { status: "RESERVADO" }, select: { rotulo: true, codigo: true } },
       },
       orderBy: { inicio: "asc" },
     }),
@@ -56,6 +57,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
       servico: a.servico,
       assinante: a.assinaturaId !== null,
       pagoAntes: a.antecipado?.status === "PAGO",
+      premios: a.premiosGanhos,
     })),
     dias: porDia.map(({ data, mapa }) => ({
       data,

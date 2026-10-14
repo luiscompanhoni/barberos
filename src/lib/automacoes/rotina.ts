@@ -7,6 +7,7 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { processarCampanhas } from "@/lib/campanhas/servico";
 import { db } from "@/lib/db";
+import { atualizarPremios } from "@/lib/jogos/premios";
 import { processarEsperas, processarIndicacoes, processarRetornos } from "@/lib/crescimento/rotina";
 import { enviarAutomacao as enviar } from "./enviar";
 import { fazAniversario, horarioComercial, lembreteDevido, quandoFalar, TEXTOS } from "./regras";
@@ -87,6 +88,9 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
 
   // ---- campanhas: fila dos lotes liberados, no limite diario de cada uma
   cont.campanha = await processarCampanhas(agora, opts);
+
+  // ---- premios de jogo: vence o que passou da validade e solta reserva de horario cancelado
+  if (!opts.clienteIds) await atualizarPremios().catch((e) => console.error("[jogos] atualizar premios", e));
 
   // ---- aniversario (a partir das 9h, uma vez por ano)
   if (cfg.aniversario && minutosLocal(agora, cfg.fuso) >= 9 * 60) {

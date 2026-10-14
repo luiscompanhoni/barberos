@@ -6,7 +6,7 @@ import { ArrowRight, CalendarDays, CalendarPlus, Check, Clock3, Crown, History, 
 import { api, reais } from "@/lib/cliente-api";
 import { IndiqueEsperas } from "./IndiqueEsperas";
 import { PagarAntes } from "./PagarAntes";
-import { RoletaChamada } from "./RoletaChamada";
+import { JogosChamada } from "@/components/jogos/JogosChamada";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 
 type Ag = {
@@ -24,7 +24,7 @@ const FUSO = "America/Sao_Paulo";
 const STATUS: Record<string, string> = { CONCLUIDO: "Atendido", FALTOU: "Faltou", CANCELADO: "Cancelado", MARCADO: "Marcado", CONFIRMADO: "Confirmado" };
 
 /**
- * Pagina inicial do cliente, na ordem do que mais importa: plano com pagamento em aberto, giro/premio da roleta,
+ * Pagina inicial do cliente, na ordem do que mais importa: plano com pagamento em aberto, jogadas e premios dos jogos,
  * proximos horarios (cancelar/remarcar), agendar, saldo e indicacao, plano e historico.
  */
 export function MeusHorarios() {
@@ -138,7 +138,7 @@ export function MeusHorarios() {
       </div>
 
       {planoUrgente && cartaoPlano}
-      <RoletaChamada />
+      <JogosChamada />
 
       {aviso && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{aviso}</p>}
       {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}

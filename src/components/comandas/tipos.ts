@@ -1,3 +1,5 @@
+import type { PremioNaComanda } from "@/components/jogos/PremiosComanda";
+
 export type Forma = "DINHEIRO" | "PIX" | "CREDITO" | "DEBITO";
 export type ModoMaquininha = "stone" | "simulada" | "manual";
 
@@ -68,6 +70,8 @@ export type Comanda = {
   resumo: Resumo;
   /** Saldo do cliente (cashback + indicacao) que pode virar desconto nesta comanda. */
   saldoCliente?: number;
+  /** Premios de jogo do cliente (abertos) e os usados nesta comanda. */
+  premios?: PremioNaComanda[];
   /** Links de pagamento em aberto desta comanda. */
   estornos?: EstornoComanda[];
   linksPagamento?: { id: string; token: string; url: string | null; valorCentavos: number; expiraEm: string; criadoEm: string }[];

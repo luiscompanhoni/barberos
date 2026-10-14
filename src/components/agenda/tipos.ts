@@ -15,6 +15,8 @@ export type AgendamentoApi = {
   assinante: boolean;
   /** Pagou online antes do atendimento. */
   pagoAntes?: boolean;
+  /** Premios de jogo que o cliente vai usar neste horario. */
+  premios?: { rotulo: string; codigo: string }[];
 };
 
 export type IntervaloIso = { inicio: string; fim: string };

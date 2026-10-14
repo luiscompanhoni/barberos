@@ -51,7 +51,7 @@ export const PERMISSOES = [
   },
   {
     chave: "resultado", rotulo: "Ver faturamento e resultado",
-    detalhe: "Resumo do mês do financeiro, indicadores, horários de pico e resultado da roleta.",
+    detalhe: "Resumo do mês do financeiro, indicadores, horários de pico e resultado dos jogos.",
     papeis: ["GERENTE", "RECEPCAO"], padrao: ["GERENTE"],
   },
 ] as const satisfies readonly { chave: string; rotulo: string; detalhe: string; papeis: readonly PapelConfiguravel[]; padrao: readonly PapelConfiguravel[] }[];

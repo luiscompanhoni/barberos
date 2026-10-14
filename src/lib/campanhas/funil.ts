@@ -1,6 +1,6 @@
 /**
- * Funil de uma campanha: do WhatsApp ao caixa. Para cada mensagem enviada: entregue, lida, abriu o link, girou e ganhou
- * (roleta), abriu o app, tem conta, agendou (ate 14 dias depois de receber), compareceu, resgatou o premio e quanto
+ * Funil de uma campanha: do WhatsApp ao caixa. Para cada mensagem enviada: entregue, lida, abriu o link, jogou e ganhou
+ * (campanha com jogo), abriu o app, tem conta, agendou (ate 14 dias depois de receber), compareceu, resgatou o premio e quanto
  * deixou nas comandas desses atendimentos.
  */
 import { resumoComanda } from "@/lib/comandas/regras";
@@ -12,14 +12,14 @@ import { montarFunil, type LinhaFunil } from "./regras";
 const DIA = 86_400_000;
 
 export async function funilCampanha(campanhaId: string) {
-  const c = await db.campanha.findUnique({ where: { id: campanhaId }, select: { id: true, nome: true, roleta: true } });
+  const c = await db.campanha.findUnique({ where: { id: campanhaId }, select: { id: true, nome: true, jogo: { select: { nome: true } } } });
   if (!c) throw naoEncontrado("Campanha");
   const envios = await db.campanhaEnvio.findMany({
     where: { campanhaId, status: "ENVIADO", enviadoEm: { not: null } },
     select: {
       clienteId: true, enviadoEm: true, clicouEm: true, appAbertoEm: true,
       mensagem: { select: { wamid: true, entregueEm: true, lidaEm: true } },
-      giro: { select: { tipo: true, status: true, beneficioId: true, entregueEm: true } },
+      jogada: { select: { vitoria: true, premios: { select: { tipo: true, status: true, beneficioId: true } } } },
       cliente: { select: { usuario: { select: { criadoEm: true } } } },
     },
   });
@@ -36,8 +36,8 @@ export async function funilCampanha(campanhaId: string) {
     daCampanha.set(e.clienteId, ags.filter((a) => a.clienteId === e.clienteId && +a.criadoEm > de && +a.criadoEm <= ate));
   }
 
-  // Premio da roleta usado: credito gasto (inteiro ou em parte) ou brinde retirado.
-  const beneficios = envios.map((e) => e.giro?.beneficioId).filter((x): x is string => !!x);
+  // Premio do jogo usado: credito gasto (inteiro ou em parte) ou premio validado na barbearia.
+  const beneficios = envios.flatMap((e) => e.jogada?.premios.map((p) => p.beneficioId) ?? []).filter((x): x is string => !!x);
   const usados = new Set(
     beneficios.length
       ? (await db.beneficio.findMany({
@@ -57,20 +57,20 @@ export async function funilCampanha(campanhaId: string) {
 
   const linhas: LinhaFunil[] = envios.map((e) => {
     const seus = daCampanha.get(e.clienteId) ?? [];
-    const g = e.giro;
+    const g = e.jogada;
     const usuario = e.cliente.usuario;
     return {
       entregue: !!(e.mensagem?.entregueEm || e.mensagem?.lidaEm), lida: !!e.mensagem?.lidaEm, clicou: !!e.clicouEm,
-      girou: !!g, ganhou: !!g && g.tipo !== "NADA", app: !!e.appAbertoEm,
+      girou: !!g, ganhou: !!g?.vitoria, app: !!e.appAbertoEm,
       conta: !!usuario, contaNova: !!usuario && usuario.criadoEm > e.enviadoEm!,
       agendou: seus.length > 0, compareceu: seus.some((a) => a.status === "CONCLUIDO"),
-      resgatou: !!g && (g.tipo === "CREDITO" ? !!g.beneficioId && usados.has(g.beneficioId) : g.tipo === "BRINDE" && !!g.entregueEm),
+      resgatou: !!g?.premios.some((p) => (p.tipo === "CREDITO" ? !!p.beneficioId && usados.has(p.beneficioId) : p.status === "UTILIZADO")),
     };
   });
   const compareceram = linhas.filter((l) => l.compareceu).length;
   return {
     campanha: c,
-    etapas: montarFunil(linhas, { roleta: c.roleta, statusDisponivel: envios.some((e) => !!e.mensagem?.wamid) }),
+    etapas: montarFunil(linhas, { jogo: c.jogo?.nome ?? null, statusDisponivel: envios.some((e) => !!e.mensagem?.wamid) }),
     faturadoCentavos,
     comandas: comandas.length,
     ticketMedioCentavos: compareceram ? Math.round(faturadoCentavos / compareceram) : null,

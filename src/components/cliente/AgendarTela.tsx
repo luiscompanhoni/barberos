@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarCheck, Clock3, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarCheck, Clock3, Gift, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import type { PremioCliente } from "@/lib/jogos/tipos";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { SemVaga } from "./SemVaga";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
@@ -32,6 +33,9 @@ export function AgendarTela() {
   const router = useRouter();
   const q = useSearchParams();
   const remarcarId = q.get("remarcar");
+  // "Agendar para resgatar": o premio do jogo fica reservado nesse horario.
+  const premioId = remarcarId ? null : q.get("premio");
+  const [premio, setPremio] = useState<PremioCliente | null>(null);
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
   const [servicoId, setServicoId] = useState(q.get("servico") ?? "");
   const [barbeiroId, setBarbeiroId] = useState(remarcarId ? (q.get("barbeiro") ?? QUALQUER) : "");
@@ -55,6 +59,10 @@ export function AgendarTela() {
   useEffect(() => {
     api<Catalogo>("/api/cliente/servicos").then(setCatalogo).catch((e) => setErro(e.message));
   }, []);
+  useEffect(() => {
+    if (!premioId) return;
+    api<PremioCliente[]>("/api/cliente/premios?reservar=1").then((ps) => setPremio(ps.find((p) => p.id === premioId) ?? null)).catch(() => {});
+  }, [premioId]);
 
   const servico = catalogo?.servicos.find((s) => s.id === servicoId);
   const passo = !servico ? 1 : !barbeiroId ? 2 : !escolha ? 3 : 4;
@@ -88,7 +96,7 @@ export function AgendarTela() {
       if (remarcarId) {
         await api(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId, forcarAvulso: !!previa?.bloqueio } });
       } else {
-        await api("/api/cliente/agendamentos", { method: "POST", body: { servicoId, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio } });
+        await api("/api/cliente/agendamentos", { method: "POST", body: { servicoId, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio, ...(premio ? { premioId: premio.id } : {}) } });
       }
       router.push("/c");
       router.refresh();
@@ -119,6 +127,15 @@ export function AgendarTela() {
         {[1, 2, 3, 4].map((n) => <div key={n} className={`h-1 rounded-full transition ${n <= passo ? "bg-ouro" : "bg-zinc-200"}`} />)}
       </div>
       {erro && <p className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      {premio && (
+        <div className="mt-5 flex items-center gap-3 rounded-xl border border-ouro/50 bg-ouro/10 p-3 text-sm">
+          <Gift className="shrink-0 text-ouro" size={20} />
+          <span className="min-w-0 flex-1">Usando o prêmio <b>{premio.rotulo}</b> <span className="font-mono text-xs text-zinc-500">{premio.codigo}</span>
+            {premio.expiraEm && <span className="block text-xs text-zinc-500">Escolha um horário até {new Date(premio.expiraEm).toLocaleDateString("pt-BR", { timeZone: FUSO })}.</span>}
+          </span>
+          <button type="button" className="text-xs font-semibold text-zinc-500 underline" onClick={() => setPremio(null)}>Não usar</button>
+        </div>
+      )}
 
       {passo === 1 && (
         <Passo eyebrow="Comece por aqui" titulo="Qual serviço?">

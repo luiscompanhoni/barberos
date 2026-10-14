@@ -10,6 +10,7 @@ import { Catalogo } from "./Catalogo";
 import { Recebimento } from "./Recebimento";
 import { nomeDaComanda, type Comanda, type Forma, type ModoMaquininha } from "./tipos";
 import { useAoVivo } from "./useAoVivo";
+import { PremiosComanda } from "@/components/jogos/PremiosComanda";
 
 type Resposta = { comanda: Comanda; maquininha?: ModoMaquininha; resultado?: { troco: number; alertas: string[]; cashbackCentavos?: number } | null };
 
@@ -172,6 +173,8 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
                 onClick={() => executar(`/api/comandas/${id}`, { acao: "saldo" })}>Usar saldo</button>
             </section>
           )}
+
+          {!!c.premios?.length && <PremiosComanda comandaId={id} premios={c.premios} aberta={aberta} aoMudar={carregar} />}
 
           {(c.itens.length > 0 || c.pagamentos.length > 0) && (
             <section className="cartao space-y-3">

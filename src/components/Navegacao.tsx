@@ -25,7 +25,7 @@ const ICONES: Record<string, LucideIcon> = {
   "/comandas": Receipt,
   "/estoque": Package,
   "/indicadores": ChartLine,
-  "/roleta": Dices,
+  "/jogos": Dices,
   "/financeiro": Landmark,
   "/checklist": ClipboardCheck,
   "/rh": BriefcaseBusiness,

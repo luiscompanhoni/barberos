@@ -1,0 +1,290 @@
+/* Caixas-surpresa: arte da caixa, palco da abertura e cartas. So transform/opacity/filter nas animacoes. */
+
+/* ---------------- arte da caixa */
+.caixa {
+  position: relative;
+  aspect-ratio: 200 / 165;
+  isolation: isolate;
+}
+.camada {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.tampa {
+  position: absolute;
+  inset: 0;
+  transform-origin: 30% 30%;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+.fenda {
+  opacity: var(--luz, 0);
+  mix-blend-mode: screen;
+}
+.raios {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  width: 260%;
+  aspect-ratio: 1;
+  pointer-events: none;
+  z-index: -1;
+  opacity: calc(var(--luz, 0) * 0.85);
+  background: repeating-conic-gradient(
+    from 0deg,
+    rgba(255, 226, 140, 0) 0deg 6deg,
+    rgba(255, 233, 168, 0.5) 8.5deg,
+    rgba(255, 226, 140, 0) 11deg 19deg
+  );
+  -webkit-mask: radial-gradient(closest-side, #000 8%, rgba(0, 0, 0, 0.5) 35%, transparent 75%);
+  mask: radial-gradient(closest-side, #000 8%, rgba(0, 0, 0, 0.5) 35%, transparent 75%);
+  transform: translate(-50%, -50%);
+  animation: girar 16s linear infinite;
+  will-change: transform, opacity;
+}
+@keyframes girar {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+/* luz que sai da boca da caixa aberta */
+.boca {
+  position: absolute;
+  left: 14%;
+  right: 8%;
+  top: 18%;
+  height: 26%;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: var(--aberta, 0);
+  background: radial-gradient(closest-side, #fffbe8 0%, rgba(255, 226, 140, 0.85) 40%, rgba(233, 196, 106, 0) 100%);
+  filter: blur(6px);
+}
+.coluna {
+  position: absolute;
+  left: 22%;
+  right: 16%;
+  bottom: 72%;
+  height: 120%;
+  pointer-events: none;
+  opacity: calc(var(--aberta, 0) * 0.75);
+  background: linear-gradient(0deg, rgba(255, 236, 170, 0.75), rgba(255, 226, 140, 0.15) 55%, rgba(255, 226, 140, 0));
+  -webkit-mask: linear-gradient(90deg, transparent, #000 30%, #000 70%, transparent);
+  mask: linear-gradient(90deg, transparent, #000 30%, #000 70%, transparent);
+  transform-origin: 50% 100%;
+}
+/* aura animada da Legend */
+.aura {
+  position: absolute;
+  left: 50%;
+  top: 55%;
+  width: 150%;
+  aspect-ratio: 1;
+  z-index: -2;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 226, 140, 0.32), rgba(201, 162, 74, 0.12) 45%, transparent 72%);
+  transform: translate(-50%, -50%);
+  animation: aura 3.4s ease-in-out infinite alternate;
+  will-change: transform, opacity;
+}
+@keyframes aura {
+  from { transform: translate(-50%, -50%) scale(0.88); opacity: 0.55; }
+  to { transform: translate(-50%, -50%) scale(1.06); opacity: 1; }
+}
+
+/* flutuar parado (vitrine e espera do toque) */
+.flutuar { animation: flutuar 3.2s ease-in-out infinite alternate; will-change: transform; }
+@keyframes flutuar {
+  from { transform: translate3d(0, 4px, 0); }
+  to { transform: translate3d(0, -8px, 0); }
+}
+
+/* ---------------- tela de escolha */
+.tier {
+  transition: transform 0.2s ease;
+}
+.tier[data-pendente="1"] {
+  box-shadow: inset 0 0 0 1.5px rgba(255, 226, 140, 0.8), 0 0 40px rgba(233, 196, 106, 0.25), 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+.tier[data-raridade="LENDARIO"] {
+  background:
+    radial-gradient(120% 70% at 50% 0%, rgba(255, 226, 140, 0.24) 0%, rgba(255, 226, 140, 0) 60%),
+    radial-gradient(90% 60% at 50% 100%, #1a1a1d 0%, #070708 70%);
+}
+.vitrineItem {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  color: #e9c46a;
+  background: linear-gradient(180deg, #232327, #121214);
+  box-shadow: inset 0 0 0 1px rgba(200, 200, 205, 0.35);
+}
+.vitrineItem[data-raridade="RARO"] { box-shadow: inset 0 0 0 1px rgba(230, 211, 163, 0.6); }
+.vitrineItem[data-raridade="EPICO"] { box-shadow: inset 0 0 0 1.2px rgba(233, 196, 106, 0.85), 0 0 12px rgba(233, 196, 106, 0.2); }
+.vitrineItem[data-raridade="LENDARIO"] { box-shadow: inset 0 0 0 1.5px #ffe28c, 0 0 16px rgba(255, 226, 140, 0.4); color: #fff1b8; }
+.pulsar { animation: pulsar 1.6s ease-in-out infinite; }
+@keyframes pulsar {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.18); }
+}
+
+/* ---------------- palco da abertura */
+.palco {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  overflow: hidden;
+  color: #f5f5f5;
+  background:
+    radial-gradient(80% 50% at 50% 62%, rgba(201, 162, 74, 0.14) 0%, rgba(201, 162, 74, 0) 70%),
+    radial-gradient(120% 80% at 50% 100%, #19191c 0%, #050506 70%);
+}
+.linha {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  min-height: 0;
+  padding: 4px 16px 0;
+}
+.mini { zoom: 0.68; }
+.centro {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 0;
+  padding: 0 16px 8px;
+}
+.voo {
+  position: relative;
+  will-change: transform, opacity, filter;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.sumir { opacity: 0; transform: translate3d(0, 24px, 0) scale(0.9); pointer-events: none; }
+.tremor { position: relative; will-change: transform; }
+.alvo {
+  display: block;
+  width: min(70vw, 300px);
+  border-radius: 24px;
+  -webkit-tap-highlight-color: transparent;
+}
+.alvo:focus-visible { outline: 2px solid #e9c46a; outline-offset: 6px; }
+.alvo:enabled { cursor: pointer; }
+.flash {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  width: 140%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(closest-side, #ffffff 0%, rgba(255, 246, 216, 0.85) 25%, rgba(233, 196, 106, 0.25) 55%, transparent 75%);
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+  z-index: 3;
+}
+.contador {
+  position: absolute;
+  right: 4%;
+  top: 46%;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 18px;
+  font-weight: 900;
+  color: #1a1205;
+  background: linear-gradient(180deg, #fff1b8 0%, #e9c46a 40%, #a67c2e 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7), 0 0 0 3px rgba(7, 7, 8, 0.85), 0 0 24px rgba(233, 196, 106, 0.45);
+}
+.contadorPulo { animation: contadorPulo 360ms cubic-bezier(0.2, 1.4, 0.4, 1); }
+@keyframes contadorPulo {
+  from { transform: scale(1.45); }
+  to { transform: scale(1); }
+}
+
+/* carta em destaque: sai branca da caixa e "acende" no premio */
+.destaque {
+  position: absolute;
+  left: 50%;
+  top: 2%;
+  z-index: 12;
+  translate: -50% 0;
+  will-change: transform, opacity, filter;
+}
+.halo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 190%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: -1;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.6);
+  background: radial-gradient(closest-side, rgba(220, 220, 225, 0.35), transparent 70%);
+  transition: opacity 0.5s ease, transform 0.7s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.destaque[data-raridade="RARO"] .halo { background: radial-gradient(closest-side, rgba(230, 211, 163, 0.42), transparent 70%); }
+.destaque[data-raridade="EPICO"] .halo { background: radial-gradient(closest-side, rgba(233, 196, 106, 0.55), transparent 70%); }
+.destaque[data-raridade="LENDARIO"] .halo {
+  background:
+    repeating-conic-gradient(from 0deg, rgba(255, 233, 168, 0) 0deg 8deg, rgba(255, 233, 168, 0.35) 11deg, rgba(255, 233, 168, 0) 14deg 22deg),
+    radial-gradient(closest-side, rgba(255, 226, 140, 0.7), transparent 70%);
+  -webkit-mask: radial-gradient(closest-side, #000 30%, transparent 100%);
+  mask: radial-gradient(closest-side, #000 30%, transparent 100%);
+}
+.acesa .halo { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.cartaBranca {
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  pointer-events: none;
+  background: linear-gradient(160deg, #ffffff 0%, #fff8e1 55%, #f6e7b0 100%);
+  box-shadow: 0 0 30px rgba(255, 255, 255, 0.85), 0 0 70px rgba(233, 196, 106, 0.6);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+.acesa .cartaBranca { opacity: 0; transform: scale(1.08); }
+.cartaReal { opacity: 0; }
+.acesa .cartaReal { opacity: 1; animation: acender 600ms cubic-bezier(0.2, 0.9, 0.3, 1) both; }
+@keyframes acender {
+  from { opacity: 0.4; transform: scale(1.08); filter: brightness(2.4) saturate(0.6); }
+  to { opacity: 1; transform: scale(1); filter: brightness(1) saturate(1); }
+}
+.destaque[data-raridade="LENDARIO"].acesa .cartaReal { animation-duration: 900ms; }
+
+/* resumo final */
+.resumo {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flutuar, .raios, .aura, .pulsar { animation: none; }
+  .voo, .halo, .cartaBranca { transition-duration: 0.15s; }
+  .acesa .cartaReal { animation-duration: 0.2s; }
+}

@@ -182,6 +182,7 @@ model Servico {
   planos           PlanoServico[]
   comissaoServicos ComissaoServico[]
   poteFicha        PoteFicha?
+  premiosJogo      JogoPremio[]
 
   @@map("servicos")
 }
@@ -273,7 +274,9 @@ model Cliente {
   indicadoPor        Indicacao?            @relation("indicado")
   beneficios         Beneficio[]
   antecipados        PagamentoAntecipado[]
-  girosRoleta        RoletaGiro[]
+  fichasJogo         FichaJogo[]
+  jogadas            Jogada[]
+  premiosGanhos      PremioGanho[]
   linksPagamento     LinkPagamento[]
   enviosCampanha     CampanhaEnvio[]
 
@@ -302,6 +305,8 @@ model Agendamento {
   assinatura     Assinatura?          @relation(fields: [assinaturaId], references: [id])
   itemComanda    ItemComanda?
   antecipado     PagamentoAntecipado?
+  /// Premios de jogo reservados para usar neste atendimento.
+  premiosGanhos  PremioGanho[]
   criadoPorId    String?
   criadoEm       DateTime             @default(now()) @db.Timestamptz(3)
   atualizadoEm   DateTime             @updatedAt @db.Timestamptz(3)
@@ -922,88 +927,226 @@ model PagamentoAntecipado {
   @@map("pagamentos_antecipados")
 }
 
-/// Roleta de premios da area do cliente (configuracao unica, id = 1).
-model RoletaConfig {
-  id                  Int      @id @default(1)
-  ativa               Boolean  @default(false)
-  /// Giros ganhos por atendimento concluido (contados a partir de `inicioEm`).
-  girosPorAtendimento Int      @default(1)
-  /// Giro gratis a cada N dias (0 = desligado).
-  giroGratisDias      Int      @default(0)
-  /// Bonus de assinante nos premios em dinheiro (10 = x1.1).
-  bonusAssinantePct   Int      @default(10)
-  /// Validade do credito/brinde ganho (dias).
-  validadeDias        Int      @default(30)
-  /// So atendimentos a partir daqui dao giro (ligar a roleta nao gera giros do passado).
-  inicioEm            DateTime @default(now()) @db.Timestamptz(3)
+// ======================= JOGOS DE RECOMPENSA (motor unico: roleta, caixas, raspadinha)
 
-  @@map("roleta_config")
+enum TipoJogo {
+  ROLETA
+  CAIXA
+  RASPADINHA
 }
 
-enum TipoPremioRoleta {
-  /// Credito em dinheiro no saldo do cliente.
+enum TipoPremio {
+  /// Dinheiro no saldo do cliente (vira desconto na comanda).
   CREDITO
-  /// Brinde retirado no balcao (ex.: cerveja, pomada).
+  /// Brinde retirado no balcao (cerveja, pomada...).
   BRINDE
+  /// Servico de graca (desconta o preco do servico na comanda).
+  SERVICO
+  /// Desconto em % na comanda.
+  DESCONTO
   /// "Nao foi dessa vez".
   NADA
 }
 
-model RoletaPremio {
-  id            String           @id @default(cuid())
-  rotulo        String
-  tipo          TipoPremioRoleta
-  valorCentavos Int              @default(0)
-  /// Peso no sorteio (a chance e peso / soma dos pesos ativos).
-  peso          Int
-  cor           String
-  ordem         Int              @default(0)
-  ativo         Boolean          @default(true)
-  /// Maximo de vezes que pode sair por mes (null = sem limite).
-  limiteMensal  Int?
-  /// Custo interno do brinde para a barbearia (ex.: a cerveja custa R$ 4). Dinheiro custa o que o cliente usar do saldo.
-  custoCentavos Int              @default(0)
-  criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
-  giros         RoletaGiro[]
-
-  @@map("roleta_premios")
+enum Raridade {
+  COMUM
+  RARO
+  EPICO
+  LENDARIO
 }
 
-enum StatusGiro {
-  /// Brinde esperando a retirada no balcao.
-  A_RETIRAR
-  /// Credito no saldo, brinde entregue ou "nada".
-  CONCLUIDO
+enum OrigemJogada {
+  ATENDIMENTO
+  GRATIS
+  CAMPANHA
+  INDICACAO
+  ANIVERSARIO
+  ASSINATURA
+  MANUAL
+}
+
+enum StatusPremioGanho {
+  DISPONIVEL
+  /// Ligado a um agendamento (volta a DISPONIVEL se o horario for cancelado).
+  RESERVADO
+  UTILIZADO
   EXPIRADO
+  CANCELADO
 }
 
-model RoletaGiro {
-  id            String           @id @default(cuid())
-  clienteId     String
-  cliente       Cliente          @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  premioId      String?
-  premio        RoletaPremio?    @relation(fields: [premioId], references: [id], onDelete: SetNull)
-  /// Copia do premio no momento do giro (o premio pode mudar depois).
+/// Um jogo (roleta, cada nivel de caixa, raspadinha). Todos usam o mesmo motor de recompensas.
+model Jogo {
+  /// Fixo: "roleta", "caixa-black", "caixa-gold", "caixa-legend", "raspadinha".
+  id                             String       @id
+  tipo                           TipoJogo
+  nome                           String
+  descricao                      String?
+  ativo                          Boolean      @default(false)
+  ordem                          Int          @default(0)
+  /// Caixa: quantos premios saem em cada abertura.
+  premiosPorJogada               Int          @default(1)
+  /// Visual da caixa (e o som da abertura).
+  raridade                       Raridade     @default(COMUM)
+  /// Validade do premio ganho (dias).
+  validadeDias                   Int          @default(30)
+  /// Bonus do assinante nos premios em dinheiro (10 = x1.1).
+  bonusAssinantePct              Int          @default(10)
+  /// Periodo de funcionamento (null = sem limite).
+  inicioEm                       DateTime?    @db.Timestamptz(3)
+  fimEm                          DateTime?    @db.Timestamptz(3)
+  /// Maximo de jogadas por cliente no mes (null = sem limite).
+  limitePorPessoaMes             Int?
+  /// Condicoes de liberacao: quantas jogadas cada evento da.
+  jogadasPorAtendimento          Int          @default(0)
+  /// So atendimento a partir desse valor libera (ex.: Gold acima de R$ 80).
+  valorMinimoAtendimentoCentavos Int          @default(0)
+  /// So assinante em dia joga.
+  soAssinante                    Boolean      @default(false)
+  jogadasPorIndicacao            Int          @default(0)
+  jogadasAniversario             Int          @default(0)
+  jogadasRenovacaoPlano          Int          @default(0)
+  /// Jogada gratis a cada N dias (0 = desligado).
+  gratisACadaDias                Int          @default(0)
+  /// So eventos a partir daqui liberam jogadas (ligar o jogo nao gera jogadas do passado).
+  contarDesde                    DateTime     @default(now()) @db.Timestamptz(3)
+  atualizadoEm                   DateTime     @updatedAt @db.Timestamptz(3)
+  premios                        JogoPremio[]
+  fichas                         FichaJogo[]
+  jogadas                        Jogada[]
+  campanhas                      Campanha[]
+
+  @@map("jogos")
+}
+
+model JogoPremio {
+  id            String        @id @default(cuid())
+  jogoId        String
+  jogo          Jogo          @relation(fields: [jogoId], references: [id], onDelete: Cascade)
   rotulo        String
-  tipo          TipoPremioRoleta
-  valorCentavos Int              @default(0)
-  /// Multiplicador aplicado x100 (110 = x1.1).
-  multiplicador Int              @default(100)
-  /// Custo do brinde no momento do giro (o custo do premio pode mudar depois).
-  custoCentavos Int              @default(0)
-  /// "GRATIS" = giro gratis do periodo; "ATENDIMENTO" = ganho por visita; "CAMPANHA" = presente do link de campanha.
-  origem        String
-  status        StatusGiro
-  beneficioId   String?
-  expiraEm      DateTime?        @db.Timestamptz(3)
-  entregueEm    DateTime?        @db.Timestamptz(3)
-  entreguePorId String?
-  criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
+  tipo          TipoPremio
+  /// CREDITO: valor no saldo. SERVICO: teto do desconto (0 = o preco do servico).
+  valorCentavos Int           @default(0)
+  /// DESCONTO: % na comanda.
+  percentual    Int           @default(0)
+  servicoId     String?
+  servico       Servico?      @relation(fields: [servicoId], references: [id], onDelete: SetNull)
+  /// Chance em centesimos de % (10000 = 100%). A soma dos ativos do jogo e sempre 10000.
+  chanceBps     Int
+  raridade      Raridade      @default(COMUM)
+  cor           String
+  /// Icone do premio (lista fixa na tela: dinheiro, tesoura, navalha, pomada, bebida, coroa...).
+  icone         String        @default("presente")
+  ordem         Int           @default(0)
+  ativo         Boolean       @default(true)
+  /// Maximo de vezes que pode sair por mes, somando todos os clientes (null = sem limite).
+  limiteMensal  Int?
+  /// Quantos ainda podem sair (null = sem limite). Cai a cada premio ganho.
+  estoque       Int?
+  /// Custo interno para a barbearia (brinde/servico). Credito custa o que o cliente usar.
+  custoCentavos Int           @default(0)
+  criadoEm      DateTime      @default(now()) @db.Timestamptz(3)
+  ganhos        PremioGanho[]
+
+  @@index([jogoId])
+  @@map("jogo_premios")
+}
+
+/// Direito a uma jogada (ganho por atendimento, indicacao, campanha...). Usada, aponta para a jogada.
+model FichaJogo {
+  id         String       @id @default(cuid())
+  jogoId     String
+  jogo       Jogo         @relation(fields: [jogoId], references: [id], onDelete: Cascade)
+  clienteId  String
+  cliente    Cliente      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  origem     OrigemJogada
+  /// O que liberou (agendamento:1, indicacao, cobranca, envio da campanha, ano do aniversario...): nunca libera duas vezes.
+  referencia String
+  expiraEm   DateTime?    @db.Timestamptz(3)
+  criadoEm   DateTime     @default(now()) @db.Timestamptz(3)
+  jogadaId   String?      @unique
+  jogada     Jogada?      @relation(fields: [jogadaId], references: [id], onDelete: SetNull)
+
+  @@unique([jogoId, clienteId, origem, referencia])
+  @@index([clienteId, jogoId, jogadaId])
+  @@map("jogo_fichas")
+}
+
+/// Uma jogada. O resultado e decidido e gravado aqui ANTES da animacao; a tela so representa.
+model Jogada {
+  id            String         @id @default(cuid())
+  /// Chave de idempotencia mandada pela tela: repetir a mesma chave devolve a mesma jogada.
+  chave         String         @unique
+  jogoId        String
+  jogo          Jogo           @relation(fields: [jogoId], references: [id])
+  tipo          TipoJogo
+  clienteId     String
+  cliente       Cliente        @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  origem        OrigemJogada
+  /// Multiplicador do assinante x100 (110 = x1.1).
+  multiplicador Int            @default(100)
+  vitoria       Boolean
+  /// O que a tela anima: roleta {fatias, indice}, caixa {premios}, raspadinha {grade, vencedoras}.
+  resultado     Json
+  ip            String?
+  dispositivo   String?
+  /// A tela terminou a animacao (antes disso, ao voltar, a jogada aparece de novo para revelar).
+  reveladaEm    DateTime?      @db.Timestamptz(3)
+  criadoEm      DateTime       @default(now()) @db.Timestamptz(3)
+  ficha         FichaJogo?
+  premios       PremioGanho[]
   envioCampanha CampanhaEnvio?
 
   @@index([clienteId, criadoEm])
-  @@index([status])
-  @@map("roleta_giros")
+  @@index([jogoId, criadoEm])
+  @@map("jogadas")
+}
+
+/// Premio ganho num jogo: fica com o cliente ate ser usado, vencer ou ser cancelado com autorizacao.
+model PremioGanho {
+  id                       String            @id @default(cuid())
+  /// Codigo unico mostrado ao cliente e conferido pela recepcao (ex.: "BB-7K2Q9M").
+  codigo                   String            @unique
+  jogadaId                 String
+  jogada                   Jogada            @relation(fields: [jogadaId], references: [id], onDelete: Cascade)
+  jogoId                   String
+  clienteId                String
+  cliente                  Cliente           @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  premioId                 String?
+  premio                   JogoPremio?       @relation(fields: [premioId], references: [id], onDelete: SetNull)
+  /// Copia do premio no momento da jogada (o premio pode mudar depois).
+  rotulo                   String
+  tipo                     TipoPremio
+  raridade                 Raridade
+  icone                    String
+  /// CREDITO: valor creditado (com bonus). SERVICO: teto do desconto (0 = preco do servico).
+  valorCentavos            Int               @default(0)
+  percentual               Int               @default(0)
+  servicoId                String?
+  multiplicador            Int               @default(100)
+  custoCentavos            Int               @default(0)
+  status                   StatusPremioGanho
+  /// Credito criado no saldo (premio em dinheiro).
+  beneficioId              String?           @unique
+  /// Horario em que vai usar (reserva).
+  agendamentoId            String?
+  agendamento              Agendamento?      @relation(fields: [agendamentoId], references: [id], onDelete: SetNull)
+  reservadoEm              DateTime?         @db.Timestamptz(3)
+  /// Comanda em que foi usado e quanto descontou nela (servico gratis / desconto %).
+  comandaId                String?
+  descontoAplicadoCentavos Int               @default(0)
+  utilizadoEm              DateTime?         @db.Timestamptz(3)
+  validadoPorId            String?
+  expiraEm                 DateTime?         @db.Timestamptz(3)
+  canceladoEm              DateTime?         @db.Timestamptz(3)
+  canceladoPorId           String?
+  motivoCancelamento       String?
+  criadoEm                 DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@index([clienteId, status])
+  @@index([status, expiraEm])
+  @@index([agendamentoId])
+  @@index([comandaId])
+  @@map("premios_ganhos")
 }
 
 // ======================= FINANCEIRO
@@ -1539,8 +1682,9 @@ model Campanha {
   limiteDiario    Int
   /// Quantos dos avisados costumam marcar (bps): com a capacidade da agenda, sugere o tamanho do lote.
   taxaRespostaBps Int             @default(2000)
-  /// Campanha da roleta: o link abre a roleta com 1 giro de presente (sem login).
-  roleta          Boolean         @default(false)
+  /// Jogo de presente do link (roleta, caixa ou raspadinha), sem login. Null = campanha comum.
+  jogoId          String?
+  jogo            Jogo?           @relation(fields: [jogoId], references: [id], onDelete: SetNull)
   status          StatusCampanha  @default(ATIVA)
   criadoPorId     String?
   criadoEm        DateTime        @default(now()) @db.Timestamptz(3)
@@ -1568,9 +1712,9 @@ model CampanhaEnvio {
   mensagem    Mensagem?           @relation(fields: [mensagemId], references: [id], onDelete: SetNull)
   /// Primeira vez que abriu o link num navegador (robo de previa nao conta: a pagina avisa por JavaScript).
   clicouEm    DateTime?           @db.Timestamptz(3)
-  /// Giro de presente da campanha da roleta.
-  giroId      String?             @unique
-  giro        RoletaGiro?         @relation(fields: [giroId], references: [id], onDelete: SetNull)
+  /// Jogada de presente da campanha.
+  jogadaId    String?             @unique
+  jogada      Jogada?             @relation(fields: [jogadaId], references: [id], onDelete: SetNull)
   /// Primeira vez que entrou na area do cliente depois de clicar.
   appAbertoEm DateTime?           @db.Timestamptz(3)
 

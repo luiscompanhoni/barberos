@@ -1,7 +1,6 @@
-import { RoletaJogo } from "@/components/roleta/RoletaJogo";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
+/** Endereco antigo da roleta (links ja enviados): vai para a Roleta Black. */
 export default function Roleta() {
-  return <RoletaJogo />;
+  redirect("/c/jogos/roleta");
 }
