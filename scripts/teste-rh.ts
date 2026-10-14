@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { abrirCaixa, caixaAberto } from "@/lib/financeiro/caixa";
 import { relatorioComissoes, salvarComissoes } from "@/lib/rh/comissoes";
 import { fecharFolha, lancar, pagarFolha, previaFolha, reabrirFolha } from "@/lib/rh/folha";
+import { criarAdicional, encerrarAdicional, excluirAdicional } from "@/lib/rh/adicionais";
 import { configExtras, salvarExtras } from "@/lib/rh/pote";
 import { salvarFicha } from "@/lib/rh/funcionarios";
 
@@ -30,10 +31,10 @@ async function main() {
   const excecoesAntes = await db.comissaoServico.findMany({ where: { barbeiroId: { not: null } } });
   const jaAberto = await caixaAberto();
   if (jaAberto) await db.caixa.update({ where: { id: jaAberto.id }, data: { status: "FECHADO", fechadoEm: new Date(), observacao: "fechado pelo teste" } });
-  const ids = { pessoa: "", tarefas: [] as string[], usuario: "", barbeiro: "", servico: "", cliente: "", plano: "", assinatura: "", ags: [] as string[], caixas: [] as string[], despesas: [] as string[], produto: "", comanda: "" };
+  const ids = { pessoa: "", tarefas: [] as string[], usuario: "", barbeiro: "", servico: "", cliente: "", plano: "", assinatura: "", ags: [] as string[], caixas: [] as string[], despesas: [] as string[], produto: "", comanda: "", comandaServico: "", estorno: "" };
   const poteAntes = {
     cfg: await db.poteConfig.findUnique({ where: { id: "pote" } }),
-    fichas: await db.poteFicha.findMany(), ajustes: await db.poteBarbeiro.findMany(), faixas: await db.comissaoProdutoFaixa.findMany(),
+    fichas: await db.poteFicha.findMany(), faixas: await db.comissaoProdutoFaixa.findMany(),
   };
   try {
     // ================= PONTOS DO CHECKLIST
@@ -163,42 +164,80 @@ async function main() {
     ok((await falha(() => reabrirFolha(s, COMP, p.id)))?.codigo === "ja_paga", "folha paga não reabre");
     ok((await falha(() => pagarFolha(s, COMP, p.id)))?.codigo === "ja_paga", "não paga duas vezes");
 
-    // ================= POTE DE ASSINATURAS E PRODUTOS
+    // ================= COMISSAO DAS ASSINATURAS, COMISSAO DIFERENCIADA E PRODUTOS
     // Atendimentos do barbeiro no mes: avulsos de R$ 60 (dia 5) e R$ 50 (dia 15), plano nos dias 12 e 31 (excecao: 50% avulso).
     await db.cobranca.create({ data: { assinaturaId: as.id, gatewayId: "teste-rh-pote-1", valorCentavos: 100000, vencimento: new Date(`${COMP}-10T00:00:00Z`), status: "PAGA", pagaEm: new Date(instanteLocal(`${COMP}-10`, 600, fuso)) } });
-    ok((await falha(() => salvarExtras(s, { pote: { ativo: true, percentualBps: 3500, fichas: [], ajustes: [] }, faixas: [] })))?.message.includes("fichas") === true, "pote ligado sem fichas é recusado");
+    ok((await falha(() => salvarExtras(s, { assinaturas: { ativo: true, percentualBps: 3500, creditos: [] }, faixas: [] })))?.message.includes("créditos") === true, "comissão das assinaturas ligada sem créditos é recusada");
     await salvarExtras(s, {
-      pote: { ativo: true, percentualBps: 3500, fichas: [{ servicoId: sv.id, fichas: 40 }], ajustes: [{ barbeiroId: b.id, adicionalBps: 500, diferenciadaBps: null }] },
+      assinaturas: { ativo: true, percentualBps: 3500, creditos: [{ servicoId: sv.id, creditos: 40 }] },
       faixas: [{ categoria: "LOJA", minimoCentavos: 10000, percentualBps: 500 }, { categoria: "LOJA", minimoCentavos: 12000, percentualBps: 1000 }, { categoria: "BAR", minimoCentavos: 10000, percentualBps: 100 }],
     });
+    // Adicional de +5 pts que ja valia (como os migrados); o mes de teste ja tem a folha paga.
+    const adicAntigo = await db.adicionalComissao.create({ data: { barbeiroId: b.id, modalidade: "ASSINATURA", pontosBps: 500, motivo: "[teste rh] antigo", inicio: new Date("2000-01-01T00:00:00Z") } });
+    // Estorno de R$ 100 de mensalidade feito no mes: sai da Receita Distribuivel.
+    ids.estorno = (await db.pedidoEstorno.create({ data: {
+      tipo: "MENSALIDADE", referenciaId: "teste-rh-pote-1", valorCentavos: 10000, valorOriginalCentavos: 100000, motivo: "[teste rh]", status: "EXECUTADO",
+      meio: "SIMULADO", forma: "ONLINE", descricao: "[teste rh] mensalidade", executadoEm: new Date(instanteLocal(`${COMP}-25`, 600, fuso)),
+    } })).id;
+    // Avulso do dia 5 numa comanda com outro item de R$ 40 e R$ 10 de desconto: o corte vale R$ 54.
+    const agAvulso = await db.agendamento.findFirstOrThrow({ where: { barbeiroId: b.id, inicio: new Date(instanteLocal(`${COMP}-05`, 600, fuso)) } });
+    const cmServ = await db.comanda.create({ data: { status: "FECHADA", clienteId: cli.id, descontoCentavos: 1000, abertaEm: agAvulso.inicio, fechadaEm: agAvulso.fim } });
+    ids.comandaServico = cmServ.id;
+    await db.itemComanda.createMany({ data: [
+      { comandaId: cmServ.id, agendamentoId: agAvulso.id, descricao: "[teste rh] Corte", precoUnitCentavos: 6000, barbeiroId: b.id },
+      { comandaId: cmServ.id, descricao: "[teste rh] Item avulso", precoUnitCentavos: 4000 },
+    ] });
+    await db.pagamentoComanda.create({ data: { comandaId: cmServ.id, forma: "PIX", valorCentavos: 9000, status: "PAGO", pagoEm: agAvulso.fim } });
     const prod = await db.produto.create({ data: { nome: "[teste rh] Pomada", categoria: "LOJA", precoCentavos: 5000 } });
     ids.produto = prod.id;
     const cm = await db.comanda.create({ data: { status: "FECHADA", abertaEm: new Date(instanteLocal(`${COMP}-20`, 600, fuso)), fechadaEm: new Date(instanteLocal(`${COMP}-20`, 620, fuso)), clienteId: cli.id } });
     ids.comanda = cm.id;
     await db.itemComanda.create({ data: { comandaId: cm.id, produtoId: prod.id, descricao: prod.nome, quantidade: 3, precoUnitCentavos: 5000, barbeiroId: b.id } });
-    const relPote = await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id);
-    rel = relPote.barbeiros[0];
-    ok(relPote.pote?.receitaCentavos === 100000 && relPote.pote.valorPote === 35000 && relPote.pote.fichasTotal === 80, `pote: 35% de R$ 1.000 = R$ 350, 80 fichas (${JSON.stringify(relPote.pote)})`);
-    ok(rel.pote?.qtd === 2 && rel.pote.percentualBps === 4000 && rel.pote.comissao === 40000, `barbeiro com +5% de adicional leva 40% do faturamento (único com fichas) (${rel.pote?.comissao})`);
-    ok(rel.plano.comissao === 0 && rel.atendimentos.filter((a) => a.modalidade === "PLANO").every((a) => a.regra === "Pote de assinaturas"), "pote ligado substitui a regra pelo plano");
+    const relAss = await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id);
+    rel = relAss.barbeiros[0];
+    ok(relAss.assinaturas?.recebidoCentavos === 100000 && relAss.assinaturas.estornosCentavos === 10000 && relAss.assinaturas.distribuivelCentavos === 90000 && relAss.assinaturas.creditosTotal === 80,
+      `Receita de Assinaturas R$ 1.000 − estorno R$ 100 = Receita Distribuível R$ 900, 80 créditos (${JSON.stringify(relAss.assinaturas)})`);
+    ok(rel.assinaturas?.qtd === 2 && rel.assinaturas.receitaAtribuida === 90000 && rel.assinaturas.comissaoBase === 31500 && rel.assinaturas.adicionalCentavos === 4500 && rel.assinaturas.comissao === 36000,
+      `único com créditos: atribuída R$ 900, 35% = R$ 315 + 5 pts = R$ 360 (${JSON.stringify(rel.assinaturas)})`);
+    ok(rel.plano.comissao === 0 && rel.atendimentos.filter((a) => a.modalidade === "PLANO").every((a) => a.regra === "Comissão das assinaturas"), "comissão das assinaturas substitui a regra pelo plano");
+    ok(rel.avulso.base === 5400 + 5000 && rel.avulso.comissao === 2700 + 2500, `avulso sobre o valor cobrado: corte de R$ 60 com desconto proporcional vale R$ 54 (${rel.avulso.base} / ${rel.avulso.comissao})`);
     ok(rel.produtos?.vendido === 15000 && rel.produtos.comissao === 1500, `produtos: R$ 150 na loja → faixa de 10% = R$ 15 (${rel.produtos?.comissao})`);
-    ok(rel.total === 5500 + 40000 + 1500, `total = avulso + pote + produtos (${rel.total})`);
+    ok(rel.total === 5200 + 36000 + 1500, `total = avulso + assinaturas + produtos (${rel.total})`);
+    ok(relAss.competencia === COMP && rel.folha?.salario === 200000 && rel.folha.bonus === 10000 && rel.folha.descontos === 7000 && rel.folha.status === "PAGA" && rel.folha.totalAPagar === 200000 + 42700 + 10000 - 7000,
+      `mês inteiro: folha junto (salário + comissões + bônus − descontos) (${JSON.stringify(rel.folha)})`);
+    ok((await relatorioComissoes(`${COMP}-02`, `${COMP}-31`, b.id)).barbeiros[0].folha === null, "período que não é mês inteiro não mostra a folha");
+
+    // Regras da comissão diferenciada (o mês de teste está com a folha paga).
+    const novoAdic = { barbeiroId: b.id, modalidade: "ASSINATURA" as const, pontosBps: 200, motivo: "[teste rh] meta", inicio: `${COMP}-10`, fim: null };
+    ok((await falha(() => criarAdicional(s, novoAdic)))?.codigo === "folha_fechada", "não cria adicional em mês com a folha fechada");
+    ok((await falha(() => criarAdicional(s, { ...novoAdic, inicio: "2031-03-01" })))?.codigo === "sobreposto", "não cria adicional sobreposto a outro da mesma modalidade");
+    ok((await falha(() => encerrarAdicional(s, adicAntigo.id, `${COMP}-10`)))?.codigo === "folha_fechada", "encerrar antes de um mês fechado é recusado (mudaria o mês fechado)");
+    await encerrarAdicional(s, adicAntigo.id, "2031-02-28");
+    const futuro = await criarAdicional(s, { ...novoAdic, inicio: "2031-03-01" });
+    ok(futuro.autorizadoPorId === dono.id, "adicional novo guarda quem autorizou");
+    ok((await falha(() => excluirAdicional(s, adicAntigo.id)))?.codigo === "ja_vale", "adicional que já valeu não se apaga");
+    await excluirAdicional(s, futuro.id);
+    ok(!(await db.adicionalComissao.findUnique({ where: { id: futuro.id } })), "adicional que ainda não começou pode ser apagado");
+    ok((await db.auditoria.count({ where: { entidade: "adicional_comissao", entidadeId: { in: [adicAntigo.id, futuro.id] } } })) === 3, "criar, encerrar e apagar ficam na auditoria");
+    await db.adicionalComissao.delete({ where: { id: adicAntigo.id } });
+
     const extras = await configExtras();
     await salvarExtras(s, {
-      pote: { ...extras.pote, ativo: false, fichas: extras.pote.fichas.map(({ servicoId, fichas }) => ({ servicoId, fichas })), ajustes: extras.pote.ajustes.map(({ barbeiroId, adicionalBps, diferenciadaBps }) => ({ barbeiroId, adicionalBps, diferenciadaBps })) },
+      assinaturas: { ativo: false, percentualBps: extras.assinaturas.percentualBps, creditos: extras.assinaturas.creditos.map(({ servicoId, creditos }) => ({ servicoId, creditos })) },
       faixas: extras.faixas,
     });
     rel = (await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id)).barbeiros[0];
-    ok(rel.pote === null && rel.plano.comissao === 3000, `pote desligado volta a regra pelo plano (30% da tabela) (${rel.plano.comissao})`);
+    ok(rel.assinaturas === null && rel.plano.comissao === 3000, `comissão das assinaturas desligada volta a regra pelo plano (30% da tabela) (${rel.plano.comissao})`);
   } finally {
     if (ids.comanda) await db.comanda.delete({ where: { id: ids.comanda } });
+    if (ids.comandaServico) await db.comanda.delete({ where: { id: ids.comandaServico } });
+    if (ids.estorno) await db.pedidoEstorno.delete({ where: { id: ids.estorno } });
+    await db.adicionalComissao.deleteMany({ where: { barbeiroId: ids.barbeiro || "-" } });
     if (ids.produto) await db.produto.delete({ where: { id: ids.produto } });
     await db.poteConfig.deleteMany({});
     if (poteAntes.cfg) await db.poteConfig.create({ data: poteAntes.cfg });
     await db.poteFicha.deleteMany({});
     if (poteAntes.fichas.length) await db.poteFicha.createMany({ data: poteAntes.fichas });
-    await db.poteBarbeiro.deleteMany({});
-    if (poteAntes.ajustes.length) await db.poteBarbeiro.createMany({ data: poteAntes.ajustes });
     await db.comissaoProdutoFaixa.deleteMany({});
     if (poteAntes.faixas.length) await db.comissaoProdutoFaixa.createMany({ data: poteAntes.faixas });
     await db.despesa.deleteMany({ where: { id: { in: ids.despesas } } });

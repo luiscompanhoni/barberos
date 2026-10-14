@@ -147,7 +147,7 @@ model Barbeiro {
   agendamentos    Agendamento[]
   planos          PlanoBarbeiro[]
   checklistPessoa ChecklistPessoa?
-  poteAjuste      PoteBarbeiro?
+  adicionaisComissao AdicionalComissao[]
   /// Foto (webp pequena, guardada no banco; servida em /api/barbeiros/<id>/foto).
   fotoDados       Bytes?
   fotoTipo        String?
@@ -1217,20 +1217,22 @@ model ComissaoServico {
   @@map("comissoes_servico")
 }
 
-/// Pote de assinaturas (como o Dpote do CashBarber): no periodo, um % do que entrou de mensalidades
-/// e dividido entre os barbeiros pelas fichas dos atendimentos feitos pelo plano. Ligado, substitui a
-/// regra "pelo plano" de cada servico. Linha unica (id "pote").
+/// Comissao das assinaturas (o "pote" do CashBarber): a Receita Distribuivel do periodo (mensalidades pagas
+/// menos estornos) e atribuida aos barbeiros pelos Creditos de Atendimento dos atendimentos pelo plano, e cada
+/// um recebe o percentual base (+ adicional) sobre a receita atribuida. Ligado, substitui a regra "pelo plano"
+/// de cada servico. Linha unica (id "pote").
 model PoteConfig {
   id            String   @id @default("pote")
   ativo         Boolean  @default(false)
-  /// % do faturamento de assinaturas que vira pote (3500 = 35%).
+  /// Percentual base da comissao das assinaturas sobre a receita atribuida ao barbeiro (3500 = 35%).
   percentualBps Int      @default(3500)
   atualizadoEm  DateTime @updatedAt @db.Timestamptz(3)
 
   @@map("pote_config")
 }
 
-/// Peso de cada servico feito pelo plano no pote (ex.: corte 40 fichas, barba 20). Sem linha = nao entra.
+/// Creditos de Atendimento: peso de cada servico feito pelo plano (ex.: corte 40, barba 20; as "fichas" do
+/// CashBarber). Sem linha = o servico nao gera credito.
 model PoteFicha {
   servicoId String  @id
   servico   Servico @relation(fields: [servicoId], references: [id], onDelete: Cascade)
@@ -1240,13 +1242,30 @@ model PoteFicha {
 }
 
 /// Ajuste do barbeiro no pote: adicional soma ao % do pote; diferenciada substitui o % (null = sem).
-model PoteBarbeiro {
-  barbeiroId      String   @id
-  barbeiro        Barbeiro @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
-  adicionalBps    Int      @default(0)
-  diferenciadaBps Int?
+enum ModalidadeComissao {
+  ASSINATURA
+  AVULSO
+}
 
-  @@map("pote_barbeiros")
+/// Comissao diferenciada: pontos percentuais a mais (ou a menos) para um barbeiro, negociados individualmente.
+/// Pagos pela barbearia: nao saem da comissao dos outros. Vale para os atendimentos de `inicio` ate `fim`
+/// (inclusive; sem fim = ate ser encerrado). Nunca e apagado depois de comecar a valer: encerra com `fim`.
+model AdicionalComissao {
+  id              String             @id @default(cuid())
+  barbeiroId      String
+  barbeiro        Barbeiro           @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
+  modalidade      ModalidadeComissao
+  /// Pontos percentuais x100 (500 = +5 pontos: 35% vira 40%).
+  pontosBps       Int
+  motivo          String
+  inicio          DateTime           @db.Date
+  fim             DateTime?          @db.Date
+  /// Quem autorizou (o dono que cadastrou).
+  autorizadoPorId String?
+  criadoEm        DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@index([barbeiroId, modalidade])
+  @@map("adicionais_comissao")
 }
 
 /// Comissao de produto por faixa de venda no periodo, por categoria (BAR = conveniencia, LOJA).

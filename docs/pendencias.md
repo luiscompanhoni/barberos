@@ -24,12 +24,18 @@ e-mail, nascimento; telefone repetido vira um cadastro só), assinantes, histór
 comandas e pagamentos, horários futuros) e mensalidades pagas. Rodar de novo não duplica. Telefone é único no
 banco; cada cliente tem ID interno. Última visita e frequência saem do histórico importado.
 
+Feito: `scripts/relatorio-migracao.ts` confere o banco e, com os CSVs do CashBarber, mostra quem ficou de fora.
+Relatório na tela e em CSV:
+- totais e dados completos;
+- histórico, última visita por faixa e frequência;
+- assinaturas;
+- possíveis duplicados;
+- incompletos.
+
 Falta:
 - [ ] Backup completo do CashBarber antes de qualquer alteração. 👤
-- [ ] Conferência antes/depois em produção: total de clientes no CashBarber × no BarberOS (meta ~1.700 com histórico).
-- [ ] Relatório consolidado da migração: importados, duplicados unidos, dados incompletos (sem telefone, sem
-      nascimento, sem histórico), erros. Hoje cada script só imprime os números da própria execução.
-- [ ] Assinantes: a ligação é pelo nome (o relatório do CashBarber não traz telefone). Revisar os que ficaram de fora.
+- [ ] Rodar o relatório em produção com os CSVs do CashBarber e conferir a contagem (meta ~1.700 com histórico). 👤
+- [ ] Revisar os assinantes sem vínculo e os possíveis duplicados que o relatório listar. 👤
 - [ ] Vencimento e situação do plano dos assinantes vindos do CashBarber (hoje o vencimento é estimado pela adesão).
 - [ ] Créditos/saldos do CashBarber: não são importados. Ver se existem e trazer como saldo.
 - [ ] Serviço de cada atendimento antigo: o relatório não informa, entra como "Atendimento (CashBarber)".
@@ -124,20 +130,7 @@ Falta:
 - [ ] Horários livres nos próximos 3, 7 e 14 dias, por barbeiro, com os horários ociosos.
 - [ ] Sugestão "capacidade para ~X novos agendamentos", usada para limitar o lote da campanha.
 
-### 41. Motor de comissões 🟡
-Já existe: o pote de assinaturas faz exatamente a conta pedida: só mensalidades pagas, sem taxas, divididas pelas
-fichas dos atendimentos de plano; % base mais adicional ou % diferenciado por barbeiro. Também já existem comissão
-de avulso por serviço (% ou fixo, com exceção por barbeiro), comissão de produtos por faixa e folha que congela ao
-fechar. As mudanças de configuração vão para a auditoria.
-
-Falta:
-- [ ] Trocar os nomes: Pote → Receita de Assinaturas, valor a distribuir → Receita Distribuível,
-      Fichas → Créditos de Atendimento.
-- [ ] Adicional do avulso separado do adicional da assinatura (+pp por barbeiro).
-- [ ] Registrar motivo, quem autorizou, início e fim de cada adicional.
-- [ ] Relatório com: receita de assinaturas, créditos, receita atribuída ao barbeiro, % base, adicional, comissão de
-      assinatura, de avulsos e de produtos, bônus/descontos/ajustes e total.
-- [ ] Conferir: estorno de mensalidade depois do período fechado.
+### 41. Motor de comissões: ✅ feito (ver "Concluídos")
 
 ### Outros itens da fase A (vindos dos blocos anteriores)
 - [ ] 36. Backups 🟡: o diário (03h, 14 dias, no próprio VPS) já existe. Falta backup antes de cada deploy, cópia fora
@@ -211,4 +204,14 @@ Falta:
 - **22. Domínio oficial:** domínio, SSL automático (Caddy), `www` e endereço antigo redirecionando. E-mail no domínio
   só se precisar.
 - **25 (parte). Checklist da equipe:** tarefas por função, link sem login, pontos e faixas.
+- **41. Motor de comissões:**
+  - Nomes novos: Receita de Assinaturas, Receita Distribuível e Créditos de Atendimento.
+  - A Receita Distribuível considera só mensalidades pagas, desconta os estornos do período e deixa as taxas com a
+    barbearia.
+  - Avulso calculado sobre o valor efetivamente cobrado, com desconto e estorno proporcionais.
+  - Comissão diferenciada (+pp) separada para assinaturas e avulsos, com motivo, quem autorizou e vigência. O que já
+    valeu não se apaga, e mês com folha fechada não muda sem reabrir a folha.
+  - Relatório com todos os campos e, num mês inteiro, salário, bônus, descontos e total a pagar.
+  - Ajustes antigos convertidos sem mudar o percentual de ninguém.
+  - Estorno feito depois do mês fechado desconta no mês em que foi feito (igual ao resumo financeiro).
 - **Item 18 (quase todo):** ver Fase B.

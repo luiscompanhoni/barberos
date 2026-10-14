@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 const zPct = z.number().int().min(0).max(10_000);
 
-/** Pote de assinaturas e faixas de comissao de produtos (so o dono). */
+/** Comissao das assinaturas, comissao diferenciada e faixas de comissao de produtos (so o dono). */
 export const GET = rota(async () => {
   await exigirSessao(["DONO"]);
   return NextResponse.json(await configExtras());
@@ -18,11 +18,10 @@ export const GET = rota(async () => {
 export const PUT = rota(async (req: Request) => {
   const s = await exigirSessao(["DONO"]);
   const b = await corpo(req, z.object({
-    pote: z.object({
+    assinaturas: z.object({
       ativo: z.boolean(),
       percentualBps: zPct,
-      fichas: z.array(z.object({ servicoId: zId, fichas: z.number().int().min(0).max(1000) })).max(300),
-      ajustes: z.array(z.object({ barbeiroId: zId, adicionalBps: zPct, diferenciadaBps: zPct.nullable() })).max(100),
+      creditos: z.array(z.object({ servicoId: zId, creditos: z.number().int().min(0).max(1000) })).max(300),
     }),
     faixas: z.array(z.object({ categoria: z.enum(["BAR", "LOJA"]), minimoCentavos: z.number().int().min(0).max(100_000_000), percentualBps: zPct })).max(50),
   }));

@@ -14,7 +14,7 @@ estoque, financeiro, RH e indicadores. Substitui o CashBarber.
   "hora de voltar" e indique e ganhe.
 - **Produção:** login com senha, WhatsApp oficial ou não oficial (Evolution), checkout próprio (planos, horário
   pago antes e links de pagamento), saldo e cashback, roleta de prêmios, financeiro (caixa, despesas, conciliação,
-  estornos, resumo do mês), checklist da equipe, RH (comissões, pote de assinaturas e folha) e deploy em VPS com
+  estornos, resumo do mês), checklist da equipe, RH (comissões de avulsos, assinaturas e produtos, comissão diferenciada e folha) e deploy em VPS com
   https e backup diário.
 - **Troca de sistema:** importação do CashBarber (cadastro, clientes, assinantes, histórico de agendamentos e
   comandas, mensalidades e horários ainda marcados) e domínio próprio.
@@ -391,13 +391,29 @@ secreto por barbeiro (dá para trocar se vazar) e sem telefone de cliente. O Goo
   pontos e a tarefa volta). Faixas BLACK ELITE, BLACK PLATINA e BLACK LEGEND, com classificação.
 - **RH** (`/rh`, só o dono, porque tem salários):
   - **Funcionários**: ficha de cada pessoa (o mesmo cadastro do checklist).
-  - **Comissões**: regra por serviço, avulso (% do preço cobrado ou valor fixo) e plano (% do preço de tabela ou
-    valor fixo por corte), com exceção por barbeiro. Sugestão inicial: avulso 40% e plano R$ 15,00 por corte.
-  - **Pote de assinaturas** (como o Dpote do CashBarber): uma % do faturamento de mensalidades do período, dividida
-    pelas fichas dos atendimentos de plano, com ajuste por barbeiro (adicional ou percentual diferente). Ligado,
-    substitui a regra de plano de cada serviço.
+  - **Comissão de avulsos**: regra por serviço (% ou valor fixo), com exceção por barbeiro. O % vale sobre o valor
+    efetivamente cobrado: o desconto da comanda (inclui saldo usado) e os estornos saem na proporção do serviço;
+    produtos e outros itens não entram. Sugestão inicial: avulso 40% e plano R$ 15,00 por corte.
+  - **Comissão das assinaturas** (o "pote" do CashBarber). Ligada, substitui a regra de plano de cada serviço:
+    - **Receita de Assinaturas**: mensalidades pagas no período.
+    - **Receita Distribuível**: a Receita de Assinaturas menos os estornos do período. As taxas do meio de pagamento
+      ficam com a barbearia.
+    - **Créditos de Atendimento** (as "fichas"): cada atendimento pelo plano gera os créditos do serviço.
+    - Valor do crédito = Receita Distribuível ÷ créditos de todos.
+    - Receita atribuída = créditos do barbeiro × valor do crédito.
+    - Comissão = receita atribuída × percentual base (ex.: 35%).
+  - **Comissão diferenciada**: pontos a mais por barbeiro (ex.: 35% + 5 pts = 40%), separados para assinaturas e
+    avulsos.
+    - Pagos pela barbearia, sem tirar da comissão dos outros.
+    - Cada um tem motivo, quem autorizou, início e fim.
+    - O que já valeu não se apaga: encerra com data de fim.
+    - Mês com a folha fechada só muda depois de reabrir a folha.
+    - Tudo vai para a auditoria.
   - **Comissão de produtos** por faixa de venda no período, separada para loja e bar.
-  - **Relatório de comissões** por período, a partir dos atendimentos concluídos.
+  - **Relatório de comissões** por período, a partir dos atendimentos concluídos. Por barbeiro mostra:
+    - créditos, receita atribuída, % base e adicional;
+    - comissão de assinaturas, de avulsos e de produtos;
+    - com um mês inteiro, também salário, bônus, descontos e o total a pagar.
   - **Folha de pagamento** por mês: prévia ao vivo, lançamentos (vale pode sair do caixa como sangria), fechar
     (congela), marcar como paga (vira despesa), reabrir e exportar CSV.
   - `npm run teste:rh`.
@@ -469,7 +485,7 @@ src/lib/roleta/         roleta de prêmios
 src/lib/financeiro/     caixa, despesas, extrato, conciliação e resumo
 src/lib/estornos/       pedidos e execução de estornos
 src/lib/checklist/      checklist da equipe e pontos
-src/lib/rh/             comissões, pote, folha e funcionários
+src/lib/rh/             comissões (avulsos, assinaturas, diferenciada, produtos), folha e funcionários
 src/lib/indicadores/    indicadores do negócio e por barbeiro
 src/lib/automacoes/     mensagens automáticas e calendário .ics
 src/app/api/            API das telas, do cliente (/api/cliente) e webhooks

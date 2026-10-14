@@ -46,7 +46,10 @@ export async function previaFolha(comp: string) {
       mudouDepois: !!congelado && congelado.liquido !== t.liquido,
       comissaoDetalhe: com ? {
         avulso: com.avulso, plano: com.plano, semRegra: com.semRegra,
-        pote: com.pote ? { qtd: com.pote.qtd, fichas: com.pote.fichas, percentualBps: com.pote.percentualBps, comissao: com.pote.comissao } : null,
+        assinaturas: com.assinaturas ? {
+          qtd: com.assinaturas.qtd, creditos: com.assinaturas.creditos, receitaAtribuida: com.assinaturas.receitaAtribuida,
+          percentualBaseBps: com.assinaturas.percentualBaseBps, adicionalBps: com.assinaturas.adicionalBps, comissao: com.assinaturas.comissao,
+        } : null,
         produtos: com.produtos ? { vendido: com.produtos.vendido, comissao: com.produtos.comissao } : null,
       } : null,
       lancamentos: ls.map((l) => ({ id: l.id, tipo: l.tipo, valorCentavos: l.valorCentavos, descricao: l.descricao, doCaixa: !!l.movimentoCaixaId, criadoEm: l.criadoEm })),

@@ -3,21 +3,19 @@
 import { useEffect, useState } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { api, centavosParaTexto, paraCentavos } from "@/lib/cliente-api";
+import { ComissaoDiferenciada, type AdicionalLinha } from "./ComissaoDiferenciada";
 
 type Categoria = "BAR" | "LOJA";
-type Dados = {
-  pote: {
-    ativo: boolean; percentualBps: number;
-    fichas: { servicoId: string; nome: string; fichas: number }[];
-    ajustes: { barbeiroId: string; nome: string; adicionalBps: number; diferenciadaBps: number | null }[];
-  };
+type Adicionais = { hoje: string; fechadas: string[]; adicionais: AdicionalLinha[] };
+type Dados = Adicionais & {
+  assinaturas: { ativo: boolean; percentualBps: number; creditos: { servicoId: string; nome: string; creditos: number }[] };
   faixas: { categoria: Categoria; minimoCentavos: number; percentualBps: number }[];
+  barbeiros: { id: string; nome: string }[];
 };
 // No formulario: percentuais como texto ("35", "5,5") e valores em reais ("100,00").
 type Form = {
   ativo: boolean; percentual: string;
-  fichas: Record<string, string>;
-  ajustes: Record<string, { adicional: string; diferenciada: string }>;
+  creditos: Record<string, string>;
   faixas: { chave: number; categoria: Categoria; minimo: string; percentual: string }[];
 };
 
@@ -28,14 +26,13 @@ let seq = 0;
 
 function paraForm(d: Dados): Form {
   return {
-    ativo: d.pote.ativo, percentual: pctTexto(d.pote.percentualBps),
-    fichas: Object.fromEntries(d.pote.fichas.map((f) => [f.servicoId, String(f.fichas)])),
-    ajustes: Object.fromEntries(d.pote.ajustes.map((a) => [a.barbeiroId, { adicional: a.adicionalBps ? pctTexto(a.adicionalBps) : "", diferenciada: a.diferenciadaBps === null ? "" : pctTexto(a.diferenciadaBps) }])),
+    ativo: d.assinaturas.ativo, percentual: pctTexto(d.assinaturas.percentualBps),
+    creditos: Object.fromEntries(d.assinaturas.creditos.map((f) => [f.servicoId, String(f.creditos)])),
     faixas: d.faixas.map((f) => ({ chave: ++seq, categoria: f.categoria, minimo: centavosParaTexto(f.minimoCentavos), percentual: pctTexto(f.percentualBps) })),
   };
 }
 
-/** Pote de assinaturas (como o Dpote do CashBarber) e comissao de produtos por faixa de venda. */
+/** Comissao das assinaturas (o "pote" do CashBarber), comissao diferenciada e comissao de produtos por faixa. */
 export function ComissoesExtras() {
   const [d, setD] = useState<Dados | null>(null);
   const [f, setF] = useState<Form | null>(null);
@@ -48,23 +45,19 @@ export function ComissoesExtras() {
   async function salvar() {
     if (!d || !f) return;
     const body = {
-      pote: {
+      assinaturas: {
         ativo: f.ativo, percentualBps: pctValor(f.percentual),
-        fichas: d.pote.fichas.map((s) => ({ servicoId: s.servicoId, fichas: Math.round(Number(f.fichas[s.servicoId] || "0")) })),
-        ajustes: d.pote.ajustes.map((a) => {
-          const x = f.ajustes[a.barbeiroId];
-          return { barbeiroId: a.barbeiroId, adicionalBps: pctValor(x?.adicional ?? ""), diferenciadaBps: x?.diferenciada?.trim() ? pctValor(x.diferenciada) : null };
-        }),
+        creditos: d.assinaturas.creditos.map((s) => ({ servicoId: s.servicoId, creditos: Math.round(Number(f.creditos[s.servicoId] || "0")) })),
       },
       faixas: f.faixas.map((x) => ({ categoria: x.categoria, minimoCentavos: paraCentavos(x.minimo || "0"), percentualBps: pctValor(x.percentual) })),
     };
-    const nums = [body.pote.percentualBps, ...body.pote.fichas.map((x) => x.fichas), ...body.pote.ajustes.flatMap((a) => [a.adicionalBps, a.diferenciadaBps ?? 0]), ...body.faixas.flatMap((x) => [x.minimoCentavos, x.percentualBps])];
+    const nums = [body.assinaturas.percentualBps, ...body.assinaturas.creditos.map((x) => x.creditos), ...body.faixas.flatMap((x) => [x.minimoCentavos, x.percentualBps])];
     if (nums.some((n) => !Number.isFinite(n) || n < 0)) return setMsg({ t: "Confira os valores: tem campo inválido.", erro: true });
     setSalvando(true);
     setMsg(null);
     try {
       aplicar(await api<Dados>("/api/rh/comissoes/extras", { method: "PUT", body }));
-      setMsg({ t: "Pote e comissão de produtos salvos." });
+      setMsg({ t: "Comissão das assinaturas e de produtos salvas." });
     } catch (e) {
       setMsg({ t: (e as Error).message, erro: true });
     } finally {
@@ -80,49 +73,30 @@ export function ComissoesExtras() {
 
       <section className="cartao space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="font-semibold">Pote de assinaturas</h2>
+          <h2 className="font-semibold">Comissão das assinaturas</h2>
           <label className="ml-auto flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={f.ativo} onChange={(e) => muda({ ativo: e.target.checked })} /> Ligado
+            <input type="checkbox" checked={f.ativo} onChange={(e) => muda({ ativo: e.target.checked })} /> Ligada
           </label>
         </div>
-        <p className="text-xs text-zinc-500">
-          No período, <b>{f.percentual || "0"}%</b> do que entrou de mensalidades vira o pote. Ele é dividido entre os barbeiros pelas fichas dos
-          atendimentos feitos pelo plano (ex.: corte 40, barba 20). Ligado, o pote substitui a coluna “Pelo plano” das regras acima.
-        </p>
+        <div className="space-y-1 text-xs text-zinc-500">
+          <p><b>Receita de Assinaturas</b>: mensalidades pagas no período. Menos os estornos, vira a <b>Receita Distribuível</b> (as taxas do meio de pagamento ficam com a barbearia).</p>
+          <p>Cada atendimento pelo plano gera <b>Créditos de Atendimento</b> conforme o serviço (ex.: corte 40, barba 20). Valor do crédito = Receita Distribuível ÷ créditos de todos; receita atribuída ao barbeiro = créditos dele × valor do crédito.</p>
+          <p>Comissão = receita atribuída × <b>{f.percentual || "0"}%</b> (percentual base) + a comissão diferenciada de cada um. Ligada, substitui a coluna “Pelo plano” das regras acima.</p>
+        </div>
         <div className="flex items-center gap-2">
-          <label className="rotulo m-0">% do faturamento de assinaturas</label>
+          <label className="rotulo m-0">Percentual base das assinaturas (%)</label>
           <input className="campo w-20 py-1.5 text-right" inputMode="decimal" value={f.percentual} onChange={(e) => muda({ percentual: e.target.value })} />
         </div>
         <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
-          {d.pote.fichas.map((s) => (
+          {d.assinaturas.creditos.map((s) => (
             <label key={s.servicoId} className="flex items-center justify-between gap-2 border-t border-zinc-200 py-1 text-sm">
               <span>{s.nome}</span>
               <span className="flex items-center gap-1">
-                <input className="campo w-16 py-1 text-right" inputMode="numeric" value={f.fichas[s.servicoId] ?? "0"} onChange={(e) => muda({ fichas: { ...f.fichas, [s.servicoId]: e.target.value.replace(/\D/g, "") } })} />
-                <span className="text-xs text-zinc-500">fichas</span>
+                <input className="campo w-16 py-1 text-right" inputMode="numeric" value={f.creditos[s.servicoId] ?? "0"} onChange={(e) => muda({ creditos: { ...f.creditos, [s.servicoId]: e.target.value.replace(/\D/g, "") } })} />
+                <span className="text-xs text-zinc-500">créditos</span>
               </span>
             </label>
           ))}
-        </div>
-        <h3 className="pt-2 text-sm font-semibold">Ajuste por barbeiro (opcional)</h3>
-        <p className="text-xs text-zinc-500">Adicional: soma ao % do pote (ex.: 35% + 5% = 40%). Diferenciada: usa esse % no lugar do pote. Em branco = sem ajuste.</p>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[420px] text-sm">
-            <thead><tr className="text-left text-xs text-zinc-500"><th className="py-1">Barbeiro</th><th>Adicional (%)</th><th>Diferenciada (%)</th></tr></thead>
-            <tbody>
-              {d.pote.ajustes.map((a) => {
-                const x = f.ajustes[a.barbeiroId] ?? { adicional: "", diferenciada: "" };
-                const set = (y: Partial<typeof x>) => muda({ ajustes: { ...f.ajustes, [a.barbeiroId]: { ...x, ...y } } });
-                return (
-                  <tr key={a.barbeiroId} className="border-t border-zinc-200">
-                    <td className="py-1.5 font-medium">{a.nome}</td>
-                    <td><input className="campo w-20 py-1 text-right" inputMode="decimal" value={x.adicional} onChange={(e) => set({ adicional: e.target.value })} /></td>
-                    <td><input className="campo w-20 py-1 text-right" inputMode="decimal" value={x.diferenciada} onChange={(e) => set({ diferenciada: e.target.value })} /></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
       </section>
 
@@ -149,7 +123,9 @@ export function ComissoesExtras() {
         ))}
       </section>
 
-      <button className="btn-primario" disabled={salvando} onClick={salvar}><Save size={16} /> {salvando ? "Salvando…" : "Salvar pote e produtos"}</button>
+      <button className="btn-primario" disabled={salvando} onClick={salvar}><Save size={16} /> {salvando ? "Salvando…" : "Salvar assinaturas e produtos"}</button>
+
+      <ComissaoDiferenciada barbeiros={d.barbeiros} inicial={d} percentualBase={d.assinaturas.percentualBps} />
     </div>
   );
 }
