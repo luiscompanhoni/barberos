@@ -17,6 +17,8 @@ export type AgendamentoApi = {
   pagoAntes?: boolean;
   /** Premios de jogo que o cliente vai usar neste horario. */
   premios?: { rotulo: string; codigo: string }[];
+  /** Servicos adicionais lancados na comanda (ex.: sobrancelha). */
+  adicionais?: string[];
 };
 
 export type IntervaloIso = { inicio: string; fim: string };

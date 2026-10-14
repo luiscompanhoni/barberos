@@ -11,6 +11,7 @@ import { linkAbsoluto } from "@/lib/assinaturas/cobrancas";
 import { aplicarNaComanda, sincronizarAntecipado } from "@/lib/agenda/antecipado";
 import { estornosDaComanda } from "@/lib/estornos/servico";
 import { devolverPremiosDaComanda } from "@/lib/jogos/comanda";
+import { cancelarAdicionalDoItem } from "./adicional";
 import { descricaoServico, erroNoPagamento, resumoComanda, valorCashback } from "./regras";
 
 type Tx = Prisma.TransactionClient;
@@ -149,6 +150,8 @@ export async function alterarItem(s: Sessao, itemId: string, quantidade: number)
     await travar(tx, item.comandaId);
     if (quantidade <= 0) {
       await tx.itemComanda.delete({ where: { id: itemId } });
+      // Servico adicional lancado na comanda: o atendimento adicional sai junto.
+      await cancelarAdicionalDoItem(tx, item.agendamentoId);
       await auditar(tx, s.usuarioId, "remover_item", "comanda", item.comandaId, { descricao: item.descricao, quantidade: item.quantidade });
       return;
     }

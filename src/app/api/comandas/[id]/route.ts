@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { exigirSessao } from "@/lib/auth/sessao";
+import { adicionarServico } from "@/lib/comandas/adicional";
 import { modoMaquininha } from "@/lib/comandas/maquininha";
 import { schemaAcaoComanda } from "@/lib/comandas/schemas";
 import { adicionarAvulso, adicionarProduto, cancelarComanda, definirDesconto, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
@@ -13,7 +14,7 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/comandas/[
   return NextResponse.json({ comanda: await detalheComanda(id), maquininha: modoMaquininha() });
 });
 
-/** Acoes na comanda: lancar produto/avulso, desconto, fechar, cancelar. */
+/** Acoes na comanda: lancar produto/servico adicional/avulso, desconto, fechar, cancelar. */
 export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/comandas/[id]">) => {
   const s = await exigirSessao();
   const { id } = await ctx.params;
@@ -25,6 +26,9 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/comandas/
       break;
     case "avulso":
       await adicionarAvulso(s, id, b.descricao, b.precoCentavos, b.quantidade);
+      break;
+    case "servico":
+      await adicionarServico(s, id, b.servicoId, b.barbeiroId);
       break;
     case "desconto":
       await definirDesconto(s, id, b.descontoCentavos);

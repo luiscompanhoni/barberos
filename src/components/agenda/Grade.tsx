@@ -257,7 +257,7 @@ function Cartao(p: {
         {ag.assinante && <span className="rounded bg-violet-100 px-1 text-[10px] text-violet-800">Assinante</span>}
         {ag.semPreferencia && <span title="Sem preferência de barbeiro: pode trocar" className="rounded bg-sky-100 px-1 text-[10px] text-sky-800">S/P</span>}
       </div>
-      <div className="truncate text-zinc-700">{p.horario} · {ag.servico.nome}</div>
+      <div className="truncate text-zinc-700">{p.horario} · {ag.servico.nome}{ag.adicionais?.length ? ` + ${ag.adicionais.join(" + ")}` : ""}</div>
       {p.alturaPx > 56 && (
         <div className="truncate text-[11px] text-zinc-500">
           {ROTULO_STATUS[ag.status]} · {ROTULO_ORIGEM[ag.origem] ?? ag.origem}

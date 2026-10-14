@@ -11,7 +11,9 @@ import { ErroNegocio } from "@/lib/erros";
 import { _usarFetch } from "@/lib/pagamentos/pagarme";
 import { lancarMovimento } from "@/lib/comandas/estoque";
 import { cancelarPagamento, registrarPagamento, sincronizarPedido } from "@/lib/comandas/maquininha";
-import { abrirComanda, adicionarProduto, cancelarComanda, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
+import { alterarStatus } from "@/lib/agenda/agendamentos";
+import { adicionarServico } from "@/lib/comandas/adicional";
+import { abrirComanda, adicionarProduto, alterarItem, cancelarComanda, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
 
 const ok = (c: boolean, msg: string) => console.log(`${c ? "OK  " : "FALHOU"} ${msg}`);
 const falha = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
@@ -145,6 +147,34 @@ async function main() {
   ok(cv2.estoque === 9, "cancelar comanda fechada devolve os produtos ao estoque");
   const movs = await db.movimentoEstoque.findMany({ where: { produtoId: cerveja.id }, orderBy: { criadoEm: "asc" } });
   ok(movs.map((m) => m.tipo).join(",") === "ENTRADA,AJUSTE,VENDA,ESTORNO" && movs.at(-1)!.saldoApos === 9, "histórico completo com saldo após cada movimento");
+
+  // ---- servico adicional (ex.: sobrancelha junto do corte)
+  const extra = await db.barbeiroServico.findFirstOrThrow({ where: { barbeiroId: barbeiro.id, servico: { ativo: true } }, include: { servico: true } });
+  const inicio2 = new Date(Date.UTC(2031, 0, 8, 12, (Date.now() % 40) + 5));
+  const ag2 = await db.agendamento.create({
+    data: { barbeiroId: barbeiro.id, clienteId: cliente.id, servicoId: servico.id, inicio: inicio2, fim: new Date(+inicio2 + 30 * 60_000), origem: "RECEPCAO", precoCentavos: 5000, status: "EM_ATENDIMENTO" },
+  });
+  const cm = await abrirComanda(s, { agendamentoId: ag2.id });
+  // Proximo cliente do barbeiro logo depois: o adicional nao pode travar por "horario ocupado".
+  await db.agendamento.create({
+    data: { barbeiroId: barbeiro.id, clienteId: cliente.id, servicoId: servico.id, inicio: ag2.fim, fim: new Date(+ag2.fim + 30 * 60_000), origem: "RECEPCAO", precoCentavos: 5000, status: "MARCADO" },
+  });
+  const adic = await adicionarServico(s, cm.id, extra.servicoId, barbeiro.id);
+  const precoExtra = extra.precoCentavos ?? extra.servico.precoCentavos;
+  ok(adic.adicionalDeId === ag2.id && adic.status === "EM_ATENDIMENTO" && adic.precoCentavos === precoExtra, "adicional ligado ao atendimento, mesmo status, preço do barbeiro");
+  let dc = await detalheComanda(cm.id);
+  ok(dc.itens.some((i) => i.agendamentoId === adic.id && i.precoUnitCentavos === precoExtra && i.barbeiroId === barbeiro.id), "adicional entra na comanda com o barbeiro (comissão)");
+  ok(dc.resumo.total === 5000 + precoExtra, "total soma o serviço adicional");
+  await alterarStatus(ag2.id, "CONCLUIDO", s);
+  ok((await db.agendamento.findUniqueOrThrow({ where: { id: adic.id } })).status === "CONCLUIDO", "concluir o atendimento conclui o adicional junto");
+  const semCliente = await abrirComanda(s, { nomeAvulso: "Balcão" });
+  ok((await falha(() => adicionarServico(s, semCliente.id, extra.servicoId, barbeiro.id)))?.message.includes("avulso") === true, "comanda sem cliente pede item avulso");
+  await cancelarComanda(s, semCliente.id, "teste");
+  await alterarItem(s, dc.itens.find((i) => i.agendamentoId === adic.id)!.id, 0);
+  ok((await db.agendamento.findUniqueOrThrow({ where: { id: adic.id } })).status === "CANCELADO", "tirar o adicional da comanda cancela o atendimento adicional");
+  dc = await detalheComanda(cm.id);
+  ok(dc.resumo.total === 5000, "total volta ao valor do corte");
+  await cancelarComanda(s, cm.id, "teste");
 
   await limpar();
   await db.$disconnect();

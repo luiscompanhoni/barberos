@@ -54,6 +54,8 @@ export async function carregarDia(
       where: {
         barbeiroId: { in: barbeiroIds },
         status: { in: [...STATUS_ATIVOS] },
+        // Adicional (ex.: sobrancelha lancada na comanda) acontece junto do principal: nao ocupa a agenda.
+        adicionalDeId: null,
         inicio: { lt: new Date(dia.fim) },
         fim: { gt: new Date(dia.inicio) },
         ...(opts.ignorarAgendamentoId ? { id: { not: opts.ignorarAgendamentoId } } : {}),

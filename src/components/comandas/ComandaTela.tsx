@@ -92,6 +92,8 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
             desabilitado={ocupado}
             podeAvulso={gerente}
             onProduto={(produtoId) => executar(`/api/comandas/${id}`, { acao: "produto", produtoId, quantidade: 1 })}
+            onServico={c.cliente && c.itens.some((i) => i.agendamentoId) ? (servicoId, barbeiroId) => executar(`/api/comandas/${id}`, { acao: "servico", servicoId, barbeiroId }) : undefined}
+            barbeiroPadrao={c.itens.find((i) => i.agendamentoId)?.barbeiroId ?? null}
             onAvulso={(descricao, precoCentavos) => executar(`/api/comandas/${id}`, { acao: "avulso", descricao, precoCentavos, quantidade: 1 })}
           />
         )}

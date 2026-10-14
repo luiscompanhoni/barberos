@@ -20,6 +20,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
       where: {
         barbeiroId: { in: ids },
         status: { not: "CANCELADO" },
+        adicionalDeId: null,
         inicio: { lt: new Date(fim) },
         fim: { gt: new Date(inicio) },
       },
@@ -28,6 +29,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
         servico: { select: { id: true, nome: true } },
         antecipado: { select: { status: true } },
         premiosGanhos: { where: { status: "RESERVADO" }, select: { rotulo: true, codigo: true } },
+        adicionais: { where: { status: { not: "CANCELADO" } }, select: { servico: { select: { nome: true } } } },
       },
       orderBy: { inicio: "asc" },
     }),
@@ -58,6 +60,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
       assinante: a.assinaturaId !== null,
       pagoAntes: a.antecipado?.status === "PAGO",
       premios: a.premiosGanhos,
+      adicionais: a.adicionais.map((x) => x.servico.nome),
     })),
     dias: porDia.map(({ data, mapa }) => ({
       data,

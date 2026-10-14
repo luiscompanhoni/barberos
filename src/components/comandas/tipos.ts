@@ -20,6 +20,8 @@ export type Item = {
   id: string;
   produtoId: string | null;
   agendamentoId: string | null;
+  /** Quem atendeu (servico) ou vendeu. */
+  barbeiroId: string | null;
   descricao: string;
   quantidade: number;
   precoUnitCentavos: number;

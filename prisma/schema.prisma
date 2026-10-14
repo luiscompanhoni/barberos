@@ -307,12 +307,18 @@ model Agendamento {
   antecipado     PagamentoAntecipado?
   /// Premios de jogo reservados para usar neste atendimento.
   premiosGanhos  PremioGanho[]
+  /// Servico adicional lancado na comanda (ex.: sobrancelha junto do corte): fica ligado ao atendimento principal,
+  /// conta para comissao/plano/relatorios, mas nao ocupa a agenda (fora da regra de sobreposicao).
+  adicionalDeId  String?
+  adicionalDe    Agendamento?         @relation("adicionais", fields: [adicionalDeId], references: [id], onDelete: Cascade)
+  adicionais     Agendamento[]        @relation("adicionais")
   criadoPorId    String?
   criadoEm       DateTime             @default(now()) @db.Timestamptz(3)
   atualizadoEm   DateTime             @updatedAt @db.Timestamptz(3)
 
   @@index([barbeiroId, inicio])
   @@index([clienteId])
+  @@index([adicionalDeId])
   @@map("agendamentos")
 }
 

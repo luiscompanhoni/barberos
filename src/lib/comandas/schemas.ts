@@ -20,6 +20,7 @@ export const schemaMovimento = z.object({
 export const schemaAcaoComanda = z.discriminatedUnion("acao", [
   z.object({ acao: z.literal("produto"), produtoId: z.string().min(1), quantidade: z.number().int().min(1).max(999).default(1) }),
   z.object({ acao: z.literal("avulso"), descricao: z.string().trim().min(2).max(80), precoCentavos: z.number().int().min(0).max(100_000_00), quantidade: z.number().int().min(1).max(999).default(1) }),
+  z.object({ acao: z.literal("servico"), servicoId: z.string().min(1).max(40), barbeiroId: z.string().min(1).max(40) }),
   z.object({ acao: z.literal("desconto"), descontoCentavos: z.number().int().min(0).max(100_000_00) }),
   z.object({ acao: z.literal("fechar") }),
   z.object({ acao: z.literal("saldo") }),

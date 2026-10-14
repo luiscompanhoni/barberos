@@ -243,6 +243,8 @@ export async function alterarStatus(id: string, status: StatusAgendamento, ator:
   try {
     const ag = await db.$transaction(async (tx) => {
       const novo = await tx.agendamento.update({ where: { id }, data: { status } });
+      // Servico adicional da comanda acompanha o atendimento principal (concluiu, faltou, cancelou...).
+      await tx.agendamento.updateMany({ where: { adicionalDeId: id }, data: { status } });
       await auditar(tx, ator.usuarioId, "status", "agendamento", id, { de: atual.status, para: status });
       return novo;
     });
