@@ -13,8 +13,15 @@
 }
 
 # Endereco antigo do painel (CADDY_PAINEL_ANTIGO no .env, ex.: o provisorio sslip.io) vai para o novo.
+# A API continua atendendo nele: webhooks cadastrados no endereco antigo (Pagar.me, Celcash) nao seguem
+# redirecionamento e falhariam.
 {$CADDY_PAINEL_ANTIGO} {
-	redir {$CADDY_IP_DESTINO}{uri}
+	handle /api/* {
+		reverse_proxy app:3000
+	}
+	handle {
+		redir {$CADDY_IP_DESTINO}{uri}
+	}
 }
 
 # Quem digita so o IP do servidor (CADDY_IP no .env) vai para o painel. O Let's Encrypt

@@ -318,6 +318,18 @@ export type EstornoPagarme = {
 };
 
 /**
+ * Motivo legivel de um estorno recusado. A Pagar.me manda algo como "action_forbidden |  | Saldo insuficiente.":
+ * o estorno de cartao sai do saldo da conta, e sem saldo disponivel ela recusa.
+ */
+export function motivoRecusaEstorno(erros?: { message?: string }[]) {
+  const msgs = (erros ?? []).map((e) => (e.message ?? "").split("|").map((p) => p.trim()).filter(Boolean).pop() ?? "").filter(Boolean);
+  if (msgs.some((m) => /saldo insuficiente/i.test(m))) {
+    return "Pagar.me recusou o estorno: saldo insuficiente na conta. O estorno sai do saldo disponível no Pagar.me; espere o valor ficar disponível (ou adicione saldo) e tente de novo.";
+  }
+  return `Pagar.me recusou o estorno${msgs.length ? `: ${msgs.join("; ")}` : "."}`;
+}
+
+/**
  * Estorna (total ou parcial) uma cobranca paga: DELETE /charges/{id} com `amount`.
  * Aceita o id da cobranca (ch_) ou do pedido (or_: usa a cobranca paga dele).
  * No Pix a Pagar.me devolve sozinha quando suportado (pode ficar "pending_refund").
@@ -330,11 +342,11 @@ export async function estornarCobranca(id: string, valorCentavos?: number): Prom
     if (!paga) throw new Error("Pagar.me: o pedido não tem cobrança paga para estornar.");
     cobrancaId = paga.id;
   }
-  const c = await chamar<CobrancaPagarme & { last_transaction?: { id?: string; status?: string } | null }>(
+  const c = await chamar<CobrancaPagarme & { last_transaction?: { id?: string; status?: string; gateway_response?: { errors?: { message?: string }[] } } | null }>(
     "DELETE", `/charges/${encodeURIComponent(cobrancaId)}`, valorCentavos ? { amount: valorCentavos } : undefined,
   );
   const status = c.last_transaction?.status ?? c.status;
-  if (status === "failed" || c.status === "failed" || status === "refund_failed") throw new Error(`Pagar.me recusou o estorno (${status}).`);
+  if (status === "failed" || c.status === "failed" || status === "refund_failed") throw new Error(motivoRecusaEstorno(c.last_transaction?.gateway_response?.errors));
   return { cobrancaId, estornoId: c.last_transaction?.id ?? c.id, status, pendente: status === "pending_refund" || status === "processing" || c.status === "pending_refund" };
 }
 

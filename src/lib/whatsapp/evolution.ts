@@ -26,7 +26,7 @@ async function chamar<T>(metodo: string, caminho: string, corpo?: unknown): Prom
     method: metodo,
     headers: { apikey: chave, "Content-Type": "application/json" },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(30_000), // o envio do bot espera o "digitando..." (ate ~14 s)
   });
   const json = (await r.json().catch(() => ({}))) as T;
   return { status: r.status, json };
@@ -37,10 +37,12 @@ function erroDe(json: unknown) {
   return Array.isArray(r) ? r.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join("; ") : JSON.stringify(json).slice(0, 300);
 }
 
-export async function enviarTextoEvolution(para: string, texto: string) {
+/** `digitandoMs`: a Evolution mostra "digitando..." por esse tempo antes de entregar a mensagem. */
+export async function enviarTextoEvolution(para: string, texto: string, digitandoMs = 0) {
   const { status, json } = await chamar<{ key?: { id?: string } }>("POST", `/message/sendText/${instancia()}`, {
     number: para.replace(/\D/g, ""),
     text: texto.slice(0, 4096),
+    ...(digitandoMs > 0 ? { delay: digitandoMs } : {}),
   });
   if (status >= 300) throw new Error(`WhatsApp (Evolution) ${status}: ${erroDe(json)}`);
   return { wamid: json.key?.id ?? null };
