@@ -26,6 +26,7 @@
     "teste:financeiro": "tsx --env-file=.env scripts/teste-financeiro.ts",
     "teste:rh": "tsx --env-file=.env scripts/teste-rh.ts",
     "teste:despesas": "tsx --env-file=.env scripts/teste-despesas.ts",
+    "teste:backups": "tsx --env-file=.env scripts/teste-backups.ts",
     "teste:campanhas": "tsx --env-file=.env scripts/teste-campanhas.ts",
     "teste:checkout": "tsx --env-file=.env scripts/teste-checkout.ts",
     "teste:estorno": "tsx --env-file=.env scripts/teste-estorno.ts",

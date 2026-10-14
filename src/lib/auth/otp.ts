@@ -1,4 +1,5 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { ehHomologacao } from "@/lib/ambiente";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
 import { enviarTemplate, enviarTexto, provedorWhatsApp } from "@/lib/whatsapp/canal";
@@ -19,12 +20,14 @@ function hash(telefone: string, codigo: string) {
  * reenvio sao desligados. Nunca ativo em producao nem com o WhatsApp ligado.
  */
 export function modoCodigoNaTela(): boolean {
+  // Homologacao (protegida por senha no Caddy): o codigo aparece na tela para quem esta testando.
+  if (ehHomologacao()) return true;
   return process.env.NODE_ENV !== "production" && (process.env.OTP_PROVIDER ?? "console") === "console";
 }
 
 /** Canal de entrega do codigo: "console" (teste local) ou "whatsapp" (producao). */
 async function entregar(telefone: string, codigo: string) {
-  const provedor = process.env.OTP_PROVIDER ?? "console";
+  const provedor = ehHomologacao() ? "console" : (process.env.OTP_PROVIDER ?? "console");
   if (provedor === "console") {
     console.log(`\n[BarberOS] Código de acesso para ${telefone}: ${codigo}\n`);
     return;

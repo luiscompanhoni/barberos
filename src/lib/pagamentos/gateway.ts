@@ -8,6 +8,7 @@
  *   (/c/pagamento-simulado/...) que dispara o mesmo processamento do webhook.
  */
 import type { FormaPagamento } from "@prisma/client";
+import { ehHomologacao } from "@/lib/ambiente";
 
 export type CobrancaGateway = {
   id: string;
@@ -109,6 +110,7 @@ export type Provedor = Gateway["nome"];
 
 /** Provedor do env: decide so o que e NOVO (registros antigos seguem o prefixo do id). */
 export function provedorPagamento(): Provedor {
+  if (ehHomologacao()) return "simulado";
   const p = process.env.PAGAMENTOS_PROVIDER;
   return p === "pagarme" || p === "asaas" || p === "celcash" ? p : "simulado";
 }
@@ -137,6 +139,8 @@ export async function gateway(): Promise<Gateway> {
 }
 
 async function carregar(p: Provedor): Promise<Gateway> {
+  // Homologacao com copia da producao: registros com id da Pagar.me/Celcash tambem vao para o simulado.
+  if (ehHomologacao()) return (await import("./simulado")).simulado;
   switch (p) {
     case "pagarme":
       return (await import("./pagarme")).pagarme;

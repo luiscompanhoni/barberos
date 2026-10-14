@@ -1,0 +1,44 @@
+# BarberOS de HOMOLOGACAO (testes) no mesmo VPS da producao: banco e sistema proprios, sem Caddy proprio (o da
+# producao atende o endereco da homologacao pela rede barberos-proxy), sem backup e sem WhatsApp/pagamento de verdade
+# (AMBIENTE=homologacao forca os simuladores). Subir: bash scripts/deploy.sh root@IP homolog
+name: barberos-homolog
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: barberos
+      POSTGRES_PASSWORD: ${DB_SENHA:?defina DB_SENHA no .env}
+      POSTGRES_DB: barberos
+    volumes:
+      - pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U barberos"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Nome diferente de "app" de proposito: na rede barberos-proxy o Caddy tambem enxerga a producao, e "app" e ela.
+  app-homolog:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: ../.env
+    environment:
+      DATABASE_URL: postgresql://barberos:${DB_SENHA}@db:5432/barberos
+      NODE_ENV: production
+      AMBIENTE: homologacao
+    networks: [default, proxy]
+    depends_on:
+      db:
+        condition: service_healthy
+
+networks:
+  proxy:
+    name: barberos-proxy
+    external: true
+
+volumes:
+  pg:

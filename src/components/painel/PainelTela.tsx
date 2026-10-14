@@ -37,6 +37,7 @@ type Painel = {
     esperas: { id: string; data: string; periodo: string; cliente: string }[];
     fuso: string;
   };
+  backup: { titulo: string; detalhe: string } | null;
   vendas: { comandas: number; abertas: number; totalCentavos: number; porTipo: { servicos: number; bar: number; loja: number; outros: number } };
   pico: { dias: number; horas: number[]; linhas: { diaSemana: number; valores: (number | null)[] }[] } | null;
 };
@@ -86,7 +87,7 @@ export function PainelTela({ nome }: { nome: string }) {
   const { dia, mes, pendencias: pe, pico } = p;
   const variacao = mes && mes.anterior.centavos ? (mes.atual.centavos - mes.anterior.centavos) / mes.anterior.centavos : null;
   const hora = new Date().getHours();
-  const totalPend = pe.semBaixa.length + pe.conversas.length + pe.foraDoExpediente.length + pe.assinaturasAtrasadas.length + pe.produtosAcabando.length + (pe.estornosPendentes ?? 0);
+  const totalPend = pe.semBaixa.length + pe.conversas.length + pe.foraDoExpediente.length + pe.assinaturasAtrasadas.length + pe.produtosAcabando.length + (pe.estornosPendentes ?? 0) + (p.backup ? 1 : 0);
 
   async function cobrar(id: string) {
     try {
@@ -145,6 +146,12 @@ export function PainelTela({ nome }: { nome: string }) {
           <h2 className="font-semibold">Precisa de ação</h2>
           <span className="text-sm text-zinc-500">{totalPend ? `${totalPend} pendência(s)` : "tudo em dia"}</span>
         </div>
+
+        {p.backup && (
+          <Bloco titulo={p.backup.titulo} qtd={1} acao={<Link className="text-sm underline" href="/equipe#backups">ver backups</Link>}>
+            <li className="text-zinc-600">{p.backup.detalhe}</li>
+          </Bloco>
+        )}
 
         {!!pe.estornosPendentes && (
           <Bloco titulo={permissoes.estorno ? "Estornos esperando a sua aprovação" : "Estornos esperando o dono"} qtd={pe.estornosPendentes}

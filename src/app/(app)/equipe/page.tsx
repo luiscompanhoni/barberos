@@ -3,6 +3,7 @@ import { AutomacoesTela } from "@/components/AutomacoesTela";
 import { AcessosTela } from "@/components/conta/AcessosTela";
 import { ConfiguracaoTela } from "@/components/ConfiguracaoTela";
 import { EquipeTela } from "@/components/EquipeTela";
+import { BackupsTela } from "@/components/conta/BackupsTela";
 import { PermissoesTela } from "@/components/conta/PermissoesTela";
 import { GESTAO, sessaoAtual } from "@/lib/auth/sessao";
 
@@ -15,6 +16,7 @@ export default async function Equipe() {
       <AutomacoesTela />
       {s.papel === "DONO" && <AcessosTela />}
       {s.papel === "DONO" && <PermissoesTela />}
+      {s.papel === "DONO" && <BackupsTela />}
       <EquipeTela />
     </div>
   );

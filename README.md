@@ -141,7 +141,7 @@ bash scripts/deploy.sh root@IP-DO-VPS
 - Na primeira vez, instala o Docker e cria `/opt/barberos/.env` a partir de `deploy/env.producao.exemplo`, com
   `DB_SENHA` e `SESSION_SECRET` aleatórios. Preencha `DONO_TELEFONE`, `ANTHROPIC_API_KEY` etc. e rode de novo.
 - Nas próximas, só troca o código: o `.env` e os backups do servidor ficam.
-- Backup: cópia do banco todo dia às 03h em `/opt/barberos/backups`, guardada por 14 dias.
+- Backup: todo dia às 03h e antes de cada deploy (ver "Backups e restauração").
 - O banco não fica exposto: só os containers falam com ele.
 - Erro inesperado: a pessoa vê "Algo deu errado" com um código; no servidor,
   `cd /opt/barberos && docker compose logs app | grep "codigo=<código>"` mostra a linha `[erro]` com a rota e a causa.
@@ -157,10 +157,62 @@ Variáveis principais (a lista completa e comentada está em `deploy/env.produca
 | `WHATSAPP_*`, `OTP_PROVIDER` | ver "Bot do WhatsApp". Enquanto `OTP_PROVIDER="console"`, o código de login aparece só no log do servidor (`docker compose logs app`) |
 | `PAGAMENTOS_PROVIDER`, `PAGARME_*`, `COBRANCA_*` | ver "Ligar a Pagar.me" |
 | `MAQUININHA`, `STONE_POS_*` | ver "Maquininha Stone" |
+| `BACKUP_SENHA`, `BACKUP_S3_*` | cópia criptografada do banco fora do servidor (ver "Backups e restauração") |
 
 **Railway (alternativa):** New Project → Deploy from GitHub repo (detecta o Dockerfile) → Add PostgreSQL →
 preencha as variáveis (`DATABASE_URL` do Postgres e `SESSION_SECRET` com 64 caracteres aleatórios) → Settings →
 Networking → Generate Domain (ou seu domínio próprio). Lá não há Evolution nem o backup do compose.
+
+### Backups e restauração
+
+- **Todo dia às 03h** (e assim que o servidor sobe, se passou da hora desligado) o container `backup` copia o banco,
+  **restaura a cópia num banco separado** e confere: mesmas tabelas, mesma última migração e nada a menos do que o banco
+  tinha. Backup que não restaurou aparece como erro. As cópias ficam 14 dias em `/opt/barberos/backups`.
+- **Antes de cada deploy** o `scripts/deploy.sh` faz outra cópia (`...-antes-do-deploy.sql.gz`). Se ela falhar, o
+  deploy para antes de trocar qualquer coisa.
+- **Painel:** Configurações → Backups lista cada cópia (restaurada/conferida, cópia fora). Se o backup atrasar mais de
+  26 h ou falhar, aparece em "Precisa de ação" para o dono.
+- **Cópia fora do servidor** (recomendado; sem ela, perder o VPS é perder os backups):
+  1. Crie um bucket privado num armazenamento S3: Backblaze B2 ou Cloudflare R2 (os dois têm cota grátis e cobram
+     centavos por GB). Crie uma chave de acesso só para esse bucket.
+  2. No `/opt/barberos/.env`: `BACKUP_S3_BUCKET`, `BACKUP_S3_ENDPOINT` (ex.: `https://<conta>.r2.cloudflarestorage.com`
+     ou `https://s3.us-west-004.backblazeb2.com`), `BACKUP_S3_CHAVE`, `BACKUP_S3_SEGREDO` e `BACKUP_SENHA` (uma senha
+     longa; **guarde-a fora do servidor**, num gerenciador de senhas: sem ela a cópia não abre).
+  3. Rode o deploy. Cada backup sobe criptografado (AES-256) e fica 30 dias lá.
+- **Comandos** (no servidor, em `/opt/barberos`, prefixo `docker compose --env-file .env -f deploy/docker-compose.yml`):
+  - backup agora: `... exec backup backup.sh agora`
+  - testar um arquivo: `... exec backup backup.sh verificar /backups/barberos-AAAAMMDD-HHMM.sql.gz`
+- **Restaurar** (a produção só muda no último passo):
+  1. `... exec backup backup.sh restaurar /backups/<arquivo>.sql.gz` cria o banco `barberos_restaurado`, sem tocar no
+     de produção. Confira se é o que você quer.
+  2. Para colocar no lugar: `... stop app evolution backup`, depois
+     `... exec db psql -U barberos -d postgres -c 'ALTER DATABASE barberos RENAME TO barberos_antigo' -c 'ALTER DATABASE barberos_restaurado RENAME TO barberos'`
+     e `... start app evolution backup`. O banco anterior fica como `barberos_antigo` até você apagar.
+  3. Cópia que veio de fora do servidor: baixe o `.enc` e abra com
+     `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in arquivo.sql.gz.enc -out arquivo.sql.gz` (pede a
+     `BACKUP_SENHA`); copie para `/opt/barberos/backups` e siga o passo 1.
+
+### Homologação (ambiente de testes)
+
+Produção é a operação real; a homologação é onde se testa. Fica no mesmo VPS, com banco e sistema próprios, em
+`https://homolog.appblackbarber.com`, protegida por usuário e senha e fora do Google.
+
+- **Nada sai de verdade:** com `AMBIENTE=homologacao` o sistema força WhatsApp, pagamentos e maquininha simulados,
+  mesmo que alguém coloque chave real no `.env`. Uma faixa amarela "HOMOLOGAÇÃO" aparece em todas as telas. O código de
+  login aparece na própria tela.
+- **Instalar:**
+  1. No DNS do domínio, crie o registro `A` de `homolog` apontando para o IP do VPS.
+  2. Rode o deploy da produção uma vez com esta versão (`bash scripts/deploy.sh root@IP`): ele prepara o Caddy.
+  3. `bash scripts/deploy.sh root@IP homolog`. Na primeira vez ele cria `/opt/barberos-homolog/.env`, sobe o sistema
+     e mostra a senha de acesso (usuário `homolog`). A senha fica em `/opt/barberos-homolog/.senha-homolog`.
+  4. Banco vazio: preencha `DONO_TELEFONE` no `.env` da homologação e rode de novo, ou copie a produção (abaixo).
+- **Dados para testar:** `bash scripts/homolog-copiar-producao.sh root@IP` troca o banco da homologação por uma cópia
+  **anonimizada** da produção (`deploy/anonimizar.sql`): clientes viram "Cliente 123" com telefone fictício, sem
+  CPF/e-mail; conversas, auditoria e códigos de login somem; a sessão do WhatsApp não vem. A equipe entra com o mesmo
+  acesso da produção. A produção só é lida.
+- **Rotina:** atualização nova vai primeiro para a homologação (`deploy.sh ... homolog`), de preferência com uma cópia
+  recente da produção (assim as migrações novas rodam em cima de dados parecidos com os reais). Conferiu, aí sim
+  `deploy.sh` da produção.
 
 ### Site e painel (dois endereços, um sistema)
 
@@ -497,7 +549,7 @@ abrir no Excel (fora da pasta do projeto).
   build em cada push na `main` e em cada PR.
 - `npm run teste:<área>`: fluxos completos contra o banco de desenvolvimento, com gateways falsos (sem chamadas
   reais): `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`, `automacoes`,
-  `crescimento`, `login`, `roleta`, `financeiro`, `despesas`, `estorno`, `rh`, `permissoes` e `campanhas`.
+  `crescimento`, `login`, `roleta`, `financeiro`, `despesas`, `estorno`, `rh`, `permissoes`, `campanhas` e `backups`.
 
 ## Papéis e permissões
 

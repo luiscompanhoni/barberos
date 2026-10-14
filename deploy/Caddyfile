@@ -27,3 +27,7 @@
 	}
 	redir {$CADDY_IP_DESTINO}{uri}
 }
+
+# Sites extras gravados no servidor (ex.: a homologacao, criada por "scripts/deploy.sh ... homolog").
+# Sem arquivo nenhum, nao faz nada.
+import /etc/caddy/sites/*.caddy

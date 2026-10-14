@@ -1578,3 +1578,23 @@ model CampanhaEnvio {
   @@index([status, campanhaId])
   @@map("campanha_envios")
 }
+
+/// Backups do banco, gravados pelo container de backup (deploy/backup.sh): cada copia, se a restauracao de teste
+/// num banco separado conferiu e se a copia criptografada foi para fora do servidor.
+model BackupRegistro {
+  id             String   @id
+  /// DIARIO | DEPLOY | MANUAL
+  tipo           String
+  arquivo        String
+  bytes          BigInt
+  /// Restaurou num banco temporario e as contagens bateram.
+  restaurado     Boolean
+  /// Ex.: "68 tabelas · 1734 clientes · 9812 atendimentos".
+  conferencia    String?
+  foraDoServidor Boolean
+  erro           String?
+  criadoEm       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([criadoEm])
+  @@map("backups")
+}

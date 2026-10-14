@@ -95,10 +95,9 @@ Falta:
 ### 41. Motor de comissões: ✅ feito (ver "Concluídos")
 
 ### Outros itens da fase A (vindos dos blocos anteriores)
-- [ ] 36. Backups 🟡: o diário (03h, 14 dias, no próprio VPS) já existe. Falta backup antes de cada deploy, cópia fora
-      do servidor e um teste de restauração.
+- [ ] 36. Backups: criar o bucket fora do servidor e preencher `BACKUP_S3_*` e `BACKUP_SENHA` (ver README). 👤
+- [ ] 38. Homologação: criar o DNS `homolog.appblackbarber.com` e rodar `deploy.sh ... homolog` (ver README). 👤
 - [ ] LGPD ⬜: termos de uso, política de privacidade, consentimento e pedido de exclusão/exportação dos dados.
-- [ ] 38. Ambiente de teste separado (homologação) ⬜: nunca testar na base real.
 
 ---
 
@@ -183,6 +182,15 @@ Falta:
   - Relatório com todos os campos e, num mês inteiro, salário, bônus, descontos e total a pagar.
   - Ajustes antigos convertidos sem mudar o percentual de ninguém.
   - Estorno feito depois do mês fechado desconta no mês em que foi feito (igual ao resumo financeiro).
+- **36. Backups:**
+  - Todo dia às 03h, com **restauração de teste** num banco separado (tabelas, última migração e contagens conferidas).
+  - Backup obrigatório antes de cada deploy (se falhar, o deploy para).
+  - Cópia criptografada fora do servidor (S3: Backblaze B2, Cloudflare R2...).
+  - Painel do dono: Configurações → Backups e alerta se atrasar ou falhar. Restauração documentada no README.
+- **38. Homologação:**
+  - Banco e sistema próprios no mesmo VPS (`homolog.appblackbarber.com`, com senha e fora do Google).
+  - Trava no código: WhatsApp, pagamentos e maquininha sempre simulados; faixa "HOMOLOGAÇÃO" em todas as telas.
+  - Cópia da produção **anonimizada** para testar (`scripts/homolog-copiar-producao.sh`).
 - **4. Funil da campanha da roleta:**
   - Cada mensagem de campanha tem um link próprio (`/c/r/<código>`, sem login).
   - Campanha da roleta: o link dá 1 giro de presente; o prêmio fica no número do cliente e a página leva para agendar.

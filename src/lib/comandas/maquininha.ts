@@ -6,6 +6,7 @@
  * - "simulada": para testar sem maquininha (padrao fora de producao).
  */
 import type { FormaRecebimento } from "@prisma/client";
+import { ehHomologacao } from "@/lib/ambiente";
 import { auditar } from "@/lib/auditoria";
 import { pode } from "@/lib/auth/permissoes";
 import type { Sessao } from "@/lib/auth/sessao";
@@ -17,6 +18,7 @@ import { avisarComanda, ehGerente, lancarPagamento } from "./servico";
 export type ModoMaquininha = "stone" | "simulada" | "manual";
 
 export function modoMaquininha(): ModoMaquininha {
+  if (ehHomologacao()) return "simulada";
   const m = process.env.MAQUININHA;
   if (m === "stone" || m === "simulada" || m === "manual") return m;
   return process.env.NODE_ENV === "production" ? "manual" : "simulada";
