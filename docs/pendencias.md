@@ -69,19 +69,14 @@ camada de envio separada (`src/lib/whatsapp/canal.ts`: oficial, Evolution ou sim
 
 Falta:
 - [ ] Decidir: oficial ou Evolution (QR code). O sistema não pode depender de uma sessão de QR code. 👤
-- [ ] Status de entrega por mensagem (enviada, entregue, lida, falhou).
+- [x] Status de entrega por mensagem (entregue, lida, falhou): gravado pelo webhook da API oficial e da Evolution;
+      aparece nas conversas (✓✓) e no funil das campanhas.
 - [ ] Opt-in explícito e modelos de campanha aprovados na Meta. 👤
 - [ ] Custo por campanha.
 
 ### 5. Antifraude da roleta: ✅ feito (ver "Concluídos")
 
-### 4. Funil da campanha da roleta ⬜
-Hoje ficam registrados o giro, o prêmio, o atendimento e o valor gasto, mas não a origem.
-
-Falta:
-- [ ] Rastrear: mensagem enviada → entregue → clique → landing → giro → prêmio → abriu o app → criou conta →
-      agendou → compareceu → resgatou → quanto gastou.
-- [ ] Dashboard de conversão do funil.
+### 4. Funil da campanha da roleta: ✅ feito (ver "Concluídos")
 
 ### 6. +1 giro na tela inicial: ✅ feito (ver "Concluídos")
 - [ ] Testar num iPhone e num Android de verdade (já testado com tela de iPhone e Android emulada no Chromium). 👤
@@ -188,6 +183,13 @@ Falta:
   - Relatório com todos os campos e, num mês inteiro, salário, bônus, descontos e total a pagar.
   - Ajustes antigos convertidos sem mudar o percentual de ninguém.
   - Estorno feito depois do mês fechado desconta no mês em que foi feito (igual ao resumo financeiro).
+- **4. Funil da campanha da roleta:**
+  - Cada mensagem de campanha tem um link próprio (`/c/r/<código>`, sem login).
+  - Campanha da roleta: o link dá 1 giro de presente; o prêmio fica no número do cliente e a página leva para agendar.
+  - Funil por campanha: enviadas → entregues → lidas → abriram o link → giraram → ganharam → abriram o app → têm conta
+    → agendaram → compareceram → resgataram, com % e o faturado nas comandas desses atendimentos.
+  - Entregue/lida vêm do WhatsApp (API oficial e Evolution); clique só conta em navegador de verdade.
+  - "Baixou o app": o app ainda não é instalável (sem PWA), então conta quem entrou na área do cliente.
 - **2. Segmentação da base:** tela Campanhas com o tamanho de cada grupo (0–30, 31–60, 61–90, 91–180, +180 dias,
   assinante, ex-assinante, perdido, novo e quem nunca veio) e quantos podem receber. Campanha por segmentos, liberada
   em lotes, com limite diário; a primeira sugerida é para quem veio nos últimos 60 dias. Mostra enviados, quem marcou

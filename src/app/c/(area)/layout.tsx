@@ -5,12 +5,15 @@ import { NavCliente } from "@/components/cliente/NavCliente";
 import { Marca } from "@/components/Marca";
 import { configuracao } from "@/lib/agenda/carregar";
 import { sessaoAtual } from "@/lib/auth/sessao";
+import { marcarAppAberto } from "@/lib/campanhas/link";
 import { db } from "@/lib/db";
 
 export default async function LayoutCliente({ children }: { children: React.ReactNode }) {
   const s = await sessaoAtual();
   if (!s) redirect("/c/entrar");
   if (s.papel !== "CLIENTE") redirect("/");
+  // Funil das campanhas: entrou no app depois de receber a mensagem.
+  if (s.clienteId) await marcarAppAberto(s.clienteId).catch((e) => console.error("[campanhas] app aberto", e));
   const cfg = await configuracao();
 
   return (

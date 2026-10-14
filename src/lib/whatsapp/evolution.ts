@@ -59,11 +59,11 @@ export async function estadoEvolution(): Promise<EstadoConexao> {
   }
 }
 
-/** Aponta o webhook da instancia para o sistema (rede interna do Docker). */
+/** Aponta o webhook da instancia para o sistema (rede interna do Docker): mensagens novas e entregue/lida. */
 async function configurarWebhook() {
   const url = process.env.EVOLUTION_WEBHOOK_URL || "http://app:3000/api/whatsapp/evolution";
   const { status, json } = await chamar("POST", `/webhook/set/${instancia()}`, {
-    webhook: { enabled: true, url, headers: { "x-barberos-token": tokenWebhookEvolution() }, byEvents: false, base64: false, events: ["MESSAGES_UPSERT"] },
+    webhook: { enabled: true, url, headers: { "x-barberos-token": tokenWebhookEvolution() }, byEvents: false, base64: false, events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE"] },
   });
   if (status >= 300) throw new Error(`Evolution (webhook) ${status}: ${erroDe(json)}`);
 }

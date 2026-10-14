@@ -118,6 +118,8 @@ aprovados, mas não tem garantia da Meta: o número pode ser bloqueado se mandar
 2. Rode o deploy de novo e abra **WhatsApp** no painel (dono): no celular da barbearia, Configurações → Aparelhos
    conectados → Conectar aparelho, e aponte para o QR code.
 3. Depois de conectado, mude `OTP_PROVIDER="whatsapp"`: o código de acesso vai como mensagem comum.
+4. Entregue/lida: o sistema pede à Evolution as mensagens novas e as atualizações de status. Quem já estava conectado
+   antes desta versão toca em **Conectar** de novo na tela WhatsApp (não precisa ler o QR): isso refaz o webhook.
 
 A Evolution roda no mesmo servidor, sem porta aberta, e guarda os dados no mesmo Postgres (schema próprio).
 
@@ -371,6 +373,14 @@ Em **Campanhas** (`/campanhas`, dono e gerente):
   60 dias.
 - Cada campanha mostra fila, enviados hoje/limite, enviados, quem **marcou** até 14 dias depois de receber, quem pediu
   para parar e falhas. Pausar segura a fila; encerrar cancela quem ainda não recebeu.
+- **Link rastreado:** cada mensagem leva o seu `{link}` (`/c/r/<código>`, sem login). Numa campanha comum ele abre a
+  agenda; na **campanha da roleta** ele abre a roleta com 1 giro de presente (um por mensagem, válido pelos dias de
+  validade da roleta). O prêmio vai para o número do cliente: dinheiro no saldo, brinde a retirar. Depois vem o
+  "Agendar e usar meu prêmio", que entra com o mesmo número de WhatsApp.
+- **Funil da campanha** (no cartão de cada uma): mensagens enviadas → entregues → lidas → abriram o link → giraram →
+  ganharam prêmio → abriram o app → têm conta → agendaram → compareceram → resgataram o prêmio, com % das enviadas,
+  e o faturado nas comandas desses atendimentos. O clique só conta quando a página abre num navegador (robô de prévia
+  de link não conta). Entregue e lida vêm do WhatsApp oficial ou da Evolution; o simulador não informa.
 - `npm run teste:campanhas` roda o fluxo contra o banco de desenvolvimento.
 
 ## Saldo, cashback e roleta

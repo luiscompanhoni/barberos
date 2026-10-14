@@ -75,5 +75,49 @@ export function montarMensagem(modelo: string, v: { nome: string; barbearia: str
   return /\bPARAR\b/.test(texto) ? texto : `${texto}\n\nPara não receber mais, responda PARAR.`;
 }
 
+export const MENSAGEM_PADRAO_ROLETA =
+  "Oi, {nome}! A {barbearia} te deu 1 giro na roleta de prêmios 🎁 Tem dinheiro para usar no corte e brindes. Gire aqui: {link}";
+
 export const MENSAGEM_PADRAO =
   "Oi, {nome}! Aqui é da {barbearia}. Abrimos horários nos próximos dias e lembramos de você. Quer garantir o seu? Marque por aqui: {link}";
+
+/** O que aconteceu com cada mensagem enviada (montado de envio, mensagem, giro, conta, agenda e comanda). */
+export type LinhaFunil = {
+  entregue: boolean; lida: boolean; clicou: boolean; girou: boolean; ganhou: boolean; app: boolean;
+  conta: boolean; contaNova: boolean; agendou: boolean; compareceu: boolean; resgatou: boolean;
+};
+export type EtapaFunil = { chave: string; rotulo: string; qtd: number | null; doTotal: number | null; daAnterior: number | null; detalhe?: string };
+
+/**
+ * Funil da campanha: cada etapa com quantos, % das mensagens enviadas e % da etapa anterior que tem numero.
+ * Sem confirmacao do WhatsApp (simulador), entregue e lida ficam sem numero. Giro, premio e resgate so na da roleta.
+ */
+export function montarFunil(linhas: LinhaFunil[], o: { roleta: boolean; statusDisponivel: boolean }): EtapaFunil[] {
+  const conta = (k: keyof LinhaFunil) => linhas.filter((l) => l[k]).length;
+  const etapas: { chave: string; rotulo: string; qtd: number | null; detalhe?: string }[] = [
+    { chave: "enviadas", rotulo: "Mensagens enviadas", qtd: linhas.length },
+    { chave: "entregues", rotulo: "Entregues", qtd: o.statusDisponivel ? conta("entregue") : null },
+    { chave: "lidas", rotulo: "Lidas", qtd: o.statusDisponivel ? conta("lida") : null },
+    { chave: "clicaram", rotulo: "Abriram o link", qtd: conta("clicou") },
+    ...(o.roleta ? [
+      { chave: "giraram", rotulo: "Giraram a roleta", qtd: conta("girou") },
+      { chave: "ganharam", rotulo: "Ganharam prêmio", qtd: conta("ganhou") },
+    ] : []),
+    { chave: "app", rotulo: "Abriram o app", qtd: conta("app") },
+    { chave: "conta", rotulo: "Têm conta no app", qtd: conta("conta"), detalhe: `${conta("contaNova")} criada(s) depois da mensagem` },
+    { chave: "agendaram", rotulo: "Agendaram", qtd: conta("agendou") },
+    { chave: "compareceram", rotulo: "Compareceram", qtd: conta("compareceu") },
+    ...(o.roleta ? [{ chave: "resgataram", rotulo: "Resgataram o prêmio", qtd: conta("resgatou") }] : []),
+  ];
+  const total = linhas.length;
+  let anterior: number | null = null;
+  return etapas.map((e) => {
+    const out: EtapaFunil = {
+      ...e,
+      doTotal: e.qtd === null || !total ? null : e.qtd / total,
+      daAnterior: e.qtd === null || anterior === null || !anterior ? null : e.qtd / anterior,
+    };
+    if (e.qtd !== null) anterior = e.qtd;
+    return out;
+  });
+}

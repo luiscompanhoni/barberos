@@ -4,7 +4,7 @@
  * Dinheiro vira saldo (usa na comanda); brinde fica "a retirar" no balcao.
  */
 import { randomInt } from "node:crypto";
-import type { RoletaPremio, TipoPremioRoleta } from "@prisma/client";
+import type { Prisma, RoletaPremio, TipoPremioRoleta } from "@prisma/client";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { auditar } from "@/lib/auditoria";
@@ -83,6 +83,53 @@ export async function estadoDoCliente(clienteId: string) {
   };
 }
 
+type Tx = Prisma.TransactionClient;
+type ResultadoGiro = {
+  premioId: string | null; rotulo: string; tipo: TipoPremioRoleta; valorBaseCentavos: number; multiplicador: number;
+  valorCentavos: number; expiraEm: Date | null;
+};
+
+/**
+ * Sorteia (respeitando o limite mensal de cada premio) e entrega: dinheiro vira saldo, brinde fica a retirar.
+ * Roda dentro da transacao de quem chamou, com a trava do cliente ja pega.
+ */
+async function sortearEEntregar(tx: Tx, clienteId: string, origem: string, mult: number, validadeDias: number) {
+  // Limite mensal conta global (todos os clientes); trava para nao estourar com giros simultaneos.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('roleta:sorteio'))`;
+  const premios = await tx.roletaPremio.findMany({ where: { ativo: true }, orderBy: [{ ordem: "asc" }, { criadoEm: "asc" }] });
+  const saiu = await tx.roletaGiro.groupBy({ by: ["premioId"], where: { criadoEm: { gte: inicioDoMes() }, premioId: { in: premios.map((p) => p.id) } }, _count: true });
+  const pool = elegiveis(premios, new Map(saiu.map((s) => [s.premioId!, s._count])));
+  const total = pool.reduce((t, p) => t + p.peso, 0);
+  if (!pool.length || total <= 0) throw new ErroNegocio("A roleta está sem prêmios no momento. Volte mais tarde!", 409, "sem_premios");
+  const premio = sortear(pool, randomInt(total));
+
+  const valor = premio.tipo === "CREDITO" ? comBonus(premio.valorCentavos, mult) : 0;
+  const expiraEm = premio.tipo === "NADA" ? null : new Date(Date.now() + validadeDias * 86_400_000);
+  const beneficio = premio.tipo === "CREDITO" && valor > 0
+    ? await tx.beneficio.create({ data: { clienteId, descricao: `Roleta: ${premio.rotulo}${mult > 100 ? ` (bônus x${(mult / 100).toFixed(1)})` : ""}`, valorCentavos: valor, motivo: "ROLETA", expiraEm } })
+    : null;
+  const giro = await tx.roletaGiro.create({
+    data: {
+      clienteId, premioId: premio.id, rotulo: premio.rotulo, tipo: premio.tipo, valorCentavos: valor || premio.valorCentavos,
+      multiplicador: premio.tipo === "CREDITO" ? mult : 100, origem,
+      custoCentavos: premio.tipo === "BRINDE" ? premio.custoCentavos : 0,
+      status: premio.tipo === "BRINDE" ? "A_RETIRAR" : "CONCLUIDO", beneficioId: beneficio?.id, expiraEm,
+    },
+  });
+  await auditar(tx, null, "roleta_girar", "cliente", clienteId, { premio: premio.rotulo, tipo: premio.tipo, valor, origem });
+  const resultado: ResultadoGiro = {
+    premioId: premio.id, rotulo: premio.rotulo, tipo: premio.tipo, valorBaseCentavos: premio.valorCentavos,
+    multiplicador: giro.multiplicador, valorCentavos: valor, expiraEm,
+  };
+  return { giro, resultado };
+}
+
+/** Multiplicador do cliente nos premios em dinheiro (assinante em dia ganha o bonus). */
+export async function multiplicadorDoCliente(clienteId: string) {
+  const [cfg, sit] = await Promise.all([configRoleta(), situacaoDoCliente(clienteId)]);
+  return multiplicador(!!sit?.valida, cfg.bonusAssinantePct);
+}
+
 /** Gira a roleta: consome um giro, sorteia e entrega o premio. */
 export async function girar(clienteId: string) {
   const cfg = await configRoleta();
@@ -103,35 +150,36 @@ export async function girar(clienteId: string) {
       giroGratisDias: cfg.giroGratisDias, ultimoGratis: ultimoGratis?.criadoEm ?? null, agora: Date.now(),
     });
     if (g.total <= 0) throw new ErroNegocio("Você não tem giros agora. Cada atendimento concluído vale giro! 💈", 409, "sem_giros");
+    const { resultado } = await sortearEEntregar(tx, clienteId, g.gratis ? "GRATIS" : "ATENDIMENTO", mult, cfg.validadeDias);
+    return { ...resultado, girosRestantes: g.total - 1 };
+  });
+}
 
-    // Limite mensal conta global (todos os clientes); trava para nao estourar com giros simultaneos.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('roleta:sorteio'))`;
-    const premios = await tx.roletaPremio.findMany({ where: { ativo: true }, orderBy: [{ ordem: "asc" }, { criadoEm: "asc" }] });
-    const saiu = await tx.roletaGiro.groupBy({ by: ["premioId"], where: { criadoEm: { gte: inicioDoMes() }, premioId: { in: premios.map((p) => p.id) } }, _count: true });
-    const pool = elegiveis(premios, new Map(saiu.map((s) => [s.premioId!, s._count])));
-    const total = pool.reduce((t, p) => t + p.peso, 0);
-    if (!pool.length || total <= 0) throw new ErroNegocio("A roleta está sem prêmios no momento. Volte mais tarde!", 409, "sem_premios");
-    const premio = sortear(pool, randomInt(total));
-
-    const valor = premio.tipo === "CREDITO" ? comBonus(premio.valorCentavos, mult) : 0;
-    const expiraEm = premio.tipo === "NADA" ? null : new Date(Date.now() + cfg.validadeDias * 86_400_000);
-    const beneficio = premio.tipo === "CREDITO" && valor > 0
-      ? await tx.beneficio.create({ data: { clienteId, descricao: `Roleta: ${premio.rotulo}${mult > 100 ? ` (bônus x${(mult / 100).toFixed(1)})` : ""}`, valorCentavos: valor, motivo: "ROLETA", expiraEm } })
-      : null;
-    const giro = await tx.roletaGiro.create({
-      data: {
-        clienteId, premioId: premio.id, rotulo: premio.rotulo, tipo: premio.tipo, valorCentavos: valor || premio.valorCentavos,
-        multiplicador: premio.tipo === "CREDITO" ? mult : 100, origem: g.gratis ? "GRATIS" : "ATENDIMENTO",
-        custoCentavos: premio.tipo === "BRINDE" ? premio.custoCentavos : 0,
-        status: premio.tipo === "BRINDE" ? "A_RETIRAR" : "CONCLUIDO", beneficioId: beneficio?.id, expiraEm,
-      },
-    });
-    await auditar(tx, null, "roleta_girar", "cliente", clienteId, { premio: premio.rotulo, tipo: premio.tipo, valor });
-    return {
-      premioId: premio.id, rotulo: premio.rotulo, tipo: premio.tipo as TipoPremioRoleta,
-      valorBaseCentavos: premio.valorCentavos, multiplicador: giro.multiplicador, valorCentavos: valor,
-      expiraEm, girosRestantes: g.total - 1,
-    };
+/**
+ * Giro de presente da campanha da roleta (link /c/r/<token>, sem login): um por mensagem enviada, valido pelos dias de
+ * validade da roleta. Abrir de novo mostra o mesmo premio (`jaGirou`).
+ */
+export async function girarPelaCampanha(token: string) {
+  const cfg = await configRoleta();
+  const envio = await db.campanhaEnvio.findUnique({ where: { token }, include: { campanha: { select: { roleta: true } } } });
+  if (!envio || !envio.campanha.roleta || envio.status !== "ENVIADO") throw naoEncontrado("Link");
+  const clienteId = envio.clienteId;
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`roleta:${clienteId}`}))`;
+    const atual = await tx.campanhaEnvio.findUniqueOrThrow({ where: { id: envio.id }, include: { giro: true } });
+    if (atual.giro) {
+      const g = atual.giro;
+      return {
+        premioId: g.premioId, rotulo: g.rotulo, tipo: g.tipo, multiplicador: g.multiplicador, valorCentavos: g.tipo === "CREDITO" ? g.valorCentavos : 0,
+        valorBaseCentavos: g.tipo === "CREDITO" ? Math.round((g.valorCentavos * 100) / g.multiplicador) : 0, expiraEm: g.expiraEm, jaGirou: true,
+      };
+    }
+    if (!cfg.ativa) throw new ErroNegocio("A roleta está desligada no momento.", 409, "desligada");
+    if (envio.enviadoEm && +envio.enviadoEm + cfg.validadeDias * 86_400_000 < Date.now()) throw new ErroNegocio("Esse giro de presente venceu.", 410, "vencido");
+    const sit = await situacaoDoCliente(clienteId);
+    const { giro, resultado } = await sortearEEntregar(tx, clienteId, "CAMPANHA", multiplicador(!!sit?.valida, cfg.bonusAssinantePct), cfg.validadeDias);
+    await tx.campanhaEnvio.update({ where: { id: envio.id }, data: { giroId: giro.id, clicouEm: atual.clicouEm ?? new Date() } });
+    return { ...resultado, jaGirou: false };
   });
 }
 

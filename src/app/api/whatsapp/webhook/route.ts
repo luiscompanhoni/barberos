@@ -1,6 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { receberMensagem } from "@/lib/bot/processar";
-import { assinaturaValida, lerMensagens, telefoneCanonico } from "@/lib/whatsapp/webhook";
+import { registrarStatus } from "@/lib/whatsapp/status";
+import { assinaturaValida, lerMensagens, lerStatus, telefoneCanonico } from "@/lib/whatsapp/webhook";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +16,8 @@ export async function GET(req: Request) {
 }
 
 /**
- * Mensagens dos clientes. Responde 200 na hora (a Meta reenvia se demorar) e
- * processa depois com `after`.
+ * Mensagens dos clientes e status (entregue/lida) do que a barbearia mandou. Responde 200 na hora
+ * (a Meta reenvia se demorar) e processa depois com `after`.
  */
 export async function POST(req: Request) {
   const bruto = await req.text();
@@ -37,7 +38,9 @@ export async function POST(req: Request) {
   }
 
   const mensagens = lerMensagens(payload);
+  const status = lerStatus(payload);
   after(async () => {
+    await registrarStatus(status).catch((e) => console.error("[whatsapp] falha ao gravar status", e));
     for (const m of mensagens) {
       try {
         await receberMensagem({

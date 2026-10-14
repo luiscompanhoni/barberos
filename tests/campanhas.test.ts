@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loteSugerido, montarMensagem, segmentosDoCliente, vagasNasJanelas } from "@/lib/campanhas/regras";
+import { loteSugerido, montarFunil, montarMensagem, segmentosDoCliente, vagasNasJanelas, type LinhaFunil } from "@/lib/campanhas/regras";
 
 const DIA = 86_400_000;
 const agora = Date.parse("2026-10-14T15:00:00Z");
@@ -42,5 +42,38 @@ describe("campanhas: mensagem", () => {
     const m = montarMensagem("Oi, {nome}! Aqui é da {barbearia}: {link}", { nome: "João da Silva", barbearia: "Black Barber", link: "https://x/c/agendar" });
     expect(m).toBe("Oi, João! Aqui é da Black Barber: https://x/c/agendar\n\nPara não receber mais, responda PARAR.");
     expect(montarMensagem("Responda PARAR para sair. {nome}", { nome: "Ana", barbearia: "B", link: "" })).toBe("Responda PARAR para sair. Ana");
+  });
+});
+
+describe("campanhas: funil", () => {
+  const l = (x: Partial<LinhaFunil> = {}): LinhaFunil => ({
+    entregue: false, lida: false, clicou: false, girou: false, ganhou: false, app: false,
+    conta: false, contaNova: false, agendou: false, compareceu: false, resgatou: false, ...x,
+  });
+  const linhas = [
+    l({ entregue: true, lida: true, clicou: true, girou: true, ganhou: true, app: true, conta: true, contaNova: true, agendou: true, compareceu: true, resgatou: true }),
+    l({ entregue: true, lida: true, clicou: true, girou: true }),
+    l({ entregue: true }),
+    l(),
+  ];
+  it("roleta: todas as etapas, % das enviadas e da etapa anterior", () => {
+    const f = montarFunil(linhas, { roleta: true, statusDisponivel: true });
+    expect(f.map((e) => [e.chave, e.qtd])).toEqual([
+      ["enviadas", 4], ["entregues", 3], ["lidas", 2], ["clicaram", 2], ["giraram", 2], ["ganharam", 1],
+      ["app", 1], ["conta", 1], ["agendaram", 1], ["compareceram", 1], ["resgataram", 1],
+    ]);
+    const e = Object.fromEntries(f.map((x) => [x.chave, x]));
+    expect(e.entregues.doTotal).toBe(0.75);
+    expect(e.ganharam.daAnterior).toBe(0.5);
+    expect(e.enviadas.daAnterior).toBeNull();
+    expect(e.conta.detalhe).toBe("1 criada(s) depois da mensagem");
+  });
+  it("campanha comum sem confirmacao do WhatsApp: sem giro/premio/resgate e entregue/lida sem numero", () => {
+    const f = montarFunil(linhas, { roleta: false, statusDisponivel: false });
+    expect(f.map((e) => e.chave)).toEqual(["enviadas", "entregues", "lidas", "clicaram", "app", "conta", "agendaram", "compareceram"]);
+    const e = Object.fromEntries(f.map((x) => [x.chave, x]));
+    expect(e.entregues.qtd).toBeNull();
+    // A etapa depois de uma sem numero compara com a ultima que tem.
+    expect(e.clicaram.daAnterior).toBe(0.5);
   });
 });

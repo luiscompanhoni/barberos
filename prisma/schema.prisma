@@ -144,28 +144,28 @@ model Configuracao {
 }
 
 model Barbeiro {
-  id              String             @id @default(cuid())
-  usuarioId       String             @unique
-  usuario         Usuario            @relation(fields: [usuarioId], references: [id])
-  nome            String
-  cor             String             @default("#378ADD")
-  ordem           Int                @default(0)
-  ativo           Boolean            @default(true)
+  id                 String              @id @default(cuid())
+  usuarioId          String              @unique
+  usuario            Usuario             @relation(fields: [usuarioId], references: [id])
+  nome               String
+  cor                String              @default("#378ADD")
+  ordem              Int                 @default(0)
+  ativo              Boolean             @default(true)
   /// Link secreto do calendario (.ics) para assinar no Google Agenda / celular.
-  tokenCalendario String?            @unique
-  servicos        BarbeiroServico[]
-  expediente      ExpedientePadrao[]
-  excecoes        ExcecaoAgenda[]
-  bloqueios       Bloqueio[]
-  agendamentos    Agendamento[]
-  planos          PlanoBarbeiro[]
-  checklistPessoa ChecklistPessoa?
+  tokenCalendario    String?             @unique
+  servicos           BarbeiroServico[]
+  expediente         ExpedientePadrao[]
+  excecoes           ExcecaoAgenda[]
+  bloqueios          Bloqueio[]
+  agendamentos       Agendamento[]
+  planos             PlanoBarbeiro[]
+  checklistPessoa    ChecklistPessoa?
   adicionaisComissao AdicionalComissao[]
   /// Foto (webp pequena, guardada no banco; servida em /api/barbeiros/<id>/foto).
-  fotoDados       Bytes?
-  fotoTipo        String?
+  fotoDados          Bytes?
+  fotoTipo           String?
   /// Muda a cada foto nova (quebra o cache do navegador).
-  fotoVersao      Int                @default(0)
+  fotoVersao         Int                 @default(0)
 
   @@map("barbeiros")
 }
@@ -370,15 +370,19 @@ model Conversa {
 }
 
 model Mensagem {
-  id         String        @id @default(cuid())
-  conversaId String
-  conversa   Conversa      @relation(fields: [conversaId], references: [id], onDelete: Cascade)
-  autor      AutorMensagem
-  texto      String
+  id             String          @id @default(cuid())
+  conversaId     String
+  conversa       Conversa        @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  autor          AutorMensagem
+  texto          String
   /// id da mensagem no WhatsApp (evita processar a mesma entrada duas vezes)
-  wamid      String?       @unique
-  erro       String?
-  criadoEm   DateTime      @default(now()) @db.Timestamptz(3)
+  wamid          String?         @unique
+  erro           String?
+  /// Confirmacoes do WhatsApp para o que a barbearia mandou (API oficial e Evolution; o simulador nao informa).
+  entregueEm     DateTime?       @db.Timestamptz(3)
+  lidaEm         DateTime?       @db.Timestamptz(3)
+  criadoEm       DateTime        @default(now()) @db.Timestamptz(3)
+  enviosCampanha CampanhaEnvio[]
 
   @@index([conversaId, criadoEm])
   @@map("mensagens")
@@ -458,39 +462,39 @@ model PlanoBarbeiro {
 }
 
 model Assinatura {
-  id                 String            @id @default(cuid())
-  clienteId          String
-  cliente            Cliente           @relation(fields: [clienteId], references: [id])
-  planoId            String
-  plano              Plano             @relation(fields: [planoId], references: [id])
-  status             StatusAssinatura  @default(PENDENTE)
-  formaPagamento     FormaPagamento
+  id                  String               @id @default(cuid())
+  clienteId           String
+  cliente             Cliente              @relation(fields: [clienteId], references: [id])
+  planoId             String
+  plano               Plano                @relation(fields: [planoId], references: [id])
+  status              StatusAssinatura     @default(PENDENTE)
+  formaPagamento      FormaPagamento
   /// Preco travado na adesao.
-  precoCentavos      Int
-  gatewayId          String?           @unique
-  gatewayClienteId   String?
+  precoCentavos       Int
+  gatewayId           String?              @unique
+  gatewayClienteId    String?
   /// Inicio do ciclo pago atual (conta os usos por ciclo).
-  cicloInicio        DateTime?         @db.Timestamptz(3)
-  proximoVencimento  DateTime?         @db.Date
-  criadaEm           DateTime          @default(now()) @db.Timestamptz(3)
-  ativadaEm          DateTime?         @db.Timestamptz(3)
-  canceladaEm        DateTime?         @db.Timestamptz(3)
-  motivoCancelamento String?
-  origem             OrigemAgendamento
+  cicloInicio         DateTime?            @db.Timestamptz(3)
+  proximoVencimento   DateTime?            @db.Date
+  criadaEm            DateTime             @default(now()) @db.Timestamptz(3)
+  ativadaEm           DateTime?            @db.Timestamptz(3)
+  canceladaEm         DateTime?            @db.Timestamptz(3)
+  motivoCancelamento  String?
+  origem              OrigemAgendamento
   /// Codigo aleatorio para links publicos (ex.: pagina de cartao). Nao e o id.
-  tokenPublico       String?           @unique
+  tokenPublico        String?              @unique
   /// Pausa pedida pelo cliente: nao usa o plano ate pausadaAte e a cobranca anda os mesmos dias.
   /// pausadaEm volta a null quando a rotina reativa (pausadaAte fica de historico).
-  pausadaEm          DateTime?         @db.Timestamptz(3)
-  pausadaAte         DateTime?         @db.Date
+  pausadaEm           DateTime?            @db.Timestamptz(3)
+  pausadaAte          DateTime?            @db.Date
   /// Cancelamento no fim do ciclo: a recorrencia ja parou; o plano vale ate o dia anterior a esta data.
-  encerraEm          DateTime?         @db.Date
+  encerraEm           DateTime?            @db.Date
   /// Desconto de retencao: % nas mensalidades com vencimento ate descontoRetencaoAte.
   descontoRetencaoPct Int?
-  descontoRetencaoAte DateTime?        @db.Date
-  cobrancas          Cobranca[]
-  agendamentos       Agendamento[]
-  retencoes          RetencaoAssinatura[]
+  descontoRetencaoAte DateTime?            @db.Date
+  cobrancas           Cobranca[]
+  agendamentos        Agendamento[]
+  retencoes           RetencaoAssinatura[]
 
   @@index([clienteId, status])
   @@index([planoId, status])
@@ -987,7 +991,7 @@ model RoletaGiro {
   multiplicador Int              @default(100)
   /// Custo do brinde no momento do giro (o custo do premio pode mudar depois).
   custoCentavos Int              @default(0)
-  /// "GRATIS" = giro gratis do periodo; "ATENDIMENTO" = ganho por visita.
+  /// "GRATIS" = giro gratis do periodo; "ATENDIMENTO" = ganho por visita; "CAMPANHA" = presente do link de campanha.
   origem        String
   status        StatusGiro
   beneficioId   String?
@@ -995,6 +999,7 @@ model RoletaGiro {
   entregueEm    DateTime?        @db.Timestamptz(3)
   entreguePorId String?
   criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
+  envioCampanha CampanhaEnvio?
 
   @@index([clienteId, criadoEm])
   @@index([status])
@@ -1534,6 +1539,8 @@ model Campanha {
   limiteDiario    Int
   /// Quantos dos avisados costumam marcar (bps): com a capacidade da agenda, sugere o tamanho do lote.
   taxaRespostaBps Int             @default(2000)
+  /// Campanha da roleta: o link abre a roleta com 1 giro de presente (sem login).
+  roleta          Boolean         @default(false)
   status          StatusCampanha  @default(ATIVA)
   criadoPorId     String?
   criadoEm        DateTime        @default(now()) @db.Timestamptz(3)
@@ -1543,17 +1550,29 @@ model Campanha {
 }
 
 model CampanhaEnvio {
-  id         String              @id @default(cuid())
-  campanhaId String
-  campanha   Campanha            @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
-  clienteId  String
-  cliente    Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
-  lote       Int
-  status     StatusEnvioCampanha @default(FILA)
-  liberadoEm DateTime            @default(now()) @db.Timestamptz(3)
-  enviadoEm  DateTime?           @db.Timestamptz(3)
+  id          String              @id @default(cuid())
+  campanhaId  String
+  campanha    Campanha            @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  clienteId   String
+  cliente     Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  lote        Int
+  status      StatusEnvioCampanha @default(FILA)
+  liberadoEm  DateTime            @default(now()) @db.Timestamptz(3)
+  enviadoEm   DateTime?           @db.Timestamptz(3)
   /// Erro do envio ou motivo de ter pulado.
-  erro       String?
+  erro        String?
+  /// Link rastreado da mensagem ({link} vira /c/r/<token>).
+  token       String?             @unique
+  /// Mensagem no WhatsApp (entregue/lida vem dela).
+  mensagemId  String?
+  mensagem    Mensagem?           @relation(fields: [mensagemId], references: [id], onDelete: SetNull)
+  /// Primeira vez que abriu o link num navegador (robo de previa nao conta: a pagina avisa por JavaScript).
+  clicouEm    DateTime?           @db.Timestamptz(3)
+  /// Giro de presente da campanha da roleta.
+  giroId      String?             @unique
+  giro        RoletaGiro?         @relation(fields: [giroId], references: [id], onDelete: SetNull)
+  /// Primeira vez que entrou na area do cliente depois de clicar.
+  appAbertoEm DateTime?           @db.Timestamptz(3)
 
   @@unique([campanhaId, clienteId])
   @@index([status, campanhaId])

@@ -2,6 +2,7 @@
  * Campanhas no WhatsApp por segmento da base: o dono (ou gerente) libera lotes do tamanho que a agenda aguenta e a
  * rotina das automacoes manda aos poucos, no horario comercial, sem passar do limite diario da campanha.
  */
+import { randomBytes } from "node:crypto";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, instanteLocal } from "@/lib/agenda/tempo";
 import { auditar } from "@/lib/auditoria";
@@ -68,14 +69,18 @@ export async function previa(segmentos: string[], agora = Date.now()) {
   return { elegiveis: (await elegiveis(segmentos, null, agora)).length };
 }
 
-export type DadosCampanha = { nome: string; segmentos: string[]; mensagem: string; limiteDiario: number; taxaRespostaBps: number };
+export type DadosCampanha = { nome: string; segmentos: string[]; mensagem: string; limiteDiario: number; taxaRespostaBps: number; roleta?: boolean };
 
 export async function criarCampanha(s: Sessao, d: DadosCampanha) {
   const segmentos = [...new Set(d.segmentos)];
   if (!segmentos.length || segmentos.some((x) => !CHAVES_SEGMENTO.includes(x as Segmento))) throw new ErroNegocio("Escolha pelo menos um segmento.");
+  if (d.roleta) {
+    if (!d.mensagem.includes("{link}")) throw new ErroNegocio("Coloque {link} na mensagem: é por ele que o cliente abre a roleta.");
+    if (!(await db.roletaConfig.findUnique({ where: { id: 1 } }))?.ativa) throw new ErroNegocio("Ligue a roleta (tela Roleta) antes de criar a campanha.", 409);
+  }
   return db.$transaction(async (tx) => {
-    const c = await tx.campanha.create({ data: { ...d, segmentos, criadoPorId: s.usuarioId } });
-    await auditar(tx, s.usuarioId, "criar", "campanha", c.id, { nome: d.nome, segmentos, limiteDiario: d.limiteDiario });
+    const c = await tx.campanha.create({ data: { ...d, roleta: !!d.roleta, segmentos, criadoPorId: s.usuarioId } });
+    await auditar(tx, s.usuarioId, "criar", "campanha", c.id, { nome: d.nome, segmentos, limiteDiario: d.limiteDiario, roleta: !!d.roleta });
     return c;
   });
 }
@@ -91,7 +96,11 @@ export async function liberarLote(s: Sessao, campanhaId: string, quantidade: num
     // Dois cliques ao mesmo tempo: um espera o outro (e o unique campanha+cliente nao deixa repetir).
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`campanha:${campanhaId}`}))`;
     const lote = ((await tx.campanhaEnvio.aggregate({ where: { campanhaId }, _max: { lote: true } }))._max.lote ?? 0) + 1;
-    const r = await tx.campanhaEnvio.createMany({ data: escolhidos.map((e) => ({ campanhaId, clienteId: e.id, lote })), skipDuplicates: true });
+    // Cada mensagem leva um link proprio (/c/r/<token>): e por ele que o funil sabe quem clicou.
+    const r = await tx.campanhaEnvio.createMany({
+      data: escolhidos.map((e) => ({ campanhaId, clienteId: e.id, lote, token: randomBytes(12).toString("base64url") })),
+      skipDuplicates: true,
+    });
     await auditar(tx, s.usuarioId, "liberar_lote", "campanha", campanhaId, { campanha: c.nome, lote, quantidade: r.count });
     return { lote, quantidade: r.count };
   });
@@ -140,7 +149,7 @@ export async function listarCampanhas(agora = Date.now()) {
     const enviados = conta("ENVIADO");
     return {
       id: c.id, nome: c.nome, segmentos: c.segmentos, mensagem: c.mensagem, limiteDiario: c.limiteDiario, taxaRespostaBps: c.taxaRespostaBps,
-      status: c.status, criadoEm: c.criadoEm, criadoPor: c.criadoPorId ? nomes.get(c.criadoPorId) ?? null : null,
+      status: c.status, roleta: c.roleta, criadoEm: c.criadoEm, criadoPor: c.criadoPorId ? nomes.get(c.criadoPorId) ?? null : null,
       fila: conta("FILA"), enviados, falhas: conta("FALHOU"), pulados: conta("PULADO"),
       enviadosHoje: hoje.find((x) => x.campanhaId === c.id)?._count._all ?? 0,
       marcaram: n(marcaram, c.id), pararam: n(pararam, c.id),
@@ -154,7 +163,6 @@ export async function listarCampanhas(agora = Date.now()) {
 export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
   const cfg = await configuracao();
   const inicioHoje = new Date(instanteLocal(dataLocal(agora, cfg.fuso), 0, cfg.fuso));
-  const link = `${urlSite()}/c/agendar`;
   let total = 0;
   for (const c of await db.campanha.findMany({ where: { status: "ATIVA" }, orderBy: { criadoEm: "asc" } })) {
     if (total >= MAX_POR_RODADA) break;
@@ -178,9 +186,12 @@ export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?
       if (!ok.count || pular) continue;
       total++;
       try {
+        const link = e.token ? `${urlSite()}/c/r/${e.token}` : `${urlSite()}/c/agendar`;
         const r = await notificarCliente(e.cliente.telefone, montarMensagem(c.mensagem, { nome: e.cliente.nome, barbearia: cfg.nomeBarbearia, link }));
-        const erro = r && typeof r === "object" && "erro" in r ? (r.erro as string | null) : null;
-        if (erro) await db.campanhaEnvio.update({ where: { id: e.id }, data: { status: "FALHOU", erro: erro.slice(0, 300) } });
+        await db.campanhaEnvio.update({
+          where: { id: e.id },
+          data: { mensagemId: r.mensagemId, ...(r.erro ? { status: "FALHOU" as const, erro: r.erro.slice(0, 300) } : {}) },
+        });
       } catch (err) {
         await db.campanhaEnvio.update({ where: { id: e.id }, data: { status: "FALHOU", erro: (err as Error).message.slice(0, 300) } });
       }

@@ -1,19 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Megaphone, Pause, Play, Plus, Send, Square } from "lucide-react";
+import { ChevronDown, ChevronRight, Megaphone, Pause, Play, Plus, Send, Square } from "lucide-react";
 import { api } from "@/lib/cliente-api";
 import type { Capacidade } from "@/lib/campanhas/capacidade";
 import { loteSugerido, SEGMENTOS } from "@/lib/campanhas/regras";
 import { CapacidadePainel } from "./CapacidadePainel";
+import { FunilCampanha } from "./FunilCampanha";
 
 type Seg = { chave: string; rotulo: string; total: number; podemReceber: number };
 type Campanha = {
   id: string; nome: string; segmentos: string[]; mensagem: string; limiteDiario: number; taxaRespostaBps: number;
-  status: "ATIVA" | "PAUSADA" | "ENCERRADA"; criadoEm: string; criadoPor: string | null;
+  status: "ATIVA" | "PAUSADA" | "ENCERRADA"; roleta: boolean; criadoEm: string; criadoPor: string | null;
   fila: number; enviados: number; falhas: number; pulados: number; enviadosHoje: number; marcaram: number; pararam: number; elegiveis: number;
 };
-type Dados = { clientes: number; aceitamMensagens: number; segmentos: Seg[]; campanhas: Campanha[]; mensagemPadrao: string };
+type Dados = { clientes: number; aceitamMensagens: number; segmentos: Seg[]; campanhas: Campanha[]; mensagemPadrao: string; mensagemPadraoRoleta: string };
 
 const ROTULO = Object.fromEntries(SEGMENTOS.map((s) => [s.chave, s.rotulo]));
 const STATUS = { ATIVA: "Ativa", PAUSADA: "Pausada", ENCERRADA: "Encerrada" };
@@ -89,13 +90,17 @@ export function CampanhasTela() {
 function CartaoCampanha({ c, vagas7, onAgir }: { c: Campanha; vagas7: number | null; onAgir: (id: string, body: object, ok: string) => void }) {
   const sugestao = vagas7 === null ? null : loteSugerido({ vagas: vagas7, taxaRespostaBps: c.taxaRespostaBps, limiteDiario: c.limiteDiario, elegiveis: c.elegiveis, naFila: c.fila });
   const [qtd, setQtd] = useState("");
+  const [funil, setFunil] = useState(false);
   const valor = qtd === "" ? sugestao ?? 0 : Number(qtd);
   const taxa = c.enviados ? Math.round((c.marcaram / c.enviados) * 100) : null;
   return (
     <div className="cartao space-y-3">
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1">
-          <p className="font-semibold"><Megaphone size={15} className="mr-1 inline text-ouro" />{c.nome}</p>
+          <p className="font-semibold">
+            <Megaphone size={15} className="mr-1 inline text-ouro" />{c.nome}
+            {c.roleta && <span className="ml-2 rounded-full bg-ouro/15 px-2 py-0.5 text-[11px] font-semibold text-ouro">Roleta</span>}
+          </p>
           <p className="text-xs text-zinc-500">{c.segmentos.map((s) => ROTULO[s] ?? s).join(" + ")} · até {c.limiteDiario}/dia{c.criadoPor ? ` · criada por ${c.criadoPor}` : ""}</p>
         </div>
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${c.status === "ATIVA" ? "bg-emerald-50 text-emerald-800" : c.status === "PAUSADA" ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-500"}`}>{STATUS[c.status]}</span>
@@ -129,6 +134,14 @@ function CartaoCampanha({ c, vagas7, onAgir }: { c: Campanha; vagas7: number | n
           <button className="btn ml-auto" onClick={() => confirm(`Encerrar "${c.nome}"? Quem ainda está na fila não recebe.`) && onAgir(c.id, { acao: "encerrar" }, "Campanha encerrada.")}><Square size={14} /> Encerrar</button>
         </div>
       )}
+      {(c.enviados > 0 || c.fila > 0) && (
+        <div className="border-t border-zinc-200 pt-2">
+          <button className="flex items-center gap-1 text-sm font-semibold" onClick={() => setFunil(!funil)}>
+            {funil ? <ChevronDown size={15} /> : <ChevronRight size={15} />} Funil da campanha
+          </button>
+          {funil && <div className="mt-2"><FunilCampanha id={c.id} /></div>}
+        </div>
+      )}
       {c.status === "ATIVA" && (
         <p className="text-xs text-zinc-500">
           {num(c.elegiveis)} cliente(s) ainda podem ser chamados.
@@ -141,7 +154,7 @@ function CartaoCampanha({ c, vagas7, onAgir }: { c: Campanha; vagas7: number | n
 
 function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boolean) => void }) {
   // Primeira campanha: so quem veio nos ultimos 60 dias.
-  const [f, setF] = useState({ nome: "", segmentos: ["ate30", "d31a60"], mensagem: dados.mensagemPadrao, limiteDiario: "50", taxa: "20" });
+  const [f, setF] = useState({ nome: "", segmentos: ["ate30", "d31a60"], mensagem: dados.mensagemPadrao, limiteDiario: "50", taxa: "20", roleta: false });
   const [elegiveis, setElegiveis] = useState<number | null>(null);
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
@@ -157,7 +170,7 @@ function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boo
     e.preventDefault();
     setOcupado(true);
     try {
-      await api("/api/campanhas", { method: "POST", body: { nome: f.nome, segmentos: f.segmentos, mensagem: f.mensagem, limiteDiario: Number(f.limiteDiario), taxaRespostaBps: Math.round(Number(f.taxa.replace(",", ".")) * 100) } });
+      await api("/api/campanhas", { method: "POST", body: { nome: f.nome, segmentos: f.segmentos, mensagem: f.mensagem, limiteDiario: Number(f.limiteDiario), taxaRespostaBps: Math.round(Number(f.taxa.replace(",", ".")) * 100), roleta: f.roleta } });
       onFechar(true);
     } catch (e) {
       setErro((e as Error).message);
@@ -170,6 +183,14 @@ function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boo
     <form onSubmit={criar} className="cartao space-y-3">
       <h2 className="font-semibold">Nova campanha</h2>
       <div><label className="rotulo">Nome</label><input className="campo" placeholder="Ex.: Lançamento do app — base recente" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></div>
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" className="mt-0.5 h-4 w-4 accent-[#d3ab45]" checked={f.roleta}
+          onChange={(e) => setF({ ...f, roleta: e.target.checked, mensagem: e.target.checked ? dados.mensagemPadraoRoleta : dados.mensagemPadrao })} />
+        <span>
+          <b>Campanha da roleta</b>: o link abre a roleta com 1 giro de presente, sem precisar entrar no app.
+          <span className="block text-xs text-zinc-500">O funil mostra quem abriu, girou, ganhou, criou conta, agendou, veio e resgatou.</span>
+        </span>
+      </label>
       <div>
         <label className="rotulo">Quem recebe (soma dos grupos marcados)</label>
         <div className="grid gap-1 sm:grid-cols-2">
@@ -185,7 +206,7 @@ function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boo
       <div>
         <label className="rotulo">Mensagem</label>
         <textarea className="campo min-h-28" value={f.mensagem} onChange={(e) => setF({ ...f, mensagem: e.target.value })} />
-        <p className="text-xs text-zinc-500">Use {"{nome}"} (primeiro nome), {"{barbearia}"} e {"{link}"} (link para agendar). O “responda PARAR” entra sozinho no fim.</p>
+        <p className="text-xs text-zinc-500">Use {"{nome}"} (primeiro nome), {"{barbearia}"} e {"{link}"} ({f.roleta ? "abre a roleta" : "abre a agenda"}; cada cliente recebe o seu, para o funil saber quem clicou). O “responda PARAR” entra sozinho no fim.</p>
       </div>
       <div className="flex flex-wrap gap-3">
         <div><label className="rotulo">Limite por dia</label><input className="campo w-28" inputMode="numeric" value={f.limiteDiario} onChange={(e) => setF({ ...f, limiteDiario: e.target.value.replace(/\D/g, "") })} /></div>
