@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { rota } from "@/lib/erros";
 import { conciliacao, conferir, desfazerConferencia, salvarTaxas } from "@/lib/financeiro/conciliacao";
 import { FORMAS_CONCILIACAO } from "@/lib/financeiro/regras";
@@ -11,7 +11,7 @@ const zData = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const zForma = z.enum(FORMAS_CONCILIACAO);
 
 export const GET = rota(async (req: Request) => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   const q = new URL(req.url).searchParams;
   const { de, ate } = z.object({ de: zData, ate: zData }).parse({ de: q.get("de"), ate: q.get("ate") });
   return NextResponse.json(await conciliacao(de, ate));
@@ -24,7 +24,7 @@ export const POST = rota(async (req: Request) => {
     z.object({ acao: z.literal("desfazer"), data: zData, forma: zForma }),
     z.object({ acao: z.literal("taxas"), taxas: z.array(z.object({ forma: zForma, taxaBps: z.number().int().min(0).max(2000), prazoDias: z.number().int().min(0).max(60) })) }),
   ]));
-  const s = await exigirSessao(b.acao === "taxas" ? ["DONO"] : ["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(b.acao === "taxas" ? GESTAO : BALCAO);
   if (b.acao === "conferir") return NextResponse.json(await conferir(s, b));
   if (b.acao === "desfazer") {
     await desfazerConferencia(s, b.data, b.forma);

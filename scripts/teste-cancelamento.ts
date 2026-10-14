@@ -7,7 +7,7 @@ process.env.CELCASH_GALAX_ID = "falso";
 process.env.CELCASH_GALAX_HASH = "falso";
 delete process.env.CELCASH_AMBIENTE;
 process.env.WHATSAPP_PROVIDER = "simulador";
-process.env.COBRANCA_ENDERECO ??= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ??= "89160161"; process.env.COBRANCA_CIDADE ??= "Rio do Sul"; process.env.COBRANCA_UF ??= "SC";
+process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ||= "89160161"; process.env.COBRANCA_CIDADE ||= "Rio do Sul"; process.env.COBRANCA_UF ||= "SC";
 
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, somarDias } from "@/lib/agenda/tempo";
@@ -256,7 +256,6 @@ async function main() {
   else await db.retencaoConfig.deleteMany({ where: { id: 1 } });
   await esperar(500); // avisos em segundo plano
   await limpar();
-  await db.auditoria.deleteMany({ where: { entidade: "retencao", usuarioId: null } });
   console.log(process.exitCode ? "\nAlgum teste FALHOU." : "\nTodos os testes passaram.");
 }
 

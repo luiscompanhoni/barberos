@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ArrowDownCircle, ArrowUpCircle, Lock, LockOpen, Receipt, TriangleAlert } from "lucide-react";
+import { useAcesso } from "@/components/AcessoContexto";
 import { api, paraCentavos, reais } from "@/lib/cliente-api";
 import { ExtratoCaixa } from "./ExtratoCaixa";
 
@@ -28,6 +29,7 @@ const sinal = (c: number) => (c > 0 ? `+${reais(c)}` : reais(c));
  * `compacto` (gaveta da recepcao): uma coluna, sem historico e com o extrato resumido do turno atual.
  */
 export function CaixaTela({ compacto = false }: { compacto?: boolean } = {}) {
+  const podeMexer = useAcesso().permissoes.caixa;
   const [p, setP] = useState<Painel | null>(null);
   const [msg, setMsg] = useState<{ t: string; erro?: boolean } | null>(null);
   const [ocupado, setOcupado] = useState(false);
@@ -70,13 +72,14 @@ export function CaixaTela({ compacto = false }: { compacto?: boolean } = {}) {
       {!a ? (
         <section className="cartao space-y-3">
           <h2 className="flex items-center gap-2 font-semibold"><Lock size={18} className="text-zinc-500" /> Caixa fechado</h2>
-          <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); const v = paraCentavos(fundo || "0"); if (!Number.isFinite(v)) return setMsg({ t: "Valor inválido.", erro: true }); enviar({ acao: "abrir", fundoCentavos: v }, "Caixa aberto."); }}>
+          {!podeMexer && <p className="text-sm text-zinc-500">Seu acesso não abre o caixa. Fale com o dono.</p>}
+          {podeMexer && <form className="flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); const v = paraCentavos(fundo || "0"); if (!Number.isFinite(v)) return setMsg({ t: "Valor inválido.", erro: true }); enviar({ acao: "abrir", fundoCentavos: v }, "Caixa aberto."); }}>
             <div>
               <label className="rotulo">Fundo de troco (dinheiro na gaveta)</label>
               <input className="campo w-44" inputMode="decimal" placeholder="Ex.: 150,00" value={fundo} onChange={(e) => setFundo(e.target.value)} />
             </div>
             <button className="btn-primario" disabled={ocupado}><LockOpen size={16} /> Abrir caixa</button>
-          </form>
+          </form>}
         </section>
       ) : (
         <section className="cartao-destaque space-y-4">
@@ -144,10 +147,10 @@ export function CaixaTela({ compacto = false }: { compacto?: boolean } = {}) {
             </form>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <button className="btn" onClick={() => setMov({ tipo: "sangria", valor: "", motivo: "" })}><ArrowUpCircle size={15} /> Sangria</button>
-              <button className="btn" onClick={() => setMov({ tipo: "suprimento", valor: "", motivo: "" })}><ArrowDownCircle size={15} /> Suprimento</button>
+              {podeMexer && <button className="btn" onClick={() => setMov({ tipo: "sangria", valor: "", motivo: "" })}><ArrowUpCircle size={15} /> Sangria</button>}
+              {podeMexer && <button className="btn" onClick={() => setMov({ tipo: "suprimento", valor: "", motivo: "" })}><ArrowDownCircle size={15} /> Suprimento</button>}
               {!compacto && <button className="btn" onClick={() => setVerMov(!verMov)}><Receipt size={15} /> {verMov ? "Esconder movimentação" : "Ver movimentação"}</button>}
-              <button className="btn-primario ml-auto" onClick={() => setFechar({ contado: "", obs: "" })}><Lock size={15} /> Fechar caixa</button>
+              {podeMexer && <button className="btn-primario ml-auto" onClick={() => setFechar({ contado: "", obs: "" })}><Lock size={15} /> Fechar caixa</button>}
             </div>
           )}
 

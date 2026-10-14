@@ -5,6 +5,7 @@
  */
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
+import { processarCampanhas } from "@/lib/campanhas/servico";
 import { db } from "@/lib/db";
 import { processarEsperas, processarIndicacoes, processarRetornos } from "@/lib/crescimento/rotina";
 import { enviarAutomacao as enviar } from "./enviar";
@@ -19,7 +20,7 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   const cfg = await configuracao();
   const so = opts.clienteIds ? { clienteId: { in: opts.clienteIds } } : {};
   const comercial = horarioComercial(agora, cfg.fuso);
-  const cont = { lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0 };
+  const cont = { lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0 };
 
   // Vaga que abriu e premio de indicacao nao esperam o horario comercial das outras mensagens.
   cont.espera = await processarEsperas(agora, opts);
@@ -84,6 +85,9 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   // ---- retorno no ritmo de cada cliente
   cont.retorno = await processarRetornos(agora, opts);
 
+  // ---- campanhas: fila dos lotes liberados, no limite diario de cada uma
+  cont.campanha = await processarCampanhas(agora, opts);
+
   // ---- aniversario (a partir das 9h, uma vez por ano)
   if (cfg.aniversario && minutosLocal(agora, cfg.fuso) >= 9 * 60) {
     const hoje = dataLocal(agora, cfg.fuso);
@@ -144,7 +148,7 @@ export function agendarAutomacoes() {
       });
       if (ck.listas || ck.resumos) console.log(`[checklist] listas ${ck.listas}, resumos ${ck.resumos}`);
       const total = Object.values(r).reduce((a, b) => a + b, 0);
-      if (total) console.log(`[automacoes] lembretes ${r.lembretes}, pós-falta ${r.faltas}, pós-atendimento ${r.pos}, reativação ${r.reativacao}, aniversário ${r.aniversario}, espera ${r.espera}, retorno ${r.retorno}, indicação ${r.indicacao}`);
+      if (total) console.log(`[automacoes] lembretes ${r.lembretes}, pós-falta ${r.faltas}, pós-atendimento ${r.pos}, reativação ${r.reativacao}, aniversário ${r.aniversario}, espera ${r.espera}, retorno ${r.retorno}, indicação ${r.indicacao}, campanha ${r.campanha}`);
     } catch (e) {
       console.error("[automacoes] falhou:", e);
     } finally {

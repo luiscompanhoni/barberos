@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { _usarFetch, converterCobranca, descritorFatura, pagarme, telefonePagarme, traduzirStatus } from "@/lib/pagamentos/pagarme";
+import { _usarFetch, converterCobranca, descritorFatura, enderecoCobranca, pagarme, telefonePagarme, traduzirStatus } from "@/lib/pagamentos/pagarme";
 
 type Chamada = { url: string; metodo: string; corpo: unknown; auth: string | null };
 let chamadas: Chamada[] = [];
@@ -47,6 +47,15 @@ describe("conversoes", () => {
   it("telefone e nome na fatura", () => {
     expect(telefonePagarme("5511999998888")).toEqual({ country_code: "55", area_code: "11", number: "999998888" });
     expect(descritorFatura("Barbearia São João Ltda")).toBe("Barbearia Sao");
+  });
+
+  it("CEP do endereco de cobranca aceita traco e espaco", () => {
+    process.env.COBRANCA_CEP = "89160-161";
+    expect(enderecoCobranca().zip_code).toBe("89160161");
+    process.env.COBRANCA_CEP = " 89160 161 ";
+    expect(enderecoCobranca().zip_code).toBe("89160161");
+    process.env.COBRANCA_CEP = "8916016";
+    expect(() => enderecoCobranca()).toThrow("Endereço de cobrança não configurado");
   });
 });
 

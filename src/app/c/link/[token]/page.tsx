@@ -3,6 +3,7 @@ import { Checkout } from "@/components/checkout/Checkout";
 import { Marca } from "@/components/Marca";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal } from "@/lib/agenda/tempo";
+import { ErroNegocio } from "@/lib/erros";
 import { linkPublico } from "@/lib/links/servico";
 import { chavePublicaPagarme, modoCartaoCheckout } from "@/lib/pagamentos/checkout";
 
@@ -11,7 +12,11 @@ export const dynamic = "force-dynamic";
 /** Pagina publica do link de pagamento (enviado pela barbearia no WhatsApp). */
 export default async function PagarLink(props: PageProps<"/c/link/[token]">) {
   const { token } = await props.params;
-  const dados = await linkPublico(token).catch(() => null);
+  // So "link nao existe" vira 404; outra falha aparece como erro (e no log do servidor).
+  const dados = await linkPublico(token).catch((e) => {
+    if (e instanceof ErroNegocio && e.status === 404) return null;
+    throw e;
+  });
   if (!dados) notFound();
   const cfg = await configuracao();
   const { link, checkout } = dados;

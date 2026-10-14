@@ -18,7 +18,7 @@ const hojeSp = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0,
 const menosDias = (d: string, n: number) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() - n); return x.toISOString().slice(0, 10); };
 
 /** Conciliacao: o que o sistema registrou x o que caiu na conta, por dia e meio de recebimento. */
-export function ConciliacaoTela({ dono }: { dono: boolean }) {
+export function ConciliacaoTela({ gestao }: { gestao: boolean }) {
   const [periodo, setPeriodo] = useState({ de: menosDias(hojeSp(), 14), ate: hojeSp() });
   const [d, setD] = useState<Dados | null>(null);
   const [edit, setEdit] = useState<{ chave: string; valor: string; obs: string } | null>(null);
@@ -59,7 +59,7 @@ export function ConciliacaoTela({ dono }: { dono: boolean }) {
             {d.totais.divergentes > 0 && <span className="font-bold text-red-600">{d.totais.divergentes} com diferença</span>}
           </div>
         )}
-        {dono && d && <button className="btn" onClick={() => setTaxas(taxas ? null : d.taxas)}><Settings2 size={15} /> Taxas e prazos</button>}
+        {gestao && d && <button className="btn" onClick={() => setTaxas(taxas ? null : d.taxas)}><Settings2 size={15} /> Taxas e prazos</button>}
       </section>
 
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}

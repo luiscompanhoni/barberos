@@ -17,6 +17,7 @@ import { conciliacao } from "@/lib/financeiro/conciliacao";
 import { extratoCaixa } from "@/lib/financeiro/extrato";
 import { resumoMes } from "@/lib/financeiro/resumo";
 import { _usarFetch } from "@/lib/pagamentos/pagarme";
+import { horarioLivre } from "./util-teste";
 
 const ok = (c: boolean, msg: string) => { console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); if (!c) process.exitCode = 1; };
 const falha = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error & { codigo?: string; status?: number }; } };
@@ -157,7 +158,7 @@ async function main() {
     // ---- 3) parcial: horario pago antes no Pix (ja na comanda), dono estorna direto parte
     const barbeiro = await db.barbeiro.findFirstOrThrow({ where: { ativo: true } });
     const servico = await db.servico.findFirstOrThrow({ where: { ativo: true } });
-    const ini = new Date(Date.now() - 3_600_000);
+    const ini = await horarioLivre(barbeiro.id, new Date(Date.now() - 3_600_000), 30, -30);
     const ag = await db.agendamento.create({ data: { barbeiroId: barbeiro.id, clienteId: cliente.id, servicoId: servico.id, inicio: ini, fim: new Date(+ini + 30 * 60_000), precoCentavos: 4321, origem: "SITE", status: "CONCLUIDO" } });
     const o3 = pedidoPago(4321, "pix");
     const ant = await db.pagamentoAntecipado.create({ data: { agendamentoId: ag.id, clienteId: cliente.id, valorCentavos: 4321, forma: "PIX", status: "PAGO", gatewayId: o3.id, pagoEm: new Date() } });

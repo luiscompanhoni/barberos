@@ -4,7 +4,7 @@
 process.env.PAGAMENTOS_PROVIDER = "pagarme";
 process.env.PAGARME_SECRET_KEY = "sk_test_falsa";
 
-process.env.COBRANCA_ENDERECO ??= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ??= "89160161"; process.env.COBRANCA_CIDADE ??= "Rio do Sul"; process.env.COBRANCA_UF ??= "SC";
+process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ||= "89160161"; process.env.COBRANCA_CIDADE ||= "Rio do Sul"; process.env.COBRANCA_UF ||= "SC";
 import { db } from "@/lib/db";
 import { _usarFetch } from "@/lib/pagamentos/pagarme";
 import { assinar, situacaoDoCliente } from "@/lib/assinaturas/servico";

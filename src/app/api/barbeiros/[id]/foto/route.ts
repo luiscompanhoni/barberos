@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auditar } from "@/lib/auditoria";
-import { exigirSessao, type Sessao } from "@/lib/auth/sessao";
+import { GESTAO, type Sessao, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, proibido, rota } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
@@ -25,9 +25,9 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/barbeiros/
   });
 });
 
-/** Dono troca a foto de qualquer um; barbeiro so a propria. */
+/** Dono e gerente trocam a foto de qualquer um; barbeiro so a propria. */
 async function exigirPermissao(id: string): Promise<Sessao> {
-  const s = await exigirSessao(["DONO", "BARBEIRO"]);
+  const s = await exigirSessao([...GESTAO, "BARBEIRO"]);
   if (s.papel === "BARBEIRO" && s.barbeiroId !== id) throw proibido();
   return s;
 }

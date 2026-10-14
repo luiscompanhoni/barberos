@@ -9,6 +9,8 @@ datasource db {
 
 enum Papel {
   DONO
+  /// Administrador/gerente: o que a recepcao faz + cadastros, horarios e configuracoes; o resto pela matriz de permissoes.
+  GERENTE
   RECEPCAO
   BARBEIRO
   CLIENTE
@@ -65,6 +67,17 @@ model Usuario {
   cliente      Cliente?
 
   @@map("usuarios")
+}
+
+/// Matriz de permissoes por acao (lib/auth/permissoes-regras.ts). Sem linha = padrao do papel; o dono pode tudo.
+model PermissaoPapel {
+  papel        Papel
+  permissao    String
+  permitido    Boolean
+  atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
+
+  @@id([papel, permissao])
+  @@map("permissoes_papel")
 }
 
 model CodigoLogin {
@@ -131,28 +144,28 @@ model Configuracao {
 }
 
 model Barbeiro {
-  id              String             @id @default(cuid())
-  usuarioId       String             @unique
-  usuario         Usuario            @relation(fields: [usuarioId], references: [id])
-  nome            String
-  cor             String             @default("#378ADD")
-  ordem           Int                @default(0)
-  ativo           Boolean            @default(true)
+  id                 String              @id @default(cuid())
+  usuarioId          String              @unique
+  usuario            Usuario             @relation(fields: [usuarioId], references: [id])
+  nome               String
+  cor                String              @default("#378ADD")
+  ordem              Int                 @default(0)
+  ativo              Boolean             @default(true)
   /// Link secreto do calendario (.ics) para assinar no Google Agenda / celular.
-  tokenCalendario String?            @unique
-  servicos        BarbeiroServico[]
-  expediente      ExpedientePadrao[]
-  excecoes        ExcecaoAgenda[]
-  bloqueios       Bloqueio[]
-  agendamentos    Agendamento[]
-  planos          PlanoBarbeiro[]
-  checklistPessoa ChecklistPessoa?
-  poteAjuste      PoteBarbeiro?
+  tokenCalendario    String?             @unique
+  servicos           BarbeiroServico[]
+  expediente         ExpedientePadrao[]
+  excecoes           ExcecaoAgenda[]
+  bloqueios          Bloqueio[]
+  agendamentos       Agendamento[]
+  planos             PlanoBarbeiro[]
+  checklistPessoa    ChecklistPessoa?
+  adicionaisComissao AdicionalComissao[]
   /// Foto (webp pequena, guardada no banco; servida em /api/barbeiros/<id>/foto).
-  fotoDados       Bytes?
-  fotoTipo        String?
+  fotoDados          Bytes?
+  fotoTipo           String?
   /// Muda a cada foto nova (quebra o cache do navegador).
-  fotoVersao      Int                @default(0)
+  fotoVersao         Int                 @default(0)
 
   @@map("barbeiros")
 }
@@ -262,6 +275,7 @@ model Cliente {
   antecipados        PagamentoAntecipado[]
   girosRoleta        RoletaGiro[]
   linksPagamento     LinkPagamento[]
+  enviosCampanha     CampanhaEnvio[]
 
   @@map("clientes")
 }
@@ -297,16 +311,23 @@ model Agendamento {
   @@map("agendamentos")
 }
 
+/// Log de auditoria: so recebe linhas novas (um gatilho no banco recusa alterar ou apagar).
 model Auditoria {
-  id         String   @id @default(cuid())
-  usuarioId  String?
-  acao       String
-  entidade   String
-  entidadeId String
-  dados      Json?
-  criadoEm   DateTime @default(now()) @db.Timestamptz(3)
+  id          String   @id @default(cuid())
+  usuarioId   String?
+  acao        String
+  entidade    String
+  entidadeId  String
+  /// Detalhes; alteracoes guardam { antes, depois } so com os campos que mudaram.
+  dados       Json?
+  /// IP e aparelho (user agent) de quem fez, quando veio de uma requisicao.
+  ip          String?
+  dispositivo String?
+  criadoEm    DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([entidade, entidadeId])
+  @@index([criadoEm])
+  @@index([usuarioId, criadoEm])
   @@map("auditoria")
 }
 
@@ -349,15 +370,19 @@ model Conversa {
 }
 
 model Mensagem {
-  id         String        @id @default(cuid())
-  conversaId String
-  conversa   Conversa      @relation(fields: [conversaId], references: [id], onDelete: Cascade)
-  autor      AutorMensagem
-  texto      String
+  id             String          @id @default(cuid())
+  conversaId     String
+  conversa       Conversa        @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  autor          AutorMensagem
+  texto          String
   /// id da mensagem no WhatsApp (evita processar a mesma entrada duas vezes)
-  wamid      String?       @unique
-  erro       String?
-  criadoEm   DateTime      @default(now()) @db.Timestamptz(3)
+  wamid          String?         @unique
+  erro           String?
+  /// Confirmacoes do WhatsApp para o que a barbearia mandou (API oficial e Evolution; o simulador nao informa).
+  entregueEm     DateTime?       @db.Timestamptz(3)
+  lidaEm         DateTime?       @db.Timestamptz(3)
+  criadoEm       DateTime        @default(now()) @db.Timestamptz(3)
+  enviosCampanha CampanhaEnvio[]
 
   @@index([conversaId, criadoEm])
   @@map("mensagens")
@@ -437,39 +462,39 @@ model PlanoBarbeiro {
 }
 
 model Assinatura {
-  id                 String            @id @default(cuid())
-  clienteId          String
-  cliente            Cliente           @relation(fields: [clienteId], references: [id])
-  planoId            String
-  plano              Plano             @relation(fields: [planoId], references: [id])
-  status             StatusAssinatura  @default(PENDENTE)
-  formaPagamento     FormaPagamento
+  id                  String               @id @default(cuid())
+  clienteId           String
+  cliente             Cliente              @relation(fields: [clienteId], references: [id])
+  planoId             String
+  plano               Plano                @relation(fields: [planoId], references: [id])
+  status              StatusAssinatura     @default(PENDENTE)
+  formaPagamento      FormaPagamento
   /// Preco travado na adesao.
-  precoCentavos      Int
-  gatewayId          String?           @unique
-  gatewayClienteId   String?
+  precoCentavos       Int
+  gatewayId           String?              @unique
+  gatewayClienteId    String?
   /// Inicio do ciclo pago atual (conta os usos por ciclo).
-  cicloInicio        DateTime?         @db.Timestamptz(3)
-  proximoVencimento  DateTime?         @db.Date
-  criadaEm           DateTime          @default(now()) @db.Timestamptz(3)
-  ativadaEm          DateTime?         @db.Timestamptz(3)
-  canceladaEm        DateTime?         @db.Timestamptz(3)
-  motivoCancelamento String?
-  origem             OrigemAgendamento
+  cicloInicio         DateTime?            @db.Timestamptz(3)
+  proximoVencimento   DateTime?            @db.Date
+  criadaEm            DateTime             @default(now()) @db.Timestamptz(3)
+  ativadaEm           DateTime?            @db.Timestamptz(3)
+  canceladaEm         DateTime?            @db.Timestamptz(3)
+  motivoCancelamento  String?
+  origem              OrigemAgendamento
   /// Codigo aleatorio para links publicos (ex.: pagina de cartao). Nao e o id.
-  tokenPublico       String?           @unique
+  tokenPublico        String?              @unique
   /// Pausa pedida pelo cliente: nao usa o plano ate pausadaAte e a cobranca anda os mesmos dias.
   /// pausadaEm volta a null quando a rotina reativa (pausadaAte fica de historico).
-  pausadaEm          DateTime?         @db.Timestamptz(3)
-  pausadaAte         DateTime?         @db.Date
+  pausadaEm           DateTime?            @db.Timestamptz(3)
+  pausadaAte          DateTime?            @db.Date
   /// Cancelamento no fim do ciclo: a recorrencia ja parou; o plano vale ate o dia anterior a esta data.
-  encerraEm          DateTime?         @db.Date
+  encerraEm           DateTime?            @db.Date
   /// Desconto de retencao: % nas mensalidades com vencimento ate descontoRetencaoAte.
   descontoRetencaoPct Int?
-  descontoRetencaoAte DateTime?        @db.Date
-  cobrancas          Cobranca[]
-  agendamentos       Agendamento[]
-  retencoes          RetencaoAssinatura[]
+  descontoRetencaoAte DateTime?            @db.Date
+  cobrancas           Cobranca[]
+  agendamentos        Agendamento[]
+  retencoes           RetencaoAssinatura[]
 
   @@index([clienteId, status])
   @@index([planoId, status])
@@ -936,6 +961,8 @@ model RoletaPremio {
   ativo         Boolean          @default(true)
   /// Maximo de vezes que pode sair por mes (null = sem limite).
   limiteMensal  Int?
+  /// Custo interno do brinde para a barbearia (ex.: a cerveja custa R$ 4). Dinheiro custa o que o cliente usar do saldo.
+  custoCentavos Int              @default(0)
   criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
   giros         RoletaGiro[]
 
@@ -962,7 +989,9 @@ model RoletaGiro {
   valorCentavos Int              @default(0)
   /// Multiplicador aplicado x100 (110 = x1.1).
   multiplicador Int              @default(100)
-  /// "GRATIS" = giro gratis do periodo; "ATENDIMENTO" = ganho por visita.
+  /// Custo do brinde no momento do giro (o custo do premio pode mudar depois).
+  custoCentavos Int              @default(0)
+  /// "GRATIS" = giro gratis do periodo; "ATENDIMENTO" = ganho por visita; "CAMPANHA" = presente do link de campanha.
   origem        String
   status        StatusGiro
   beneficioId   String?
@@ -970,6 +999,7 @@ model RoletaGiro {
   entregueEm    DateTime?        @db.Timestamptz(3)
   entreguePorId String?
   criadoEm      DateTime         @default(now()) @db.Timestamptz(3)
+  envioCampanha CampanhaEnvio?
 
   @@index([clienteId, criadoEm])
   @@index([status])
@@ -1217,20 +1247,22 @@ model ComissaoServico {
   @@map("comissoes_servico")
 }
 
-/// Pote de assinaturas (como o Dpote do CashBarber): no periodo, um % do que entrou de mensalidades
-/// e dividido entre os barbeiros pelas fichas dos atendimentos feitos pelo plano. Ligado, substitui a
-/// regra "pelo plano" de cada servico. Linha unica (id "pote").
+/// Comissao das assinaturas (o "pote" do CashBarber): a Receita Distribuivel do periodo (mensalidades pagas
+/// menos estornos) e atribuida aos barbeiros pelos Creditos de Atendimento dos atendimentos pelo plano, e cada
+/// um recebe o percentual base (+ adicional) sobre a receita atribuida. Ligado, substitui a regra "pelo plano"
+/// de cada servico. Linha unica (id "pote").
 model PoteConfig {
   id            String   @id @default("pote")
   ativo         Boolean  @default(false)
-  /// % do faturamento de assinaturas que vira pote (3500 = 35%).
+  /// Percentual base da comissao das assinaturas sobre a receita atribuida ao barbeiro (3500 = 35%).
   percentualBps Int      @default(3500)
   atualizadoEm  DateTime @updatedAt @db.Timestamptz(3)
 
   @@map("pote_config")
 }
 
-/// Peso de cada servico feito pelo plano no pote (ex.: corte 40 fichas, barba 20). Sem linha = nao entra.
+/// Creditos de Atendimento: peso de cada servico feito pelo plano (ex.: corte 40, barba 20; as "fichas" do
+/// CashBarber). Sem linha = o servico nao gera credito.
 model PoteFicha {
   servicoId String  @id
   servico   Servico @relation(fields: [servicoId], references: [id], onDelete: Cascade)
@@ -1240,13 +1272,30 @@ model PoteFicha {
 }
 
 /// Ajuste do barbeiro no pote: adicional soma ao % do pote; diferenciada substitui o % (null = sem).
-model PoteBarbeiro {
-  barbeiroId      String   @id
-  barbeiro        Barbeiro @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
-  adicionalBps    Int      @default(0)
-  diferenciadaBps Int?
+enum ModalidadeComissao {
+  ASSINATURA
+  AVULSO
+}
 
-  @@map("pote_barbeiros")
+/// Comissao diferenciada: pontos percentuais a mais (ou a menos) para um barbeiro, negociados individualmente.
+/// Pagos pela barbearia: nao saem da comissao dos outros. Vale para os atendimentos de `inicio` ate `fim`
+/// (inclusive; sem fim = ate ser encerrado). Nunca e apagado depois de comecar a valer: encerra com `fim`.
+model AdicionalComissao {
+  id              String             @id @default(cuid())
+  barbeiroId      String
+  barbeiro        Barbeiro           @relation(fields: [barbeiroId], references: [id], onDelete: Cascade)
+  modalidade      ModalidadeComissao
+  /// Pontos percentuais x100 (500 = +5 pontos: 35% vira 40%).
+  pontosBps       Int
+  motivo          String
+  inicio          DateTime           @db.Date
+  fim             DateTime?          @db.Date
+  /// Quem autorizou (o dono que cadastrou).
+  autorizadoPorId String?
+  criadoEm        DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@index([barbeiroId, modalidade])
+  @@map("adicionais_comissao")
 }
 
 /// Comissao de produto por faixa de venda no periodo, por categoria (BAR = conveniencia, LOJA).
@@ -1462,4 +1511,90 @@ model PedidoEstorno {
   @@index([executadoEm])
   @@index([comandaId])
   @@map("pedidos_estorno")
+}
+
+enum StatusCampanha {
+  ATIVA
+  PAUSADA
+  ENCERRADA
+}
+
+enum StatusEnvioCampanha {
+  /// Lote liberado, esperando a vez (a rotina manda respeitando o limite diario).
+  FILA
+  ENVIADO
+  FALHOU
+  /// Nao mandou: marcou horario, pediu para parar ou a campanha foi encerrada antes.
+  PULADO
+}
+
+/// Campanha no WhatsApp para segmentos da base, liberada em lotes e com limite de envios por dia.
+model Campanha {
+  id              String          @id @default(cuid())
+  nome            String
+  /// Segmentos somados (chaves de lib/campanhas/regras.ts, ex.: ["ate30", "d31a60"]).
+  segmentos       String[]
+  /// Texto com {nome}, {barbearia} e {link}.
+  mensagem        String
+  limiteDiario    Int
+  /// Quantos dos avisados costumam marcar (bps): com a capacidade da agenda, sugere o tamanho do lote.
+  taxaRespostaBps Int             @default(2000)
+  /// Campanha da roleta: o link abre a roleta com 1 giro de presente (sem login).
+  roleta          Boolean         @default(false)
+  status          StatusCampanha  @default(ATIVA)
+  criadoPorId     String?
+  criadoEm        DateTime        @default(now()) @db.Timestamptz(3)
+  envios          CampanhaEnvio[]
+
+  @@map("campanhas")
+}
+
+model CampanhaEnvio {
+  id          String              @id @default(cuid())
+  campanhaId  String
+  campanha    Campanha            @relation(fields: [campanhaId], references: [id], onDelete: Cascade)
+  clienteId   String
+  cliente     Cliente             @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  lote        Int
+  status      StatusEnvioCampanha @default(FILA)
+  liberadoEm  DateTime            @default(now()) @db.Timestamptz(3)
+  enviadoEm   DateTime?           @db.Timestamptz(3)
+  /// Erro do envio ou motivo de ter pulado.
+  erro        String?
+  /// Link rastreado da mensagem ({link} vira /c/r/<token>).
+  token       String?             @unique
+  /// Mensagem no WhatsApp (entregue/lida vem dela).
+  mensagemId  String?
+  mensagem    Mensagem?           @relation(fields: [mensagemId], references: [id], onDelete: SetNull)
+  /// Primeira vez que abriu o link num navegador (robo de previa nao conta: a pagina avisa por JavaScript).
+  clicouEm    DateTime?           @db.Timestamptz(3)
+  /// Giro de presente da campanha da roleta.
+  giroId      String?             @unique
+  giro        RoletaGiro?         @relation(fields: [giroId], references: [id], onDelete: SetNull)
+  /// Primeira vez que entrou na area do cliente depois de clicar.
+  appAbertoEm DateTime?           @db.Timestamptz(3)
+
+  @@unique([campanhaId, clienteId])
+  @@index([status, campanhaId])
+  @@map("campanha_envios")
+}
+
+/// Backups do banco, gravados pelo container de backup (deploy/backup.sh): cada copia, se a restauracao de teste
+/// num banco separado conferiu e se a copia criptografada foi para fora do servidor.
+model BackupRegistro {
+  id             String   @id
+  /// DIARIO | DEPLOY | MANUAL
+  tipo           String
+  arquivo        String
+  bytes          BigInt
+  /// Restaurou num banco temporario e as contagens bateram.
+  restaurado     Boolean
+  /// Ex.: "68 tabelas · 1734 clientes · 9812 atendimentos".
+  conferencia    String?
+  foraDoServidor Boolean
+  erro           String?
+  criadoEm       DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([criadoEm])
+  @@map("backups")
 }

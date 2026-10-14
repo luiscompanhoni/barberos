@@ -9,16 +9,16 @@ import { LinksPagamentoTela } from "./LinksPagamentoTela";
 import { ResumoTela } from "./ResumoTela";
 
 export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | "resumo";
-const ABAS: { k: Aba; r: string; dono?: boolean }[] = [
+const ABAS: { k: Aba; r: string; resultado?: boolean }[] = [
   { k: "caixa", r: "Caixa" }, { k: "despesas", r: "Despesas" }, { k: "links", r: "Links de pagamento" }, { k: "estornos", r: "Estornos" },
-  { k: "conciliacao", r: "Conciliação" }, { k: "resumo", r: "Resumo do mês", dono: true },
+  { k: "conciliacao", r: "Conciliação" }, { k: "resumo", r: "Resumo do mês", resultado: true },
 ];
 
-/** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (so o dono) o resumo do mes. */
-export function FinanceiroTela({ dono, abaInicial = "caixa", estornosPendentes = 0 }: { dono: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
+/** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (com a permissao "resultado") o resumo do mes. */
+export function FinanceiroTela({ verResultado, gestao, abaInicial = "caixa", estornosPendentes = 0 }: { verResultado: boolean; gestao: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
   const [aba, setAba] = useState<Aba>(abaInicial);
   const [pendentes, setPendentes] = useState(estornosPendentes);
-  const abas = ABAS.filter((a) => !a.dono || dono);
+  const abas = ABAS.filter((a) => !a.resultado || verResultado);
   return (
     <div className="space-y-4">
       <div>
@@ -35,9 +35,9 @@ export function FinanceiroTela({ dono, abaInicial = "caixa", estornosPendentes =
           </button>
         ))}
       </div>
-      {aba === "caixa" ? <CaixaTela /> : aba === "despesas" ? <DespesasTela /> : aba === "links" ? <LinksPagamentoTela dono={dono} />
+      {aba === "caixa" ? <CaixaTela /> : aba === "despesas" ? <DespesasTela /> : aba === "links" ? <LinksPagamentoTela />
         : aba === "estornos" ? <EstornosTela onMudou={() => fetch("/api/estornos").then((r) => r.json()).then((x) => setPendentes(x.pendentes?.filter((p: { status: string }) => p.status === "PENDENTE").length ?? 0)).catch(() => {})} />
-          : aba === "conciliacao" ? <ConciliacaoTela dono={dono} /> : <ResumoTela />}
+          : aba === "conciliacao" ? <ConciliacaoTela gestao={gestao} /> : <ResumoTela />}
     </div>
   );
 }

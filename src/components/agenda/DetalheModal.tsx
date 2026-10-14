@@ -119,10 +119,10 @@ export function DetalheModal(p: {
         </div>
       )}
 
-      {ag.pagoAntes && (p.papel === "DONO" || p.papel === "RECEPCAO") && (
+      {ag.pagoAntes && (p.papel === "DONO" || p.papel === "GERENTE" || p.papel === "RECEPCAO") && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 p-3 text-sm">
           <span className="flex-1">Pago online antes: {reais(ag.precoCentavos)}</span>
-          <BotaoEstorno tipo="ANTECIPADO" id={ag.id} dono={p.papel === "DONO"} />
+          <BotaoEstorno tipo="ANTECIPADO" id={ag.id} />
         </div>
       )}
 

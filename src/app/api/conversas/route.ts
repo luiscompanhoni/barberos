@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 
 /** Lista de conversas do WhatsApp para a equipe (as que pedem atendente primeiro). */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   const conversas = await db.conversa.findMany({
     orderBy: [{ atualizadoEm: "desc" }],
     take: 100,

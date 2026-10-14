@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  BarChart3, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Menu,
-  MessageSquareText, Package, PanelLeft, Receipt, Settings, Smartphone, UserRound, X, type LucideIcon,
+  BarChart3, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Megaphone, Menu,
+  MessageSquareText, Package, PanelLeft, Receipt, Settings, ShieldCheck, Smartphone, UserRound, X, type LucideIcon,
 } from "lucide-react";
 import { Marca } from "./Marca";
 
-const PAPEIS: Record<string, string> = { DONO: "Dono", RECEPCAO: "Recepção", BARBEIRO: "Barbeiro" };
+const PAPEIS: Record<string, string> = { DONO: "Dono", GERENTE: "Gerente", RECEPCAO: "Recepção", BARBEIRO: "Barbeiro" };
 
 const ICONES: Record<string, LucideIcon> = {
   "/painel": LayoutDashboard,
@@ -30,6 +30,8 @@ const ICONES: Record<string, LucideIcon> = {
   "/checklist": ClipboardCheck,
   "/rh": BriefcaseBusiness,
   "/whatsapp": Smartphone,
+  "/auditoria": ShieldCheck,
+  "/campanhas": Megaphone,
 };
 
 const iniciais = (nome: string) =>

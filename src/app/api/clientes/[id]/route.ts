@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { auditarMudanca } from "@/lib/auditoria";
 import { exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { naoEncontrado, rota } from "@/lib/erros";
@@ -30,9 +31,14 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/clientes/[
 
 /** Equipe completa o cadastro: preferencias, nascimento e como conheceu. */
 export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/clientes/[id]">) => {
-  await exigirSessao();
+  const sessao = await exigirSessao();
   const { id } = await ctx.params;
   const b = await corpo(req, zPerfilCliente.extend({ observacoes: z.string().trim().max(300).nullable().optional() }));
-  const c = await db.cliente.update({ where: { id }, data: b, select: { dataNascimento: true, origem: true, origemDetalhe: true, observacoes: true } });
+  const c = await db.$transaction(async (tx) => {
+    const atual = await tx.cliente.findUnique({ where: { id } });
+    if (!atual) throw naoEncontrado("Cliente");
+    await auditarMudanca(tx, sessao.usuarioId, "alterar", "cliente", id, atual, b, { cliente: atual.nome });
+    return tx.cliente.update({ where: { id }, data: b, select: { dataNascimento: true, origem: true, origemDetalhe: true, observacoes: true } });
+  });
   return NextResponse.json({ ...c, dataNascimento: dataParaTexto(c.dataNascimento) });
 });

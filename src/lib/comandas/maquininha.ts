@@ -6,7 +6,9 @@
  * - "simulada": para testar sem maquininha (padrao fora de producao).
  */
 import type { FormaRecebimento } from "@prisma/client";
+import { ehHomologacao } from "@/lib/ambiente";
 import { auditar } from "@/lib/auditoria";
+import { pode } from "@/lib/auth/permissoes";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
@@ -16,6 +18,7 @@ import { avisarComanda, ehGerente, lancarPagamento } from "./servico";
 export type ModoMaquininha = "stone" | "simulada" | "manual";
 
 export function modoMaquininha(): ModoMaquininha {
+  if (ehHomologacao()) return "simulada";
   const m = process.env.MAQUININHA;
   if (m === "stone" || m === "simulada" || m === "manual") return m;
   return process.env.NODE_ENV === "production" ? "manual" : "simulada";
@@ -132,7 +135,7 @@ export async function cancelarPagamento(s: Sessao, pagamentoId: string) {
   if (pg.antecipadoId) throw new ErroNegocio("Esse valor foi pago online antes do atendimento: não dá para desfazer. Para devolver, use “Pedir estorno”.", 409, "antecipado");
   if (pg.linkPagamentoId) throw new ErroNegocio("Esse valor foi pago pelo link de pagamento: não dá para desfazer. Para devolver, use “Pedir estorno”.", 409, "link");
   if (pg.status === "PAGO") {
-    if (s.papel !== "DONO") throw new ErroNegocio("Pagamento já recebido: peça o estorno ao dono (botão “Pedir estorno”).", 403, "pedir_estorno");
+    if (!(await pode(s, "estorno"))) throw new ErroNegocio("Pagamento já recebido: peça o estorno ao dono (botão “Pedir estorno”).", 403, "pedir_estorno");
     if (pg.gatewayPedidoId && !pg.gatewayPedidoId.startsWith(PREFIXO_SIMULADO)) {
       throw new ErroNegocio("Pagamento aprovado na maquininha: para devolver, use “Estornar”.", 409, "usar_estorno");
     }

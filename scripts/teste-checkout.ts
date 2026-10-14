@@ -8,7 +8,7 @@ process.env.CELCASH_GALAX_HASH = "falso";
 delete process.env.CELCASH_AMBIENTE;
 process.env.WHATSAPP_PROVIDER = "simulador";
 
-process.env.COBRANCA_ENDERECO ??= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ??= "89160161"; process.env.COBRANCA_CIDADE ??= "Rio do Sul"; process.env.COBRANCA_UF ??= "SC";
+process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ||= "89160161"; process.env.COBRANCA_CIDADE ||= "Rio do Sul"; process.env.COBRANCA_UF ||= "SC";
 import type { Sessao } from "@/lib/auth/sessao";
 import { checkoutDoHorario, pagarAntecipado, sincronizarAntecipado } from "@/lib/agenda/antecipado";
 import { ativarComCartao, checkoutDaAssinatura, pagarPlanoComPix } from "@/lib/assinaturas/cartao-pix";
@@ -18,6 +18,7 @@ import { assinar, cancelar } from "@/lib/assinaturas/servico";
 import { cancelarPagamento } from "@/lib/comandas/maquininha";
 import { abrirComanda, adicionarAvulso, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
 import { db } from "@/lib/db";
+import { horarioLivre } from "./util-teste";
 import { conciliacao } from "@/lib/financeiro/conciliacao";
 import { resumoMes } from "@/lib/financeiro/resumo";
 import { cancelarLink, criarLink, linkPublico, pagarLink, sincronizarLinksPendentes } from "@/lib/links/servico";
@@ -178,8 +179,8 @@ async function main() {
   const servico = await db.servico.findFirstOrThrow({ where: { ativo: true } });
   const cliente = await db.cliente.create({ data: { telefone: TEL[0], nome: "Teste Checkout", cpf: "40563771038", email: "checkout@example.com" } });
   let minuto = 0;
-  const marcar = () => {
-    const inicio = new Date(Date.now() + 3 * 86_400_000 + (minuto += 120) * 60_000);
+  const marcar = async () => {
+    const inicio = await horarioLivre(barbeiro.id, new Date(Date.now() + 3 * 86_400_000 + (minuto += 120) * 60_000));
     return db.agendamento.create({
       data: { barbeiroId: barbeiro.id, clienteId: cliente.id, servicoId: servico.id, inicio, fim: new Date(inicio.getTime() + 30 * 60_000), precoCentavos: 4321, origem: "SITE", status: "MARCADO" },
     });

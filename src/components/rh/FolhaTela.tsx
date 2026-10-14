@@ -13,7 +13,7 @@ type Linha = {
   status: "ABERTA" | "FECHADA" | "PAGA"; pagoEm: string | null; mudouDepois: boolean;
   comissaoDetalhe: {
     avulso: Soma; plano: Soma; semRegra: number;
-    pote?: { qtd: number; comissao: number } | null; produtos?: { vendido: number; comissao: number } | null;
+    assinaturas?: { qtd: number; creditos: number; receitaAtribuida: number; comissao: number } | null; produtos?: { vendido: number; comissao: number } | null;
   } | null; lancamentos: Lanc[];
 };
 type Dados = { competencia: string; linhas: Linha[] };
@@ -126,8 +126,8 @@ export function FolhaTela() {
               {l.comissaoDetalhe && (
                 <p className="text-xs text-zinc-500">
                   Comissão: {l.comissaoDetalhe.avulso.qtd} avulso(s) = {reais(l.comissaoDetalhe.avulso.comissao)}
-                  {l.comissaoDetalhe.pote
-                    ? <> · pote de assinaturas ({l.comissaoDetalhe.pote.qtd} pelo plano) = {reais(l.comissaoDetalhe.pote.comissao)}</>
+                  {l.comissaoDetalhe.assinaturas
+                    ? <> · assinaturas ({l.comissaoDetalhe.assinaturas.qtd} pelo plano, {l.comissaoDetalhe.assinaturas.creditos} créditos, {reais(l.comissaoDetalhe.assinaturas.receitaAtribuida)} atribuídos) = {reais(l.comissaoDetalhe.assinaturas.comissao)}</>
                     : <> · {l.comissaoDetalhe.plano.qtd} pelo plano = {reais(l.comissaoDetalhe.plano.comissao)}</>}
                   {l.comissaoDetalhe.produtos && <> · produtos ({reais(l.comissaoDetalhe.produtos.vendido)} vendidos) = {reais(l.comissaoDetalhe.produtos.comissao)}</>}
                   {l.comissaoDetalhe.semRegra > 0 && <span className="text-amber-700"> · {l.comissaoDetalhe.semRegra} sem regra</span>}

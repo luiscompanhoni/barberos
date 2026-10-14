@@ -1,6 +1,6 @@
 // Teste de integracao do ciclo da assinatura (gateway simulado) contra o banco de DESENVOLVIMENTO.
 // Cria e apaga os proprios dados. Rodar: npm run teste:assinaturas
-process.env.COBRANCA_ENDERECO ??= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ??= "89160161"; process.env.COBRANCA_CIDADE ??= "Rio do Sul"; process.env.COBRANCA_UF ??= "SC";
+process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ||= "89160161"; process.env.COBRANCA_CIDADE ||= "Rio do Sul"; process.env.COBRANCA_UF ||= "SC";
 import { db } from "@/lib/db";
 import { assinar, cancelar, situacaoDoCliente, entrarNaListaDeEspera } from "@/lib/assinaturas/servico";
 import { cobrancaEmAberto, processarEventoGateway } from "@/lib/assinaturas/cobrancas";

@@ -1,10 +1,23 @@
 # BarberOS
 
-Sistema de atendimento da barbearia: agenda por barbeiro, bot do WhatsApp, área do cliente, assinaturas e estoque.
+Sistema da barbearia Black Barber: agenda por barbeiro, bot do WhatsApp, área do cliente, assinaturas, comanda e
+estoque, financeiro, RH e indicadores. Substitui o CashBarber.
 
-- **Fase 1 (pronta):** agenda, app do barbeiro, tela da recepção e painel do dono.
-- **Fase 2 (pronta):** bot do WhatsApp com Claude, conversas da equipe, simulador e área do cliente no site.
-- **Fase 3 (pronta, local):** assinaturas com cobrança recorrente (Asaas ou simulado), regras de plano, lista de espera e anti-cancelamento.
+## O que já está pronto
+
+- **Fase 1:** agenda por barbeiro, tela da recepção ao vivo, app do barbeiro e painel do dono.
+- **Fase 2:** bot do WhatsApp com Claude, conversas da equipe, simulador e área do cliente no site.
+- **Fase 3:** assinaturas pela Pagar.me (Pix, cartão e boleto), regras de plano, lista de espera do plano e
+  cancelamento com tentativa de retenção.
+- **Fase 4:** estoque, comanda com pagamento dividido e maquininha Stone Connect 2.0.
+- **Fase 5:** mensagens automáticas, Google Agenda dos barbeiros, indicadores, lista de espera de horário,
+  "hora de voltar" e indique e ganhe.
+- **Produção:** login com senha, WhatsApp oficial ou não oficial (Evolution), checkout próprio (planos, horário
+  pago antes e links de pagamento), saldo e cashback, roleta de prêmios, financeiro (caixa, despesas, conciliação,
+  estornos, resumo do mês), checklist da equipe, RH (comissões de avulsos, assinaturas e produtos, comissão diferenciada e folha) e deploy em VPS com
+  https e backup diário.
+- **Troca de sistema:** importação do CashBarber (cadastro, clientes, assinantes, histórico de agendamentos e
+  comandas, mensalidades e horários ainda marcados) e domínio próprio.
 
 ## Rodar localmente
 
@@ -18,8 +31,10 @@ npm run db:seed               # dados de exemplo
 npm run dev                   # site: http://localhost:3000 · painel: http://painel.localhost:3000
 ```
 
-Login por celular + código. Em teste local (`OTP_PROVIDER="console"`, fora de produção) o código aparece
-**na própria tela de login** (botão "Usar"). Com `OTP_PROVIDER="whatsapp"` ele chega por WhatsApp.
+Login por celular + senha (a equipe também pode usar um nome de usuário). No primeiro acesso, ou se esquecer a senha,
+use **"Primeiro acesso ou esqueci a senha"**: chega um código no WhatsApp e, depois de entrar, a pessoa cria a senha.
+Em teste local (`OTP_PROVIDER="console"`, fora de produção) o código aparece **na própria tela de login** (botão
+"Usar"). Com `OTP_PROVIDER="whatsapp"` ele chega pelo WhatsApp (oficial ou não oficial).
 
 | Quem      | Onde entra                              | Celular (seed)  |
 |-----------|-----------------------------------------|-----------------|
@@ -28,36 +43,57 @@ Login por celular + código. Em teste local (`OTP_PROVIDER="console"`, fora de p
 | Joao      | `painel.localhost:3000/entrar`          | (11) 90000-0011 |
 | Pedro     | `painel.localhost:3000/entrar`          | (11) 90000-0012 |
 | Lucas     | `painel.localhost:3000/entrar`          | (11) 90000-0013 |
-| Clientes  | `localhost:3000/entrar`                 | qualquer celular (o cadastro é criado no primeiro acesso) |
+| Clientes  | `localhost:3000/entrar`                 | qualquer celular ("Criar conta" com senha, ou entrar pelo código) |
+
+Os usuários do seed não têm senha: entre pelo código e crie a senha. O dono também pode gerar uma senha temporária
+para cada pessoa da equipe em **Configurações** (`/equipe`), e ela troca no primeiro acesso.
 
 ## Telas
 
-Equipe:
+O painel tem uma barra de abas no topo (até 8): troca de tela sem abrir abas do navegador e lembra a última página e
+a rolagem de cada uma.
+
+Equipe (dono, gerente e recepção; o que depende do papel está marcado):
+- **Painel** (`/painel`): o que precisa de ação agora e o mapa de horários de pico.
 - **Recepção** (`/recepcao`): uma coluna por barbeiro, horários livres em destaque. Clique no vazio para encaixar;
   arraste para mudar horário ou barbeiro; puxe a borda de baixo para mudar a duração. Atualiza ao vivo.
-- **Semana** (`/semana`) e **Minha agenda** (`/minha-agenda`, barbeiro).
-- **Horários** (`/expediente`): semana padrão, folga / dia extra / horário diferente, fechar agenda.
-- **Conversas** (`/conversas`, dono e recepção): acompanha o bot, assume a conversa e responde pelo painel;
-  "Devolver para o bot" volta ao atendimento automático.
-- **Simulador** (`/simulador`, dono, só com `WHATSAPP_PROVIDER="simulador"`): conversa como se fosse um cliente
-  no WhatsApp, passando pelo mesmo caminho do webhook (bot, agenda, avisos).
 - **Comandas** (`/comandas`): uma comanda por cliente. Abra pelo atendimento na agenda (botão "Comanda": o
   serviço entra com o preço certo, zero se for pelo plano) ou avulsa no balcão. Toque nos produtos do bar/loja,
-  receba em uma ou mais formas e feche: o estoque baixa no fechamento.
-- **Estoque** (`/estoque`, dono e recepção): produtos do bar, da loja e de uso interno; entrada (compra), ajuste de
-  contagem, consumo e perda, com histórico de cada movimento; o painel avisa o que está acabando.
-- **Equipe e serviços** (`/equipe`, dono).
+  use o saldo do cliente, receba em uma ou mais formas e feche: o estoque baixa no fechamento.
+- **Conversas** (`/conversas`): acompanha o bot, assume a conversa e responde pelo painel;
+  "Devolver para o bot" volta ao atendimento automático.
+- **Semana** (`/semana`).
+- **Assinaturas** (`/assinaturas`), **Estoque** (`/estoque`), **Financeiro** (`/financeiro`),
+  **Checklist** (`/checklist`) e **Roleta** (`/roleta`): ver as seções abaixo.
+- Dono e gerente: **Campanhas** (`/campanhas`: segmentos, capacidade da agenda e campanhas em lotes), **Planos** (`/planos`), **Horários** (`/expediente`: semana padrão, folga, dia extra, horário
+  diferente, fechar agenda) e **Configurações** (`/equipe`: dados da barbearia, mensagens automáticas, barbeiros com
+  foto e serviços).
+- Pela matriz de permissões: **Indicadores** (`/indicadores`, quem pode ver o resultado) e **RH** (`/rh`, quem pode
+  mexer na folha ou nas comissões).
+- Só o dono: **Acessos** e **Permissões** (em Configurações), **WhatsApp**
+  (`/whatsapp`: conexão do número pelo QR code), **Auditoria** (`/auditoria`: quem mudou o quê, quando e de onde,
+  com o antes → depois) e **Simulador** (`/simulador`, só com
+  `WHATSAPP_PROVIDER="simulador"`: conversa como se fosse um cliente, pelo mesmo caminho do webhook).
+- **Minha conta** (`/conta`, toda a equipe): senha e usuário de login.
 
-Cliente (`/c`): próximos horários (remarcar e cancelar), histórico, agendar em 4 passos
-(serviço → barbeiro ou "qualquer um" → dia e hora → confirmar) e perfil com preferências de corte.
+Barbeiro: **Minha agenda** (`/minha-agenda`), **Barbearia hoje** (a tela da recepção), **Comandas**,
+**Meus horários** e **Meus números** (os indicadores dele).
+
+Cliente (`/c`): próximos horários (remarcar, cancelar e pagar antes), histórico, agendar em 4 passos
+(serviço → barbeiro ou "qualquer um" → dia e hora → confirmar), planos (assinar e cancelar), saldo (cashback e
+indicações), roleta de prêmios e perfil com preferências de corte e senha.
 
 ## Bot do WhatsApp
 
 - Claude com ferramentas (`src/lib/bot/`): listar serviços, consultar horários, agendar, remarcar, cancelar,
-  meus agendamentos, salvar nome e chamar atendente. O bot nunca inventa horário: sempre consulta a agenda.
+  meus agendamentos, salvar nome e chamar atendente; planos e assinatura; links de pagamento; cancelamento do
+  plano com retenção; lista de espera e indicação. O bot nunca inventa horário: sempre consulta a agenda.
 - Modelo padrão `claude-opus-5-5` com effort baixo e fallback de recusa; troque com `BOT_MODELO`.
 - Sem `ANTHROPIC_API_KEY`, o bot passa a conversa para a equipe e avisa o cliente.
 - Quando a equipe remarca, troca o barbeiro ou cancela um atendimento, o cliente recebe aviso no WhatsApp.
+
+`WHATSAPP_PROVIDER` escolhe o canal: `simulador` (nada sai do servidor), `cloud` (oficial da Meta) ou `evolution`
+(não oficial, pelo QR code).
 
 ### Ligar o WhatsApp oficial (Cloud API)
 
@@ -65,12 +101,27 @@ Cliente (`/c`): próximos horários (remarcar e cancelar), histórico, agendar e
    exclusivo da barbearia.
 2. Preencha no `.env`: `WHATSAPP_PROVIDER="cloud"`, `WHATSAPP_TOKEN` (token permanente de usuário do sistema),
    `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET` e um `WHATSAPP_VERIFY_TOKEN` inventado por você.
-3. Configure o webhook com a URL pública `https://SEU-DOMINIO/api/whatsapp/webhook`, o mesmo verify token, e
+3. Configure o webhook com a URL pública `https://painel.appblackbarber.com/api/whatsapp/webhook`, o mesmo verify token, e
    assine o campo `messages`.
 4. Crie e aguarde aprovação de dois templates:
    - Autenticação (código de acesso, com botão "copiar código") → `WHATSAPP_TEMPLATE_CODIGO`; depois mude
      `OTP_PROVIDER="whatsapp"`.
    - Utilidade, corpo `Olá {{1}}! {{2}}` → `WHATSAPP_TEMPLATE_AVISO` (avisos fora da janela de 24h).
+
+### WhatsApp não oficial (Evolution)
+
+Conecta o número da barbearia pelo QR code, como o WhatsApp Web. Não tem custo por mensagem nem precisa de modelos
+aprovados, mas não tem garantia da Meta: o número pode ser bloqueado se mandar mensagem em massa.
+
+1. No `.env` do servidor: `WHATSAPP_PROVIDER="evolution"` e `COMPOSE_PROFILES="evolution"` (sobe o serviço
+   `evolution` do `deploy/docker-compose.yml`). A `EVOLUTION_API_KEY` é gerada pelo `scripts/deploy.sh`.
+2. Rode o deploy de novo e abra **WhatsApp** no painel (dono): no celular da barbearia, Configurações → Aparelhos
+   conectados → Conectar aparelho, e aponte para o QR code.
+3. Depois de conectado, mude `OTP_PROVIDER="whatsapp"`: o código de acesso vai como mensagem comum.
+4. Entregue/lida: o sistema pede à Evolution as mensagens novas e as atualizações de status. Quem já estava conectado
+   antes desta versão toca em **Conectar** de novo na tela WhatsApp (não precisa ler o QR): isso refaz o webhook.
+
+A Evolution roda no mesmo servidor, sem porta aberta, e guarda os dados no mesmo Postgres (schema próprio).
 
 ## Colocar em produção
 
@@ -78,36 +129,111 @@ A imagem Docker (`Dockerfile`) aplica as migrações sozinha ao subir e expõe `
 Precisa de **um servidor Node sempre ligado + Postgres** (o tempo real e o bot rodam no processo; não use
 hospedagem serverless).
 
-Variáveis de ambiente mínimas:
+### VPS (o que está no ar)
+
+`deploy/docker-compose.yml` sobe o sistema, o Postgres, o Caddy (https automático pelo Let's Encrypt), o backup
+diário e, se ligado, a Evolution. Para subir ou atualizar, na pasta do projeto (Git Bash):
+
+```bash
+bash scripts/deploy.sh root@IP-DO-VPS
+```
+
+- Na primeira vez, instala o Docker e cria `/opt/barberos/.env` a partir de `deploy/env.producao.exemplo`, com
+  `DB_SENHA` e `SESSION_SECRET` aleatórios. Preencha `DONO_TELEFONE`, `ANTHROPIC_API_KEY` etc. e rode de novo.
+- Nas próximas, só troca o código: o `.env` e os backups do servidor ficam.
+- Backup: todo dia às 03h e antes de cada deploy (ver "Backups e restauração").
+- O banco não fica exposto: só os containers falam com ele.
+- Erro inesperado: a pessoa vê "Algo deu errado" com um código; no servidor,
+  `cd /opt/barberos && docker compose logs app | grep "codigo=<código>"` mostra a linha `[erro]` com a rota e a causa.
+
+Variáveis principais (a lista completa e comentada está em `deploy/env.producao.exemplo`):
 
 | Variável | Valor |
 |---|---|
-| `DATABASE_URL` | Postgres gerenciado (Railway, Neon, Supabase...) |
-| `SITE_URL`, `PAINEL_URL` | `https://blackbarber.com.br` e `https://painel.blackbarber.com.br` (ver "Site e painel") |
-| `SESSION_SECRET` | 64 caracteres aleatórios (`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`) |
-| `ANTHROPIC_API_KEY` | chave do Claude |
+| `SITE_URL`, `PAINEL_URL` | endereço do site e do painel, com https (ver "Site e painel") |
+| `CADDY_ENDERECOS` | domínios que o Caddy atende (ex.: `appblackbarber.com, www.appblackbarber.com, painel.appblackbarber.com`); `:80` para testar só pelo IP |
 | `DONO_TELEFONE`, `DONO_NOME`, `NOME_BARBEARIA` | criam o dono no primeiro deploy (depois podem sair) |
-| `WHATSAPP_*`, `OTP_PROVIDER` | ver "Ligar o WhatsApp oficial". Enquanto `OTP_PROVIDER="console"`, o código de login aparece só no log do servidor |
+| `ANTHROPIC_API_KEY` | chave do Claude |
+| `WHATSAPP_*`, `OTP_PROVIDER` | ver "Bot do WhatsApp". Enquanto `OTP_PROVIDER="console"`, o código de login aparece só no log do servidor (`docker compose logs app`) |
+| `PAGAMENTOS_PROVIDER`, `PAGARME_*`, `COBRANCA_*` | ver "Ligar a Pagar.me" |
+| `MAQUININHA`, `STONE_POS_*` | ver "Maquininha Stone" |
+| `BACKUP_SENHA`, `BACKUP_S3_*` | cópia criptografada do banco fora do servidor (ver "Backups e restauração") |
 
-**Railway (recomendado para começar):** New Project → Deploy from GitHub repo (detecta o Dockerfile) → Add
-PostgreSQL → preencha as variáveis → Settings → Networking → Generate Domain (ou seu domínio próprio).
+**Railway (alternativa):** New Project → Deploy from GitHub repo (detecta o Dockerfile) → Add PostgreSQL →
+preencha as variáveis (`DATABASE_URL` do Postgres e `SESSION_SECRET` com 64 caracteres aleatórios) → Settings →
+Networking → Generate Domain (ou seu domínio próprio). Lá não há Evolution nem o backup do compose.
+
+### Backups e restauração
+
+- **Todo dia às 03h** (e assim que o servidor sobe, se passou da hora desligado) o container `backup` copia o banco,
+  **restaura a cópia num banco separado** e confere: mesmas tabelas, mesma última migração e nada a menos do que o banco
+  tinha. Backup que não restaurou aparece como erro. As cópias ficam 14 dias em `/opt/barberos/backups`.
+- **Antes de cada deploy** o `scripts/deploy.sh` faz outra cópia (`...-antes-do-deploy.sql.gz`). Se ela falhar, o
+  deploy para antes de trocar qualquer coisa.
+- **Painel:** Configurações → Backups lista cada cópia (restaurada/conferida, cópia fora). Se o backup atrasar mais de
+  26 h ou falhar, aparece em "Precisa de ação" para o dono.
+- **Cópia fora do servidor** (recomendado; sem ela, perder o VPS é perder os backups):
+  1. Crie um bucket privado num armazenamento S3: Backblaze B2 ou Cloudflare R2 (os dois têm cota grátis e cobram
+     centavos por GB). Crie uma chave de acesso só para esse bucket.
+  2. No `/opt/barberos/.env`: `BACKUP_S3_BUCKET`, `BACKUP_S3_ENDPOINT` (ex.: `https://<conta>.r2.cloudflarestorage.com`
+     ou `https://s3.us-west-004.backblazeb2.com`), `BACKUP_S3_CHAVE`, `BACKUP_S3_SEGREDO` e `BACKUP_SENHA` (uma senha
+     longa; **guarde-a fora do servidor**, num gerenciador de senhas: sem ela a cópia não abre).
+  3. Rode o deploy. Cada backup sobe criptografado (AES-256) e fica 30 dias lá.
+- **Comandos** (no servidor, em `/opt/barberos`, prefixo `docker compose --env-file .env -f deploy/docker-compose.yml`):
+  - backup agora: `... exec backup backup.sh agora`
+  - testar um arquivo: `... exec backup backup.sh verificar /backups/barberos-AAAAMMDD-HHMM.sql.gz`
+- **Restaurar** (a produção só muda no último passo):
+  1. `... exec backup backup.sh restaurar /backups/<arquivo>.sql.gz` cria o banco `barberos_restaurado`, sem tocar no
+     de produção. Confira se é o que você quer.
+  2. Para colocar no lugar: `... stop app evolution backup`, depois
+     `... exec db psql -U barberos -d postgres -c 'ALTER DATABASE barberos RENAME TO barberos_antigo' -c 'ALTER DATABASE barberos_restaurado RENAME TO barberos'`
+     e `... start app evolution backup`. O banco anterior fica como `barberos_antigo` até você apagar.
+  3. Cópia que veio de fora do servidor: baixe o `.enc` e abra com
+     `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in arquivo.sql.gz.enc -out arquivo.sql.gz` (pede a
+     `BACKUP_SENHA`); copie para `/opt/barberos/backups` e siga o passo 1.
+
+### Homologação (ambiente de testes)
+
+Produção é a operação real; a homologação é onde se testa. Fica no mesmo VPS, com banco e sistema próprios, em
+`https://homolog.appblackbarber.com`, protegida por usuário e senha e fora do Google.
+
+- **Nada sai de verdade:** com `AMBIENTE=homologacao` o sistema força WhatsApp, pagamentos e maquininha simulados,
+  mesmo que alguém coloque chave real no `.env`. Uma faixa amarela "HOMOLOGAÇÃO" aparece em todas as telas. O código de
+  login aparece na própria tela.
+- **Instalar:**
+  1. No DNS do domínio, crie o registro `A` de `homolog` apontando para o IP do VPS.
+  2. Rode o deploy da produção uma vez com esta versão (`bash scripts/deploy.sh root@IP`): ele prepara o Caddy.
+  3. `bash scripts/deploy.sh root@IP homolog`. Na primeira vez ele cria `/opt/barberos-homolog/.env`, sobe o sistema
+     e mostra a senha de acesso (usuário `homolog`). A senha fica em `/opt/barberos-homolog/.senha-homolog`.
+  4. Banco vazio: preencha `DONO_TELEFONE` no `.env` da homologação e rode de novo, ou copie a produção (abaixo).
+- **Dados para testar:** `bash scripts/homolog-copiar-producao.sh root@IP` troca o banco da homologação por uma cópia
+  **anonimizada** da produção (`deploy/anonimizar.sql`): clientes viram "Cliente 123" com telefone fictício, sem
+  CPF/e-mail; conversas, auditoria e códigos de login somem; a sessão do WhatsApp não vem. A equipe entra com o mesmo
+  acesso da produção. A produção só é lida.
+- **Rotina:** atualização nova vai primeiro para a homologação (`deploy.sh ... homolog`), de preferência com uma cópia
+  recente da produção (assim as migrações novas rodam em cima de dados parecidos com os reais). Conferiu, aí sim
+  `deploy.sh` da produção.
 
 ### Site e painel (dois endereços, um sistema)
 
-- `blackbarber.com.br`: a página inicial é a de venda dos planos; `/entrar` é o login do cliente, que agenda, vê
+- Site (`SITE_URL`): a página inicial é a de venda dos planos; `/entrar` é o login do cliente, que agenda, vê
   horários e paga por ali. Links de pagamento enviados no WhatsApp também usam esse endereço.
-- `painel.blackbarber.com.br`: o sistema da equipe (agenda, comandas, estoque, conversas, configurações).
-- O mesmo serviço atende os dois: no Railway, adicione os **dois** domínios ao serviço (Settings → Networking →
-  Custom Domain). Página de equipe aberta no site vai para o painel e vice-versa; os logins são separados.
-- DNS: `painel` é um CNAME comum. O domínio sem "www" (`blackbarber.com.br`) precisa de CNAME no topo, que o
-  Registro.br não faz: use o DNS gratuito da Cloudflare (aponte os nameservers do Registro.br para ela) ou
-  redirecione para `www.blackbarber.com.br`.
+- Painel (`PAINEL_URL`): o sistema da equipe (agenda, comandas, estoque, conversas, configurações).
+- O mesmo serviço atende os dois. Página de equipe aberta no site vai para o painel e vice-versa; os logins são
+  separados. Sem `PAINEL_URL`, tudo fica num endereço só.
+- DNS: `painel` é um CNAME (ou registro A) comum. O domínio sem "www" precisa apontar para o servidor; no
+  Registro.br, use registro A para o IP do VPS (CNAME no topo não funciona lá).
 - Webhooks (Meta, Pagar.me) podem usar qualquer um dos dois; use o do painel.
 - No computador: `SITE_URL=http://localhost:3000` e `PAINEL_URL=http://painel.localhost:3000` (o navegador já
   entende `*.localhost`, sem configurar nada).
 
-**VPS (Hostinger, DigitalOcean...):** `docker build -t barberos .` e `docker run -d -p 3000:3000 --env-file .env
-barberos`, com Postgres gerenciado ou em outro container e um proxy com HTTPS (Caddy ou Nginx) na frente.
+### Trocar de domínio
+
+- Ajuste `SITE_URL`, `PAINEL_URL` e `CADDY_ENDERECOS` e rode o deploy.
+- `CADDY_PAINEL_ANTIGO`: endereço antigo do painel (ex.: o provisório `sslip.io`). Quem entrar por ele vai para o
+  `PAINEL_URL` novo.
+- `CADDY_IP`: IP do servidor. Quem digitar só o IP vai para o painel.
+- Atualize as URLs dos webhooks na Meta e na Pagar.me se usavam o endereço antigo.
 
 ## Assinaturas (Fase 3)
 
@@ -115,18 +241,49 @@ barberos`, com Postgres gerenciado ou em outro container e um proxy com HTTPS (C
   dias da semana, vagas, desconto nos extras, formas de pagamento (um plano só aceita Pix, cartão e boleto) e
   barbeiros que atendem. Mudar o preço vale só para novas adesões.
 - **Assinaturas** (`/assinaturas`, dono e recepção): assinantes, receita recorrente, vendas × cancelamentos do mês,
-  motivos de cancelamento, venda no balcão (gera o link e manda no WhatsApp), cobrar atrasado, cancelar.
-- **Cliente** (`/c/planos`): assina e paga na fatura do meio de pagamento (o sistema nunca vê dados de cartão),
-  entra na lista de espera se lotar, cancela informando o motivo.
+  motivos de cancelamento, retenção, venda no balcão (gera o link e manda no WhatsApp), cobrar atrasado, cancelar.
+- **Cliente** (`/c/planos`): assina e paga no checkout do BarberOS (o sistema nunca vê dados de cartão) e entra na
+  lista de espera se lotar.
 - **Bot**: apresenta os planos, assina (pede o CPF e manda o link), explica as regras do plano, oferece avulso com o
   desconto de assinante, manda o link de mensalidade atrasada e tenta reter antes de cancelar.
 - **Na agenda**: o serviço coberto sai por R$ 0 (selo "Assinante"); quando a regra não cobre, o sistema explica e
   oferece marcar como avulso. Ao ativar o plano, horários já marcados passam a sair pelo plano.
 - **Pagamentos**: ativa ao pagar, fica "atrasada" (ainda vale por `toleranciaAtrasoDias`, padrão 3) e depois
-  suspende; o cliente recebe os avisos no WhatsApp. O webhook confere o token e busca o status real no Asaas.
-- **Testar sem Asaas**: `PAGAMENTOS_PROVIDER="simulado"`. A fatura vira uma tela de teste com o botão "Pagar"; no
-  detalhe da assinatura há botões para simular pagamento, atraso e o próximo mês. `npm run teste:assinaturas`
-  roda o ciclo completo (17 verificações) no banco de desenvolvimento.
+  suspende; o cliente recebe os avisos no WhatsApp. O webhook confere o token e busca o status real no gateway.
+- **Testar sem gateway**: `PAGAMENTOS_PROVIDER="simulado"`. A fatura vira uma tela de teste com o botão "Pagar"; no
+  detalhe da assinatura há botões para simular pagamento, atraso e o próximo mês. Em produção, pagamento simulado só
+  é confirmado pela equipe. `npm run teste:assinaturas` roda o ciclo completo no banco de desenvolvimento.
+
+### Cancelamento pelo cliente, com retenção
+
+O cliente cancela na área dele (`/c/planos/cancelar`) ou pelo bot, informando o motivo. Antes de cancelar, o
+sistema faz uma oferta conforme o motivo:
+
+| Motivo | Oferta |
+|---|---|
+| Ficou caro | desconto (padrão 20% por 2 meses; no máximo um por ano) |
+| Não estou usando / vou viajar | pausa de 30, 60 ou 90 dias (até o máximo do dono, padrão 60; no máximo uma a cada 6 meses) |
+| Insatisfeito / horários não batem | conversa com o gerente (passa para a equipe em Conversas) |
+| Mudei de cidade / outro | cancela direto |
+
+- O plano continua valendo até o fim do ciclo já pago; quando o ciclo acaba, vira cancelado e os horários marcados
+  depois disso passam a ser avulsos. A pausa empurra a próxima cobrança e o plano volta sozinho no fim dela.
+- Pagar.me aplica pausa e desconto sozinha. Nos outros meios (Celcash, Asaas, assinaturas do CashBarber) a oferta
+  vira "falar com o gerente".
+- O dono é avisado no WhatsApp. Em **Assinaturas** ele acompanha a retenção e liga, desliga e ajusta as ofertas.
+
+### Pagamentos online (checkout do BarberOS)
+
+O cliente paga no próprio site, por Pix ou cartão (o número do cartão vai do navegador direto para a Pagar.me e vira
+token). O mesmo checkout atende:
+
+- **Planos**: adesão e mensalidades (`/c/assinar/<código>` e `/c/pagar/<código>`).
+- **Horário pago antes** (`/c/pagar-horario/<id>`): o valor entra sozinho na comanda do atendimento. Se o horário
+  for cancelado depois de pago, o valor vira saldo do cliente.
+- **Links de pagamento** (Financeiro → Links de pagamento): a equipe cria uma cobrança avulsa (ou de uma comanda
+  aberta) e manda `/c/link/<código>` no WhatsApp. Pago, o cliente recebe o aviso e o valor entra na comanda aberta.
+
+Há limite de tentativas de cartão por hora, contra teste de cartões em massa.
 
 ### Ligar a Pagar.me (Stone) - meio de pagamento escolhido
 
@@ -135,23 +292,32 @@ o número do cartão (certificação PCI DSS). Por isso a cobrança é feita pel
 
 | Forma | Como funciona |
 |---|---|
-| Cartão | O cliente digita na página `/c/assinar/<código>`; o número vai do navegador direto para a Pagar.me e vira token. A Pagar.me cobra todo mês. Cartão recusado: o cliente recebe o link para trocar o cartão. |
+| Cartão | O cliente digita no checkout do BarberOS; o número vai do navegador direto para a Pagar.me e vira token. A Pagar.me cobra todo mês. Cartão recusado: o cliente recebe o link para trocar o cartão. |
 | Boleto | Assinatura na Pagar.me; o boleto de cada mês aparece em `/c/pagar/<código>`. |
 | Pix | A Pagar.me não faz Pix recorrente: o BarberOS gera o Pix do mês 3 dias antes do vencimento e manda no WhatsApp. A página mostra QR + copia e cola e atualiza sozinha quando o pagamento cai. |
 
 1. Peça a conta Pagar.me ao seu comercial da Stone e pegue as chaves de teste (`sk_test_`/`pk_test_`).
-2. `.env`: `PAGAMENTOS_PROVIDER="pagarme"`, `PAGARME_SECRET_KEY`, `PAGARME_PUBLIC_KEY`, `PAGARME_WEBHOOK_TOKEN`, `SITE_URL`.
+2. `.env`: `PAGAMENTOS_PROVIDER="pagarme"`, `PAGARME_SECRET_KEY`, `PAGARME_PUBLIC_KEY`, `PAGARME_WEBHOOK_TOKEN`,
+   `SITE_URL`, `NOME_FATURA` e o endereço de cobrança da barbearia (`COBRANCA_ENDERECO`, `COBRANCA_CEP`,
+   `COBRANCA_CIDADE`, `COBRANCA_UF`), que a Pagar.me exige no cartão.
 3. Na dashboard da Pagar.me: cadastre o domínio do sistema (exigido para o cartão) e o webhook
-   `https://SEU-DOMINIO/api/pagamentos/pagarme/webhook?token=<PAGARME_WEBHOOK_TOKEN>` com os eventos
+   `https://painel.appblackbarber.com/api/pagamentos/pagarme/webhook?token=<PAGARME_WEBHOOK_TOKEN>` com os eventos
    `charge.*`, `invoice.*`, `order.*` e `subscription.canceled`.
-4. `npm run teste:pagarme` roda o fluxo completo contra uma Pagar.me falsa (sem chamadas reais).
+4. `npm run teste:pagarme` e `npm run teste:checkout` rodam os fluxos contra uma Pagar.me falsa (sem chamadas reais).
 5. Faça um teste real no ambiente de teste da Pagar.me antes de trocar para as chaves de produção.
+
+### Celcash (registros antigos)
+
+A Celcash (cel_payments, antiga Galax Pay) continua integrada para as assinaturas e cobranças criadas por ela: a
+própria Celcash gera o Pix (ou boleto) de cada mês e o cartão é cadastrado no link dela. Variáveis `CELCASH_*` em
+`deploy/env.producao.exemplo`; webhook `https://PAINEL/api/pagamentos/celcash/webhook?token=<CELCASH_WEBHOOK_TOKEN>`.
+Estornos e ofertas de retenção da Celcash são feitos à mão pela equipe.
 
 ### Ligar o Asaas (alternativa)
 
 1. Crie a conta (use o sandbox para testar) e gere a chave em Integrações → Chave de API.
 2. `.env`: `PAGAMENTOS_PROVIDER="asaas"`, `ASAAS_API_KEY`, `ASAAS_AMBIENTE="sandbox"` (ou `producao`) e `SITE_URL`.
-3. Em Integrações → Webhooks, cadastre `https://SEU-DOMINIO/api/pagamentos/webhook` com um token seu e coloque o
+3. Em Integrações → Webhooks, cadastre `https://painel.appblackbarber.com/api/pagamentos/webhook` com um token seu e coloque o
    mesmo token em `ASAAS_WEBHOOK_TOKEN`. Marque os eventos de cobrança.
 
 ## Estoque e comanda (Fase 4)
@@ -161,7 +327,8 @@ o número do cartão (certificação PCI DSS). Por isso a cobrança é feita pel
   quem fez e o saldo depois. Venda sem entrada deixa o saldo negativo e o painel avisa para conferir a contagem.
 - Pagamento dividido (ex.: parte em dinheiro, parte no cartão). Cartão e Pix cobram o valor exato; só dinheiro
   recebe a mais e o sistema mostra o troco. Desconto, item avulso e cancelar: dono e recepção.
-- Cancelar comanda fechada (só o dono) devolve os produtos ao estoque; o dinheiro/estorno é devolvido por fora.
+- O saldo do cliente (cashback, prêmios e indicação) aparece na comanda e vira desconto.
+- Cancelar comanda fechada (só o dono) devolve os produtos ao estoque; o dinheiro volta pelo estorno.
 - `npm run db:produtos` cria produtos de exemplo; `npm run teste:comandas` roda o fluxo completo (com uma
   Pagar.me falsa).
 
@@ -178,11 +345,12 @@ Para ligar o modo `stone`:
 
 1. Maquininha **S920 ou Q92**. Peça ao comercial da Stone a ativação do **Connect 2.0** (o software precisa estar
    no Programa de Parcerias da Stone) na mesma conta Pagar.me usada nas assinaturas.
-2. `.env`: `MAQUININHA="stone"`, `STONE_POS_SERIAL` (número de série da maquininha, na etiqueta de trás),
+2. `.env`: `MAQUININHA="stone"`, `STONE_POS_SERIAL` (número de série, na etiqueta de trás; várias maquininhas
+   separadas por vírgula, e a equipe escolhe em qual cobrar), `STONE_POS_NOMES` (opcional, nomes na mesma ordem),
    `PAGARME_SECRET_KEY` e `EMAIL_BALCAO` (e-mail usado nos pedidos de cliente sem cadastro).
 3. O webhook é o mesmo das assinaturas (`/api/pagamentos/pagarme/webhook`, eventos `order.*` e `charge.*`).
    Se o webhook atrasar, o botão "Conferir" consulta o pedido na hora.
-4. Estorno de cartão é feito na maquininha ou no portal da Stone (a API do Connect não estorna).
+4. Estorno: o sistema tenta pela API; se não der, é feito na própria maquininha ou no portal da Stone.
 
 ## Automações (Fase 5)
 
@@ -197,9 +365,10 @@ vezes, e o histórico do que foi enviado fica na mesma tela):
   conversa para vocês.
 - **Agradecimento** depois do atendimento, com o link de avaliação no Google (desligado por padrão).
 - **Chamar de volta quem sumiu** (desligado por padrão; até 15 por rodada).
+- **Parabéns** no aniversário (precisa da data de nascimento no cadastro).
 - Tudo sai entre 8h e 21h (menos o lembrete de última hora). Quem responder **PARAR** não recebe mais nada automático.
-- Fora da janela de 24 h do WhatsApp, as mensagens usam o modelo aprovado `WHATSAPP_TEMPLATE_AVISO` (crie na Meta
-  um modelo de utilidade com o texto do aviso como variável).
+- Fora da janela de 24 h do WhatsApp oficial, as mensagens usam o modelo aprovado `WHATSAPP_TEMPLATE_AVISO` (crie na
+  Meta um modelo de utilidade com o texto do aviso como variável).
 - `npm run teste:automacoes` roda todas as regras contra o banco de desenvolvimento.
 
 ### Google Agenda
@@ -208,8 +377,6 @@ Em **Horários**, cada barbeiro tem o botão **Adicionar ao Google Agenda** (tam
 atendimentos e horários fechados aparecem no calendário do celular e atualizam sozinhos. É só leitura, com um link
 secreto por barbeiro (dá para trocar se vazar) e sem telefone de cliente. O Google só lê o link com o sistema no ar
 (`PAINEL_URL` com https).
-
-Comissão dos barbeiros ficou de fora, como combinado.
 
 ## Indicadores
 
@@ -222,8 +389,7 @@ Comissão dos barbeiros ficou de fora, como combinado.
 - **Ver detalhes** de cada barbeiro (`/indicadores/barbeiro/<id>`): ocupação vs equipe, atendimentos, ticket,
   clientes fiéis, horários mais procurados, serviços e produtos vendidos. O barbeiro vê só os dele ("Meus números").
 - Idade e "como conheceu" vêm do cadastro: o cliente preenche no perfil do site, a equipe no cartão do atendimento e o
-  bot pergunta ao cliente novo depois do primeiro agendamento. Com a data de nascimento dá para ligar o parabéns
-  automático (Configurações → Mensagens automáticas).
+  bot pergunta ao cliente novo depois do primeiro agendamento.
 
 ## Lista de espera, retorno e indicação
 
@@ -236,9 +402,177 @@ Comissão dos barbeiros ficou de fora, como combinado.
   lista de espera ou ainda não pode usar o plano. Ligar em Configurações → Mensagens automáticas.
 - **Indique e ganhe:** cada cliente tem um link (`/i/<código>`) e um código. Quem chega pelo link (ou fala o código
   no WhatsApp) ganha o desconto de boas-vindas; quem indicou ganha o prêmio quando o amigo faz o 1º corte, com aviso
-  no WhatsApp. Os descontos aparecem na comanda do cliente (botão “Usar”) e voltam se a comanda for cancelada. Vale
-  só para cliente novo, uma vez por pessoa e ninguém indica a si mesmo. Ligar e definir os valores em Configurações.
+  no WhatsApp. Os descontos entram no saldo do cliente e voltam se a comanda for cancelada. Vale só para cliente
+  novo, uma vez por pessoa e ninguém indica a si mesmo. Ligar e definir os valores em Configurações.
 - `npm run teste:crescimento` roda as três contra o banco de desenvolvimento.
+
+## Campanhas: segmentos e capacidade da agenda
+
+Em **Campanhas** (`/campanhas`, dono e gerente):
+
+- **Capacidade da agenda** nos próximos 3, 7 e 14 dias: horas livres e vagas por barbeiro (expediente menos folgas,
+  agenda fechada e horários marcados, a partir da antecedência mínima), os horários ociosos de cada um e a frase
+  "Capacidade disponível para aproximadamente X novos agendamentos". A vaga tem o tamanho do serviço que mais sai
+  (com a duração própria de cada barbeiro e o intervalo entre clientes).
+- **Segmentos** com o tamanho de cada grupo: veio nos últimos 30 dias, 31–60, 61–90, 91–180, +180, assinantes,
+  ex-assinantes, perdidos (+90 dias), novos (1ª visita nos últimos 30 dias) e cadastrados que nunca vieram. Mostra
+  também quantos podem receber agora (aceitam mensagens e não têm horário marcado).
+- **Campanha** = segmentos somados + mensagem (`{nome}`, `{barbearia}`, `{link}`; o "responda PARAR" entra sozinho)
+  + limite por dia. O dono libera **lotes**: o sistema sugere o tamanho pela agenda livre dos próximos 7 dias e pela
+  porcentagem de quem costuma marcar (ex.: 40 vagas ÷ 20% = 200 mensagens), sem passar do limite do dia. Os mais
+  recentes vêm primeiro. A rotina das automações manda aos poucos (até 20 a cada 5 min, só das 8h às 21h); quem
+  marcou horário ou pediu PARAR depois do lote é pulado. A primeira campanha sugerida é só para quem veio nos últimos
+  60 dias.
+- Cada campanha mostra fila, enviados hoje/limite, enviados, quem **marcou** até 14 dias depois de receber, quem pediu
+  para parar e falhas. Pausar segura a fila; encerrar cancela quem ainda não recebeu.
+- **Link rastreado:** cada mensagem leva o seu `{link}` (`/c/r/<código>`, sem login). Numa campanha comum ele abre a
+  agenda; na **campanha da roleta** ele abre a roleta com 1 giro de presente (um por mensagem, válido pelos dias de
+  validade da roleta). O prêmio vai para o número do cliente: dinheiro no saldo, brinde a retirar. Depois vem o
+  "Agendar e usar meu prêmio", que entra com o mesmo número de WhatsApp.
+- **Funil da campanha** (no cartão de cada uma): mensagens enviadas → entregues → lidas → abriram o link → giraram →
+  ganharam prêmio → abriram o app → têm conta → agendaram → compareceram → resgataram o prêmio, com % das enviadas,
+  e o faturado nas comandas desses atendimentos. O clique só conta quando a página abre num navegador (robô de prévia
+  de link não conta). Entregue e lida vêm do WhatsApp oficial ou da Evolution; o simulador não informa.
+- `npm run teste:campanhas` roda o fluxo contra o banco de desenvolvimento.
+
+## Saldo, cashback e roleta
+
+- **Saldo do cliente** (`/c/saldo`): soma do cashback, dos prêmios da roleta e das indicações que ainda não venceram,
+  com o extrato. Na comanda, vira desconto (usa primeiro o que vence antes).
+- **Cashback**: uma porcentagem do que o cliente paga (corte, bar e loja) volta como saldo, com validade. O dono
+  define a porcentagem e os dias em Configurações. Se a comanda for cancelada, o cashback dela deixa de valer.
+- **Roleta de prêmios** (`/roleta`; cliente em `/c/roleta`): o cliente ganha giros por atendimento concluído (e/ou
+  um giro grátis a cada N dias). O dono define os prêmios (texto, valor, cor, limite por mês e chance), o bônus do
+  assinante nos prêmios em dinheiro e a validade. O sorteio é feito no servidor. Dinheiro vira saldo; brinde fica
+  "a retirar" e a recepção entrega no balcão (fica registrado quem entregou). `npm run teste:roleta`.
+- **Custo × faturamento da roleta** (dono, na tela da roleta):
+  - Custo = custo interno dos brindes entregues (o dono informa o custo de cada brinde) + saldo da roleta usado.
+  - Faturamento = o que foi pago nas visitas em que o cliente usou um prêmio (crédito da roleta na comanda ou brinde
+    retirado no mesmo dia).
+  - Mostra também o retorno por real de custo e o saldo da roleta ainda não usado.
+
+## Financeiro
+
+**Financeiro** (`/financeiro`, dono e recepção; o resumo do mês só o dono):
+
+- **Caixa**: abre com o fundo de troco, registra sangrias e suprimentos e fecha com a contagem. O esperado em dinheiro
+  sai dos pagamentos das comandas feitos com o caixa aberto. O extrato mostra tudo do turno, em ordem, com o saldo da
+  gaveta linha a linha.
+- **Despesas** (contas a pagar): paga com dinheiro do caixa vira sangria; despesa recorrente, ao ser paga, cria a do
+  mês seguinte.
+- **Links de pagamento**: ver "Pagamentos online".
+- **Estornos**: ver abaixo.
+- **Conciliação**: por dia e meio de recebimento, o bruto registrado, a taxa, o líquido esperado e a data prevista do
+  depósito, contra o que caiu na conta. O dono configura as taxas e prazos de cada meio. Dinheiro é conferido no caixa.
+- **Resumo do mês** (dono): receitas, despesas pagas e o resultado, comparando com o mês anterior, sem contar nada
+  duas vezes (pago antes e links entram na data do pagamento; estorno desconta na data em que foi feito).
+
+`npm run teste:financeiro` e `npm run teste:despesas`.
+
+### Estornos
+
+- A recepção pede o estorno (pagamento da comanda, horário pago antes, link ou mensalidade, inteiro ou parcial); o
+  pedido fica pendente, o dono é avisado no WhatsApp e vê um contador no menu Financeiro.
+- O dono aprova, recusa ou estorna direto. Aprovado, o sistema devolve pelo meio certo: Pagar.me (online), Stone
+  Connect (ou na própria maquininha), dinheiro (sai do caixa como sangria) ou "por fora" (maquininha manual, Celcash).
+- Se o meio de pagamento recusar, o estorno fica como falhou e nada muda. `npm run teste:estorno`.
+
+## Equipe: checklist e RH
+
+- **Checklist** (`/checklist`, dono e recepção): tarefas por função (diarista, barbeiro, gerente) e dia da semana.
+  De manhã cada pessoa recebe a lista no WhatsApp, com um link para marcar sem login (`/t/<código>`); à noite sai o
+  resumo das pendências. O gerente valida a tarefa (a pessoa ganha os pontos) ou dá "re" (marcou sem fazer: perde
+  pontos e a tarefa volta). Faixas BLACK ELITE, BLACK PLATINA e BLACK LEGEND, com classificação.
+- **RH** (`/rh`, só o dono, porque tem salários):
+  - **Funcionários**: ficha de cada pessoa (o mesmo cadastro do checklist).
+  - **Comissão de avulsos**: regra por serviço (% ou valor fixo), com exceção por barbeiro. O % vale sobre o valor
+    efetivamente cobrado: o desconto da comanda (inclui saldo usado) e os estornos saem na proporção do serviço;
+    produtos e outros itens não entram. Sugestão inicial: avulso 40% e plano R$ 15,00 por corte.
+  - **Comissão das assinaturas** (o "pote" do CashBarber). Ligada, substitui a regra de plano de cada serviço:
+    - **Receita de Assinaturas**: mensalidades pagas no período.
+    - **Receita Distribuível**: a Receita de Assinaturas menos os estornos do período. As taxas do meio de pagamento
+      ficam com a barbearia.
+    - **Créditos de Atendimento** (as "fichas"): cada atendimento pelo plano gera os créditos do serviço.
+    - Valor do crédito = Receita Distribuível ÷ créditos de todos.
+    - Receita atribuída = créditos do barbeiro × valor do crédito.
+    - Comissão = receita atribuída × percentual base (ex.: 35%).
+  - **Comissão diferenciada**: pontos a mais por barbeiro (ex.: 35% + 5 pts = 40%), separados para assinaturas e
+    avulsos.
+    - Pagos pela barbearia, sem tirar da comissão dos outros.
+    - Cada um tem motivo, quem autorizou, início e fim.
+    - O que já valeu não se apaga: encerra com data de fim.
+    - Mês com a folha fechada só muda depois de reabrir a folha.
+    - Tudo vai para a auditoria.
+  - **Comissão de produtos** por faixa de venda no período, separada para loja e bar.
+  - **Relatório de comissões** por período, a partir dos atendimentos concluídos. Por barbeiro mostra:
+    - créditos, receita atribuída, % base e adicional;
+    - comissão de assinaturas, de avulsos e de produtos;
+    - com um mês inteiro, também salário, bônus, descontos e o total a pagar.
+  - **Folha de pagamento** por mês: prévia ao vivo, lançamentos (vale pode sair do caixa como sangria), fechar
+    (congela), marcar como paga (vira despesa), reabrir e exportar CSV.
+  - `npm run teste:rh`.
+
+## Importação do CashBarber (troca de sistema)
+
+Scripts em `scripts/`, rodados com `DATABASE_URL=... npx tsx scripts/<script>.ts`. Os CSVs têm dados pessoais: não
+copie para dentro do projeto. Todos podem rodar de novo sem duplicar. Os que aceitam `--aplicar` só mostram o que
+fariam até receberem essa opção.
+
+1. `importar-cashbarber.ts`: serviços, barbeiros (com serviços, durações e horários), planos e produtos, a partir
+   de `scripts/dados/cashbarber.json`.
+2. `importar-clientes-cashbarber.ts <Clientes.csv>`: clientes (telefone repetido vira um cadastro só; cliente que já
+   existe só ganha CPF, e-mail e nascimento que faltavam).
+3. `importar-assinantes-cashbarber.ts <Relatorio19.csv> [--aplicar]`: liga os assinantes aos clientes pelo nome. A
+   cobrança continua no CashBarber: o BarberOS não cobra nem avisa essas assinaturas.
+4. `importar-historico-cashbarber.ts <pasta> [--ate=AAAA-MM-DD|agora] [--futuros] [--aplicar]`: agendamentos e
+   comandas fechadas com os pagamentos. Nenhuma mensagem sai por causa do histórico. Na virada, `--ate=agora
+   --futuros` traz também os horários ainda marcados, que passam a receber os lembretes do BarberOS.
+5. `importar-mensalidades-cashbarber.ts <pasta> [--ate=...] [--aplicar]`: mensalidades pagas como cobranças pagas;
+   quem já saiu do plano ganha uma assinatura cancelada de histórico.
+
+Depois, confira com `relatorio-migracao.ts [--clientes=Clientes.csv] [--assinantes=Relatorio19.csv] [--saida=pasta]`.
+Ele só lê o banco e mostra:
+- clientes vindos do CashBarber e dados completos;
+- histórico, última visita por faixa e frequência;
+- assinaturas e mensalidades;
+- possíveis duplicados (mesmo nome em telefones diferentes);
+- dados incompletos.
+
+Com os CSVs do CashBarber, mostra também quem ficou de fora e por quê. Com `--saida`, grava as listas em CSV para
+abrir no Excel (fora da pasta do projeto).
+
+## Testes
+
+- `npm test`: testes unitários (Vitest, sem banco).
+- `npm run teste:todos`: roda todos os testes de fluxo abaixo e falha se algum quebrar. O CI do GitHub
+  (`.github/workflows/ci.yml`) roda tipos, lint, testes unitários, migrações num banco limpo, os testes de fluxo e o
+  build em cada push na `main` e em cada PR.
+- `npm run teste:<área>`: fluxos completos contra o banco de desenvolvimento, com gateways falsos (sem chamadas
+  reais): `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`, `automacoes`,
+  `crescimento`, `login`, `roleta`, `financeiro`, `despesas`, `estorno`, `rh`, `permissoes`, `campanhas` e `backups`.
+
+## Papéis e permissões
+
+Papéis: **Dono** (proprietário, pode tudo), **Gerente** (administrador), **Recepção** e **Barbeiro**. O dono cria
+os acessos e muda o papel de cada um em Configurações → Acessos da equipe.
+
+As ações sensíveis ficam numa matriz que o dono liga e desliga por papel (Configurações → Permissões). O padrão:
+
+| Ação | Gerente | Recepção | Barbeiro |
+|---|---|---|---|
+| Aprovar e fazer estornos (sem isso, só pede) | não | não | — |
+| Dar desconto na comanda | sim | sim | não |
+| Usar o saldo do cliente | sim | sim | sim |
+| Cancelar assinaturas e mudar ofertas de retenção | não | não | — |
+| Mexer no caixa (abrir, fechar, sangria, suprimento) | sim | sim | — |
+| Alterar comissões | não | não | — |
+| Folha e salários | não | não | — |
+| Excluir e desfazer lançamentos (comanda fechada, conta a pagar, despesa paga) | não | não | — |
+| Ver faturamento e resultado (resumo do mês, indicadores, pico, resultado da roleta) | sim | não | — |
+
+A mudança vale na hora (o papel e as permissões são lidos a cada requisição) e vai para a auditoria com o antes →
+depois. Acessos, permissões, WhatsApp e auditoria são sempre só do dono. As regras ficam em
+`src/lib/auth/permissoes-regras.ts`; o servidor confere tudo, e a tela só esconde o que a pessoa não pode fazer.
 
 ## Regras garantidas pelo sistema
 
@@ -246,25 +580,42 @@ Comissão dos barbeiros ficou de fora, como combinado.
 - Atendimento só cabe dentro do expediente do dia e fora de períodos fechados.
 - Cliente (bot e site): antecedência mínima, até N dias à frente, no máximo 2 horários futuros, sem dois
   horários no mesmo período, e só altera/cancela até 2h antes (configurável na tabela `configuracao`).
-- Barbeiro só altera a própria agenda; recepção mexe em atendimentos mas não em expediente; dono faz tudo;
-  cliente só vê e altera os próprios horários.
+- Barbeiro só altera a própria agenda; recepção mexe em atendimentos mas não em expediente; gerente também cuida de
+  cadastros, horários e configurações; dono faz tudo; cliente só vê e altera os próprios horários.
+- Ações sensíveis seguem a matriz de permissões que o dono edita (ver "Papéis e permissões").
+- Senhas guardadas com scrypt; login errado não revela se a conta existe. O sistema nunca vê o número do cartão.
+- Estorno nunca passa do valor pago, e quem aprova é o dono (ou quem ele autorizar na matriz de permissões).
 - Webhook do WhatsApp só aceita chamadas assinadas pela Meta e ignora mensagens repetidas.
-- Toda alteração fica registrada na tabela `auditoria`.
+- Toda alteração fica registrada na tabela `auditoria` (quem, quando, IP, aparelho e o antes → depois dos campos
+  que mudaram). O banco recusa alterar ou apagar esse registro; o dono consulta em **Auditoria** no painel.
 
 ## Estrutura
 
 ```
-prisma/                 schema, migrações e seed
-src/lib/agenda/         motor de disponibilidade e regras de agenda (equipe e cliente)
+prisma/                 schema, migrações, seed e scripts de dados de exemplo
+scripts/                testes de fluxo (teste-*), importação do CashBarber e deploy.sh
+deploy/                 docker-compose de produção (app, Postgres, Caddy, backup, Evolution) e .env de exemplo
+src/lib/agenda/         motor de disponibilidade, regras de agenda e horário pago antes
 src/lib/bot/            bot: prompt, ferramentas, loop com o Claude, processamento por conversa
-src/lib/whatsapp/       Cloud API, webhook, conversas e avisos
-src/lib/auth/           login por código (OTP) e sessão
-src/app/api/            API das telas, do cliente (/api/cliente) e webhook
+src/lib/whatsapp/       Cloud API, Evolution, webhook, conversas e avisos
+src/lib/auth/           login por senha e por código (OTP) e sessão
+src/lib/assinaturas/    planos, cobranças, regras e cancelamento com retenção
+src/lib/pagamentos/     Pagar.me, Celcash, Asaas, simulado e checkout
 src/lib/comandas/       estoque, comanda e maquininha (Stone Connect)
-src/components/         telas (agenda, expediente, conversas, cliente, comandas)
-tests/                  testes (npm test)
+src/lib/crescimento/    lista de espera, indicação, saldo e cashback
+src/lib/roleta/         roleta de prêmios
+src/lib/financeiro/     caixa, despesas, extrato, conciliação e resumo
+src/lib/estornos/       pedidos e execução de estornos
+src/lib/checklist/      checklist da equipe e pontos
+src/lib/rh/             comissões (avulsos, assinaturas, diferenciada, produtos), folha e funcionários
+src/lib/indicadores/    indicadores do negócio e por barbeiro
+src/lib/automacoes/     mensagens automáticas e calendário .ics
+src/app/api/            API das telas, do cliente (/api/cliente) e webhooks
+src/components/         telas
+tests/                  testes unitários (npm test)
 ```
 
-## Próximas fases
+## Próximos passos
 
-6. Produção: LGPD, backup, deploy (o que falta para subir)
+- **LGPD:** termo de uso e privacidade, consentimento do cliente e pedido de exclusão/exportação dos dados.
+- **Backup fora do servidor:** hoje a cópia diária fica no próprio VPS; falta mandar uma cópia para outro lugar.

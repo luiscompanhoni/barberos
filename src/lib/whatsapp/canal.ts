@@ -3,9 +3,10 @@
  * - "cloud": WhatsApp Cloud API oficial da Meta (producao).
  * - "evolution": nao oficial, pelo QR code (Evolution API no mesmo servidor).
  * - "simulador": nada sai do servidor; as mensagens ficam no banco e aparecem na
- *   tela /simulador (para testar sem conta na Meta).
+ *   tela /simulador (para testar sem conta na Meta). Na homologacao e sempre ele.
  */
 
+import { ehHomologacao } from "@/lib/ambiente";
 import { enviarTextoEvolution } from "./evolution";
 
 export type ResultadoEnvio = { wamid: string | null };
@@ -22,6 +23,7 @@ export type TemplateWhatsApp = {
 export type ProvedorWhatsApp = "cloud" | "evolution" | "simulador";
 
 export function provedorWhatsApp(): ProvedorWhatsApp {
+  if (ehHomologacao()) return "simulador";
   const p = process.env.WHATSAPP_PROVIDER;
   return p === "cloud" || p === "evolution" ? p : "simulador";
 }

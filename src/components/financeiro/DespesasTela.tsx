@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CircleCheck, Pencil, Plus, Repeat, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
+import { useAcesso } from "@/components/AcessoContexto";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
 import { CATEGORIAS_DESPESA, FORMAS_DESPESA, ROTULO_CATEGORIA, ROTULO_FORMA_DESPESA } from "@/lib/financeiro/regras";
 
@@ -23,6 +24,7 @@ const FILTROS: { k: Filtro; r: string }[] = [{ k: "abertas", r: "Abertas" }, { k
 
 /** Contas a pagar: cadastro, filtros, pagar (inclusive com dinheiro do caixa), editar, excluir e estornar. */
 export function DespesasTela() {
+  const podeExcluir = useAcesso().permissoes.excluir;
   const [mes, setMes] = useState(mesAtual);
   const [l, setL] = useState<Lista | null>(null);
   const [msg, setMsg] = useState<{ t: string; erro?: boolean } | null>(null);
@@ -146,9 +148,9 @@ export function DespesasTela() {
                       <>
                         <button className="btn-primario px-3 py-1 text-xs" onClick={() => setPagar({ id: d.id, forma: "PIX", data: l.hoje })}><CircleCheck size={14} /> Pagar</button>
                         <button className="btn px-2 py-1" title="Editar" onClick={() => setForm({ id: d.id, descricao: d.descricao, categoria: d.categoria, valor: centavosParaTexto(d.valorCentavos), vencimento: d.vencimento, fornecedor: d.fornecedor ?? "", observacao: d.observacao ?? "", recorrente: d.recorrente })}><Pencil size={14} /></button>
-                        <button className="btn px-2 py-1" title="Excluir" disabled={ocupado} onClick={() => confirm(`Excluir "${d.descricao}"?`) && agir(() => api(`/api/financeiro/despesas/${d.id}`, { method: "DELETE" }), "Despesa excluída.")}><Trash2 size={14} /></button>
+                        {podeExcluir && <button className="btn px-2 py-1" title="Excluir" disabled={ocupado} onClick={() => confirm(`Excluir "${d.descricao}"?`) && agir(() => api(`/api/financeiro/despesas/${d.id}`, { method: "DELETE" }), "Despesa excluída.")}><Trash2 size={14} /></button>}
                       </>
-                    ) : (
+                    ) : podeExcluir && (
                       <button className="btn px-3 py-1 text-xs" disabled={ocupado} onClick={() => confirm(`Estornar o pagamento de "${d.descricao}"? Ela volta para em aberto.`) && agir(() => api(`/api/financeiro/despesas/${d.id}`, { method: "PATCH", body: { acao: "estornar" } }), "Pagamento estornado.")}><RotateCcw size={14} /> Estornar</button>
                     )}
                   </div>

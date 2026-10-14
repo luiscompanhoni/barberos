@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
@@ -17,7 +17,7 @@ export const GET = rota(async () => {
 
 /** Cadastra barbeiro (cria o usuario de acesso com o telefone dele). So o dono. */
 export const POST = rota(async (req: Request) => {
-  await exigirSessao(["DONO"]);
+  await exigirSessao(GESTAO);
   const b = await corpo(
     req,
     z.object({

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { rota } from "@/lib/erros";
 import { painelRoleta, salvarRoleta } from "@/lib/roleta/servico";
 import { corpo } from "@/lib/validacao";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** Configuracao, premios (com a chance de cada um), brindes a entregar e ultimos giros. */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   return NextResponse.json(await painelRoleta());
 });
 
@@ -22,11 +22,12 @@ const zPremio = z.object({
   cor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
   ativo: z.boolean(),
   limiteMensal: z.number().int().min(0).max(100_000).nullable(),
+  custoCentavos: z.number().int().min(0).max(1_000_000).optional(),
 });
 
 /** So o dono configura. */
 export const PUT = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO"]);
+  const s = await exigirSessao(GESTAO);
   const b = await corpo(req, z.object({
     config: z.object({
       ativa: z.boolean(),

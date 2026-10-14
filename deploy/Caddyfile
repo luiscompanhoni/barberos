@@ -6,7 +6,7 @@
 # Enderecos vem do .env (CADDY_ENDERECOS):
 # - so IP, para testar:  :80
 # - com dominio (https automatico pelo Let's Encrypt):
-#   blackbarber.com.br, www.blackbarber.com.br, painel.blackbarber.com.br
+#   appblackbarber.com, www.appblackbarber.com, painel.appblackbarber.com
 {$CADDY_ENDERECOS} {
 	encode zstd gzip
 	reverse_proxy app:3000
@@ -27,3 +27,7 @@
 	}
 	redir {$CADDY_IP_DESTINO}{uri}
 }
+
+# Sites extras gravados no servidor (ex.: a homologacao, criada por "scripts/deploy.sh ... homolog").
+# Sem arquivo nenhum, nao faz nada.
+import /etc/caddy/sites/*.caddy

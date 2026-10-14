@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
-const TODOS = ["DONO", "RECEPCAO", "BARBEIRO", "CLIENTE"] as const;
+const TODOS = ["DONO", "GERENTE", "RECEPCAO", "BARBEIRO", "CLIENTE"] as const;
 
 /** Situacao da conta: tem senha? precisa trocar? qual o usuario? */
 export const GET = rota(async () => {

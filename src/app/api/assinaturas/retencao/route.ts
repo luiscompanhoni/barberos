@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { exigirSessaoCom } from "@/lib/auth/permissoes";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, instanteLocal } from "@/lib/agenda/tempo";
 import { configRetencao, salvarConfigRetencao } from "@/lib/assinaturas/retencao";
@@ -11,7 +12,7 @@ import { corpo } from "@/lib/validacao";
 
 /** Indicador do mes (cancelamentos e retencoes por motivo), ultimos pedidos e as ofertas configuradas. */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   const cfg = await configuracao();
   const inicioMes = new Date(instanteLocal(`${dataLocal(Date.now(), cfg.fuso).slice(0, 8)}01`, 0, cfg.fuso));
   const [linhas, recentes, ofertas, pausadas, encerrando] = await Promise.all([
@@ -39,7 +40,7 @@ export const GET = rota(async () => {
 
 /** Ofertas de retencao: so o dono configura. */
 export const PUT = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO"]);
+  const s = await exigirSessaoCom("assinatura");
   const b = await corpo(req, schemaConfigRetencao);
   const r = await salvarConfigRetencao(b, s.usuarioId);
   return NextResponse.json(r);

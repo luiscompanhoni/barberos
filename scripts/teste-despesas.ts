@@ -109,7 +109,6 @@ async function main() {
   } finally {
     const minhas = await db.despesa.findMany({ where: { descricao: { startsWith: TAG } } });
     await db.despesa.deleteMany({ where: { id: { in: minhas.map((d) => d.id) } } });
-    await db.auditoria.deleteMany({ where: { entidade: "despesa", entidadeId: { in: minhas.map((d) => d.id) } } });
     await db.pagamentoComanda.deleteMany({ where: { comandaId: { in: comandas } } });
     await db.itemComanda.deleteMany({ where: { comandaId: { in: comandas } } });
     await db.comanda.deleteMany({ where: { id: { in: comandas } } });

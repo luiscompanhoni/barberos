@@ -130,7 +130,7 @@ export function telefonePagarme(tel: string) {
 export function enderecoCobranca() {
   const e = {
     line_1: process.env.COBRANCA_ENDERECO?.trim(),
-    zip_code: process.env.COBRANCA_CEP?.replace(/D/g, ""),
+    zip_code: process.env.COBRANCA_CEP?.replace(/\D/g, ""),
     city: process.env.COBRANCA_CIDADE?.trim(),
     state: process.env.COBRANCA_UF?.trim().toUpperCase(),
     country: "BR",

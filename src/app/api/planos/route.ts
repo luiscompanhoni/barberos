@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { vagasRestantes } from "@/lib/assinaturas/servico";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
@@ -20,7 +20,7 @@ export const GET = rota(async () => {
 });
 
 export const POST = rota(async (req: Request) => {
-  await exigirSessao(["DONO"]);
+  await exigirSessao(GESTAO);
   const { servicos, barbeiroIds, ...dados } = await corpo(req, schemaPlano);
   const plano = await db.plano.create({
     data: {

@@ -14,6 +14,7 @@
     "criar-dono": "tsx prisma/criar-dono.ts",
     "db:planos": "tsx prisma/planos-exemplo.ts",
     "db:produtos": "tsx --env-file=.env prisma/produtos-exemplo.ts",
+    "teste:todos": "bash scripts/testes-integracao.sh",
     "teste:assinaturas": "tsx --env-file=.env scripts/teste-assinaturas.ts",
     "teste:pagarme": "tsx --env-file=.env scripts/teste-pagarme.ts",
     "teste:comandas": "tsx --env-file=.env scripts/teste-comandas.ts",
@@ -25,8 +26,11 @@
     "teste:financeiro": "tsx --env-file=.env scripts/teste-financeiro.ts",
     "teste:rh": "tsx --env-file=.env scripts/teste-rh.ts",
     "teste:despesas": "tsx --env-file=.env scripts/teste-despesas.ts",
+    "teste:backups": "tsx --env-file=.env scripts/teste-backups.ts",
+    "teste:campanhas": "tsx --env-file=.env scripts/teste-campanhas.ts",
     "teste:checkout": "tsx --env-file=.env scripts/teste-checkout.ts",
     "teste:estorno": "tsx --env-file=.env scripts/teste-estorno.ts",
+    "teste:permissoes": "tsx --env-file=.env scripts/teste-permissoes.ts",
     "teste:cancelamento": "tsx --env-file=.env scripts/teste-cancelamento.ts"
   },
   "dependencies": {

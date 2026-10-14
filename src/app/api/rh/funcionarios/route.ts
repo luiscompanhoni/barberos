@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { exigirSessaoCom } from "@/lib/auth/permissoes";
 import { rota } from "@/lib/erros";
 import { listarFuncionarios, salvarFicha } from "@/lib/rh/funcionarios";
 import { corpo, zData, zId } from "@/lib/validacao";
@@ -9,12 +9,12 @@ export const dynamic = "force-dynamic";
 
 /** Fichas dos funcionarios (so o dono: tem salario e Pix). */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO"]);
+  await exigirSessaoCom("folha");
   return NextResponse.json(await listarFuncionarios());
 });
 
 export const PATCH = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO"]);
+  const s = await exigirSessaoCom("folha");
   const b = await corpo(req, z.object({
     id: zId,
     cargo: z.string().trim().max(60).nullable(),

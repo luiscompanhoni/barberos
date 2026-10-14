@@ -2,14 +2,14 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal } from "@/lib/agenda/tempo";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { enviarLista, enviarResumo, novoLink } from "@/lib/checklist/servico";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
 /** Enviar agora pelo WhatsApp (lista de uma pessoa ou o resumo), ou gerar link novo. */
 export const POST = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
   const b = await corpo(req, z.discriminatedUnion("acao", [
     z.object({ acao: z.literal("lista"), pessoaId: z.string() }),
     z.object({ acao: z.literal("resumo") }),

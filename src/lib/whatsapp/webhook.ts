@@ -28,6 +28,7 @@ type Payload = {
     changes?: {
       value?: {
         contacts?: { wa_id?: string; profile?: { name?: string } }[];
+        statuses?: { id?: string; status?: string; timestamp?: string; errors?: { title?: string; message?: string }[] }[];
         messages?: {
           id?: string;
           from?: string;
@@ -122,6 +123,47 @@ export function lerMensagensEvolution(payload: unknown): MensagemRecebida[] {
       tipo: d.messageType ?? "desconhecido",
       timestamp: Number(d.messageTimestamp ?? 0) * 1000,
     });
+  }
+  return out;
+}
+
+/** Confirmacao do WhatsApp sobre uma mensagem que a barbearia mandou. */
+export type StatusMensagem = { wamid: string; status: "ENTREGUE" | "LIDA" | "FALHOU"; quando: number | null; erro: string | null };
+
+const STATUS_CLOUD: Record<string, StatusMensagem["status"]> = { delivered: "ENTREGUE", read: "LIDA", failed: "FALHOU" };
+
+/** Entrega/leitura/falha num POST da Cloud API (value.statuses). "sent" nao muda nada. */
+export function lerStatus(payload: unknown): StatusMensagem[] {
+  const out: StatusMensagem[] = [];
+  for (const entry of (payload as Payload)?.entry ?? []) {
+    for (const change of entry.changes ?? []) {
+      for (const st of change.value?.statuses ?? []) {
+        const status = STATUS_CLOUD[st.status ?? ""];
+        if (!st.id || !status) continue;
+        const e = st.errors?.[0];
+        out.push({ wamid: st.id, status, quando: st.timestamp ? Number(st.timestamp) * 1000 : null, erro: e ? (e.message || e.title || "Falha no envio").slice(0, 300) : null });
+      }
+    }
+  }
+  return out;
+}
+
+// Evolution: v2 manda o texto ("DELIVERY_ACK"); a v1 manda o numero (3 entregue, 4 lida, 5 ouvida, 0 erro).
+const STATUS_EVOLUTION: Record<string, StatusMensagem["status"]> = {
+  DELIVERY_ACK: "ENTREGUE", READ: "LIDA", PLAYED: "LIDA", ERROR: "FALHOU", "3": "ENTREGUE", "4": "LIDA", "5": "LIDA", "0": "FALHOU",
+};
+type AtualizacaoEvolution = { keyId?: string; messageId?: string; fromMe?: boolean; status?: string | number; key?: { id?: string; fromMe?: boolean }; update?: { status?: string | number } };
+
+/** Entrega/leitura num POST da Evolution (evento messages.update), so das mensagens que sairam do proprio numero. */
+export function lerStatusEvolution(payload: unknown): StatusMensagem[] {
+  const p = payload as { event?: string; data?: AtualizacaoEvolution | AtualizacaoEvolution[] };
+  if (!p?.event || p.event.toLowerCase().replace("_", ".") !== "messages.update") return [];
+  const out: StatusMensagem[] = [];
+  for (const d of Array.isArray(p.data) ? p.data : p.data ? [p.data] : []) {
+    const wamid = d.keyId ?? d.key?.id ?? d.messageId;
+    const status = STATUS_EVOLUTION[String(d.status ?? d.update?.status ?? "")];
+    if (!wamid || !status || (d.fromMe ?? d.key?.fromMe) === false) continue;
+    out.push({ wamid, status, quando: null, erro: status === "FALHOU" ? "O WhatsApp não entregou a mensagem." : null });
   }
   return out;
 }

@@ -27,8 +27,8 @@ export const DESFECHO: Record<keyof Contagem, { texto: string; cor: string }> = 
 const ORIGEM: Record<string, string> = { SITE: "site", BOT: "WhatsApp", PAINEL: "equipe", RECEPCAO: "recepção", BARBEIRO: "barbeiro" };
 const dataHora = (iso: string) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-/** Cancelamentos e retencoes do mes por motivo + ofertas (so o dono edita). */
-export function RetencaoPainel({ dono, onAbrir, versao }: { dono: boolean; onAbrir: (assinaturaId: string) => void; versao: number }) {
+/** Cancelamentos e retencoes do mes por motivo + ofertas (edita quem pode cancelar assinaturas). */
+export function RetencaoPainel({ podeEditar, onAbrir, versao }: { podeEditar: boolean; onAbrir: (assinaturaId: string) => void; versao: number }) {
   const [d, setD] = useState<Dados | null>(null);
   const [editando, setEditando] = useState(false);
   const [erro, setErro] = useState("");
@@ -42,7 +42,7 @@ export function RetencaoPainel({ dono, onAbrir, versao }: { dono: boolean; onAbr
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="font-semibold">Cancelamentos e retenção no mês</h2>
         <span className="text-xs text-zinc-500">{d.pausadas} pausado{d.pausadas === 1 ? "" : "s"} agora · {d.encerrando} encerrando no fim do ciclo</span>
-        {dono && <button className="btn ml-auto text-xs" onClick={() => setEditando(true)}>Ofertas de retenção</button>}
+        {podeEditar && <button className="btn ml-auto text-xs" onClick={() => setEditando(true)}>Ofertas de retenção</button>}
       </div>
       <div className="grid gap-2 sm:grid-cols-5">
         <Numero rotulo="Cancelaram" valor={t.CANCELOU} ruim={t.CANCELOU > 0} />

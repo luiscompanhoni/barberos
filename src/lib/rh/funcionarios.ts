@@ -2,7 +2,7 @@
  * Ficha do funcionario (o cadastro e o mesmo do checklist: ChecklistPessoa).
  */
 import { colunaParaData, dataParaColuna } from "@/lib/agenda/tempo";
-import { auditar } from "@/lib/auditoria";
+import { auditarMudanca } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { totaisDePontos } from "@/lib/checklist/pontos";
 import { progressoNivel } from "@/lib/checklist/regras";
@@ -44,7 +44,10 @@ export async function salvarFicha(s: Sessao, id: string, d: FichaEntrada) {
       where: { id },
       data: { cargo: d.cargo || null, salarioCentavos: d.salarioCentavos, chavePix: d.chavePix || null, admissao: d.admissao ? dataParaColuna(d.admissao) : null, barbeiroId: d.barbeiroId || null },
     });
-    // Nao grava a chave Pix na auditoria.
-    await auditar(tx, s.usuarioId, "rh_ficha", "checklist_pessoa", id, { cargo: d.cargo, salarioCentavos: d.salarioCentavos, admissao: d.admissao, barbeiroId: d.barbeiroId, salarioAntes: p.salarioCentavos });
+    // Nao grava a chave Pix na auditoria (so se mudou).
+    await auditarMudanca(tx, s.usuarioId, "rh_ficha", "checklist_pessoa", id,
+      { cargo: p.cargo, salarioCentavos: p.salarioCentavos, admissao: p.admissao, barbeiroId: p.barbeiroId, chavePix: p.chavePix ? "***" : null },
+      { cargo: d.cargo || null, salarioCentavos: d.salarioCentavos, admissao: d.admissao ? dataParaColuna(d.admissao) : null, barbeiroId: d.barbeiroId || null, chavePix: d.chavePix ? (d.chavePix === p.chavePix ? "***" : "*** (nova)") : null },
+      { funcionario: p.nome });
   });
 }

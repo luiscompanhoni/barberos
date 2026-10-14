@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Coins, Dices, Gift, History, Sparkles, X } from "lucide-react";
+import { CalendarPlus, Coins, Dices, Gift, History, Sparkles, X } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { RodaRoleta, rotacaoAlvo, type Fatia } from "./RodaRoleta";
 
@@ -35,6 +35,8 @@ export function RoletaJogo() {
   const [destaque, setDestaque] = useState<number | null>(null);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
+  // Ganhou algo para usar na barbearia: mostra "Agendar para resgatar" depois de coletar.
+  const [resgatar, setResgatar] = useState(false);
   const indice = useRef<number | null>(null);
 
   const carregar = useCallback(() => api<Estado>("/api/cliente/roleta").then(setE).catch((x) => setErro(x.message)), []);
@@ -42,7 +44,7 @@ export function RoletaJogo() {
 
   async function girar() {
     if (!e || girando) return;
-    setErro(""); setAviso(""); setResultado(null); setMostrar(false); setDestaque(null);
+    setErro(""); setAviso(""); setResgatar(false); setResultado(null); setMostrar(false); setDestaque(null);
     try {
       const r = await api<Resultado>("/api/cliente/roleta/girar", { method: "POST" });
       const i = Math.max(0, e.premios.findIndex((p) => p.id === r.premioId));
@@ -71,6 +73,7 @@ export function RoletaJogo() {
         : resultado.tipo === "BRINDE" ? `Seu prêmio "${resultado.rotulo}" está guardado: mostre na barbearia para retirar.`
           : "Não foi dessa vez. No próximo atendimento você ganha mais giros!",
     );
+    setResgatar(resultado.tipo !== "NADA");
     setResultado(null); setMostrar(false); setDestaque(null);
     carregar();
   }
@@ -191,6 +194,9 @@ export function RoletaJogo() {
       </div>
 
       {aviso && <p className="mt-4 rounded-xl bg-emerald-50 p-3 text-center text-sm font-semibold text-emerald-800">{aviso}</p>}
+      {resgatar && (
+        <Link href="/c/agendar" className="btn-primario mt-3 w-full py-3.5"><CalendarPlus size={17} /> Agendar para resgatar</Link>
+      )}
       {erro && <p className="mt-4 rounded-xl bg-red-50 p-3 text-center text-sm text-red-700">{erro}</p>}
       <p className="mt-4 text-center text-xs text-zinc-500">
         Cada atendimento concluído vale {e.girosPorAtendimento === 1 ? "1 giro" : `${e.girosPorAtendimento} giros`}.

@@ -20,7 +20,7 @@ type Detalhe = {
   nomePerfil: string | null;
   estado: "BOT" | "HUMANO";
   cliente: { id: string; nome: string } | null;
-  mensagens: { id: string; autor: "CLIENTE" | "BOT" | "EQUIPE" | "SISTEMA" | "NOTA"; texto: string; erro: string | null; criadoEm: string }[];
+  mensagens: { id: string; autor: "CLIENTE" | "BOT" | "EQUIPE" | "SISTEMA" | "NOTA"; texto: string; erro: string | null; entregueEm: string | null; lidaEm: string | null; criadoEm: string }[];
 };
 
 const nomeDe = (c: { cliente: { nome: string } | null; nomePerfil: string | null; telefone: string }) =>
@@ -121,6 +121,7 @@ export function ConversasTela() {
                       <p className="whitespace-pre-wrap">{m.texto}</p>
                       <p className="mt-0.5 text-right text-[10px] text-zinc-500">
                         {m.autor === "BOT" ? "Bot" : m.autor === "EQUIPE" ? "Equipe" : m.autor === "SISTEMA" ? "Aviso automático" : ""} {hora(m.criadoEm)}
+                        {m.autor !== "CLIENTE" && !m.erro && (m.lidaEm ? <span className="text-sky-400" title="Lida"> ✓✓</span> : m.entregueEm ? <span title="Entregue"> ✓✓</span> : null)}
                         {m.erro && <span className="text-red-600"> · não enviado: {m.erro}</span>}
                       </p>
                     </div>

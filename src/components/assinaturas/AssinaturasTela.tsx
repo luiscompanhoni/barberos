@@ -39,7 +39,7 @@ export const ROTULO: Record<Status, { texto: string; cor: string }> = {
 export const FORMA: Record<string, string> = { CARTAO: "Cartão", PIX: "Pix", BOLETO: "Boleto" };
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
-export function AssinaturasTela({ dono }: { dono: boolean }) {
+export function AssinaturasTela({ podeCancelar }: { podeCancelar: boolean }) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [status, setStatus] = useState<Status | "TODAS">("TODAS");
   const [busca, setBusca] = useState("");
@@ -78,7 +78,7 @@ export function AssinaturasTela({ dono }: { dono: boolean }) {
         </section>
       )}
 
-      <RetencaoPainel dono={dono} onAbrir={setAberta} versao={versao} />
+      <RetencaoPainel podeEditar={podeCancelar} onAbrir={setAberta} versao={versao} />
 
       {r && r.motivos.length > 0 && (
         <section className="cartao text-sm">
@@ -137,7 +137,7 @@ export function AssinaturasTela({ dono }: { dono: boolean }) {
         </div>
       </section>
 
-      {aberta && <DetalheAssinatura id={aberta} dono={dono} onFechar={() => setAberta(null)} onAlterado={() => { carregar(); setVersao((v) => v + 1); }} />}
+      {aberta && <DetalheAssinatura id={aberta} podeCancelar={podeCancelar} onFechar={() => setAberta(null)} onAlterado={() => { carregar(); setVersao((v) => v + 1); }} />}
       {nova && <NovaAssinatura onFechar={() => setNova(false)} onCriada={carregar} />}
     </div>
   );

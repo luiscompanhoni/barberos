@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { rota } from "@/lib/erros";
 import { editarDespesa, estornarDespesa, excluirDespesa, pagarDespesa } from "@/lib/financeiro/despesas";
 import { corpo } from "@/lib/validacao";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** Editar (pendente), pagar ou estornar o pagamento. */
 export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/financeiro/despesas/[id]">) => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
   const { id } = await ctx.params;
   const b = await corpo(req, z.discriminatedUnion("acao", [
     zDadosDespesa.extend({ acao: z.literal("editar") }),
@@ -25,7 +25,7 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/financeir
 
 /** Exclui (so pendente). */
 export const DELETE = rota(async (_req: Request, ctx: RouteContext<"/api/financeiro/despesas/[id]">) => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
   const { id } = await ctx.params;
   await excluirDespesa(s, id);
   return NextResponse.json({ ok: true });

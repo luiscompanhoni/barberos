@@ -52,9 +52,9 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
     erro = (e as Error).message;
     console.error(`[whatsapp] falha ao enviar para ${conversa.telefone}:`, erro);
   }
-  await db.mensagem.create({ data: { conversaId, autor, texto, wamid, erro } });
+  const m = await db.mensagem.create({ data: { conversaId, autor, texto, wamid, erro } });
   publicar({ tipo: "conversa", conversaId });
-  return { ok: !erro, erro };
+  return { ok: !erro, erro, mensagemId: m.id };
 }
 
 /**
@@ -88,9 +88,9 @@ export async function notificarCliente(telefone: string, texto: string) {
     }
   }
   if (erro) console.error(`[whatsapp] aviso para ${telefone}:`, erro);
-  await db.mensagem.create({ data: { conversaId: conversa.id, autor: "SISTEMA", texto, wamid, erro } });
+  const m = await db.mensagem.create({ data: { conversaId: conversa.id, autor: "SISTEMA", texto, wamid, erro } });
   publicar({ tipo: "conversa", conversaId: conversa.id });
-  return { ok: !erro, erro };
+  return { ok: !erro, erro, mensagemId: m.id };
 }
 
 /** Dispara sem bloquear quem chamou (avisos nao devem travar a agenda). */

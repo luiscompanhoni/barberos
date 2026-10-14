@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
@@ -15,7 +15,7 @@ export const GET = rota(async () => {
 });
 
 export const POST = rota(async (req: Request) => {
-  await exigirSessao(["DONO"]);
+  await exigirSessao(GESTAO);
   const b = await corpo(
     req,
     z.object({

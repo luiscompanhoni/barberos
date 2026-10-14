@@ -1,5 +1,6 @@
 /**
- * Regras puras do RH: comissao por servico (avulso x plano), totais da folha e CSV.
+ * Regras puras do RH: comissao por servico (avulso x plano), comissao das assinaturas, comissao diferenciada,
+ * totais da folha e CSV.
  */
 
 export type TipoComissao = "PERCENTUAL" | "FIXO";
@@ -25,38 +26,51 @@ export function descreverRegra(tipo: TipoComissao, valor: number, modalidade: Mo
   return `${pctTexto(valor)} ${modalidade === "PLANO" ? "da tabela" : "do valor"}`;
 }
 
+/** Percentual final entre 0% e 100%. */
+const limitar = (bps: number) => Math.min(10000, Math.max(0, bps));
+const pontosTexto = (bps: number) => `${bps < 0 ? "−" : "+"} ${(Math.abs(bps) / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} pts`;
+
 /**
- * Comissao de um atendimento. Avulso: % do preco cobrado (ou fixo).
+ * Comissao de um atendimento. Avulso: % do valor efetivamente cobrado (ou fixo).
  * Plano: % do preco de tabela do servico (o cobrado costuma ser 0) ou fixo por corte.
+ * `adicionalBps`: comissao diferenciada do barbeiro no dia (so vale em regra percentual).
  */
-export function calcularComissao(regra: Regra | null, a: { modalidade: Modalidade; preco: number; precoTabela: number }) {
+export function calcularComissao(regra: Regra | null, a: { modalidade: Modalidade; preco: number; precoTabela: number }, adicionalBps = 0) {
   const base = a.modalidade === "AVULSO" ? a.preco : a.precoTabela;
-  if (!regra) return { base, comissao: 0, regra: "Sem regra" };
+  if (!regra) return { base, comissao: 0, adicional: 0, regra: "Sem regra" };
   const [tipo, valor] = a.modalidade === "AVULSO" ? [regra.avulsoTipo, regra.avulsoValor] : [regra.planoTipo, regra.planoValor];
-  const comissao = tipo === "FIXO" ? valor : Math.round((base * valor) / 10000);
-  return { base, comissao, regra: descreverRegra(tipo, valor, a.modalidade) };
+  if (tipo === "FIXO") return { base, comissao: valor, adicional: 0, regra: descreverRegra(tipo, valor, a.modalidade) };
+  const semAdicional = Math.round((base * valor) / 10000);
+  const comissao = Math.round((base * limitar(valor + adicionalBps)) / 10000);
+  const texto = descreverRegra(tipo, valor, a.modalidade);
+  return { base, comissao, adicional: comissao - semAdicional, regra: adicionalBps ? `${texto} ${pontosTexto(adicionalBps)}` : texto };
 }
 
-export type Atendimento = { id: string; barbeiroId: string; servicoId: string; preco: number; precoTabela: number; plano: boolean };
-type Soma = { qtd: number; base: number; comissao: number };
-const soma = (): Soma => ({ qtd: 0, base: 0, comissao: 0 });
+export type Atendimento = { id: string; barbeiroId: string; servicoId: string; preco: number; precoTabela: number; plano: boolean; dia: string };
+type Soma = { qtd: number; base: number; comissao: number; adicional: number };
+const soma = (): Soma => ({ qtd: 0, base: 0, comissao: 0, adicional: 0 });
 
 /**
  * Agrupa por barbeiro: avulso, plano, total e o detalhe de cada atendimento.
- * `planoPeloPote`: o atendimento pelo plano e pago pelo pote de assinaturas (aqui fica zero).
+ * `planoPeloPote`: o atendimento pelo plano e pago pela comissao das assinaturas (aqui fica zero).
+ * `adicionais`: comissao diferenciada de cada barbeiro (pelo dia do atendimento).
  */
-export function resumirComissoes<A extends Atendimento>(atendimentos: A[], regras: RegraSalva[], opts: { planoPeloPote?: boolean } = {}) {
-  const porBarbeiro = new Map<string, { barbeiroId: string; avulso: Soma; plano: Soma; total: number; semRegra: number; detalhe: (A & { modalidade: Modalidade; base: number; comissao: number; regra: string })[] }>();
+export function resumirComissoes<A extends Atendimento>(atendimentos: A[], regras: RegraSalva[], opts: { planoPeloPote?: boolean; adicionais?: Adicional[] } = {}) {
+  const porBarbeiro = new Map<string, { barbeiroId: string; avulso: Soma; plano: Soma; total: number; semRegra: number; detalhe: (A & { modalidade: Modalidade; base: number; comissao: number; adicional: number; regra: string })[] }>();
   for (const a of atendimentos) {
     const modalidade: Modalidade = a.plano ? "PLANO" : "AVULSO";
     const pote = a.plano && !!opts.planoPeloPote;
     const regra = pote ? null : escolherRegra(regras, a.servicoId, a.barbeiroId);
-    const c = pote ? { base: a.precoTabela, comissao: 0, regra: "Pote de assinaturas" } : calcularComissao(regra, { modalidade, preco: a.preco, precoTabela: a.precoTabela });
+    const adicionalBps = adicionalNoDia(opts.adicionais ?? [], a.barbeiroId, a.plano ? "ASSINATURA" : "AVULSO", a.dia);
+    const c = pote
+      ? { base: a.precoTabela, comissao: 0, adicional: 0, regra: "Comissão das assinaturas" }
+      : calcularComissao(regra, { modalidade, preco: a.preco, precoTabela: a.precoTabela }, adicionalBps);
     const g = porBarbeiro.get(a.barbeiroId) ?? { barbeiroId: a.barbeiroId, avulso: soma(), plano: soma(), total: 0, semRegra: 0, detalhe: [] };
     const s = a.plano ? g.plano : g.avulso;
     s.qtd++;
     s.base += c.base;
     s.comissao += c.comissao;
+    s.adicional += c.adicional;
     g.total += c.comissao;
     if (!regra && !pote) g.semRegra++;
     g.detalhe.push({ ...a, modalidade, ...c });
@@ -65,36 +79,87 @@ export function resumirComissoes<A extends Atendimento>(atendimentos: A[], regra
   return [...porBarbeiro.values()];
 }
 
-// ---------------- pote de assinaturas
-
-export type AjustePote = { adicionalBps: number; diferenciadaBps: number | null };
-export type ConfigPote = { ativo: boolean; percentualBps: number; fichas: Record<string, number>; ajustes: Record<string, AjustePote> };
-
-/** % do barbeiro: o diferenciado substitui o do pote; senao, o do pote + adicional. */
-export function percentualDoBarbeiro(cfg: Pick<ConfigPote, "percentualBps" | "ajustes">, barbeiroId: string) {
-  const a = cfg.ajustes[barbeiroId];
-  return a?.diferenciadaBps ?? cfg.percentualBps + (a?.adicionalBps ?? 0);
+/**
+ * Parte do servico que ficou com a barbearia: o desconto da comanda (inclui saldo usado) e os estornos saem
+ * na proporcao do valor do item. `item` e `subtotal` em centavos; produtos de outros itens nao entram.
+ */
+export function valorCobradoItem(item: number, comanda: { subtotal: number; desconto: number; estornado: number }) {
+  if (item <= 0 || comanda.subtotal <= 0) return 0;
+  const total = comanda.subtotal - Math.min(Math.max(0, comanda.desconto), comanda.subtotal);
+  const liquido = Math.max(0, total - Math.max(0, comanda.estornado));
+  return Math.round((item * liquido) / comanda.subtotal);
 }
 
+// ---------------- comissao diferenciada (adicionais com vigencia)
+
+export type ModalidadeAdicional = "ASSINATURA" | "AVULSO";
+/** Datas "AAAA-MM-DD" (inclusive); fim null = sem fim. */
+export type Adicional = { barbeiroId: string; modalidade: ModalidadeAdicional; pontosBps: number; inicio: string; fim: string | null };
+
+const vale = (a: Pick<Adicional, "inicio" | "fim">, dia: string) => a.inicio <= dia && (a.fim === null || dia <= a.fim);
+
+/** Pontos a mais (ou a menos) do barbeiro na modalidade, no dia do atendimento. */
+export function adicionalNoDia(adicionais: Adicional[], barbeiroId: string, modalidade: ModalidadeAdicional, dia: string) {
+  return adicionais.filter((a) => a.barbeiroId === barbeiroId && a.modalidade === modalidade && vale(a, dia)).reduce((t, a) => t + a.pontosBps, 0);
+}
+
+/** Dois periodos [inicio, fim] (fim null = sem fim) tem algum dia em comum? */
+export function periodosSeCruzam(a: { inicio: string; fim: string | null }, b: { inicio: string; fim: string | null }) {
+  return a.inicio <= (b.fim ?? "9999-12-31") && b.inicio <= (a.fim ?? "9999-12-31");
+}
+
+/** Primeira folha fechada (competencia "AAAA-MM") que o periodo alcanca, ou null. */
+export function competenciaFechadaNoPeriodo(fechadas: string[], periodo: { inicio: string; fim: string | null }) {
+  return [...fechadas].sort().find((c) => { const i = intervaloCompetencia(c); return periodosSeCruzam(periodo, { inicio: i.inicio, fim: i.fim }); }) ?? null;
+}
+
+// ---------------- comissao das assinaturas (o "pote" do CashBarber)
+
+/** Percentual base (3500 = 35%) e Creditos de Atendimento por servico. */
+export type ConfigAssinaturas = { ativo: boolean; percentualBps: number; creditos: Record<string, number> };
+
 /**
- * Divide o pote pelos atendimentos de plano: cada barbeiro recebe receita x seu % x (fichas dele / fichas de todos).
- * Servico sem fichas nao entra. Sem atendimentos, ninguem recebe.
+ * Comissao das assinaturas no periodo:
+ * - Receita de Assinaturas: mensalidades pagas; Receita Distribuivel: ela menos os estornos do periodo
+ *   (taxas do meio de pagamento ficam com a barbearia e nao entram);
+ * - cada atendimento pelo plano gera os Creditos de Atendimento do servico (sem credito, nao entra);
+ * - valor do credito = distribuivel / creditos de todos; receita atribuida = creditos do barbeiro x valor do credito;
+ * - comissao = receita atribuida x (percentual base + adicional do barbeiro no dia do atendimento).
+ * O adicional e pago pela barbearia: nao muda a parte dos outros.
  */
-export function calcularPote(cfg: ConfigPote, receitaCentavos: number, atendimentos: { barbeiroId: string; servicoId: string }[]) {
-  const por = new Map<string, { qtd: number; fichas: number }>();
-  let fichasTotal = 0;
+export function calcularAssinaturas(
+  cfg: Pick<ConfigAssinaturas, "percentualBps" | "creditos">,
+  receita: { recebidoCentavos: number; estornosCentavos: number },
+  atendimentos: { barbeiroId: string; servicoId: string; dia: string }[],
+  adicionais: Adicional[] = [],
+) {
+  const distribuivel = Math.max(0, receita.recebidoCentavos - receita.estornosCentavos);
+  const por = new Map<string, { qtd: number; creditos: number; creditosPct: number; creditosAdic: number }>();
+  let creditosTotal = 0;
   for (const a of atendimentos) {
-    const f = cfg.fichas[a.servicoId] ?? 0;
-    if (f <= 0) continue;
-    const x = por.get(a.barbeiroId) ?? { qtd: 0, fichas: 0 };
-    por.set(a.barbeiroId, { qtd: x.qtd + 1, fichas: x.fichas + f });
-    fichasTotal += f;
+    const c = cfg.creditos[a.servicoId] ?? 0;
+    if (c <= 0) continue;
+    const adic = adicionalNoDia(adicionais, a.barbeiroId, "ASSINATURA", a.dia);
+    const x = por.get(a.barbeiroId) ?? { qtd: 0, creditos: 0, creditosPct: 0, creditosAdic: 0 };
+    por.set(a.barbeiroId, { qtd: x.qtd + 1, creditos: x.creditos + c, creditosPct: x.creditosPct + c * limitar(cfg.percentualBps + adic), creditosAdic: x.creditosAdic + c * adic });
+    creditosTotal += c;
   }
   const barbeiros = [...por].map(([barbeiroId, x]) => {
-    const percentualBps = percentualDoBarbeiro(cfg, barbeiroId);
-    return { barbeiroId, ...x, percentualBps, comissao: Math.round((receitaCentavos * percentualBps * x.fichas) / (10000 * fichasTotal)) };
+    const comissaoBase = Math.round((distribuivel * x.creditos * cfg.percentualBps) / (10000 * creditosTotal));
+    const comissao = Math.round((distribuivel * x.creditosPct) / (10000 * creditosTotal));
+    return {
+      barbeiroId, qtd: x.qtd, creditos: x.creditos,
+      receitaAtribuida: Math.round((distribuivel * x.creditos) / creditosTotal),
+      percentualBaseBps: cfg.percentualBps,
+      // Media pelos creditos (o adicional pode ter mudado no meio do periodo).
+      adicionalBps: Math.round(x.creditosAdic / x.creditos),
+      comissaoBase, adicionalCentavos: comissao - comissaoBase, comissao,
+    };
   });
-  return { receitaCentavos, percentualBps: cfg.percentualBps, valorPote: Math.round((receitaCentavos * cfg.percentualBps) / 10000), fichasTotal, barbeiros };
+  return {
+    recebidoCentavos: receita.recebidoCentavos, estornosCentavos: receita.estornosCentavos, distribuivelCentavos: distribuivel,
+    creditosTotal, valorCreditoCentavos: creditosTotal ? Math.round(distribuivel / creditosTotal) : 0, percentualBaseBps: cfg.percentualBps, barbeiros,
+  };
 }
 
 // ---------------- comissao de produtos

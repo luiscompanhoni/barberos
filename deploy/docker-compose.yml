@@ -1,5 +1,6 @@
 # BarberOS em producao num VPS (Hostinger, DigitalOcean...): sistema + Postgres + Caddy (https) + backup.
-# Subir (na pasta do projeto no servidor):
+# Subir: bash scripts/deploy.sh root@IP (faz backup antes, cria a rede e sobe). A mao, na pasta do projeto no servidor:
+#   docker network create barberos-proxy   (uma vez; o Caddy divide essa rede com a homologacao)
 #   docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
 name: barberos
 
@@ -49,8 +50,12 @@ services:
       CADDY_PAINEL_ANTIGO: ${CADDY_PAINEL_ANTIGO:-http://painel-antigo.invalid}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Sites extras (homologacao): /opt/barberos/caddy-sites/*.caddy, gravados pelo deploy da homologacao.
+      - ../caddy-sites:/etc/caddy/sites:ro
       - caddy-data:/data
       - caddy-config:/config
+    # "proxy" e a rede que o Caddy divide com a homologacao (o sistema de producao nao entra nela).
+    networks: [default, proxy]
     depends_on:
       - app
 
@@ -88,29 +93,39 @@ services:
       db:
         condition: service_healthy
 
-  # Copia do banco todo dia (03h), guarda 14 dias em /opt/barberos/backups.
+  # Backup do banco todo dia (03h): restauracao de teste num banco separado, 14 dias em /opt/barberos/backups e,
+  # com BACKUP_S3_* + BACKUP_SENHA, copia criptografada fora do servidor. Ver deploy/backup.sh.
   backup:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: backup.Dockerfile
     restart: unless-stopped
     environment:
+      PGHOST: db
+      PGUSER: barberos
       PGPASSWORD: ${DB_SENHA}
+      PGDATABASE: barberos
       TZ: America/Sao_Paulo
+      BACKUP_HORA: ${BACKUP_HORA:-0300}
+      BACKUP_DIAS_LOCAL: ${BACKUP_DIAS_LOCAL:-14}
+      BACKUP_DIAS_FORA: ${BACKUP_DIAS_FORA:-30}
+      BACKUP_SENHA: ${BACKUP_SENHA:-}
+      BACKUP_S3_BUCKET: ${BACKUP_S3_BUCKET:-}
+      BACKUP_S3_ENDPOINT: ${BACKUP_S3_ENDPOINT:-}
+      BACKUP_S3_REGIAO: ${BACKUP_S3_REGIAO:-auto}
+      BACKUP_S3_PROVEDOR: ${BACKUP_S3_PROVEDOR:-Other}
+      BACKUP_S3_CHAVE: ${BACKUP_S3_CHAVE:-}
+      BACKUP_S3_SEGREDO: ${BACKUP_S3_SEGREDO:-}
     volumes:
       - ../backups:/backups
-    entrypoint: >
-      sh -c 'while true; do
-        agora=$$(date +%H%M);
-        if [ "$$agora" = "0300" ]; then
-          arq=/backups/barberos-$$(date +%Y%m%d-%H%M).sql.gz;
-          pg_dump -h db -U barberos barberos | gzip > $$arq && echo "backup ok: $$arq";
-          find /backups -name "barberos-*.sql.gz" -mtime +14 -delete;
-          sleep 60;
-        fi;
-        sleep 30;
-      done'
     depends_on:
       db:
         condition: service_healthy
+
+networks:
+  proxy:
+    name: barberos-proxy
+    external: true
 
 volumes:
   pg:

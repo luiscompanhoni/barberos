@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { cadastro, salvarCadastro } from "@/lib/checklist/servico";
 import { rota } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
@@ -12,12 +12,12 @@ const zHora = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 
 /** Pessoas, tarefas e horarios do checklist. */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO", "RECEPCAO"]);
+  await exigirSessao(BALCAO);
   return NextResponse.json(await cadastro());
 });
 
 export const PUT = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO", "RECEPCAO"]);
+  const s = await exigirSessao(BALCAO);
   const b = await corpo(req, z.object({
     config: z.object({
       ativo: z.boolean(), horaEnvio: zHora, horaResumo: zHora,

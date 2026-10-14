@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { exigirSessaoCom } from "@/lib/auth/permissoes";
 import { rota } from "@/lib/erros";
 import { configComissoes, salvarComissoes } from "@/lib/rh/comissoes";
 import { corpo, zId } from "@/lib/validacao";
@@ -13,12 +13,12 @@ const zRegra = z.object({ servicoId: zId, avulsoTipo: zTipo, avulsoValor: zValor
 
 /** Regras de comissao por servico e excecoes por barbeiro. */
 export const GET = rota(async () => {
-  await exigirSessao(["DONO"]);
+  await exigirSessaoCom("comissao", "folha");
   return NextResponse.json(await configComissoes());
 });
 
 export const PUT = rota(async (req: Request) => {
-  const s = await exigirSessao(["DONO"]);
+  const s = await exigirSessaoCom("comissao");
   const b = await corpo(req, z.object({ gerais: z.array(zRegra).max(300), excecoes: z.array(zRegra.extend({ barbeiroId: zId })).max(1000) }));
   return NextResponse.json(await salvarComissoes(s, b));
 });
