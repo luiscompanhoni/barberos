@@ -36,14 +36,16 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 mkdir -p "$DIR/backups"
 
+# Os comandos docker abaixo recebem </dev/null: este script chega pelo stdin do ssh e o
+# "docker compose exec -T" leria o resto dele, encerrando o deploy em silencio.
 # ---- Producao: backup antes de trocar o codigo (e antes das migracoes que sobem com o sistema novo)
 if [ "$AMBIENTE" = producao ] && [ -f "$DIR/.env" ] && [ -f "$DIR/deploy/docker-compose.yml" ]; then
   cd "$DIR"
   dc() { docker compose --env-file .env -f deploy/docker-compose.yml "$@"; }
-  if dc ps --status running -q db 2>/dev/null | grep -q .; then
+  if dc ps --status running -q db </dev/null 2>/dev/null | grep -q .; then
     nome="barberos-$(date +%Y%m%d-%H%M)-antes-do-deploy.sql.gz"
     echo ">> backup antes do deploy: backups/$nome"
-    if ! { dc exec -T db pg_dump -U barberos barberos | gzip > "backups/$nome" && gzip -t "backups/$nome"; }; then
+    if ! { dc exec -T db pg_dump -U barberos barberos </dev/null | gzip > "backups/$nome" && gzip -t "backups/$nome"; }; then
       rm -f "backups/$nome"
       echo "!! o backup antes do deploy falhou: nada foi trocado. Confira o banco (docker compose ps) e rode de novo."
       exit 1
@@ -84,7 +86,7 @@ fi
 
 # Rede que o Caddy da producao divide com a homologacao.
 docker network inspect barberos-proxy >/dev/null 2>&1 || docker network create barberos-proxy >/dev/null
-docker compose --env-file .env -f "$COMPOSE" up -d --build
+docker compose --env-file .env -f "$COMPOSE" up -d --build </dev/null
 docker image prune -f >/dev/null
 
 # ---- Homologacao: endereco e senha no Caddy da producao
@@ -99,7 +101,7 @@ if [ "$AMBIENTE" = homolog ]; then
       openssl rand -base64 18 | tr -d '/+=' > .senha-homolog && chmod 600 .senha-homolog
       echo ">> senha nova de acesso a homologacao (usuario: homolog): $(cat .senha-homolog)"
     fi
-    hash=$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$(cat .senha-homolog)")
+    hash=$(docker run --rm </dev/null caddy:2-alpine caddy hash-password --plaintext "$(cat .senha-homolog)")
     cat > "$PROD/caddy-sites/homolog.caddy" <<CADDY
 # Homologacao (gerado por scripts/deploy.sh ... homolog). Senha em $DIR/.senha-homolog
 $dominio {
@@ -111,7 +113,7 @@ $dominio {
 	reverse_proxy app-homolog:3000
 }
 CADDY
-    (cd "$PROD" && docker compose --env-file .env -f deploy/docker-compose.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile) \
+    (cd "$PROD" && docker compose --env-file .env -f deploy/docker-compose.yml exec -T caddy caddy reload --config /etc/caddy/Caddyfile </dev/null) \
       && echo ">> homologacao no ar em https://$dominio (usuario homolog, senha em $DIR/.senha-homolog)"
   fi
 fi
