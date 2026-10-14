@@ -16,7 +16,10 @@
  *
  * Ids fixos (cba_/cbc_): rodar de novo nao duplica. Por padrao so mostra o que faria; --aplicar grava.
  * Os CSVs tem dados pessoais: nao copiar para dentro do projeto.
- * Rodar: DATABASE_URL=... npx tsx scripts/importar-historico-cashbarber.ts <pasta-dos-csv> [--ate=2026-10-11|agora] [--futuros] [--aplicar]
+ * Rodar de novo atualiza: marcado que foi atendido/cancelado no CashBarber muda aqui; marcado que sumiu de la
+ * (dentro do periodo dos CSVs) e cancelado aqui. --sem-lembretes segura os lembretes do BarberOS desses horarios
+ * enquanto o CashBarber ainda manda os dele.
+ * Rodar: DATABASE_URL=... npx tsx scripts/importar-historico-cashbarber.ts <pasta-dos-csv> [--ate=2026-10-11|agora] [--futuros] [--sem-lembretes] [--aplicar]
  */
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
@@ -26,6 +29,9 @@ import { Prisma, PrismaClient, type FormaRecebimento, type StatusAgendamento } f
 const db = new PrismaClient();
 const SERVICO = "Atendimento (CashBarber)";
 const MARCA = "Importado do CashBarber";
+/** Lembretes segurados ate a troca. No dia da troca, liberar com:
+ *  delete from automacoes_enviadas where erro = '<este texto>' (os lembretes passam a sair pelo BarberOS). */
+const LEMBRETE_SEGURADO = "Lembrete pelo CashBarber até a troca.";
 const MIN = 60_000;
 
 function lerCsv(texto: string): string[][] {
@@ -91,6 +97,9 @@ async function main() {
   const ateArg = process.argv.find((a) => a.startsWith("--ate="))?.slice(6) ?? "2026-10-11";
   const ate = ateArg === "agora" ? agora : new Date(`${ateArg}T03:00:00Z`);
   const futuros = process.argv.includes("--futuros");
+  // Antes da troca o CashBarber ainda manda os lembretes: os do BarberOS ficam segurados (ver LEMBRETE_SEGURADO).
+  const semLembretes = process.argv.includes("--sem-lembretes");
+  let ultimoNoCsv = 0; // ate onde os CSVs de agendamento cobrem (para cancelar o que sumiu)
 
   // ---- cadastros do sistema
   const barbeiros = await db.barbeiro.findMany({ select: { id: true, nome: true } });
@@ -105,13 +114,17 @@ async function main() {
   type Ag = { id: string; barbeiroId: string; clienteId: string; inicio: Date; fim: Date; status: StatusAgendamento; origem: "SITE" | "RECEPCAO"; telefone: string; futuro: boolean };
   const novosClientes: Prisma.ClienteCreateManyInput[] = [];
   const ags = new Map<string, Ag>();
-  let semTelefone = 0, semBarbeiro = 0, depoisDoCorte = 0;
+  let semTelefone = 0, semBarbeiro = 0, depoisDoCorte = 0, aFechar = 0;
   for (const l of ler(pasta, "agend_")) {
     const [, prof, cli, origem, , status, statusCliente, quando] = l;
     const inicio = instante(quando);
+    ultimoNoCsv = Math.max(ultimoNoCsv, +inicio);
     // Horario ainda por vir (so com --futuros): entra marcado; cancelado ou ja passado fica de fora.
     const futuro = inicio >= ate && futuros && status === "Agendado" && inicio > agora && !statusCliente.startsWith("Cancelado");
     if (inicio >= ate && !futuro) { depoisDoCorte++; continue; }
+    // Ja passou mas ainda "Agendado": a recepcao fecha depois. Nas ultimas 48 h fica para a proxima importacao
+    // (senao entraria como falta); antes disso, nao fechado e falta mesmo.
+    if (!futuro && status === "Agendado" && +inicio > +agora - 48 * 3_600_000) { aFechar++; continue; }
     const barbeiroId = barbeiroDe(prof);
     if (!barbeiroId) { semBarbeiro++; continue; }
     const partes = cli.split(" - ");
@@ -206,13 +219,26 @@ async function main() {
   const porMes = new Map<string, number>();
   for (const p of pags) { const m = diaLocal(p.pagoEm as Date).slice(0, 7); porMes.set(m, (porMes.get(m) ?? 0) + p.valorCentavos); }
   const st = (s: StatusAgendamento) => final.filter((a) => a.status === s).length;
-  console.log(`corte: antes de ${ate.toISOString()} (fora: ${depoisDoCorte} agendamentos, ${comandasDepois} linhas de comanda)`);
+  console.log(`corte: antes de ${ate.toISOString()} (fora: ${depoisDoCorte} agendamentos, ${comandasDepois} linhas de comanda; ${aFechar} das últimas 48 h ainda não fechados no CashBarber ficam para depois)`);
   console.log(`agendamentos: ${final.length} (concluídos ${st("CONCLUIDO")}, cancelados ${st("CANCELADO")}, faltas ${st("FALTOU")}, marcados ${st("MARCADO") + st("CONFIRMADO")}) | sem telefone ${semTelefone} | sem barbeiro ${semBarbeiro} | encaixe/choque fora ${encaixes}`);
   console.log(`clientes novos: ${novosClientes.length}`);
   console.log(`comandas: ${cmCriar.length} | com cliente ${comCliente} | ligadas a atendimento ${ligadas} | pagamentos ${pags.length} | operações de caixa ignoradas ${operacoesCaixa}`);
   console.log("recebido por mês:", Object.fromEntries([...porMes].sort().map(([m, v]) => [m, (v / 100).toFixed(2)])));
   const indicacoes = await db.indicacao.count({ where: { convertidaEm: null, indicadoId: { in: [...new Set(final.filter((a) => a.status === "CONCLUIDO").map((a) => a.clienteId))] } } });
   if (indicacoes) console.log(`ATENÇÃO: ${indicacoes} indicação(ões) pendente(s) virariam prêmio com o histórico.`);
+
+  // Re-importacao: horario importado antes como marcado que mudou no CashBarber (atendido, faltou, cancelado)
+  // ganha o status novo; marcado que sumiu do CashBarber (cancelado ou remarcado la) e cancelado aqui.
+  const porId = new Map(final.map((a) => [a.id, a]));
+  const marcadosImportados = await db.agendamento.findMany({
+    where: { id: { startsWith: "cba_" }, status: { in: ["MARCADO", "CONFIRMADO"] } },
+    select: { id: true, status: true, inicio: true },
+  });
+  const mudaram = marcadosImportados.filter((a) => porId.has(a.id) && porId.get(a.id)!.status !== a.status);
+  const sumiram = futuros
+    ? marcadosImportados.filter((a) => !porId.has(a.id) && +a.inicio > +agora && +a.inicio <= ultimoNoCsv)
+    : [];
+  console.log(`já importados que mudaram de status: ${mudaram.length} | marcados que sumiram do CashBarber (cancelar aqui): ${sumiram.length}`);
   if (!aplicar) { console.log("\nSó simulação. Para gravar: --aplicar"); return; }
   if (indicacoes) throw new Error("Resolva as indicações pendentes antes de importar.");
 
@@ -230,6 +256,16 @@ async function main() {
       observacao: a.futuro ? "Marcado no CashBarber (serviço não informado)" : MARCA, criadoEm: a.futuro ? agora : a.inicio })),
     skipDuplicates: true,
   }));
+  for (const a of mudaram) {
+    const novo = porId.get(a.id)!;
+    await db.agendamento.update({ where: { id: a.id }, data: { status: novo.status, fim: novo.fim } });
+  }
+  if (sumiram.length) {
+    await db.agendamento.updateMany({
+      where: { id: { in: sumiram.map((a) => a.id) } },
+      data: { status: "CANCELADO", observacao: "Cancelado ou remarcado no CashBarber antes da troca." },
+    });
+  }
   const nCm = await lote(cmCriar, (d) => db.comanda.createMany({ data: d, skipDuplicates: true }));
   const nIt = await lote(itens, (d) => db.itemComanda.createMany({ data: d, skipDuplicates: true }));
   const nPg = await lote(pags, (d) => db.pagamentoComanda.createMany({ data: d, skipDuplicates: true }));
@@ -253,8 +289,16 @@ async function main() {
       marcas.push({ tipo: "POS_FALTA", chave: a.id, clienteId: a.clienteId, agendamentoId: a.id, ok: false, erro: "Histórico importado do CashBarber: não enviado." });
     }
   }
+  // Lembretes dos horarios futuros segurados enquanto o CashBarber ainda manda os dele.
+  if (semLembretes) {
+    for (const a of final.filter((x) => x.futuro)) {
+      for (const tipo of ["LEMBRETE_VESPERA", "LEMBRETE_PROXIMO"] as const) {
+        marcas.push({ tipo, chave: `${a.id}@${a.inicio.toISOString()}`, clienteId: a.clienteId, agendamentoId: a.id, ok: false, erro: LEMBRETE_SEGURADO });
+      }
+    }
+  }
   const nMarcas = await lote(marcas, (d) => db.automacaoEnviada.createMany({ data: d, skipDuplicates: true }));
-  console.log(`\ngravado: clientes ${nCli}, agendamentos ${nAg}, comandas ${nCm}, itens ${nIt}, pagamentos ${nPg}, automações bloqueadas ${nMarcas}`);
+  console.log(`\ngravado: clientes ${nCli}, agendamentos ${nAg} novos, ${mudaram.length} com status atualizado, ${sumiram.length} cancelados (sumiram do CashBarber), comandas ${nCm}, itens ${nIt}, pagamentos ${nPg}, automações bloqueadas ${nMarcas}`);
 }
 
 main()
