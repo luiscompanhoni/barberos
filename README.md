@@ -420,6 +420,17 @@ fariam até receberem essa opção.
 5. `importar-mensalidades-cashbarber.ts <pasta> [--ate=...] [--aplicar]`: mensalidades pagas como cobranças pagas;
    quem já saiu do plano ganha uma assinatura cancelada de histórico.
 
+Depois, confira com `relatorio-migracao.ts [--clientes=Clientes.csv] [--assinantes=Relatorio19.csv] [--saida=pasta]`.
+Ele só lê o banco e mostra:
+- clientes vindos do CashBarber e dados completos;
+- histórico, última visita por faixa e frequência;
+- assinaturas e mensalidades;
+- possíveis duplicados (mesmo nome em telefones diferentes);
+- dados incompletos.
+
+Com os CSVs do CashBarber, mostra também quem ficou de fora e por quê. Com `--saida`, grava as listas em CSV para
+abrir no Excel (fora da pasta do projeto).
+
 ## Testes
 
 - `npm test`: testes unitários (Vitest, sem banco).
