@@ -13,7 +13,7 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/financeir
     tipo: z.enum(["RECEBIMENTO", "TAXA", "ANTECIPACAO", "ESTORNO", "TRANSFERENCIA", "PAGAMENTO", "TARIFA", "OUTRO"]),
     categoria: z.string().trim().max(30).nullable(),
     observacao: z.string().trim().max(200).nullable().optional(),
+    lembrar: z.boolean().optional(),
   }));
-  await classificarMovimento(s, id, b);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(await classificarMovimento(s, id, b));
 });

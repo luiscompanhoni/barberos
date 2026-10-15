@@ -13,7 +13,7 @@ export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | 
 const ABAS: { k: Aba; r: string; resultado?: boolean }[] = [
   { k: "caixa", r: "Caixa" }, { k: "despesas", r: "Despesas" }, { k: "links", r: "Links de pagamento" }, { k: "estornos", r: "Estornos" },
   { k: "conciliacao", r: "Conciliação" }, { k: "resumo", r: "Resumo do mês", resultado: true },
-  { k: "resultado", r: "Resultado e Celcash", resultado: true },
+  { k: "resultado", r: "Resultado (Celcash e Stone)", resultado: true },
 ];
 
 /** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (com a permissao "resultado") o resumo do mes. */

@@ -6,6 +6,8 @@ import type { Prisma } from "@prisma/client";
 import { configuracao } from "@/lib/agenda/carregar";
 import { db } from "@/lib/db";
 import { classificarCelcash, contraparte, paraCentavos, type MovimentoCelcash } from "./regras";
+import { regraPara } from "./stone-regras";
+import { regrasAtuais } from "./stone";
 
 const DIA = 86_400_000;
 /** Primeiro mes com movimento na conta (antes disso a Celcash devolve vazio). */
@@ -59,14 +61,15 @@ export async function saldoCelcash() {
 /** Guarda os movimentos de um periodo (os que ja existem ficam como estao). Devolve quantos entraram. */
 export async function sincronizarPeriodo(de: string, ate: string, contasProprias?: string[]) {
   const contas = contasProprias ?? (await configuracao()).contasProprias;
-  const { movimentos } = await extratoCelcash(de, ate);
+  const [{ movimentos }, regras] = await Promise.all([extratoCelcash(de, ate), regrasAtuais()]);
   if (!movimentos.length) return 0;
   const dados: Prisma.MovimentoExternoCreateManyInput[] = movimentos.map((m) => {
     const c = classificarCelcash(m, contas);
+    const r = c.tipo === "PAGAMENTO" ? regraPara(contraparte(m.friendlyDescription), regras) : null;
     return {
       // "2026-10-13 06:06:57", no horario de Brasilia.
       fonte: "CELCASH", idExterno: String(m.galaxPayId), data: new Date(`${m.createdAt.replace(" ", "T")}-03:00`),
-      valorCentavos: paraCentavos(m.value), tipo: c.tipo, forma: c.forma, descricao: m.friendlyDescription.slice(0, 200),
+      valorCentavos: paraCentavos(m.value), tipo: r?.tipo ?? c.tipo, forma: c.forma, categoria: r?.categoria ?? null, descricao: m.friendlyDescription.slice(0, 200),
       transacaoId: m.transactionGalaxPayId ? String(m.transactionGalaxPayId) : null,
       observacao: c.tipo === "PAGAMENTO" || c.tipo === "TRANSFERENCIA" ? contraparte(m.friendlyDescription) : null,
       bruto: m as unknown as Prisma.InputJsonValue,

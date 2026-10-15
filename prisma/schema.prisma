@@ -1805,3 +1805,17 @@ model MovimentoExterno {
   @@index([tipo, data])
   @@map("movimentos_externos")
 }
+
+/// Regra de classificacao da conciliacao: quem tem esse texto no nome (destino/origem) vira esse tipo/categoria.
+/// Ex.: "CELESC" -> PAGAMENTO/ENERGIA; "YGOR GABRIEL" -> PAGAMENTO/RETIRADA_SOCIO. Vale para Celcash e Stone.
+model RegraConciliacao {
+  id          String               @id @default(cuid())
+  /// Texto procurado no nome (sem acento, caixa alta).
+  padrao      String               @unique
+  tipo        TipoMovimentoExterno
+  categoria   String?
+  criadoPorId String?
+  criadoEm    DateTime             @default(now()) @db.Timestamptz(3)
+
+  @@map("regras_conciliacao")
+}
