@@ -6,12 +6,14 @@ import { ConciliacaoTela } from "./ConciliacaoTela";
 import { DespesasTela } from "./DespesasTela";
 import { EstornosTela } from "./EstornosTela";
 import { LinksPagamentoTela } from "./LinksPagamentoTela";
+import { ResultadoTela } from "./ResultadoTela";
 import { ResumoTela } from "./ResumoTela";
 
-export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | "resumo";
+export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | "resumo" | "resultado";
 const ABAS: { k: Aba; r: string; resultado?: boolean }[] = [
   { k: "caixa", r: "Caixa" }, { k: "despesas", r: "Despesas" }, { k: "links", r: "Links de pagamento" }, { k: "estornos", r: "Estornos" },
   { k: "conciliacao", r: "Conciliação" }, { k: "resumo", r: "Resumo do mês", resultado: true },
+  { k: "resultado", r: "Resultado e Celcash", resultado: true },
 ];
 
 /** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (com a permissao "resultado") o resumo do mes. */
@@ -37,7 +39,7 @@ export function FinanceiroTela({ verResultado, gestao, abaInicial = "caixa", est
       </div>
       {aba === "caixa" ? <CaixaTela /> : aba === "despesas" ? <DespesasTela /> : aba === "links" ? <LinksPagamentoTela />
         : aba === "estornos" ? <EstornosTela onMudou={() => fetch("/api/estornos").then((r) => r.json()).then((x) => setPendentes(x.pendentes?.filter((p: { status: string }) => p.status === "PENDENTE").length ?? 0)).catch(() => {})} />
-          : aba === "conciliacao" ? <ConciliacaoTela gestao={gestao} /> : <ResumoTela />}
+          : aba === "conciliacao" ? <ConciliacaoTela gestao={gestao} /> : aba === "resultado" ? <ResultadoTela /> : <ResumoTela />}
     </div>
   );
 }

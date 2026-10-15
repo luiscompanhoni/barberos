@@ -8,6 +8,7 @@ import { dataLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { processarCampanhas } from "@/lib/campanhas/servico";
 import { db } from "@/lib/db";
 import { atualizarPremios } from "@/lib/jogos/premios";
+import { sincronizarRecentes } from "@/lib/conciliacao/celcash";
 import { processarEsperas, processarIndicacoes, processarRetornos } from "@/lib/crescimento/rotina";
 import { enviarAutomacao as enviar } from "./enviar";
 import { fazAniversario, horarioComercial, lembreteDevido, quandoFalar, TEXTOS } from "./regras";
@@ -88,6 +89,9 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
 
   // ---- campanhas: fila dos lotes liberados, no limite diario de cada uma
   cont.campanha = await processarCampanhas(agora, opts);
+
+  // ---- extrato da Celcash (ultimos dias): conciliacao do resultado do mes
+  if (!opts.clienteIds) await sincronizarRecentes(agora).catch((e) => console.error("[conciliacao] celcash", e));
 
   // ---- premios de jogo: vence o que passou da validade e solta reserva de horario cancelado
   if (!opts.clienteIds) await atualizarPremios().catch((e) => console.error("[jogos] atualizar premios", e));

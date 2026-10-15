@@ -113,32 +113,34 @@ model Configuracao {
 
   // ---- Automacoes (Fase 5)
   /// Lembrete na vespera: X horas antes (0 = desligado). Pede confirmacao.
-  lembreteHorasAntes      Int     @default(24)
+  lembreteHorasAntes      Int      @default(24)
   /// Lembrete perto do horario: X minutos antes (0 = desligado).
-  lembreteMinutosAntes    Int     @default(90)
+  lembreteMinutosAntes    Int      @default(90)
   /// Depois de uma falta, oferece remarcar.
-  avisoFalta              Boolean @default(true)
+  avisoFalta              Boolean  @default(true)
   /// Com N faltas em X dias o cliente so marca com a equipe (0 = sem limite).
-  limiteFaltas            Int     @default(2)
-  janelaFaltasDias        Int     @default(60)
+  limiteFaltas            Int      @default(2)
+  janelaFaltasDias        Int      @default(60)
   /// Agradecimento depois do atendimento (com link de avaliacao, se houver).
-  posAtendimento          Boolean @default(false)
+  posAtendimento          Boolean  @default(false)
   linkAvaliacao           String?
   /// Chama de volta quem nao aparece ha X dias (0 = desligado).
-  reativacaoDias          Int     @default(0)
+  reativacaoDias          Int      @default(0)
   /// Parabens no dia do aniversario (com um presente opcional).
-  aniversario             Boolean @default(false)
+  aniversario             Boolean  @default(false)
   presenteAniversario     String?
   /// Lembrete de retorno no ritmo de cada cliente (com horarios sugeridos).
-  retornoAtivo            Boolean @default(false)
+  retornoAtivo            Boolean  @default(false)
   /// Indique e ganhe: premio de quem indica (quando o amigo faz o 1o atendimento) e de quem chega.
-  indicacaoAtiva          Boolean @default(false)
-  premioIndicadorCentavos Int     @default(2000)
-  premioIndicadoCentavos  Int     @default(1000)
+  indicacaoAtiva          Boolean  @default(false)
+  premioIndicadorCentavos Int      @default(2000)
+  premioIndicadoCentavos  Int      @default(1000)
   /// Cashback: % do que o cliente gasta na comanda volta como saldo (vale por X dias).
-  cashbackAtivo           Boolean @default(false)
-  cashbackPct             Int     @default(5)
-  cashbackValidadeDias    Int     @default(90)
+  cashbackAtivo           Boolean  @default(false)
+  cashbackPct             Int      @default(5)
+  cashbackValidadeDias    Int      @default(90)
+  /// Nomes das contas da propria empresa (Pix para elas e transferencia, nao despesa).
+  contasProprias          String[] @default(["BLACK BARBER", "BLACK BARBEARIA"])
 
   @@map("configuracao")
 }
@@ -1747,4 +1749,59 @@ model BackupRegistro {
 
   @@index([criadoEm])
   @@map("backups")
+}
+
+// ======================= CONCILIACAO COM FONTES EXTERNAS (Celcash, Stone, CashBarber)
+
+enum FonteExterna {
+  CELCASH
+  STONE
+  CASHBARBER
+}
+
+enum TipoMovimentoExterno {
+  /// Dinheiro de venda/mensalidade que entrou.
+  RECEBIMENTO
+  /// Taxa da transacao (cartao, boleto, Pix).
+  TAXA
+  /// Taxa de antecipacao do cartao.
+  ANTECIPACAO
+  /// Estorno/chargeback devolvido ao cliente.
+  ESTORNO
+  /// Entre contas da propria empresa (nao e despesa nem receita).
+  TRANSFERENCIA
+  /// Saida para terceiros (fornecedor, pessoa): vira despesa quando classificada.
+  PAGAMENTO
+  /// Mensalidade/modulo/notificacao do proprio gateway.
+  TARIFA
+  OUTRO
+}
+
+/// Movimento do extrato de uma fonte externa (cada um entra uma vez so). A classificacao pode ser corrigida no painel.
+model MovimentoExterno {
+  id                String               @id @default(cuid())
+  fonte             FonteExterna
+  /// Id do movimento na fonte (ex.: galaxPayId do extrato da Celcash).
+  idExterno         String
+  data              DateTime             @db.Timestamptz(3)
+  /// Com sinal: entrada positiva, saida negativa.
+  valorCentavos     Int
+  tipo              TipoMovimentoExterno
+  /// CARTAO, BOLETO, PIX (quando se aplica).
+  forma             String?
+  descricao         String
+  /// Transacao de origem na fonte (liga recebimento, taxa e estorno da mesma venda).
+  transacaoId       String?
+  /// Categoria de despesa (PAGAMENTO), ex.: FOLHA, FORNECEDOR. Null = a classificar.
+  categoria         String?
+  /// Classificacao mudada a mao (a sincronizacao nao sobrescreve).
+  classificadoPorId String?
+  observacao        String?
+  bruto             Json?
+  criadoEm          DateTime             @default(now()) @db.Timestamptz(3)
+
+  @@unique([fonte, idExterno])
+  @@index([fonte, data])
+  @@index([tipo, data])
+  @@map("movimentos_externos")
 }
