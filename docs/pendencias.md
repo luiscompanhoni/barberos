@@ -63,6 +63,55 @@ Falta:
 - [ ] Situação por venda: aprovado, pendente, recusado, estornado, divergente.
 - [ ] Alerta automático de divergência.
 
+#### 13b. Conciliação completa: CashBarber + Celcash + Stone 🟡
+Objetivo: fechar por mês faturamento, despesas e lucro com o que de fato entrou e saiu. Fontes:
+- **CashBarber:** tudo o que já existe lá entra no BarberOS, conferido tópico por tópico. Já entram clientes,
+  assinantes, histórico, as entradas das Movimentações e as mensalidades. Faltam as saídas: despesas, contas
+  a pagar e sangria/suprimento do caixa.
+- **Celcash (Celcoin):** o dinheiro que realmente entrou, com as taxas, os estornos e as saídas (saques e
+  transferências). Cobre o que faltar no CashBarber.
+- **Stone (depois):** extrato bancário. Fecha o veredito de faturamento, despesa e lucro.
+- **Dinheiro em espécie:** não tem fonte externa. Só o fechamento do caixa.
+
+Decidido com o dono (15/10):
+- **Celcash:** acesso pela chave de API.
+- **CashBarber:** acesso pelo login do painel.
+- **Período:** todo o histórico.
+- **Credenciais:** ficam como segredo do ambiente da sessão na nuvem, nunca no chat nem no projeto:
+  `CELCASH_GALAX_ID`, `CELCASH_GALAX_HASH`, `CELCASH_AMBIENTE=producao`, `CASHBARBER_EMAIL` e
+  `CASHBARBER_SENHA`. Uma sessão nova lê os segredos.
+- **Dados pessoais baixados:** ficam fora do projeto (scratchpad da sessão).
+
+O que já se sabe (para a próxima sessão):
+- **Celcash API v2** (`https://api-celcash.celcoin.com.br/v2`, responde daqui). Token como em
+  `src/lib/pagamentos/celcash.ts`. Endpoints:
+  - Extrato: `GET /company/balance/movements` (escopo `balance.read`).
+  - Saldo: `balance/get-balance`.
+  - Transações: `GET /transactions` (escopo `transactions.read`).
+  - Taxas: `fees/list`. Chargebacks: `chargebacks/list`. Antecipações: `antecipation/list`.
+  - A documentação (docs-celpayments.celcoin.com.br) não mostra os campos: ver a resposta real com a
+    chave, pedindo só escopos de leitura.
+- **CashBarber:**
+  - O painel (`painel.cashbarber.com.br`) é um app React que fala com `https://api.cashbarber.com.br`.
+  - Login: `POST /api/auth/login` com `{ email, password, captchaToken }`. O token vem do reCAPTCHA
+    Enterprise, então entrar pelo navegador (Chromium/Playwright já instalado).
+  - Pode pedir verificação em duas etapas (`/api/auth/mfa/verify`).
+  - Depois do login, achar os endpoints dos relatórios no próprio app.
+  - O painel usa a Galax Pay (Celcash) para cobrar as assinaturas.
+
+Etapas:
+- [ ] Baixar do CashBarber todo o histórico (cadastros, agendamentos, movimentações com entradas e saídas,
+      faturamento, despesas e contas a pagar, caixa) e comparar, tópico por tópico, com o que já está no BarberOS.
+- [ ] Importar o que falta, sem duplicar, incluindo despesas e as saídas do caixa.
+- [ ] Sincronizar o extrato e as transações da Celcash no BarberOS: guardar cada movimento, e o servidor
+      atualiza todo dia.
+- [ ] Tela "Resultado do mês", lado a lado:
+      - o faturamento registrado por forma;
+      - o que caiu na Celcash;
+      - as taxas, os estornos, as saídas e as despesas;
+      - o lucro, com as divergências marcadas.
+- [ ] Stone: importar o extrato bancário na mesma tela.
+
 ### 14. WhatsApp API oficial 🟡
 Já existe: integração com a Cloud API da Meta (webhook assinado), modelos de código e de aviso, saída por "PARAR",
 camada de envio separada (`src/lib/whatsapp/canal.ts`: oficial, Evolution ou simulador).
