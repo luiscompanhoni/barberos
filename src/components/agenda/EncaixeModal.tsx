@@ -41,6 +41,7 @@ export function EncaixeModal(p: {
   const [salvando, setSalvando] = useState(false);
   const [semPreferencia, setSemPreferencia] = useState(false);
   const [realizado, setRealizado] = useState(false);
+  const [limiteRealizado, setLimiteRealizado] = useState(() => Date.now());
   const [avulso, setAvulso] = useState<{ preco: number } | null>(null);
   const [planoCliente, setPlanoCliente] = useState<{ nome: string; valida: boolean } | null>(null);
 
@@ -66,6 +67,7 @@ export function EncaixeModal(p: {
         if (!vivo) return;
         const d = r[0] ?? null;
         setDisp(d);
+        setLimiteRealizado(Date.now());
         const alvo = p.inicio ? new Date(p.inicio).toISOString() : "";
         setHorario(d?.horarios.includes(alvo) ? alvo : "");
       })
@@ -110,13 +112,13 @@ export function EncaixeModal(p: {
   }
 
   const hora = (iso: string) => minParaHhmm(minutosLocal(Date.parse(iso), p.fuso));
-  const horarios = disp?.horarios.filter((h) => !realizado || Date.parse(h) + disp.duracaoMin * 60_000 <= Date.now()) ?? [];
+  const horarios = disp?.horarios.filter((h) => !realizado || Date.parse(h) + disp.duracaoMin * 60_000 <= limiteRealizado) ?? [];
 
   return (
     <Modal titulo="Novo atendimento" onFechar={p.onFechar}>
       <form onSubmit={salvar} className="space-y-3">
         <label className="flex items-start gap-3 rounded-xl border border-ouro/30 bg-ouro/5 p-3 text-sm">
-          <input type="checkbox" className="mt-1 h-4 w-4 accent-ouro" checked={realizado} onChange={(e) => setRealizado(e.target.checked)} />
+          <input type="checkbox" className="mt-1 h-4 w-4 accent-ouro" checked={realizado} onChange={(e) => { setRealizado(e.target.checked); setLimiteRealizado(Date.now()); }} />
           <span><b className="block">Atendimento já realizado</b><span className="text-xs text-zinc-600">Use o horário real do corte. O registro entra como concluído; o recebimento é conferido na comanda.</span></span>
         </label>
         <div className="grid grid-cols-2 gap-2">
