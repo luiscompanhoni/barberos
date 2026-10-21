@@ -7,6 +7,7 @@ import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
 
 type Painel = {
+  financeiro: { mes: string; faturamento: number; despesas: number; taxas: number; lucro: number; alertas: string[] } | null;
   dia: {
     atendimentos: number;
     concluidos: number;
@@ -109,14 +110,53 @@ export function PainelTela({ nome }: { nome: string }) {
       </div>
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
+      {verResultado && (
+        <section className="space-y-3" aria-labelledby="financeiro-executivo">
+          <div>
+            <h2 id="financeiro-executivo" className="font-semibold">Visão financeira do mês{p.financeiro ? ` · ${p.financeiro.mes.split("-").reverse().join("/")}` : ""}</h2>
+            <p className="text-xs text-zinc-500">Resultado provisório com os lançamentos registrados e taxas estimadas. Confira os detalhes antes de fechar o mês.</p>
+          </div>
+          {p.financeiro ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <Metrica rotulo="Faturamento registrado" valor={reais(p.financeiro.faturamento)}
+                  detalhe="Comandas, mensalidades e pagamentos online, descontados os estornos"
+                  link="/financeiro?aba=resultado" />
+                <Metrica rotulo="Despesas + taxas" valor={reais(p.financeiro.despesas + p.financeiro.taxas)}
+                  detalhe={`${reais(p.financeiro.despesas)} de despesas · ${reais(p.financeiro.taxas)} de taxas`}
+                  link="/financeiro?aba=resultado" />
+                <Metrica rotulo="Resultado provisório" valor={reais(p.financeiro.lucro)}
+                  detalhe="Faturamento menos despesas e taxas registradas"
+                  tom={p.financeiro.lucro >= 0 ? "bom" : "ruim"} link="/financeiro?aba=resultado" />
+                <Metrica rotulo="Margem provisória"
+                  valor={p.financeiro.faturamento > 0 ? `${(p.financeiro.lucro / p.financeiro.faturamento * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—"}
+                  detalhe={p.financeiro.faturamento > 0 ? "Resultado provisório ÷ faturamento registrado" : "Sem faturamento positivo para calcular a margem"}
+                  link="/financeiro?aba=resultado" />
+              </div>
+              {p.financeiro.alertas.length > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                  <p className="font-medium">Conferência financeira pendente</p>
+                  <ul className="mt-1 list-disc space-y-1 pl-5">
+                    {p.financeiro.alertas.map((a) => <li key={a}>{a}</li>)}
+                  </ul>
+                  <Link href="/financeiro?aba=resultado" className="mt-2 inline-block font-semibold underline">Conferir lançamentos →</Link>
+                </div>
+              )}
+            </>
+          ) : (
+            <p role="status" className="cartao text-sm text-zinc-500">Não foi possível carregar o resultado financeiro. <Link href="/financeiro?aba=resultado" className="underline">Abrir financeiro</Link></p>
+          )}
+        </section>
+      )}
+
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metrica rotulo="Ocupação hoje" valor={pct(dia.ocupacao)} detalhe={`${Math.floor(dia.livresMin / 60)}h${String(dia.livresMin % 60).padStart(2, "0")} livres na agenda`}
           barra={dia.ocupacao} link={verResultado ? "/indicadores?periodo=7d#ocupacao" : undefined} />
         <Metrica rotulo="Previsto hoje" valor={reais(dia.previstoCentavos)} detalhe={`${reais(dia.realizadoCentavos)} já concluído · ${dia.concluidos}/${dia.atendimentos}`} />
         {mes ? (
           <>
-            <Metrica rotulo="Faturamento do mês" valor={reais(mes.atual.centavos)}
-              detalhe={variacao === null ? "sem base do mês passado" : `${variacao >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(variacao * 100))}% vs mesmo período do mês passado`}
+            <Metrica rotulo="Serviços concluídos no mês" valor={reais(mes.atual.centavos)}
+              detalhe={variacao === null ? "Preços da agenda; não inclui mensalidades nem produtos" : `${variacao >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(variacao * 100))}% vs mesmo período do mês passado`}
               tom={variacao === null ? undefined : variacao >= 0 ? "bom" : "ruim"} />
             <Metrica rotulo="Clientes novos no mês" valor={String(mes.clientesNovos)} detalhe={`${mes.faltas} falta(s) no mês`} tom={mes.faltas > 5 ? "ruim" : undefined} />
           </>
@@ -313,8 +353,9 @@ export function PainelTela({ nome }: { nome: string }) {
 }
 
 function Metrica(p: { rotulo: string; valor: string; detalhe: string; tom?: "bom" | "ruim"; barra?: number | null; link?: string }) {
-  return (
-    <div className="cartao space-y-1">
+  const conteudo = (
+    <>
+
       <p className="text-xs font-medium text-zinc-500">{p.rotulo}</p>
       <p className="text-2xl font-semibold">{p.valor}</p>
       {p.barra !== undefined && p.barra !== null && (
@@ -323,9 +364,12 @@ function Metrica(p: { rotulo: string; valor: string; detalhe: string; tom?: "bom
         </div>
       )}
       <p className={`text-xs ${p.tom === "bom" ? "text-emerald-700" : p.tom === "ruim" ? "text-red-700" : "text-zinc-500"}`}>{p.detalhe}</p>
-      {p.link && <Link href={p.link} className="inline-block pt-1 text-xs font-semibold text-ouro">Ver detalhes →</Link>}
-    </div>
+      {p.link && <span className="inline-block pt-1 text-xs font-semibold text-ouro">Ver detalhes →</span>}
+    </>
   );
+  return p.link ? (
+    <Link href={p.link} className="cartao block space-y-1 transition-colors hover:border-ouro focus-visible:outline-2 focus-visible:outline-ouro">{conteudo}</Link>
+  ) : <div className="cartao space-y-1">{conteudo}</div>;
 }
 
 function Bloco(p: { titulo: string; qtd: number; acao?: React.ReactNode; children: React.ReactNode }) {
