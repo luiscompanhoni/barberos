@@ -10,7 +10,7 @@ import { nomeDaComanda, ROTULO_FORMA, type Comanda, type ModoMaquininha } from "
 import { useAoVivo } from "./useAoVivo";
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
-type Concluido = { id: string; inicio: string; precoCentavos: number; assinaturaId: string | null;
+type Concluido = { id: string; inicio: string; precoCentavos: number; assinaturaId: string | null; antecipado: { status: string } | null;
   cliente: { nome: string }; barbeiro: { nome: string }; servico: { nome: string } };
 type Dados = { comandas: Comanda[]; concluidos: Concluido[]; maquininha: ModoMaquininha };
 
@@ -124,8 +124,8 @@ export function ComandasTela() {
             <div className="min-w-40 flex-1"><p className="text-sm font-semibold">{a.cliente.nome}</p>
               <p className="text-xs text-zinc-500">{a.servico.nome} · {a.barbeiro.nome}</p></div>
             <div className="text-right"><p className="font-semibold">{reais(a.precoCentavos)}</p>
-              <p className={`text-xs ${a.precoCentavos === 0 ? "text-emerald-700" : "text-amber-700"}`}>
-                {a.precoCentavos === 0 ? a.assinaturaId ? "Incluído no plano · sem cobrança extra" : "Serviço sem cobrança" : "Recebimento não registrado"}</p></div>
+              <p className={`text-xs ${a.precoCentavos === 0 || a.antecipado?.status === "PAGO" ? "text-emerald-700" : "text-amber-700"}`}>
+                {a.antecipado?.status === "PAGO" ? "Pago antecipadamente · conferir na comanda" : a.precoCentavos === 0 ? a.assinaturaId ? "Incluído no plano · sem cobrança extra" : "Serviço sem cobrança" : "Conferir recebimento na comanda"}</p></div>
             <button className="btn text-xs" disabled={abrindo !== null} onClick={() => abrirAtendimento(a.id)}>
               {abrindo === a.id ? "Abrindo…" : "Abrir comanda"}</button>
           </li>)}
