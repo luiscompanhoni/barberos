@@ -27,6 +27,7 @@ const ICONES: Record<string, LucideIcon> = {
   "/indicadores": ChartLine,
   "/jogos": Dices,
   "/financeiro": Landmark,
+  "/caixa": Receipt,
   "/checklist": ClipboardCheck,
   "/rh": BriefcaseBusiness,
   "/whatsapp": Smartphone,
@@ -71,8 +72,9 @@ export function Navegacao({
         href={l.href}
         onClick={() => setMais(false)}
         className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-          ativo(l.href) ? "bg-zinc-200 font-semibold text-zinc-900" : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+          ativo(l.href) ? "border border-ouro/25 bg-ouro/10 font-semibold text-zinc-900" : "border border-transparent text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
         }`}
+        aria-current={ativo(l.href) ? "page" : undefined}
       >
         <Icone size={17} className={ativo(l.href) ? "text-ouro" : ""} />
         {l.rotulo}
@@ -99,7 +101,16 @@ export function Navegacao({
       {/* Computador */}
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-zinc-200 bg-[#0d0d0d] p-5 lg:flex">
         <Marca nome={nomeBarbearia} />
-        <nav className="mt-10 flex-1 space-y-1 overflow-y-auto">{links.map(item)}</nav>
+        <nav aria-label="Menu principal" className="mt-8 flex-1 space-y-5 overflow-y-auto">
+          {[
+            { titulo: "Dia a dia", rotas: ["/painel", "/recepcao", "/caixa", "/comandas", "/conversas", "/semana", "/minha-agenda"] },
+            { titulo: "Gestão", rotas: ["/financeiro", "/indicadores", "/assinaturas", "/estoque", "/campanhas", "/planos", "/jogos"] },
+            { titulo: "Equipe e ajustes", rotas: ["/checklist", "/rh", "/expediente", "/equipe", "/whatsapp", "/auditoria", "/simulador"] },
+          ].map((g) => {
+            const itens = links.filter((l) => g.rotas.includes(l.href) || (g.titulo === "Gestão" && l.href.startsWith("/indicadores/")));
+            return itens.length > 0 && <div key={g.titulo}><p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">{g.titulo}</p><div className="space-y-1">{itens.map(item)}</div></div>;
+          })}
+        </nav>
         {rodapeUsuario}
       </aside>
 

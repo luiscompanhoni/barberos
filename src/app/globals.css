@@ -81,6 +81,41 @@ body {
   background: rgba(211, 171, 69, 0.35);
 }
 
+/* Área de gestão: hierarquia mais clara, sem alterar o app do cliente. */
+.gestao-shell {
+  background: radial-gradient(ellipse at 90% 0%, rgba(211,171,69,.035), transparent 45%), #0c0d0f;
+}
+.gestao-shell main { max-width: 1600px; }
+.gestao-shell .cartao {
+  background: linear-gradient(145deg, #17181a, #131416);
+  border-color: #2b2c2e;
+  box-shadow: 0 4px 16px rgba(0,0,0,.1);
+}
+.gestao-shell .cartao-destaque {
+  background: linear-gradient(130deg, #211f19, #151617 70%);
+  border-color: rgba(211,171,69,.45);
+  box-shadow: 0 8px 28px rgba(0,0,0,.18);
+}
+.gestao-shell .campo { background-color: #101113; border-color: #3b3c3e; min-height: 42px; }
+.gestao-shell .btn { min-height: 40px; border-radius: 12px; }
+.gestao-shell .btn-primario { min-height: 40px; border-radius: 12px; }
+.gestao-shell button, .gestao-shell a, .gestao-shell input, .gestao-shell select { -webkit-tap-highlight-color: transparent; }
+.gestao-shell :is(button,a):focus-visible { outline: 2px solid #e2c06a; outline-offset: 3px; }
+.gestao-shell aside { background: #101113; }
+.cabecalho-gestao {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 20px 0 24px;
+  border-bottom: 1px solid #292b2e;
+}
+@media (max-width: 640px) {
+  .cabecalho-gestao { padding-top: 8px; gap: 16px; }
+  .gestao-shell .titulo-marca { line-height: 1.15; }
+}
+
 @keyframes subir {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }

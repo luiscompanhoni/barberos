@@ -26,8 +26,9 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
       : [
           { href: "/painel", rotulo: "Painel" },
           { href: "/recepcao", rotulo: "Recepção" },
-          { href: "/comandas", rotulo: "Comandas" },
+          { href: "/caixa", rotulo: "Caixa" },
           { href: "/conversas", rotulo: "Conversas" },
+          { href: "/comandas", rotulo: "Comandas" },
           { href: "/semana", rotulo: "Semana" },
           { href: "/assinaturas", rotulo: "Assinaturas" },
           { href: "/estoque", rotulo: "Estoque" },
@@ -57,7 +58,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
   const selos: Record<string, number> = permissoes.estorno ? { "/financeiro": await contarPendentes() } : {};
 
   return (
-    <div className="flex min-h-full flex-1 flex-col lg:flex-row">
+    <div className="gestao-shell flex min-h-full flex-1 flex-col lg:flex-row">
       <Navegacao nome={s.nome} papel={s.papel} links={links} selos={selos} nomeBarbearia={(await configuracao()).nomeBarbearia} />
       <main className="mx-auto w-full min-w-0 max-w-[1400px] flex-1 p-3 pb-24 sm:p-4 sm:pb-24 lg:p-6 lg:pb-6">
         <AbasPainel links={links} chave={s.usuarioId} />

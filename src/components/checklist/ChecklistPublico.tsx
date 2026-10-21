@@ -3,8 +3,9 @@
 import { useState } from "react";
 import { CheckCircle2, Circle } from "lucide-react";
 import { ProgressoNivel, SeloNivel, type Nivel } from "./SeloNivel";
+import { FotosTarefa } from "./FotosTarefa";
 
-type Item = { id: string; titulo: string; horario: string | null; feito: boolean; pontos: number; avaliacao: "VALIDADO" | "RE" | null; motivoRe: string | null };
+type Item = { id: string; titulo: string; horario: string | null; feito: boolean; pontos: number; avaliacao: "VALIDADO" | "RE" | null; motivoRe: string | null; fotos: number };
 type Pontos = { pontos: number; nivel: Nivel; proximo: Nivel | null; faltam: number; percentual: number };
 
 function Status({ i }: { i: Item }) {
@@ -59,6 +60,7 @@ export function ChecklistPublico({ token, nome, data, itens: inicial, pontos }: 
                 <Status i={i} />
               </span>
             </button>
+            <FotosTarefa itemId={i.id} token={token} quantidade={i.fotos} validada={i.avaliacao === "VALIDADO"} />
           </li>
         ))}
       </ul>

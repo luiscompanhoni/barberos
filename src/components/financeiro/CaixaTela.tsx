@@ -104,7 +104,7 @@ export function CaixaTela({ compacto = false }: { compacto?: boolean } = {}) {
           </div>
           <p className="text-xs text-zinc-500">
             {a.comandasFechadas} comandas fechadas · faturado {reais(a.faturado)} · ticket médio {reais(a.ticketMedio)} · troco dado {reais(a.troco)}
-            {a.suprimentos ? ` · suprimentos ${reais(a.suprimentos)}` : ""}{a.sangrias ? ` · sangrias ${reais(a.sangrias)}` : ""}
+            {a.suprimentos ? ` · entradas ${reais(a.suprimentos)}` : ""}{a.sangrias ? ` · retiradas ${reais(a.sangrias)}` : ""}
           </p>
           {a.comandasAbertas > 0 && (
             <p className="flex items-center gap-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-900"><TriangleAlert size={14} /> {a.comandasAbertas} comanda(s) ainda aberta(s): feche antes de fechar o caixa.</p>
@@ -115,7 +115,7 @@ export function CaixaTela({ compacto = false }: { compacto?: boolean } = {}) {
               {a.movimentos.map((m) => (
                 <li key={m.id} className="flex items-center gap-2 py-1.5">
                   {m.tipo === "SANGRIA" ? <ArrowUpCircle size={15} className="text-red-600" /> : <ArrowDownCircle size={15} className="text-emerald-600" />}
-                  <span className="flex-1">{m.tipo === "SANGRIA" ? "Sangria" : "Suprimento"} · {m.motivo}</span>
+                  <span className="flex-1">{m.tipo === "SANGRIA" ? "Retirada do caixa" : "Entrada no caixa"} · {m.motivo}</span>
                   <span className="text-xs text-zinc-500">{hora(m.criadoEm)}</span>
                   <b>{m.tipo === "SANGRIA" ? "-" : "+"}{reais(m.valorCentavos)}</b>
                 </li>
@@ -124,7 +124,7 @@ export function CaixaTela({ compacto = false }: { compacto?: boolean } = {}) {
           )}
 
           {mov ? (
-            <form className={`grid gap-2 rounded-xl border border-zinc-200 p-3 ${compacto ? "" : "sm:grid-cols-[140px_1fr_auto]"}`} onSubmit={(e) => { e.preventDefault(); const v = paraCentavos(mov.valor); if (!(v > 0)) return setMsg({ t: "Informe o valor.", erro: true }); enviar({ acao: mov.tipo, valorCentavos: v, motivo: mov.motivo }, mov.tipo === "sangria" ? "Sangria registrada." : "Suprimento registrado."); }}>
+            <form className={`grid gap-2 rounded-xl border border-zinc-200 p-3 ${compacto ? "" : "sm:grid-cols-[140px_1fr_auto]"}`} onSubmit={(e) => { e.preventDefault(); const v = paraCentavos(mov.valor); if (!(v > 0)) return setMsg({ t: "Informe o valor.", erro: true }); enviar({ acao: mov.tipo, valorCentavos: v, motivo: mov.motivo }, mov.tipo === "sangria" ? "Retirada registrada." : "Entrada registrada."); }}>
               <input className="campo" inputMode="decimal" placeholder="Valor" value={mov.valor} onChange={(e) => setMov({ ...mov, valor: e.target.value })} autoFocus />
               <input className="campo" placeholder={mov.tipo === "sangria" ? "Motivo (ex.: depósito no banco, pagou fornecedor)" : "Motivo (ex.: reforço de troco)"} value={mov.motivo} onChange={(e) => setMov({ ...mov, motivo: e.target.value })} />
               <div className="flex gap-2"><button className="btn-primario" disabled={ocupado}>Salvar</button><button type="button" className="btn" onClick={() => setMov(null)}>Cancelar</button></div>
@@ -147,8 +147,8 @@ export function CaixaTela({ compacto = false }: { compacto?: boolean } = {}) {
             </form>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {podeMexer && <button className="btn" onClick={() => setMov({ tipo: "sangria", valor: "", motivo: "" })}><ArrowUpCircle size={15} /> Sangria</button>}
-              {podeMexer && <button className="btn" onClick={() => setMov({ tipo: "suprimento", valor: "", motivo: "" })}><ArrowDownCircle size={15} /> Suprimento</button>}
+              {podeMexer && <button className="btn" onClick={() => setMov({ tipo: "sangria", valor: "", motivo: "" })}><ArrowUpCircle size={15} /> Retirada do caixa</button>}
+              {podeMexer && <button className="btn" onClick={() => setMov({ tipo: "suprimento", valor: "", motivo: "" })}><ArrowDownCircle size={15} /> Entrada no caixa</button>}
               {!compacto && <button className="btn" onClick={() => setVerMov(!verMov)}><Receipt size={15} /> {verMov ? "Esconder movimentação" : "Ver movimentação"}</button>}
               {podeMexer && <button className="btn-primario ml-auto" onClick={() => setFechar({ contado: "", obs: "" })}><Lock size={15} /> Fechar caixa</button>}
             </div>
@@ -161,6 +161,8 @@ export function CaixaTela({ compacto = false }: { compacto?: boolean } = {}) {
           )}
         </section>
       )}
+
+      <p className="text-xs text-zinc-500">Entrada e retirada movimentam o dinheiro da gaveta. Cadastre receitas e despesas do negócio no Financeiro.</p>
 
       {!compacto && detalhe && (
         <section className="cartao">

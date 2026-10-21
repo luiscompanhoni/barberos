@@ -1334,10 +1334,23 @@ model ChecklistItem {
   avaliadoPor    String?
   motivoRe       String?
   checklistPonto ChecklistPonto?
+  fotos          ChecklistFoto[]
 
   @@unique([pessoaId, tarefaId, data])
   @@index([data])
   @@map("checklist_itens")
+}
+
+model ChecklistFoto {
+  id        String        @id @default(cuid())
+  itemId    String
+  item      ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  dados     Bytes
+  tipo      String
+  criadoEm  DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([itemId])
+  @@map("checklist_fotos")
 }
 
 /// Mensagens do checklist ja enviadas (evita mandar duas vezes).
