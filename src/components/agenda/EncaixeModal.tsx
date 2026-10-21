@@ -87,6 +87,9 @@ export function EncaixeModal(p: {
     setAvulso(null);
     if (!servicoId) return setErro("Escolha o serviço.");
     if (!horario) return setErro("Escolha um horário livre.");
+    if (realizado && disp && Date.parse(horario) + disp.duracaoMin * 60_000 > Date.now()) {
+      return setErro("Escolha um horário em que o atendimento já tenha terminado.");
+    }
     if (!cliente && (!nome.trim() || telefone.replace(/\D/g, "").length < 10)) {
       return setErro("Informe nome e celular com DDD do cliente (ou escolha um cliente da busca).");
     }
@@ -107,6 +110,7 @@ export function EncaixeModal(p: {
   }
 
   const hora = (iso: string) => minParaHhmm(minutosLocal(Date.parse(iso), p.fuso));
+  const horarios = disp?.horarios.filter((h) => !realizado || Date.parse(h) + disp.duracaoMin * 60_000 <= Date.now()) ?? [];
 
   return (
     <Modal titulo="Novo atendimento" onFechar={p.onFechar}>
@@ -134,11 +138,11 @@ export function EncaixeModal(p: {
 
         <div>
           <label className="rotulo">{realizado ? "Horário em que o atendimento começou" : "Horário"}</label>
-          {disp && disp.horarios.length === 0 ? (
-            <p className="text-sm text-zinc-500">Sem horário livre para esse serviço nesse dia.</p>
+          {disp && horarios.length === 0 ? (
+            <p className="text-sm text-zinc-500">{realizado ? "Sem horário passado livre para registrar esse serviço nesse dia." : "Sem horário livre para esse serviço nesse dia."}</p>
           ) : (
             <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
-              {disp?.horarios.map((h) => (
+              {horarios.map((h) => (
                 <button type="button" key={h} onClick={() => setHorario(h)}
                   className={`rounded-md border px-2 py-1 text-sm ${h === horario ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 hover:bg-zinc-50"}`}>
                   {hora(h)}

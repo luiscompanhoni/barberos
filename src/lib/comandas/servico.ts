@@ -76,7 +76,7 @@ export async function listarComandas(desde: Date) {
 /** Histórico operacional: concluir um corte não inventa pagamento nem altera o caixa. */
 export async function atendimentosSemComanda(desde: Date) {
   return db.agendamento.findMany({
-    where: { status: "CONCLUIDO", inicio: { gte: desde }, adicionalDeId: null, itemComanda: null },
+    where: { status: "CONCLUIDO", inicio: { gte: desde, lte: new Date() }, adicionalDeId: null, itemComanda: null },
     select: { id: true, inicio: true, precoCentavos: true, assinaturaId: true,
       cliente: { select: { nome: true } }, barbeiro: { select: { nome: true } }, servico: { select: { nome: true } } },
     orderBy: { inicio: "desc" },
