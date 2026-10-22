@@ -86,7 +86,10 @@ async function main() {
     const s1 = await db.esperaHorario.findFirstOrThrow({ where: { clienteId: e1.id } });
     const s2 = await db.esperaHorario.findFirstOrThrow({ where: { clienteId: e2.id } });
     ok(s1.status === "AVISADA" && s2.status === "ATIVA", "o primeiro da fila � avisado primeiro");
-    const msgEspera = await db.mensagem.findFirst({ where: { conversa: { telefone: TELS[0] }, texto: { contains: "Abriu hor�rio" } } });
+    const msgEspera = await db.mensagem.findFirst({
+      where: { conversa: { clienteId: e1.id }, autor: "SISTEMA" },
+      orderBy: { criadoEm: "desc" },
+    });
     ok(!!msgEspera?.texto.includes(barbeiro.nome), `mensagem com o hor�rio: "${msgEspera?.texto.slice(0, 90)}..."`);
     ok((await processarEsperas(agora + 5 * MIN, { clienteIds: ids })) === 0, "5 min depois: ainda � a vez do primeiro");
     ok((await processarEsperas(agora + 21 * MIN, { clienteIds: ids })) === 1, "20 min sem ningu�m pegar: vai para o pr�ximo da fila");
