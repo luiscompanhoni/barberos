@@ -32,6 +32,15 @@ export function nascimentoValido(s: string | null, hoje = new Date()): string | 
 }
 type Campos = Pick<Cadastro, "cpf" | "email" | "dataNascimento">;
 export type Alteracao = { id: string; antes: Cadastro; depois: Campos; fontes: string[] };
+export function diferencaAuditavel(a: Alteracao) {
+  const antes: Record<string, string | null> = {}, depois: Record<string, string> = {};
+  for (const k of ["cpf", "email", "dataNascimento"] as const) {
+    const v = a.depois[k]; if (!v) continue;
+    const proteger = (s: string | null) => k === "cpf" && s ? `***.***.***-${s.replace(/\D/g, "").slice(-2)}` : s;
+    antes[k] = proteger(a.antes[k]); depois[k] = proteger(v)!;
+  }
+  return { antes, depois };
+}
 export function planejarCadastros(existentes: Cadastro[], fontes: FonteCadastro[]) {
   const pendencias: { fonte: string; id: string; motivo: string }[] = [];
   const propostas = new Map<string, FonteCadastro[]>();

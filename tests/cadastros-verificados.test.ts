@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { cpfValido, nascimentoValido, planejarCadastros, type Cadastro, type FonteCadastro } from "../scripts/dados/cadastros-verificados";
+import { cpfValido, diferencaAuditavel, nascimentoValido, planejarCadastros, type Cadastro, type FonteCadastro } from "../scripts/dados/cadastros-verificados";
 const ex: Cadastro = { id: "1", nome: "Pessoa Exemplo", telefone: "5547999999999", cpf: null, email: null, dataNascimento: null };
 const fonte = (p: Partial<FonteCadastro> = {}): FonteCadastro => ({ ...ex, fonte: "cashbarber", email: "pessoa@example.com", ...p });
 describe("cadastros verificados", () => {
+  it("audita apenas campos preenchidos e mascara CPF", () => {
+    const d = diferencaAuditavel({ id: "1", antes: { ...ex, email: "mantido@example.com" }, depois: { cpf: "12345678901", email: null, dataNascimento: null }, fontes: [] });
+    expect(d).toEqual({ antes: { cpf: null }, depois: { cpf: "***.***.***-01" } });
+  });
   it("completa apenas dados ausentes e pode ser repetido", () => {
     const p = planejarCadastros([ex], [fonte()]);
     expect(p.atualizacoes).toHaveLength(1);

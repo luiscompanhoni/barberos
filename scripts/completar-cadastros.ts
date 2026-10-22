@@ -7,7 +7,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { PrismaClient, Prisma } from "@prisma/client";
-import { planejarCadastros, type FonteCadastro } from "./dados/cadastros-verificados";
+import { diferencaAuditavel, planejarCadastros, type FonteCadastro } from "./dados/cadastros-verificados";
 
 function csv(arquivo: string, separador: string) {
   const bytes = readFileSync(arquivo);
@@ -53,7 +53,7 @@ async function main() {
       for (const a of plano.atualizacoes) {
         const dados = { ...(a.depois.cpf ? { cpf: a.depois.cpf } : {}), ...(a.depois.email ? { email: a.depois.email } : {}), ...(a.depois.dataNascimento ? { dataNascimento: new Date(a.depois.dataNascimento + "T00:00:00Z") } : {}) };
         await tx.cliente.update({ where: { id: a.id }, data: dados });
-        await tx.auditoria.create({ data: { acao: "migracao_completar_cadastro", entidade: "cliente", entidadeId: a.id, dados: { antes: a.antes, depois: a.depois, fontes: a.fontes, hashes } } });
+        await tx.auditoria.create({ data: { acao: "migracao_completar_cadastro", entidade: "cliente", entidadeId: a.id, dados: { ...diferencaAuditavel(a), fontes: a.fontes, hashes } } });
       }
       for (const n of plano.novos) {
         const novo = await tx.cliente.create({ data: { nome: n.nome, telefone: n.telefone!, cpf: n.cpf, email: n.email, dataNascimento: n.dataNascimento ? new Date(n.dataNascimento + "T00:00:00Z") : null, origemDetalhe: "Importacao verificada CashBarber/Celcoin", aceitaMensagens: false } });
