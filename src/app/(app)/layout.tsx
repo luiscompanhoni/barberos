@@ -20,6 +20,8 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
           { href: "/minha-agenda", rotulo: "Minha agenda" },
           { href: "/recepcao", rotulo: "Barbearia hoje" },
           { href: "/comandas", rotulo: "Comandas" },
+          { href: "/meu-financeiro", rotulo: "Meu financeiro" },
+          { href: "/campanhas-equipe", rotulo: "Campanhas e bônus" },
           { href: "/expediente", rotulo: "Meus horários" },
           ...(s.barbeiroId ? [{ href: `/indicadores/barbeiro/${s.barbeiroId}`, rotulo: "Meus números" }] : []),
         ]
@@ -33,6 +35,8 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
           { href: "/assinaturas", rotulo: "Assinaturas" },
           { href: "/estoque", rotulo: "Estoque" },
           { href: "/financeiro", rotulo: "Financeiro" },
+          { href: "/meu-financeiro", rotulo: "Meu financeiro" },
+          ...(GESTAO.includes(s.papel) ? [{ href: "/campanhas-equipe", rotulo: "Campanhas da equipe" }] : []),
           { href: "/checklist", rotulo: "Checklist" },
           { href: "/jogos", rotulo: "Jogos" },
           ...(permissoes.resultado ? [{ href: "/indicadores", rotulo: "Indicadores" }] : []),

@@ -33,6 +33,8 @@ const ICONES: Record<string, LucideIcon> = {
   "/whatsapp": Smartphone,
   "/auditoria": ShieldCheck,
   "/campanhas": Megaphone,
+  "/campanhas-equipe": Dices,
+  "/meu-financeiro": Landmark,
 };
 
 const iniciais = (nome: string) =>
@@ -104,7 +106,7 @@ export function Navegacao({
         <nav aria-label="Menu principal" className="mt-8 flex-1 space-y-5 overflow-y-auto">
           {[
             { titulo: "Dia a dia", rotas: ["/painel", "/recepcao", "/caixa", "/comandas", "/conversas", "/semana", "/minha-agenda"] },
-            { titulo: "Gestão", rotas: ["/financeiro", "/indicadores", "/assinaturas", "/estoque", "/campanhas", "/planos", "/jogos"] },
+            { titulo: "Gestão", rotas: ["/financeiro", "/meu-financeiro", "/campanhas-equipe", "/indicadores", "/assinaturas", "/estoque", "/campanhas", "/planos", "/jogos"] },
             { titulo: "Equipe e ajustes", rotas: ["/checklist", "/rh", "/expediente", "/equipe", "/whatsapp", "/auditoria", "/simulador"] },
           ].map((g) => {
             const itens = links.filter((l) => g.rotas.includes(l.href) || (g.titulo === "Gestão" && l.href.startsWith("/indicadores/")));

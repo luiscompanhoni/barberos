@@ -81,7 +81,7 @@ body {
   background: rgba(211, 171, 69, 0.35);
 }
 
-/* �rea de gest�o: hierarquia mais clara, sem alterar o app do cliente. */
+/* Área de gestão: hierarquia mais clara, sem alterar o app do cliente. */
 .gestao-shell {
   background: radial-gradient(ellipse at 90% 0%, rgba(211,171,69,.035), transparent 45%), #0c0d0f;
 }
@@ -178,7 +178,7 @@ textarea {
 @utility titulo-marca {
   @apply font-black tracking-[-0.025em];
 }
-/* Rotulo dourado em caixa alta (ex.: "RIO DO SUL � SC") */
+/* Rotulo dourado em caixa alta (ex.: "RIO DO SUL · SC") */
 @utility eyebrow {
   @apply text-[11px] font-bold tracking-[0.18em] text-ouro uppercase;
 }
@@ -223,7 +223,7 @@ textarea {
 .jogo-titulo {
   font-weight: 900;
   letter-spacing: -0.02em;
-  /* folga em cima: acento de letra maiuscula (�, �) nao corta no recorte do degrade */
+  /* folga em cima: acento de letra maiuscula (Ê, Á) nao corta no recorte do degrade */
   line-height: 1.08;
   padding-top: 0.06em;
   text-transform: uppercase;

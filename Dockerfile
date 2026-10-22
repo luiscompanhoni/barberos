@@ -29,4 +29,3 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s CMD wget -qO- http://127.0.0.1:3000/api/saude || exit 1
 # Aplica migracoes pendentes e sobe o servidor
 CMD ["sh", "-c", "prisma migrate deploy && node server.js"]
-
