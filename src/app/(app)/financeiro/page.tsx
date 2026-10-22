@@ -13,9 +13,10 @@ export default async function Financeiro({ searchParams }: PageProps<"/financeir
   const s = (await sessaoAtual())!;
   if (!BALCAO.includes(s.papel)) redirect("/");
   const { aba } = await searchParams;
+  if (aba === "caixa") redirect("/caixa");
   const verResultado = await pode(s, "resultado");
   return (
     <FinanceiroTela verResultado={verResultado} gestao={GESTAO.includes(s.papel)} estornosPendentes={await contarPendentes()}
-      abaInicial={ABAS.find((a) => a === aba && (!["resumo", "resultado"].includes(a) || verResultado)) ?? "caixa"} />
+      abaInicial={ABAS.find((a) => a === aba && (!["resumo", "resultado"].includes(a) || verResultado)) ?? (verResultado ? "resultado" : "despesas")} />
   );
 }
