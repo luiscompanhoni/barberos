@@ -81,7 +81,7 @@ body {
   background: rgba(211, 171, 69, 0.35);
 }
 
-/* Área de gestão: hierarquia mais clara, sem alterar o app do cliente. */
+/* �rea de gest�o: hierarquia mais clara, sem alterar o app do cliente. */
 .gestao-shell {
   background: radial-gradient(ellipse at 90% 0%, rgba(211,171,69,.035), transparent 45%), #0c0d0f;
 }
@@ -99,6 +99,10 @@ body {
 .gestao-shell .campo { background-color: #101113; border-color: #3b3c3e; min-height: 42px; }
 .gestao-shell .btn { min-height: 40px; border-radius: 12px; }
 .gestao-shell .btn-primario { min-height: 40px; border-radius: 12px; }
+.gestao-shell .acao-caixa-retirada { color: #f58a8a; border-color: #713333; background: #2a1719; }
+.gestao-shell .acao-caixa-retirada:hover { background: #3a1d20; border-color: #f26b6b; }
+.gestao-shell .acao-caixa-entrada { color: #7fe3ae; border-color: #285f43; background: #112a20; }
+.gestao-shell .acao-caixa-entrada:hover { background: #173a2b; border-color: #34c27a; }
 .gestao-shell button, .gestao-shell a, .gestao-shell input, .gestao-shell select { -webkit-tap-highlight-color: transparent; }
 .gestao-shell :is(button,a):focus-visible { outline: 2px solid #e2c06a; outline-offset: 3px; }
 .gestao-shell aside { background: #101113; }
@@ -174,7 +178,7 @@ textarea {
 @utility titulo-marca {
   @apply font-black tracking-[-0.025em];
 }
-/* Rotulo dourado em caixa alta (ex.: "RIO DO SUL · SC") */
+/* Rotulo dourado em caixa alta (ex.: "RIO DO SUL � SC") */
 @utility eyebrow {
   @apply text-[11px] font-bold tracking-[0.18em] text-ouro uppercase;
 }
@@ -219,7 +223,7 @@ textarea {
 .jogo-titulo {
   font-weight: 900;
   letter-spacing: -0.02em;
-  /* folga em cima: acento de letra maiuscula (Ê, Á) nao corta no recorte do degrade */
+  /* folga em cima: acento de letra maiuscula (�, �) nao corta no recorte do degrade */
   line-height: 1.08;
   padding-top: 0.06em;
   text-transform: uppercase;
