@@ -31,7 +31,7 @@ describe("cadastros verificados", () => {
     const p = planejarCadastros([{ ...ex, email: "antigo@example.com" }], [fonte({ dataNascimento: "01/01/2000" })]);
     expect(p.atualizacoes[0].depois).toEqual({ cpf: null, email: null, dataNascimento: "2000-01-01" });
   });
-  it("retém fontes que discordam", () => {
+  it("ret�m fontes que discordam", () => {
     expect(planejarCadastros([ex], [fonte(), fonte({ fonte: "celcoin", email: "outro@example.com" })]).atualizacoes).toHaveLength(0);
   });
   it("cria uma pessoa uma unica vez entre as fontes", () => {

@@ -33,7 +33,7 @@ function ler(arquivo: string, fonte: "cashbarber" | "celcoin") {
   const dados = csv(arquivo, fonte === "cashbarber" ? "," : ";");
   const indice = (s: string) => { const i = dados.cab.indexOf(s); if (i < 0) throw new Error(`Coluna obrigatoria ausente: ${s}`); return i; };
   const cash = fonte === "cashbarber";
-  const c = { id: indice(cash ? "ID" : "Código"), nome: indice(cash ? "Nome" : "Nome / Razão Social"), cpf: indice(cash ? "CPF" : "Documento do cliente"), email: indice(cash ? "Email" : "E-mail"), telefone: indice("Telefone"), nasc: cash ? indice("Data de nascimento") : -1 };
+  const c = { id: indice(cash ? "ID" : "C�digo"), nome: indice(cash ? "Nome" : "Nome / Raz�o Social"), cpf: indice(cash ? "CPF" : "Documento do cliente"), email: indice(cash ? "Email" : "E-mail"), telefone: indice("Telefone"), nasc: cash ? indice("Data de nascimento") : -1 };
   const limpar = (s: string | undefined) => { const v = s?.trim(); return v && v !== "N/A" ? v : null; };
   const registros: FonteCadastro[] = dados.linhas.map(l => ({ fonte, id: l[c.id], nome: limpar(l[c.nome]) ?? "", telefone: limpar(l[c.telefone]), cpf: limpar(l[c.cpf]), email: limpar(l[c.email]), dataNascimento: c.nasc >= 0 ? limpar(l[c.nasc]) : null }));
   return { registros, sha256: dados.sha256 };
