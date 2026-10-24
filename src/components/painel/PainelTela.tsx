@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAcesso } from "@/components/AcessoContexto";
 import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
+import { Scissors } from "lucide-react";
 
 type Painel = {
   financeiro: { mes: string; faturamento: number; despesas: number; taxas: number; lucro: number; alertas: string[] } | null;
@@ -102,12 +103,16 @@ export function PainelTela({ nome }: { nome: string }) {
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold">{hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite"}, {nome.split(" ")[0]}</h1>
-        <p className="text-sm text-zinc-500">
-          {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} · {dia.atendimentos} atendimento(s) hoje
-        </p>
-      </div>
+      <header className="black-dashboard__hero">
+        <div className="space-y-2">
+          <p className="eyebrow">Black · visão da operação</p>
+          <h1 className="titulo-marca text-2xl sm:text-3xl">{hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite"}, {nome.split(" ")[0]}</h1>
+          <p className="text-sm text-zinc-600">
+            {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} · {dia.atendimentos} atendimento(s) hoje
+          </p>
+        </div>
+        <span className="black-dashboard__emblema" aria-hidden="true"><Scissors size={27} strokeWidth={1.3} /></span>
+      </header>
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
       {verResultado && (
@@ -357,7 +362,7 @@ function Metrica(p: { rotulo: string; valor: string; detalhe: string; tom?: "bom
     <>
 
       <p className="text-xs font-medium text-zinc-500">{p.rotulo}</p>
-      <p className="text-2xl font-semibold">{p.valor}</p>
+      <p className="black-metric__valor text-3xl font-semibold">{p.valor}</p>
       {p.barra !== undefined && p.barra !== null && (
         <div className="h-1.5 rounded-full bg-zinc-100">
           <div className="h-1.5 rounded-full bg-ouro" style={{ width: `${Math.min(100, Math.round(p.barra * 100))}%` }} />
@@ -368,8 +373,8 @@ function Metrica(p: { rotulo: string; valor: string; detalhe: string; tom?: "bom
     </>
   );
   return p.link ? (
-    <Link href={p.link} className="cartao block space-y-1 transition-colors hover:border-ouro focus-visible:outline-2 focus-visible:outline-ouro">{conteudo}</Link>
-  ) : <div className="cartao space-y-1">{conteudo}</div>;
+    <Link href={p.link} className="black-metric cartao block space-y-2 focus-visible:outline-2 focus-visible:outline-ouro">{conteudo}</Link>
+  ) : <div className="black-metric cartao space-y-2">{conteudo}</div>;
 }
 
 function Bloco(p: { titulo: string; qtd: number; acao?: React.ReactNode; children: React.ReactNode }) {

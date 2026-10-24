@@ -98,7 +98,7 @@ export function ExtratoCaixa({ caixaId, versao = 0, compacto = false, onFechar }
                     <span className="flex items-center gap-1.5">
                       {l.tipo === "ABERTURA" ? <LockOpen size={13} className="text-ouro" /> : l.tipo === "FECHAMENTO" ? <Lock size={13} className="text-ouro" />
                         : l.entrada ? <ArrowDownCircle size={13} className="text-emerald-600" /> : <ArrowUpCircle size={13} className="text-red-600" />}
-                      <span>{l.descricao}{l.cliente ? ` · ${l.cliente}` : ""}</span>
+                      <span>{l.tipo === "SANGRIA" ? l.descricao.replace(/^Sangria/i, "Retirada do caixa") : l.tipo === "SUPRIMENTO" ? l.descricao.replace(/^Suprimento/i, "Entrada no caixa") : l.descricao}{l.cliente ? ` · ${l.cliente}` : ""}</span>
                       {l.online && <span className="selo-ouro text-[10px]">{l.tipo === "ESTORNO" ? "online" : "pago antes"}</span>}
                       {l.tipo === "ESTORNO" && !l.dinheiro && <span className="text-[10px] text-zinc-500">(não sai da gaveta)</span>}
                     </span>
@@ -124,7 +124,7 @@ export function ExtratoCaixa({ caixaId, versao = 0, compacto = false, onFechar }
       {compacto ? (
         <p className="flex items-center justify-between text-xs text-zinc-500">
           <span>Últimas {linhas.length} de {e.linhas.length} linha(s)</span>
-          <Link href="/financeiro" className="font-semibold text-ouro underline">ver tudo</Link>
+          <Link href="/caixa" className="font-semibold text-ouro underline">ver tudo</Link>
         </p>
       ) : (
         <p className="text-xs text-zinc-500">

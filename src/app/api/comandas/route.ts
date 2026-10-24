@@ -2,15 +2,19 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { exigirSessao } from "@/lib/auth/sessao";
 import { modoMaquininha } from "@/lib/comandas/maquininha";
-import { abrirComanda, listarComandas } from "@/lib/comandas/servico";
+import { abrirComanda, listarComandas, atendimentosSemComanda } from "@/lib/comandas/servico";
+import { configuracao, limitesDoDia } from "@/lib/agenda/carregar";
+import { dataLocal } from "@/lib/agenda/tempo";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
-/** Abertas + as fechadas nas ultimas 16 h (o turno de hoje). */
+/** Abertas + histórico do dia no fuso da barbearia, incluindo cortes sem comanda. */
 export const GET = rota(async () => {
   await exigirSessao();
-  const comandas = await listarComandas(new Date(Date.now() - 16 * 3600_000));
-  return NextResponse.json({ comandas, maquininha: modoMaquininha() });
+  const cfg = await configuracao();
+  const desde = new Date(limitesDoDia(dataLocal(Date.now(), cfg.fuso), cfg.fuso).inicio);
+  const [comandas, concluidos] = await Promise.all([listarComandas(desde), atendimentosSemComanda(desde)]);
+  return NextResponse.json({ comandas, concluidos, maquininha: modoMaquininha() });
 });
 
 export const POST = rota(async (req: Request) => {

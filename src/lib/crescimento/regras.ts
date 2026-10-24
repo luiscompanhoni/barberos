@@ -33,9 +33,12 @@ export type OpcaoHorario = { barbeiroId: string; nome: string; inicio: string; m
 /**
  * Ate `max` horarios espalhados no dia (nao 3 seguidos), preferindo o barbeiro de costume.
  */
-export function escolherSugestoes(opcoes: OpcaoHorario[], max = 3, preferido?: string | null) {
+export function escolherSugestoes(opcoes: OpcaoHorario[], max = 3, preferido?: string | null, minutoHabitual?: number) {
+  if (max <= 0) return [];
   const pref = preferido ? opcoes.filter((o) => o.barbeiroId === preferido) : [];
   const base = (pref.length ? pref : opcoes).slice().sort((a, b) => a.minutos - b.minutos);
+  if (minutoHabitual !== undefined) return base.sort((a,b) => Math.abs(a.minutos - minutoHabitual) - Math.abs(b.minutos - minutoHabitual) || a.minutos - b.minutos).slice(0,max);
+  if (max === 1) return base.slice(0, 1);
   if (base.length <= max) return base;
   const out: OpcaoHorario[] = [];
   for (let i = 0; i < max; i++) out.push(base[Math.round((i * (base.length - 1)) / (max - 1))]);

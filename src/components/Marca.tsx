@@ -5,7 +5,7 @@ export function Marca({ nome, tamanho = "md" }: { nome: string; tamanho?: "md" |
   return (
     <span className="flex shrink-0 items-center gap-2.5">
       <span
-        className={`flex items-center justify-center rounded-full border-2 border-ouro bg-black font-black tracking-tight text-zinc-950 ${g ? "h-14 w-14 text-[11px]" : "h-9 w-9 text-[8px]"}`}
+        className={`flex items-center justify-center rounded-xl border border-ouro/60 bg-ouro/10 font-black tracking-tight text-ouro shadow-[inset_0_1px_0_rgba(211,171,69,0.12)] ${g ? "h-14 w-14 text-[11px]" : "h-10 w-10 text-[9px]"}`}
         aria-hidden="true"
       >
         {primeira}

@@ -43,3 +43,6 @@ next-env.d.ts
 
 # backups do banco em producao
 /backups/
+
+# Senha privada da homologacao (inclui arquivos temporarios de redefinicao).
+.senha-homolog*

@@ -112,13 +112,16 @@ export async function processarRetornos(agora: number, opts: { clienteIds?: stri
 
     const barbeiroId = maisFrequente(vs.slice(-6).map((v) => v.barbeiroId));
     const servicoId = maisFrequente(vs.slice(-6).map((v) => v.servicoId))!;
+    const horasRecentes = vs.slice(-6).map(v => minutosLocal(v.inicio, cfg.fuso)).sort((a,b) => a-b);
+    const minutoHabitual = horasRecentes[Math.floor(horasRecentes.length / 2)];
     const alvo = dataLocal(+ultima.inicio + ritmo * DIA, cfg.fuso);
     const opcoes: string[] = [];
     for (let i = 0; i < 4 && opcoes.length < 2; i++) {
       const d = somarDias(alvo < hoje ? hoje : alvo, i);
       const livres = await opcoesDoDia(d, servicoId, null, "QUALQUER");
-      for (const o of escolherSugestoes(livres, 2 - opcoes.length, barbeiroId)) opcoes.push(`${diaFalado(d, hoje)} às ${minParaHhmm(o.minutos)} com ${o.nome}`);
+      for (const o of escolherSugestoes(livres, 2 - opcoes.length, barbeiroId, minutoHabitual)) opcoes.push(`${diaFalado(d, hoje)} às ${minParaHhmm(o.minutos)} com ${o.nome}`);
     }
+    if (!opcoes.length) continue;
     const [cliente, servico] = await Promise.all([
       db.cliente.findUniqueOrThrow({ where: { id: clienteId }, select: { nome: true, telefone: true } }),
       db.servico.findUnique({ where: { id: servicoId }, select: { nome: true } }),

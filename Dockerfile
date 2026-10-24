@@ -23,6 +23,7 @@ COPY --from=build /app/prisma ./prisma
 # CLI do Prisma (mesma versao do projeto) para aplicar as migracoes na subida
 RUN npm install -g prisma@6.19.3 && npm cache clean --force
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
+RUN chown -R app:app /app
 USER app
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s CMD wget -qO- http://127.0.0.1:3000/api/saude || exit 1
