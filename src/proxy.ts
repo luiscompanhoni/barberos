@@ -25,7 +25,7 @@ export async function proxy(req: NextRequest) {
   }
 
   // Logins, vitrine e paginas de pagamento (link com codigo aleatorio) sao publicos.
-  const PUBLICAS = ["/c/pagamento-simulado/", "/c/pagar/", "/c/assinar/", "/c/link/", "/c/r/", "/i/", "/t/"];
+  const PUBLICAS = ["/vagas/", "/c/pagamento-simulado/", "/c/pagar/", "/c/assinar/", "/c/link/", "/c/r/", "/i/", "/t/"];
   if (path === "/entrar" || path === "/c/entrar" || path === "/assine" || PUBLICAS.some((p) => path.startsWith(p))) return NextResponse.next();
   const sessao = await lerToken(req.cookies.get(COOKIE_SESSAO)?.value);
   if (!sessao) {

@@ -71,7 +71,7 @@ export async function painelDoDia(data: string) {
   const pessoas = await db.checklistPessoa.findMany({
     where: { OR: [{ ativo: true }, { itens: { some: { data: dataDb(data) } } }] },
     orderBy: [{ funcao: "asc" }, { nome: "asc" }],
-    include: { itens: { where: { data: dataDb(data) }, orderBy: [{ horario: "asc" }, { ordem: "asc" }] } },
+    include: { itens: { where: { data: dataDb(data) }, orderBy: [{ horario: "asc" }, { ordem: "asc" }], include: { _count: { select: { fotos: true } } } } },
   });
   const totais = await totaisDePontos(pessoas.map((p) => p.id));
   return pessoas.map((p) => ({
@@ -79,6 +79,7 @@ export async function painelDoDia(data: string) {
     itens: p.itens.map((i) => ({
       id: i.id, titulo: i.titulo, horario: i.horario, feito: i.feito, feitoEm: i.feitoEm, feitoPor: i.feitoPor,
       pontos: i.pontos, avaliacao: i.avaliacao, avaliadoPor: i.avaliadoPor, motivoRe: i.motivoRe,
+      fotos: i._count.fotos,
     })),
   }));
 }
@@ -112,10 +113,10 @@ export async function listaPublica(token: string) {
   const cfg = await configuracao();
   const hoje = dataLocal(Date.now(), cfg.fuso);
   await gerarItens(hoje, [p.id]);
-  const itens = await db.checklistItem.findMany({ where: { pessoaId: p.id, data: dataDb(hoje) }, orderBy: [{ horario: "asc" }, { ordem: "asc" }] });
+  const itens = await db.checklistItem.findMany({ where: { pessoaId: p.id, data: dataDb(hoje) }, orderBy: [{ horario: "asc" }, { ordem: "asc" }], include: { _count: { select: { fotos: true } } } });
   return {
     nome: p.nome, funcao: p.funcao, data: hoje, barbearia: cfg.nomeBarbearia, pontos: await resumoPontos(p.id),
-    itens: itens.map((i) => ({ id: i.id, titulo: i.titulo, horario: i.horario, feito: i.feito, pontos: i.pontos, avaliacao: i.avaliacao, motivoRe: i.motivoRe })),
+    itens: itens.map((i) => ({ id: i.id, titulo: i.titulo, horario: i.horario, feito: i.feito, pontos: i.pontos, avaliacao: i.avaliacao, motivoRe: i.motivoRe, fotos: i._count.fotos })),
   };
 }
 

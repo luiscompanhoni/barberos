@@ -10,18 +10,33 @@ import { nomeDaComanda, ROTULO_FORMA, type Comanda, type ModoMaquininha } from "
 import { useAoVivo } from "./useAoVivo";
 
 const hora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+type Concluido = { id: string; inicio: string; precoCentavos: number; assinaturaId: string | null; antecipado: { status: string } | null;
+  cliente: { nome: string }; barbeiro: { nome: string }; servico: { nome: string } };
+type Dados = { comandas: Comanda[]; concluidos: Concluido[]; maquininha: ModoMaquininha };
 
 /** Comandas abertas (cartoes) e as fechadas do turno. */
 export function ComandasTela() {
-  const [dados, setDados] = useState<{ comandas: Comanda[]; maquininha: ModoMaquininha } | null>(null);
+  const [dados, setDados] = useState<Dados | null>(null);
+  const router = useRouter();
+  const [abrindo, setAbrindo] = useState<string | null>(null);
   const [erro, setErro] = useState("");
   const [nova, setNova] = useState(false);
 
   const carregar = useCallback(() => {
-    api<{ comandas: Comanda[]; maquininha: ModoMaquininha }>("/api/comandas").then(setDados).catch((e) => setErro(e.message));
+    api<Dados>("/api/comandas").then((r) => { setDados(r); setErro(""); }).catch((e) => setErro(e.message));
   }, []);
   useEffect(carregar, [carregar]);
   useAoVivo("comanda", carregar);
+  useAoVivo("agenda", carregar);
+
+  async function abrirAtendimento(id: string) {
+    setAbrindo(id); setErro("");
+    try {
+      const r = await api<{ id: string }>("/api/comandas", { method: "POST", body: { agendamentoId: id } });
+      router.push(`/comandas/${r.id}`);
+    } catch (e) { setErro((e as Error).message); }
+    finally { setAbrindo(null); }
+  }
 
   if (!dados) return <p className="text-sm text-zinc-500">{erro || "Carregando..."}</p>;
   const abertas = dados.comandas.filter((c) => c.status === "ABERTA");
@@ -40,6 +55,8 @@ export function ComandasTela() {
         </span>
         <button className="btn-primario" onClick={() => setNova(true)}><Plus size={15} /> Nova comanda</button>
       </div>
+
+      {erro && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
       {abertas.length === 0 ? (
         <div className="cartao py-10 text-center text-sm text-zinc-500">
@@ -78,7 +95,7 @@ export function ComandasTela() {
       {fechadas.length > 0 && (
         <section>
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="text-sm font-semibold text-zinc-600">Fechadas hoje</h2>
+            <h2 className="text-sm font-semibold text-zinc-600">Histórico de comandas de hoje</h2>
             <span className="text-sm font-bold">{reais(totalFechadas)}</span>
           </div>
           <ul className="cartao divide-y divide-zinc-200 p-0 text-sm">
@@ -97,6 +114,23 @@ export function ComandasTela() {
           </ul>
         </section>
       )}
+
+      {dados.concluidos.length > 0 && <section className="space-y-3">
+        <div><h2 className="font-semibold">Atendimentos concluídos sem comanda</h2>
+          <p className="text-xs text-zinc-500">Histórico do dia. Concluir o atendimento não confirma recebimento.</p></div>
+        <ul className="cartao divide-y divide-zinc-200 p-0">
+          {dados.concluidos.map((a) => <li key={a.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+            <span className="text-xs text-zinc-500">{hora(a.inicio)}</span>
+            <div className="min-w-40 flex-1"><p className="text-sm font-semibold">{a.cliente.nome}</p>
+              <p className="text-xs text-zinc-500">{a.servico.nome} · {a.barbeiro.nome}</p></div>
+            <div className="text-right"><p className="font-semibold">{reais(a.precoCentavos)}</p>
+              <p className={`text-xs ${a.precoCentavos === 0 || a.antecipado?.status === "PAGO" ? "text-emerald-700" : "text-amber-700"}`}>
+                {a.antecipado?.status === "PAGO" ? "Pago antecipadamente · conferir na comanda" : a.precoCentavos === 0 ? a.assinaturaId ? "Incluído no plano · sem cobrança extra" : "Serviço sem cobrança" : "Conferir recebimento na comanda"}</p></div>
+            <button className="btn text-xs" disabled={abrindo !== null} onClick={() => abrirAtendimento(a.id)}>
+              {abrindo === a.id ? "Abrindo…" : "Abrir comanda"}</button>
+          </li>)}
+        </ul>
+      </section>}
 
       {nova && <NovaComanda onFechar={() => setNova(false)} />}
     </div>
