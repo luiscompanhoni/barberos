@@ -65,6 +65,7 @@ model Usuario {
   criadoEm     DateTime  @default(now()) @db.Timestamptz(3)
   barbeiro     Barbeiro?
   cliente      Cliente?
+  projetosEstudio EstudioProjeto[]
 
   @@map("usuarios")
 }
@@ -1932,4 +1933,81 @@ model HistoricoRecrutamento {
   criadoEm DateTime @default(now()) @db.Timestamptz(3)
   @@index([candidaturaId, criadoEm])
   @@map("recrutamento_historico")
+}
+
+enum EstadoEstudioVersao {
+  FILA
+  PROCESSANDO
+  REVISAO
+  APROVADO
+  AJUSTES
+  FALHOU
+  CANCELADO
+}
+
+model EstudioProjeto {
+  id           String @id @default(cuid())
+  usuarioId    String
+  usuario      Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  nome         String @db.VarChar(80)
+  revisao      Int @default(0)
+  criadoEm     DateTime @default(now()) @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
+  clipes       EstudioClipe[]
+  versoes      EstudioVersao[]
+
+  @@index([usuarioId, atualizadoEm])
+  @@map("estudio_projetos")
+}
+
+model EstudioClipe {
+  id        String @id @default(cuid())
+  projetoId String
+  projeto   EstudioProjeto @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+  nome      String @db.VarChar(150)
+  bytes     Int
+  mime      String
+  arquivo   String?
+  uploadEm DateTime? @db.Timestamptz(3)
+  duracao   Float
+  inicio    Float @default(0)
+  fim       Float
+  texto     String @default("") @db.VarChar(100)
+  posicao   Int
+  criadoEm  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([projetoId])
+  @@map("estudio_clipes")
+}
+
+model EstudioVersao {
+  id            String @id @default(cuid())
+  projetoId     String
+  projeto       EstudioProjeto @relation(fields: [projetoId], references: [id], onDelete: Cascade)
+  numero        Int
+  revisao       Int
+  estado        EstadoEstudioVersao @default(FILA)
+  snapshot      Json
+  arquivo       String?
+  bytes         Int @default(0)
+  sha256        String?
+  lease         String?
+  leaseAte      DateTime? @db.Timestamptz(3)
+  erro          String?
+  comentario    String? @db.VarChar(1000)
+  criadaEm      DateTime @default(now()) @db.Timestamptz(3)
+  finalizadaEm  DateTime? @db.Timestamptz(3)
+  aprovadaEm    DateTime? @db.Timestamptz(3)
+
+  @@unique([projetoId, numero])
+  @@index([estado, criadaEm])
+  @@map("estudio_versoes")
+}
+
+model EstudioWorker {
+  id           String @id
+  vistoEm      DateTime @db.Timestamptz(3)
+  versao       String
+
+  @@map("estudio_workers")
 }

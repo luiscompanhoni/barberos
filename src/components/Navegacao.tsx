@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  BarChart3, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Megaphone, Menu,
+  Film, BarChart3, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Megaphone, Menu,
   MessageSquareText, Package, PanelLeft, Receipt, Settings, ShieldCheck, Smartphone, UserRound, X, type LucideIcon,
 } from "lucide-react";
 import { Marca } from "./Marca";
@@ -12,6 +12,7 @@ import { Marca } from "./Marca";
 const PAPEIS: Record<string, string> = { DONO: "Dono", GERENTE: "Gerente", RECEPCAO: "Recepção", BARBEIRO: "Barbeiro" };
 
 const ICONES: Record<string, LucideIcon> = {
+  "/estudio": Film,
   "/painel": LayoutDashboard,
   "/recepcao": PanelLeft,
   "/semana": CalendarRange,
@@ -108,7 +109,7 @@ export function Navegacao({
         <nav aria-label="Menu principal" className="mt-8 flex-1 space-y-5 overflow-y-auto">
           {[
             { titulo: "Dia a dia", rotas: ["/painel", "/recepcao", "/caixa", "/comandas", "/conversas", "/semana", "/minha-agenda"] },
-            { titulo: "Gestão", rotas: ["/financeiro", "/meu-financeiro", "/campanhas-equipe", "/indicadores", "/assinaturas", "/estoque", "/campanhas", "/planos", "/jogos"] },
+            { titulo: "Gestão", rotas: ["/estudio", "/financeiro", "/meu-financeiro", "/campanhas-equipe", "/indicadores", "/assinaturas", "/estoque", "/campanhas", "/planos", "/jogos"] },
             { titulo: "Equipe e ajustes", rotas: ["/checklist", "/rh", "/recrutamento", "/expediente", "/equipe", "/whatsapp", "/auditoria", "/simulador"] },
           ].map((g) => {
             const itens = links.filter((l) => g.rotas.includes(l.href) || (g.titulo === "Gestão" && l.href.startsWith("/indicadores/")));

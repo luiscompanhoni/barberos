@@ -10,3 +10,7 @@ tsconfig.tsbuildinfo
 .senha-homolog*
 .tools
 .test-temp
+
+.data
+.test-estudio
+docs/estudio-evidencias

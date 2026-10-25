@@ -46,3 +46,9 @@ next-env.d.ts
 
 # Senha privada da homologacao (inclui arquivos temporarios de redefinicao).
 .senha-homolog*
+
+# Private media and isolated local checks
+/.data/
+/.test-estudio/
+/workers/video/node_modules/
+/workers/video/.hyperframes/

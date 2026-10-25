@@ -1,6 +1,4 @@
-# BarberOS de HOMOLOGACAO (testes) no mesmo VPS da producao: banco e sistema proprios, sem Caddy proprio (o da
-# producao atende o endereco da homologacao pela rede barberos-proxy), sem backup e sem WhatsApp/pagamento de verdade
-# (AMBIENTE=homologacao forca os simuladores). Subir: bash scripts/deploy.sh root@IP homolog
+# BarberOS de HOMOLOGACAO: banco, aplicativo e processador de vídeo próprios.
 name: barberos-homolog
 
 services:
@@ -19,7 +17,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # Nome diferente de "app" de proposito: na rede barberos-proxy o Caddy tambem enxerga a producao, e "app" e ela.
   app-homolog:
     build:
       context: ..
@@ -30,15 +27,51 @@ services:
       DATABASE_URL: postgresql://barberos:${DB_SENHA}@db:5432/barberos
       NODE_ENV: production
       AMBIENTE: homologacao
-    networks: [default, proxy]
+      ESTUDIO_HABILITADO: "true"
+      ESTUDIO_STORAGE_ROOT: /app/media
+      ESTUDIO_WORKER_TOKEN: ${ESTUDIO_WORKER_TOKEN:?defina ESTUDIO_WORKER_TOKEN no .env}
+    volumes:
+      - estudio_media:/app/media
+    networks: [default, proxy, estudio]
     depends_on:
       db:
         condition: service_healthy
+
+  video-worker:
+    build:
+      context: ../workers/video
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      ESTUDIO_APP_URL: http://app-homolog:3000
+      ESTUDIO_WORKER_TOKEN: ${ESTUDIO_WORKER_TOKEN:?defina ESTUDIO_WORKER_TOKEN no .env}
+    networks: [estudio]
+    depends_on:
+      app-homolog:
+        condition: service_healthy
+    volumes:
+      - estudio_jobs:/worker/jobs
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,size=256m,mode=1777
+      - /home/node:rw,nosuid,size=64m,uid=1000,gid=1000
+    shm_size: 256m
+    mem_limit: 2g
+    cpus: 0.75
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
 
 networks:
   proxy:
     name: barberos-proxy
     external: true
+  estudio:
+    internal: true
 
 volumes:
   pg:
+  estudio_media:
+  estudio_jobs:

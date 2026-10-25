@@ -1,3 +1,4 @@
+import { habilitado as estudioHabilitado } from "@/lib/estudio/http";
 import { redirect } from "next/navigation";
 import { AcessoProvider } from "@/components/AcessoContexto";
 import { permissoesDe } from "@/lib/auth/permissoes";
@@ -60,6 +61,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
             : []),
         ];
 
+  if (estudioHabilitado()) links.push({ href: "/estudio", rotulo: "Estúdio Black" });
   links.push({ href: "/cultura-black", rotulo: "Cultura Black" });
 
   // Selo de pendencias no menu: pedidos de estorno esperando quem aprova.

@@ -19,7 +19,7 @@ cd "$(dirname "$0")/.."
 PACOTE="$(mktemp -d)/barberos.tgz"
 # Arquivos do projeto (versionados + novos, sem os ignorados), pulando os que nao existem mais no disco.
 git ls-files -co --exclude-standard -z | while IFS= read -r -d "" f; do [ -e "$f" ] && printf '%s\0' "$f"; done | tar --null -T - -czf "$PACOTE"
-echo ">> $AMBIENTE · pacote: $(du -h "$PACOTE" | cut -f1)"
+echo ">> $AMBIENTE ┬À pacote: $(du -h "$PACOTE" | cut -f1)"
 scp -q "$PACOTE" "$ALVO:/tmp/barberos-$AMBIENTE.tgz"
 
 ssh "$ALVO" DIR="$DIR" COMPOSE="$COMPOSE" EXEMPLO="$EXEMPLO" AMBIENTE="$AMBIENTE" bash -s <<'REMOTO'
@@ -84,6 +84,15 @@ if [ "$AMBIENTE" = producao ]; then
   fi
 fi
 
+# Estudio Black fica ativo somente na homologacao; a chave nunca e enviada ao navegador.
+if [ "$AMBIENTE" = homolog ]; then
+  grep -q '^ESTUDIO_HABILITADO=' .env || echo 'ESTUDIO_HABILITADO="true"' >> .env
+  sed -i 's/^ESTUDIO_HABILITADO=.*/ESTUDIO_HABILITADO="true"/' .env
+  grep -q '^ESTUDIO_WORKER_TOKEN=' .env || echo 'ESTUDIO_WORKER_TOKEN=' >> .env
+  if ! grep -Eq '^ESTUDIO_WORKER_TOKEN=.{32,}$' .env; then
+    sed -i "s|^ESTUDIO_WORKER_TOKEN=.*|ESTUDIO_WORKER_TOKEN=$(openssl rand -hex 32)|" .env
+  fi
+fi
 # Rede que o Caddy da producao divide com a homologacao.
 docker network inspect barberos-proxy >/dev/null 2>&1 || docker network create barberos-proxy >/dev/null
 docker compose --env-file .env -f "$COMPOSE" up -d --build </dev/null
