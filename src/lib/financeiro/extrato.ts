@@ -6,7 +6,7 @@ import { resumoComanda } from "@/lib/comandas/regras";
 import { db } from "@/lib/db";
 import { naoEncontrado } from "@/lib/erros";
 import { estornosEfetivos, PAGAMENTO_RECEBIDO } from "@/lib/estornos/financeiro";
-import { montarExtrato, ROTULO_CATEGORIA, type EventoExtrato } from "./regras";
+import { montarExtrato, ROTULO_CATEGORIA, semNomeFolha, type EventoExtrato } from "./regras";
 
 export async function extratoCaixa(caixaId: string) {
   const c = await db.caixa.findUnique({ where: { id: caixaId }, include: { movimentos: true } });
@@ -49,8 +49,8 @@ export async function extratoCaixa(caixaId: string) {
       continue;
     }
     eventos.push(d
-      ? { tipo: "DESPESA", em: m.criadoEm, descricao: `Despesa: ${d.descricao} (${ROTULO_CATEGORIA[d.categoria] ?? d.categoria})`, valorCentavos: m.valorCentavos, dinheiro: true, forma: "DINHEIRO" }
-      : { tipo: m.tipo, em: m.criadoEm, descricao: `${m.tipo === "SANGRIA" ? "Sangria" : "Suprimento"}: ${m.motivo}`, valorCentavos: m.valorCentavos, dinheiro: true, forma: "DINHEIRO" });
+      ? { tipo: "DESPESA", em: m.criadoEm, descricao: `Despesa: ${semNomeFolha(d.descricao)} (${ROTULO_CATEGORIA[d.categoria] ?? d.categoria})`, valorCentavos: m.valorCentavos, dinheiro: true, forma: "DINHEIRO" }
+      : { tipo: m.tipo, em: m.criadoEm, descricao: `${m.tipo === "SANGRIA" ? "Sangria" : "Suprimento"}: ${semNomeFolha(m.motivo)}`, valorCentavos: m.valorCentavos, dinheiro: true, forma: "DINHEIRO" });
   }
   if (c.status === "FECHADO" && c.fechadoEm) {
     eventos.push({

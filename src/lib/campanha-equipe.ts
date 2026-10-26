@@ -2,19 +2,29 @@ import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { ErroNegocio } from "@/lib/erros";
-import { ciclosDaCampanha, competenciaDoBonus } from "./equipe-regras";
+import { ciclosDaCampanha, proximaCompetencia } from "./equipe-regras";
+
+/** Ficha de RH do barbeiro; sem ela o bonus nao tem folha onde entrar. */
+export async function pessoaDaFolha(tx: Prisma.TransactionClient, barbeiroId: string) {
+  const pessoa = await tx.checklistPessoa.findUnique({ where: { barbeiroId }, select: { id: true } });
+  if (!pessoa) throw new ErroNegocio("Seu cadastro ainda não está ligado à folha de pagamento (RH). Peça à gestão para ligar antes de girar.", 409, "sem_folha");
+  return pessoa.id;
+}
 
 /**
  * O bonus sorteado entra na folha do vendedor como BONUS: sai no pagamento da folha (despesa FOLHA) e assim
- * desconta do lucro. Folha do mes ja fechada: vai para o mes seguinte.
+ * desconta do lucro. Folha do mes ja fechada: vai para o primeiro mes ainda aberto.
  */
-export async function lancarBonusNaFolha(tx: Prisma.TransactionClient, d: { barbeiroId: string; valorCentavos: number; descricao: string; porId: string; fuso: string }) {
-  const pessoa = await tx.checklistPessoa.findUnique({ where: { barbeiroId: d.barbeiroId }, select: { id: true } });
-  if (!pessoa) throw new ErroNegocio("Seu cadastro ainda não está ligado à folha de pagamento (RH). Peça à gestão para ligar antes de girar.", 409, "sem_folha");
-  const atual = dataLocal(Date.now(), d.fuso).slice(0, 7);
-  const fechada = await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: atual, pessoaId: pessoa.id } }, select: { id: true } });
-  const competencia = competenciaDoBonus(atual, !!fechada);
-  return tx.folhaLancamento.create({ data: { pessoaId: pessoa.id, competencia, tipo: "BONUS", valorCentavos: d.valorCentavos, descricao: d.descricao, porId: d.porId } });
+export async function lancarBonusNaFolha(tx: Prisma.TransactionClient, d: { pessoaId: string; valorCentavos: number; descricao: string; porId: string; fuso: string }) {
+  // Trava a pessoa: fecharFolha trava a mesma linha, entao o bonus nao cai numa folha sendo congelada.
+  await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ${d.pessoaId} FOR UPDATE`;
+  let competencia = dataLocal(Date.now(), d.fuso).slice(0, 7);
+  for (let i = 0; i < 24; i++) {
+    const fechada = await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia, pessoaId: d.pessoaId } }, select: { id: true } });
+    if (!fechada) break;
+    competencia = proximaCompetencia(competencia);
+  }
+  return tx.folhaLancamento.create({ data: { pessoaId: d.pessoaId, competencia, tipo: "BONUS", valorCentavos: d.valorCentavos, descricao: d.descricao, porId: d.porId } });
 }
 
 /** Apenas produtos atribuídos ao vendedor em comandas fechadas e efetivamente pagas. */

@@ -60,9 +60,9 @@ describe("gravação de recrutamento", () => {
     await receberCandidatura("vaga", entrada()); await receberCandidatura("vaga", { ...entrada(), envioId: "6488a4e4-8399-4315-b4ce-ab475b94d4d8" });
     expect(m.tx.candidatoRecrutamento.create).toHaveBeenCalledTimes(2);
   });
-  it("mesmo WhatsApp na mesma vaga fica só com a primeira candidatura", async () => {
+  it("mesmo WhatsApp na mesma vaga: avisa e não duplica", async () => {
     m.tx.candidaturaRecrutamento.findFirst.mockResolvedValue({ id: "anterior" });
-    await receberCandidatura("vaga", entrada());
+    await expect(receberCandidatura("vaga", entrada())).rejects.toMatchObject({ status: 409 });
     expect(m.tx.candidaturaRecrutamento.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { vagaId: "vaga", candidato: { telefone: "5511999998888" } } }));
     expect(m.tx.candidatoRecrutamento.create).not.toHaveBeenCalled();
   });

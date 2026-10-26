@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Dices } from "lucide-react";
 import { api, paraCentavos, reais } from "@/lib/cliente-api";
-type Campanha = { id: string; nome: string; inicio: string; fim: string; metaQuantidade: number; metaCentavos: number; premios: number[]; rodadasDisponiveis: number; vendas: { quantidade: number; receita: number; ciclos: number } | null; bonus: { id: string; barbeiroId: string; ciclo: number; valorCentavos: number; pagoEm: string | null; nomeBarbeiro: string | null }[] };
+type Campanha = { id: string; nome: string; inicio: string; fim: string; metaQuantidade: number; metaCentavos: number; premios: number[]; rodadasDisponiveis: number; vendas: { quantidade: number; receita: number; ciclos: number } | null; bonus: { id: string; barbeiroId: string; ciclo: number; valorCentavos: number; pagoEm: string | null; folhaLancamentoId: string | null; nomeBarbeiro: string | null }[] };
 export function CampanhasEquipe({ gestao, barbeiro }: { gestao: boolean; barbeiro: boolean }) {
   const [cs, setCs] = useState<Campanha[]>([]), [msg, setMsg] = useState(""), [ocupado, setOcupado] = useState(false);
   const carregar = useCallback(() => api<Campanha[]>("/api/campanhas-equipe").then(setCs).catch(e => setMsg(e.message)), []);
@@ -34,7 +34,7 @@ export function CampanhasEquipe({ gestao, barbeiro }: { gestao: boolean; barbeir
       <div className="flex flex-wrap gap-2">{c.premios.map((p,i) => <span key={i} className="rounded-xl border border-ouro/30 bg-ouro/10 px-3 py-2 text-sm text-ouro">{reais(p)} · {(100/c.premios.length).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</span>)}</div>
       {c.vendas && <><div className="grid grid-cols-2 gap-3 text-sm"><p>Seus produtos: <b>{c.vendas.quantidade}</b></p><p>Suas vendas: <b>{reais(c.vendas.receita)}</b></p></div><button className="btn-primario w-full" disabled={ocupado || c.rodadasDisponiveis <= 0} onClick={() => girar(c.id)}><Dices size={20} /> Girar roleta · {c.rodadasDisponiveis} rodada(s) disponível(is)</button></>}
       {!barbeiro && gestao && <p className="text-xs text-zinc-500">As rodadas aparecem no acesso individual de cada barbeiro.</p>}
-      <div><h3 className="mb-2 text-sm font-semibold">Histórico de bônus · {reais(c.bonus.reduce((s,b) => s+b.valorCentavos,0))}</h3><ul className="space-y-2 text-sm">{c.bonus.map(b => <li className="flex flex-wrap justify-between gap-2 border-t border-zinc-200 pt-2" key={b.id}><span>Rodada {b.ciclo}{gestao ? ` · vendedor ${(b.nomeBarbeiro ?? b.barbeiroId)}` : ""}</span><b>{reais(b.valorCentavos)} · {b.pagoEm ? "Pago" : "Lançado na folha"}</b></li>)}</ul></div>
+      <div><h3 className="mb-2 text-sm font-semibold">Histórico de bônus · {reais(c.bonus.reduce((s,b) => s+b.valorCentavos,0))}</h3><ul className="space-y-2 text-sm">{c.bonus.map(b => <li className="flex flex-wrap justify-between gap-2 border-t border-zinc-200 pt-2" key={b.id}><span>Rodada {b.ciclo}{gestao ? ` · vendedor ${(b.nomeBarbeiro ?? b.barbeiroId)}` : ""}</span><b>{reais(b.valorCentavos)} · {b.pagoEm ? "Pago" : b.folhaLancamentoId ? "Lançado na folha" : "A conferir pela gestão"}</b></li>)}</ul></div>
     </section>)}
   </div>;
 }

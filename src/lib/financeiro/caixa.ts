@@ -10,7 +10,7 @@ import { db } from "@/lib/db";
 import { estornosEfetivos, PAGAMENTO_RECEBIDO } from "@/lib/estornos/financeiro";
 import { somarPorForma } from "@/lib/estornos/regras";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
-import { dinheiroEsperado, totaisPorForma } from "./regras";
+import { dinheiroEsperado, semNomeFolha, totaisPorForma } from "./regras";
 
 export const caixaAberto = () => db.caixa.findFirst({ where: { status: "ABERTO" }, orderBy: { abertoEm: "desc" } });
 
@@ -43,7 +43,7 @@ export async function resumoCaixa(c: Caixa) {
     faturado,
     ticketMedio: fechadas.length ? Math.round(faturado / fechadas.length) : 0,
     comandasAbertas: abertas,
-    movimentos: movimentos.map((m) => ({ id: m.id, tipo: m.tipo, valorCentavos: m.valorCentavos, motivo: m.motivo, criadoEm: m.criadoEm })),
+    movimentos: movimentos.map((m) => ({ id: m.id, tipo: m.tipo, valorCentavos: m.valorCentavos, motivo: semNomeFolha(m.motivo), criadoEm: m.criadoEm })),
   };
 }
 

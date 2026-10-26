@@ -18,7 +18,7 @@ it("textos do projeto preservam Unicode, sem caracteres de substituição nem mo
   for (const d of ["src", "scripts", "tests", "prisma"]) visitar(d);
   expect(ruins).toEqual([]);
   expect(readFileSync("src/app/(app)/recepcao/page.tsx", "utf8")).toContain("Operação da Black");
-});
+}, 30_000); // varre o repositorio: lento com a suite em paralelo
 
 it("o detector pega os erros comuns de codificação", () => {
   for (const t of ["C\uFFFDdigo", "per\u00C3\u00ADodo", "a\u00C3\u00A7\u00C3\u00A3o", "x \u00C2\u00B7 y"]) expect(QUEBRADO.test(t)).toBe(true);

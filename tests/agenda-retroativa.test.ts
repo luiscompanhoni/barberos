@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { horariosDisponiveis } from "@/lib/agenda/consultas";
-import { recusaRetroativo } from "@/lib/agenda/tempo";
+import { recusaOutroDia, recusaRetroativo } from "@/lib/agenda/tempo";
 
 const m = vi.hoisted(() => ({ dia: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { barbeiro: { findMany: async () => [{ id: "fauli", nome: "Faúli" }] } } }));
@@ -36,6 +36,12 @@ describe("seleção de horários da recepção", () => {
     expect(recusaRetroativo("GERENTE", ontem, fim(ontem), agora)).toBeNull();
     expect(recusaRetroativo("DONO", agora - 10 * 60_000, agora + 20 * 60_000, agora)).toMatch(/não terminou/);
     expect(recusaRetroativo("CLIENTE", hoje9h, fim(hoje9h), agora)).toMatch(/equipe/);
+  });
+  it("baixa de atendimento lançado depois: outro dia só dono e gerente, no fuso da barbearia", () => {
+    const agora = Date.parse("2026-10-21T02:30:00Z"); // 23h30 do dia 20 em São Paulo
+    expect(recusaOutroDia("RECEPCAO", Date.parse("2026-10-20T13:00:00Z"), agora)).toBeNull();
+    expect(recusaOutroDia("RECEPCAO", Date.parse("2026-10-19T13:00:00Z"), agora)).toMatch(/dono ou gerente/);
+    expect(recusaOutroDia("GERENTE", Date.parse("2026-10-19T13:00:00Z"), agora)).toBeNull();
   });
   it("cliente continua sem horários passados e respeita antecedência", async () => {
     const [r] = await horariosDisponiveis({ data: "2026-10-21", servicoId: "corte", paraCliente: true });

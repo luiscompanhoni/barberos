@@ -2,9 +2,8 @@ export function ciclosDaCampanha(quantidade: number, receita: number, metaQuanti
   return Math.max(0, Math.min(Math.floor(quantidade / metaQuantidade), metaCentavos > 0 ? Math.floor(receita / metaCentavos) : Infinity));
 }
 
-/** Competencia "AAAA-MM" em que o bonus entra: a atual, ou a seguinte se a folha atual ja foi fechada. */
-export function competenciaDoBonus(atual: string, fechada: boolean) {
-  if (!fechada) return atual;
+/** Competencia "AAAA-MM" seguinte. */
+export function proximaCompetencia(atual: string) {
   const [a, m] = atual.split("-").map(Number);
   return m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, "0")}`;
 }

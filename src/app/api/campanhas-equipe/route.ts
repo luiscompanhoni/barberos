@@ -6,7 +6,7 @@ import { db } from "@/lib/db";
 import { ErroNegocio, proibido, rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 import { configuracao } from "@/lib/agenda/carregar";
-import { lancarBonusNaFolha, painelCampanhas, vendasDaCampanha } from "@/lib/campanha-equipe";
+import { lancarBonusNaFolha, painelCampanhas, pessoaDaFolha, vendasDaCampanha } from "@/lib/campanha-equipe";
 import { auditar } from "@/lib/auditoria";
 
 export const dynamic = "force-dynamic";
@@ -41,9 +41,12 @@ export const POST = rota(async (req: Request) => {
     const usados = await tx.bonusEquipe.count({ where: { campanhaId: c.id, barbeiroId } });
     if (usados >= vendas.ciclos) throw new ErroNegocio("Complete mais uma meta de vendas para liberar sua próxima rodada.");
     const premios = z.array(valor).min(1).parse(c.premios);
-    const bonus = await tx.bonusEquipe.create({ data: { campanhaId: c.id, barbeiroId, ciclo: usados + 1, valorCentavos: premios[randomInt(premios.length)] } });
-    const folha = await lancarBonusNaFolha(tx, { barbeiroId, valorCentavos: bonus.valorCentavos, descricao: `Bônus da campanha ${c.nome} (rodada ${bonus.ciclo})`, porId: s.usuarioId, fuso });
-    await auditar(tx, s.usuarioId, "sortear_bonus", "campanha_equipe", c.id, { barbeiroId, ciclo: bonus.ciclo, bonusId: bonus.id, valorCentavos: bonus.valorCentavos, folhaLancamentoId: folha.id, competencia: folha.competencia });
+    const pessoaId = await pessoaDaFolha(tx, barbeiroId);
+    const ciclo = usados + 1, valorCentavos = premios[randomInt(premios.length)];
+    const folha = await lancarBonusNaFolha(tx, { pessoaId, valorCentavos, descricao: `Bônus da campanha ${c.nome} (rodada ${ciclo})`, porId: s.usuarioId, fuso });
+    const bonus = await tx.bonusEquipe.create({ data: { campanhaId: c.id, barbeiroId, ciclo, valorCentavos, folhaLancamentoId: folha.id } });
+    await auditar(tx, s.usuarioId, "sortear_bonus", "campanha_equipe", c.id, { barbeiroId, ciclo, bonusId: bonus.id, valorCentavos, folhaLancamentoId: folha.id, competencia: folha.competencia });
+    await auditar(tx, s.usuarioId, "rh_lancamento", "folha_lancamento", folha.id, { pessoaId, competencia: folha.competencia, tipo: "BONUS", valorCentavos, origem: "campanha_equipe" });
     return bonus;
   }));
 });

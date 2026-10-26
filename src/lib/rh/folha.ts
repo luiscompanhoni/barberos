@@ -100,6 +100,14 @@ export async function fecharFolha(s: Sessao, comp: string, pessoaId?: string) {
   const abertas = linhas.filter((l) => l.status === "ABERTA" && (!pessoaId || l.pessoaId === pessoaId) && (l.salario || l.comissao || l.lancamentos.length));
   if (!abertas.length) throw new ErroNegocio("Nada para fechar nesta competência.", 409, "nada_para_fechar");
   await db.$transaction(async (tx) => {
+    // A previa foi calculada fora da transacao: trava as pessoas e confere se entrou lancamento novo nesse meio
+    // tempo (ex.: bonus de campanha), para nao congelar uma folha sem ele.
+    const ids = abertas.map((l) => l.pessoaId).sort();
+    await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ANY(${ids}) ORDER BY id FOR UPDATE`;
+    const agora = await tx.folhaLancamento.groupBy({ by: ["pessoaId"], where: { competencia: comp, pessoaId: { in: ids } }, _count: true });
+    if (abertas.some((l) => (agora.find((a) => a.pessoaId === l.pessoaId)?._count ?? 0) !== l.lancamentos.length)) {
+      throw new ErroNegocio("Entrou um lançamento novo enquanto a folha fechava. Confira a prévia e feche de novo.", 409, "folha_mudou");
+    }
     for (const l of abertas) {
       const detalhe = { cargo: l.cargo, barbeiro: l.barbeiro, comissao: l.comissaoDetalhe, lancamentos: l.lancamentos } as unknown as Prisma.InputJsonValue;
       await tx.folhaPagamento.create({
@@ -120,7 +128,7 @@ export async function pagarFolha(s: Sessao, comp: string, pessoaId: string, form
   if (!f) throw new ErroNegocio("Feche a folha antes de marcar como paga.", 409, "nao_fechada");
   if (f.status === "PAGA") throw new ErroNegocio("Essa folha já está paga.", 409, "ja_paga");
   const descricao = `Folha ${comp.slice(5)}/${comp.slice(0, 4)} - ${p.nome}`;
-  const mov = forma === "DINHEIRO_CAIXA" && f.liquidoCentavos > 0 ? await movimentarCaixa(s, "SANGRIA", f.liquidoCentavos, descricao) : null;
+  const mov = forma === "DINHEIRO_CAIXA" && f.liquidoCentavos > 0 ? await movimentarCaixa(s, "SANGRIA", f.liquidoCentavos, `Folha ${comp.slice(5)}/${comp.slice(0, 4)}`) : null;
   const agora = new Date();
   const hoje = dataLocal(agora, (await configuracao()).fuso);
   return db.$transaction(async (tx) => {

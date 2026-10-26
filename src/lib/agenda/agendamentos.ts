@@ -10,7 +10,7 @@ import { precificar } from "@/lib/assinaturas/agenda";
 import { normalizarTelefone } from "@/lib/telefone";
 import { carregarDia, configuracao, servicoDoBarbeiro } from "./carregar";
 import { contido, sobrepoe, type Intervalo } from "./disponibilidade";
-import { dataLocal, minParaHhmm, minutosLocal, recusaRetroativo } from "./tempo";
+import { dataLocal, minParaHhmm, minutosLocal, recusaOutroDia, recusaRetroativo } from "./tempo";
 
 const MIN = 60_000;
 
@@ -247,6 +247,12 @@ export async function alterarStatus(id: string, status: StatusAgendamento, ator:
   if (!atual) throw naoEncontrado("Agendamento");
   exigirGestaoBarbeiro(ator, atual.barbeiroId);
   if (atual.status === status) return atual;
+  // Criado depois de ja ter comecado (lancamento retroativo) e concluido em outro dia: mesma regra do "realizado".
+  // Os marcados com antecedencia continuam com baixa normal (pendencia "sem baixa" dos ultimos dias).
+  if (status === "CONCLUIDO" && +atual.criadoEm > +atual.inicio) {
+    const recusa = recusaOutroDia(ator.papel, +atual.inicio, Date.now(), cfg.fuso);
+    if (recusa) throw new ErroNegocio(recusa);
+  }
 
   try {
     const ag = await db.$transaction(async (tx) => {

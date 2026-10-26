@@ -35,12 +35,15 @@ describe("API pública", () => {
   });
   it("limita tentativas repetidas", async () => { for (let i = 0; i < 5; i++) await POST(req("{}"), ctx); expect((await POST(req("{}"), ctx)).status).toBe(429); });
   it("campo-isca preenchido: responde como aceito e não grava", async () => {
-    const r = await POST(req(JSON.stringify({ envioId: "37f1774b-6347-481c-b685-b0b0cf4f61ab", nome: "Robo", telefone: "11999998888", cidade: "Rio do Sul", experienciaMeses: 1, servicos: ["Barba"], disponibilidade: "Sempre", cienciaPrivacidade: true, site: "http://spam" })), ctx);
+    const r = await POST(req(JSON.stringify({ envioId: "37f1774b-6347-481c-b685-b0b0cf4f61ab", nome: "Robo", telefone: "11999998888", cidade: "Rio do Sul", experienciaMeses: 1, servicos: ["Barba"], disponibilidade: "Sempre", cienciaPrivacidade: true, contato_extra: "http://spam" })), ctx);
     expect(r.status).toBe(201); expect(m.receber).not.toHaveBeenCalled();
   });
-  it("teto por vaga vale mesmo trocando de IP", async () => {
-    const deIp = (i: number) => new Request("http://localhost/api/recrutamento/publico/vaga", { method: "POST", body: "{}", headers: { "x-forwarded-for": "10.0.0." + i } });
-    for (let i = 0; i < 100; i++) await POST(deIp(i), ctx);
-    expect((await POST(deIp(200), ctx)).status).toBe(429);
+  it("teto por vaga vale trocando de IP e só conta envio válido", async () => {
+    const valido = JSON.stringify({ envioId: "37f1774b-6347-481c-b685-b0b0cf4f61ab", nome: "Teste profissional", telefone: "11999998888", cidade: "Rio do Sul", experienciaMeses: 1, servicos: ["Barba"], disponibilidade: "Sempre", cienciaPrivacidade: true });
+    const deIp = (i: number, body: string) => new Request("http://localhost/api/recrutamento/publico/vaga", { method: "POST", body, headers: { "x-forwarded-for": "10.0.0." + i } });
+    for (let i = 0; i < 150; i++) await POST(deIp(i, "{}"), ctx);
+    expect((await POST(deIp(999, valido), ctx)).status).toBe(201);
+    for (let i = 0; i < 99; i++) await POST(deIp(300 + i, valido), ctx);
+    expect((await POST(deIp(500, valido), ctx)).status).toBe(429);
   });
 });

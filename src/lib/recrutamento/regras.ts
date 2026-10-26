@@ -17,7 +17,7 @@ export const zCandidatura = z.object({
   disponibilidade: texto(1000), portfolio: link, instagram: link, cienciaPrivacidade: z.literal(true), futurasOportunidades: z.boolean().default(false),
   origem: z.object({ utm_source: z.string().max(150).optional(), utm_medium: z.string().max(150).optional(), utm_campaign: z.string().max(150).optional(), utm_content: z.string().max(150).optional() }).strict().default({}),
   /** Campo-isca escondido: pessoa nao preenche; robo preenche e o envio e descartado em silencio. */
-  site: z.string().max(500).optional(),
+  contato_extra: z.string().max(500).optional(),
 }).strict();
 export const zEtapa = z.object({ etapa: z.enum(ETAPAS), versao: z.number().int().min(0), motivo: texto(1500) }).strict();
 export function podeRecrutar(papel: string) { return papel === "DONO" || papel === "GERENTE"; }

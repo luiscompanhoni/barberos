@@ -151,3 +151,6 @@ export function serieDiaria(mes: string, receitas: { data: string; valor: number
 
 /** Variacao percentual (null quando o anterior e zero). */
 export const variacao = (atual: number, anterior: number) => (anterior === 0 ? null : Math.round(((atual - anterior) / Math.abs(anterior)) * 1000) / 10);
+
+/** "Folha 10/2026 - Nome" -> "Folha 10/2026": nome junto do valor revela o salario (so a permissao "folha" ve). */
+export const semNomeFolha = (t: string) => t.replace(/^(Folha \d{2}\/\d{4}) - .+$/, "$1");

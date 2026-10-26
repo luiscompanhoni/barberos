@@ -1783,6 +1783,8 @@ model BonusEquipe {
   ciclo Int
   valorCentavos Int
   pagoEm DateTime? @db.Timestamptz(3)
+  /// Lancamento BONUS na folha do vendedor. Vazio: bonus sorteado antes de ir para a folha (conferir a mao).
+  folhaLancamentoId String? @unique
   criadoEm DateTime @default(now()) @db.Timestamptz(3)
   @@unique([campanhaId, barbeiroId, ciclo])
   @@map("bonus_equipe")

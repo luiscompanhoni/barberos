@@ -14,7 +14,7 @@ export function FormularioCandidatura({ vaga }: { vaga: Vaga }) {
       const r = await fetch(`/api/recrutamento/publico/${vaga.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
         envioId: id, nome: f.get("nome"), telefone: f.get("telefone"), cidade: f.get("cidade"), experienciaMeses: Number(f.get("experienciaMeses")),
         servicos: f.getAll("servicos"), disponibilidade: f.get("disponibilidade"), portfolio: f.get("portfolio"), instagram: f.get("instagram"),
-        cienciaPrivacidade: f.get("cienciaPrivacidade") === "on", futurasOportunidades: f.get("futurasOportunidades") === "on", origem, site: String(f.get("site") ?? ""),
+        cienciaPrivacidade: f.get("cienciaPrivacidade") === "on", futurasOportunidades: f.get("futurasOportunidades") === "on", origem, contato_extra: String(f.get("contato_extra") ?? ""),
       }) });
       const b = await r.json(); if (!r.ok) throw new Error(b.erro ?? "Não foi possível enviar."); setRecebido(true);
     } catch (e) { setErro((e as Error).message); } finally { setEnviando(false); }
@@ -25,7 +25,7 @@ export function FormularioCandidatura({ vaga }: { vaga: Vaga }) {
     <section className="cartao whitespace-pre-wrap">{vaga.descricao}</section>
     <form onSubmit={enviar} className="cartao space-y-4">
       {/* Campo-isca para robôs: fora da tela e fora da navegação por teclado e leitor de tela. */}
-      <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden"><label>Site<input name="site" tabIndex={-1} autoComplete="off" /></label></div>
+      <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden"><label>Deixe em branco<input name="contato_extra" tabIndex={-1} autoComplete="off" /></label></div>
       <h2 className="text-xl font-semibold">Sua candidatura</h2><p className="text-sm text-zinc-500">Preencha seus dados profissionais. Portfólio e Instagram são opcionais.</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <label>Nome<input name="nome" className="campo" required minLength={2} maxLength={120} autoComplete="name" /></label>
@@ -41,7 +41,7 @@ export function FormularioCandidatura({ vaga }: { vaga: Vaga }) {
       <section className="rounded-xl border border-zinc-500/20 p-4 text-sm whitespace-pre-wrap">{vaga.privacidade}</section>
       <label className="flex gap-3 items-start"><input type="checkbox" name="cienciaPrivacidade" required className="mt-1" /><span>Li o aviso sobre o uso dos meus dados nesta seleção.</span></label>
       <label className="flex gap-3 items-start"><input type="checkbox" name="futurasOportunidades" className="mt-1" /><span>Também autorizo que meu cadastro seja considerado para futuras oportunidades (opcional).</span></label>
-      {erro && <p role="alert" className="text-red-500">{erro} Confira os campos e selecione ao menos um serviço.</p>}
+      {erro && <p role="alert" className="text-red-500">{erro}</p>}
       <button className="btn-primario w-full min-h-12" disabled={enviando}>{enviando ? "Enviando…" : "Enviar candidatura"}</button>
     </form>
   </div>;
