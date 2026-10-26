@@ -2,43 +2,43 @@
 @import "./black-workspace.css";
 
 /*
- * Identidade visual Black Barber: preto + grafite + dourado, Inter.
- * As telas usam a paleta padrao do Tailwind (white/zinc/emerald...). Aqui essas
- * cores sao reapontadas para o tema escuro da marca, num lugar so:
- * - white  -> superficie dos cartoes (grafite)
- * - zinc   -> escala invertida (50 = superficie, 900 = texto forte / pilula clara)
- * - cores de status -> fundos escuros translucidos + textos claros
+ * BarberOS Design System (preto frio, silencioso e preciso) com a personalidade Black Barber: o dourado e a cor da
+ * marca e entra onde o design system usa o branco brilhante (botao principal, destaque, foco); verde, amarelo e
+ * vermelho ficam so para status. As telas usam a paleta padrao do Tailwind; aqui ela e reapontada num lugar so:
+ * - white  -> superficie dos cartoes
+ * - zinc   -> escala invertida (50 = superficie elevada, 900 = texto forte)
+ * - cores de status -> fundos escuros translucidos + textos vivos do design system
  * - violet (selo "Assinante") -> dourado
  */
 @theme {
-  --color-white: #121212;
+  --color-white: #111215;
   --color-black: #000000;
 
-  --color-zinc-50: #1a1918;
-  --color-zinc-100: #1f1e1c;
-  --color-zinc-200: #292725;
-  --color-zinc-300: #353330;
-  --color-zinc-400: #5e5a55;
-  --color-zinc-500: #8b857e;
-  --color-zinc-600: #a39d95;
-  --color-zinc-700: #c9c4bd;
-  --color-zinc-800: #e8e5e0;
-  --color-zinc-900: #f5f5f5;
+  --color-zinc-50: #16171b;
+  --color-zinc-100: #1a1b20;
+  --color-zinc-200: #24252b;
+  --color-zinc-300: #34353c;
+  --color-zinc-400: #5d6068;
+  --color-zinc-500: #7c7f87;
+  --color-zinc-600: #9a9ca3;
+  --color-zinc-700: #c4c6cb;
+  --color-zinc-800: #e4e5e8;
+  --color-zinc-900: #f4f5f7;
   --color-zinc-950: #ffffff;
 
-  --color-emerald-50: #10231a;
-  --color-emerald-100: #133021;
-  --color-emerald-200: #1d4a33;
-  --color-emerald-600: #34c27a;
-  --color-emerald-700: #4fd48f;
-  --color-emerald-800: #7fe3ae;
+  --color-emerald-50: #0f2a16;
+  --color-emerald-100: #12331b;
+  --color-emerald-200: #1c4d29;
+  --color-emerald-600: #22b844;
+  --color-emerald-700: #3be05a;
+  --color-emerald-800: #86ef9b;
 
-  --color-red-50: #2a1414;
-  --color-red-100: #3a1818;
-  --color-red-200: #5a2323;
-  --color-red-600: #f26b6b;
-  --color-red-700: #f58a8a;
-  --color-red-800: #f8a8a8;
+  --color-red-50: #2a0d12;
+  --color-red-100: #361118;
+  --color-red-200: #5c1824;
+  --color-red-600: #f0243f;
+  --color-red-700: #ff4d63;
+  --color-red-800: #ff8b9a;
 
   --color-amber-50: #2a2210;
   --color-amber-100: #3a2e12;
@@ -57,68 +57,77 @@
   --color-violet-800: #e2c06a;
   --color-violet-900: #ecd08a;
 
-  --color-sky-100: #14222b;
-  --color-sky-800: #8cc7ea;
+  --color-sky-100: #0f1a2e;
+  --color-sky-800: #8fb4ff;
 
   /* Tokens da marca (uso direto: bg-ouro, text-ouro...) */
   --color-ouro: #d3ab45;
   --color-ouro-claro: #e2c06a;
   --color-ouro-escuro: #9a7a28;
-  --color-fundo: #0a0a0a;
+  --color-fundo: #08090b;
+
+  --radius-controle: 10px;
+  --radius-cartao: 16px;
 }
 
 @theme inline {
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-manrope);
   --font-mono: var(--font-geist-mono);
 }
 
+/* Tokens do design system (uso em CSS: var(--surface-card)...) */
+:root {
+  --surface-app: #08090b;
+  --surface-sidebar: linear-gradient(180deg, #141519 0%, #0c0d10 100%);
+  --surface-card: #111215;
+  --surface-card-raised: #16171b;
+  --surface-inset: #0c0d10;
+  --surface-hover: #1a1b20;
+  --surface-active: #1e1f24;
+  --surface-overlay: rgba(5, 6, 7, 0.72);
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text-primary: #f4f5f7;
+  --text-secondary: #7c7f87;
+  --text-tertiary: #5d6068;
+  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 0 1px var(--border-subtle);
+  --shadow-raised: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border-default);
+  /* Brilho de canto do KPI em destaque: no BarberOS ele e dourado (no design system era verde). */
+  --glow-ouro: radial-gradient(120% 120% at 100% 100%, rgba(211, 171, 69, 0.42) 0%, rgba(211, 171, 69, 0.07) 35%, transparent 60%);
+  --glow-verde: radial-gradient(120% 120% at 100% 100%, rgba(59, 224, 90, 0.4) 0%, rgba(59, 224, 90, 0.06) 35%, transparent 60%);
+  --glow-vermelho: radial-gradient(120% 120% at 100% 100%, rgba(240, 36, 63, 0.4) 0%, rgba(240, 36, 63, 0.06) 35%, transparent 60%);
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
 body {
-  background: #0a0a0a;
-  color: #f5f5f5;
-  font-family: var(--font-inter), system-ui, sans-serif;
+  background: var(--surface-app);
+  color: var(--text-primary);
+  font-family: var(--font-manrope), system-ui, sans-serif;
+  font-feature-settings: "tnum" 0;
 }
 
 ::selection {
   background: rgba(211, 171, 69, 0.35);
 }
 
-/* Área de gestão: hierarquia mais clara, sem alterar o app do cliente. */
-.gestao-shell {
-  background: radial-gradient(ellipse at 90% 0%, rgba(211,171,69,.035), transparent 45%), #0c0d0f;
-}
-.gestao-shell main { max-width: 1600px; }
-.gestao-shell .cartao {
-  background: linear-gradient(145deg, #17181a, #131416);
-  border-color: #2b2c2e;
-  box-shadow: 0 4px 16px rgba(0,0,0,.1);
-}
-.gestao-shell .cartao-destaque {
-  background: linear-gradient(130deg, #211f19, #151617 70%);
-  border-color: rgba(211,171,69,.45);
-  box-shadow: 0 8px 28px rgba(0,0,0,.18);
-}
-.gestao-shell .campo { background-color: #101113; border-color: #3b3c3e; min-height: 42px; }
-.gestao-shell .btn { min-height: 40px; border-radius: 12px; }
-.gestao-shell .btn-primario { min-height: 40px; border-radius: 12px; }
-.gestao-shell .acao-caixa-retirada { color: #f58a8a; border-color: #713333; background: #2a1719; }
-.gestao-shell .acao-caixa-retirada:hover { background: #3a1d20; border-color: #f26b6b; }
-.gestao-shell .acao-caixa-entrada { color: #7fe3ae; border-color: #285f43; background: #112a20; }
-.gestao-shell .acao-caixa-entrada:hover { background: #173a2b; border-color: #34c27a; }
-.gestao-shell button, .gestao-shell a, .gestao-shell input, .gestao-shell select { -webkit-tap-highlight-color: transparent; }
-.gestao-shell :is(button,a):focus-visible { outline: 2px solid #e2c06a; outline-offset: 3px; }
-.gestao-shell aside { background: #101113; }
+/* Botoes de entrada/retirada do caixa: unica excecao de cor nos botoes (status). */
+.acao-caixa-retirada { color: #ff8b9a; border-color: rgba(240, 36, 63, 0.35); background: rgba(240, 36, 63, 0.12); }
+.acao-caixa-retirada:hover { background: rgba(240, 36, 63, 0.2); border-color: #f0243f; }
+.acao-caixa-entrada { color: #86ef9b; border-color: rgba(59, 224, 90, 0.3); background: rgba(59, 224, 90, 0.1); }
+.acao-caixa-entrada:hover { background: rgba(59, 224, 90, 0.18); border-color: #3be05a; }
+
 .cabecalho-gestao {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 20px 0 24px;
-  border-bottom: 1px solid #292b2e;
+  gap: 16px;
+  padding: 12px 0 20px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 @media (max-width: 640px) {
-  .cabecalho-gestao { padding-top: 8px; gap: 16px; }
-  .gestao-shell .titulo-marca { line-height: 1.15; }
+  .cabecalho-gestao { padding-top: 4px; gap: 12px; }
 }
 
 @keyframes subir {
@@ -136,52 +145,61 @@ textarea {
   color-scheme: dark;
 }
 
-/* Componentes basicos reaproveitados nas telas */
+/*
+ * Componentes basicos reaproveitados nas telas (design system: controles de 38-44px, raio 10px,
+ * cartoes de 16px com aro fino e brilho no topo, sem sombra; hover sobe um degrau, clique encolhe 2%).
+ */
 @utility btn {
-  @apply inline-flex items-center justify-center gap-1.5 rounded-full border border-zinc-300 bg-transparent px-4 py-1.5 text-sm font-semibold text-zinc-800 transition hover:border-zinc-500 hover:bg-zinc-50 active:scale-[0.98] disabled:opacity-50;
+  @apply inline-flex min-h-[38px] items-center justify-center gap-2 rounded-[10px] border border-[rgba(255,255,255,0.08)] bg-zinc-50 px-4 py-1.5 text-sm font-medium whitespace-nowrap text-zinc-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition duration-[120ms] hover:border-[rgba(255,255,255,0.14)] hover:bg-zinc-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
 }
 @utility btn-primario {
-  @apply btn border-ouro bg-ouro text-xs font-bold tracking-[0.3px] text-fundo uppercase hover:border-ouro-claro hover:bg-ouro-claro;
+  @apply btn border-ouro bg-ouro font-semibold text-[#1b1406] hover:border-ouro-claro hover:bg-ouro-claro;
 }
 @utility btn-perigo {
-  @apply btn border-red-200 text-red-700 hover:bg-red-50;
+  @apply btn border-red-600/30 bg-red-50 text-red-700 hover:border-red-600/60 hover:bg-red-100;
 }
 @utility campo {
-  @apply w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-ouro focus:ring-2 focus:ring-ouro/25;
+  @apply min-h-[42px] w-full rounded-[10px] border border-[rgba(255,255,255,0.08)] bg-[#0c0d10] px-3 py-2 text-sm text-zinc-900 transition-colors duration-[120ms] outline-none placeholder:text-zinc-400 focus:border-ouro/70 focus:ring-2 focus:ring-ouro/20;
 }
 @utility rotulo {
-  @apply mb-1 block text-[11px] font-bold tracking-[0.08em] text-zinc-500 uppercase;
+  @apply mb-1.5 block text-xs font-medium text-zinc-500;
 }
 @utility cartao {
-  @apply rounded-2xl border border-zinc-200 bg-white p-4;
+  @apply rounded-2xl border border-[rgba(255,255,255,0.05)] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
 }
-/* Cartao clicavel: clareia no hover (padrao do prototipo Lovable) */
+/* Cartao clicavel: sobe um degrau no hover */
 @utility cartao-clicavel {
-  @apply cartao transition hover:border-zinc-400 hover:bg-zinc-50;
+  @apply cartao transition duration-[120ms] hover:border-[rgba(255,255,255,0.1)] hover:bg-zinc-100;
 }
-/* Cartao em destaque: borda dourada com brilho */
+/* Cartao em destaque: aro dourado e brilho dourado no canto (o "KPI em destaque" do design system) */
 @utility cartao-destaque {
-  @apply rounded-2xl border border-ouro bg-white p-5 shadow-[0_10px_32px_rgba(211,171,69,0.2)];
+  @apply rounded-2xl border border-ouro/55 p-5;
+  background: var(--glow-ouro), var(--surface-card);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 /* Campo no estilo "linha" (so a borda de baixo), como o formulario do site */
 @utility campo-linha {
   @apply w-full border-0 border-b border-zinc-300 bg-transparent py-2.5 text-zinc-900 outline-none placeholder:text-zinc-400 focus:border-ouro;
 }
-/* Selo dourado pequeno (ex.: "PELO PLANO", "ATIVO") */
+/* Selo dourado pequeno (ex.: "Pelo plano", "Ativo"): pilula translucida como os status do design system */
 @utility selo-ouro {
-  @apply inline-flex items-center gap-1 rounded-full bg-ouro/15 px-2.5 py-1 text-[10px] font-bold tracking-wide text-ouro uppercase;
+  @apply inline-flex items-center gap-1 rounded-full border border-ouro/25 bg-ouro/12 px-2.5 py-0.5 text-[11px] font-medium text-ouro-claro;
 }
 /* Entrada suave dos blocos */
 @utility entrar-suave {
-  animation: subir 500ms ease both;
+  animation: subir 360ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
-/* Titulo no estilo da marca: Inter 900 com letras apertadas */
+/* Titulo no estilo da marca: grotesca com letras apertadas (peso medio, como o design system) */
 @utility titulo-marca {
-  @apply font-black tracking-[-0.025em];
+  @apply font-semibold tracking-[-0.03em];
 }
-/* Rotulo dourado em caixa alta (ex.: "RIO DO SUL · SC") */
+/* Rotulo dourado em caixa alta (ex.: "RIO DO SUL · SC"): o unico uso de caixa alta */
 @utility eyebrow {
-  @apply text-[11px] font-bold tracking-[0.18em] text-ouro uppercase;
+  @apply text-[11px] font-semibold tracking-[0.14em] text-ouro uppercase;
+}
+/* Numero grande dos indicadores (KPI) */
+@utility numero-kpi {
+  @apply font-normal tracking-[-0.02em] tabular-nums;
 }
 
 /* ---------- Jogos de recompensa (roleta, caixas, raspadinha): preto profundo, grafite, ouro metalico ---------- */

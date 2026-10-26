@@ -24,7 +24,7 @@ export function PainelFinanceiro({ financeiro: f }: { financeiro: FinanceiroPain
               link="/financeiro?aba=resultado" />
             <Metrica rotulo="Resultado provisório" valor={reais(f.lucro)}
               detalhe="Faturamento menos despesas e taxas registradas"
-              tom={f.lucro >= 0 ? "bom" : "ruim"} link="/financeiro?aba=resultado" />
+              tom={f.lucro >= 0 ? "bom" : "ruim"} destaque={f.lucro >= 0 ? "ouro" : "ruim"} link="/financeiro?aba=resultado" />
             <Metrica rotulo="Margem provisória"
               valor={f.faturamento > 0 ? `${(f.lucro / f.faturamento * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—"}
               detalhe={f.faturamento > 0 ? "Resultado provisório ÷ faturamento registrado" : "Sem faturamento positivo para calcular a margem"}
@@ -47,13 +47,14 @@ export function PainelFinanceiro({ financeiro: f }: { financeiro: FinanceiroPain
   );
 }
 
-export function Metrica(p: { rotulo: string; valor: string; detalhe: string; tom?: "bom" | "ruim"; barra?: number | null; link?: string }) {
+export function Metrica(p: { rotulo: string; valor: string; detalhe: string; tom?: "bom" | "ruim"; barra?: number | null; link?: string; destaque?: "ouro" | "ruim" }) {
+  const classe = `black-metric cartao space-y-2 ${p.destaque === "ouro" ? "black-metric--destaque" : p.destaque === "ruim" ? "black-metric--ruim" : ""}`;
   const conteudo = (
     <>
-      <p className="text-xs font-medium text-zinc-500">{p.rotulo}</p>
-      <p className="black-metric__valor text-3xl font-semibold">{p.valor}</p>
+      <p className="text-sm text-zinc-500">{p.rotulo}</p>
+      <p className="black-metric__valor text-[32px] text-zinc-900">{p.valor}</p>
       {p.barra !== undefined && p.barra !== null && (
-        <div className="h-1.5 rounded-full bg-zinc-100">
+        <div className="h-1.5 rounded-full bg-[#0c0d10]">
           <div className="h-1.5 rounded-full bg-ouro" style={{ width: `${Math.min(100, Math.round(p.barra * 100))}%` }} />
         </div>
       )}
@@ -62,6 +63,6 @@ export function Metrica(p: { rotulo: string; valor: string; detalhe: string; tom
     </>
   );
   return p.link ? (
-    <Link href={p.link} className="black-metric cartao block space-y-2 focus-visible:outline-2 focus-visible:outline-ouro">{conteudo}</Link>
-  ) : <div className="black-metric cartao space-y-2">{conteudo}</div>;
+    <Link href={p.link} className={`${classe} block`}>{conteudo}</Link>
+  ) : <div className={classe}>{conteudo}</div>;
 }

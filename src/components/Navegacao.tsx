@@ -75,26 +75,24 @@ export function Navegacao({
         key={l.href}
         href={l.href}
         onClick={() => setMais(false)}
-        className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
-          ativo(l.href) ? "border border-ouro/25 bg-ouro/10 font-semibold text-zinc-900" : "border border-transparent text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-        }`}
+        className="black-nav-item"
         aria-current={ativo(l.href) ? "page" : undefined}
       >
-        <Icone size={17} className={ativo(l.href) ? "text-ouro" : ""} />
+        <Icone size={17} strokeWidth={1.6} />
         {l.rotulo}
-        {!!selos[l.href] && <span className="ml-auto rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-black" title="Pendências">{selos[l.href]}</span>}
+        {!!selos[l.href] && <span className="ml-auto rounded-full bg-ouro px-1.5 text-[11px] font-semibold text-[#1b1406]" title="Pendências">{selos[l.href]}</span>}
       </Link>
     );
   };
 
   const rodapeUsuario = (
-    <div className="flex items-center gap-3 border-t border-zinc-200 pt-4">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-zinc-200 text-xs font-bold text-ouro">{iniciais(nome)}</div>
+    <div className="black-painel flex items-center gap-3 px-3.5 py-3">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-ouro/40 bg-[linear-gradient(180deg,rgb(211_171_69/22%),rgb(24_23_20/60%))] text-xs font-semibold text-ouro-claro shadow-[inset_0_1px_0_rgb(255_244_195/14%)]">{iniciais(nome)}</div>
       <Link href="/conta" className="min-w-0 flex-1 hover:text-ouro" title="Minha conta e senha">
         <p className="truncate text-sm font-semibold">{nome}</p>
         <p className="text-xs text-zinc-500">{PAPEIS[papel] ?? papel} · minha conta</p>
       </Link>
-      <button onClick={sair} title="Sair" aria-label="Sair" className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900">
+      <button onClick={sair} title="Sair" aria-label="Sair" className="rounded-[10px] p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900">
         <LogOut size={16} />
       </button>
     </div>
@@ -103,28 +101,30 @@ export function Navegacao({
   return (
     <>
       {/* Computador */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-zinc-200 bg-[#0d0d0d] p-5 lg:flex">
-        <Marca nome={nomeBarbearia} />
-        <nav aria-label="Menu principal" className="mt-8 flex-1 space-y-5 overflow-y-auto">
+      <aside className="sticky top-0 hidden h-screen w-[236px] shrink-0 flex-col gap-2 p-2 pr-0 lg:flex">
+        <div className="black-painel flex h-[60px] items-center px-4"><Marca nome={nomeBarbearia} /></div>
+        <div className="black-painel flex min-h-0 flex-1 flex-col p-3">
+        <nav aria-label="Menu principal" className="flex-1 space-y-5 overflow-y-auto">
           {[
             { titulo: "Dia a dia", rotas: ["/painel", "/recepcao", "/caixa", "/comandas", "/conversas", "/semana", "/minha-agenda"] },
             { titulo: "Gestão", rotas: ["/financeiro", "/meu-financeiro", "/campanhas-equipe", "/indicadores", "/assinaturas", "/estoque", "/campanhas", "/planos", "/jogos"] },
             { titulo: "Equipe e ajustes", rotas: ["/checklist", "/rh", "/recrutamento", "/expediente", "/equipe", "/whatsapp", "/auditoria", "/simulador"] },
           ].map((g) => {
             const itens = links.filter((l) => g.rotas.includes(l.href) || (g.titulo === "Gestão" && l.href.startsWith("/indicadores/")));
-            return itens.length > 0 && <div key={g.titulo}><p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">{g.titulo}</p><div className="space-y-1">{itens.map(item)}</div></div>;
+            return itens.length > 0 && <div key={g.titulo}><p className="mb-1.5 px-3 text-xs text-zinc-400">{g.titulo}</p><div className="space-y-0.5">{itens.map(item)}</div></div>;
           })}
         </nav>
-        {links.some((l) => l.href === "/cultura-black") && <div className="mt-3 border-t border-zinc-200 pt-3">{item(links.find((l) => l.href === "/cultura-black")!)}</div>}
+        {links.some((l) => l.href === "/cultura-black") && <div className="mt-3 border-t border-[rgba(255,255,255,0.05)] pt-3">{item(links.find((l) => l.href === "/cultura-black")!)}</div>}
+        </div>
         {rodapeUsuario}
       </aside>
 
       {/* Celular: topo com a marca + barra inferior */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-zinc-200 bg-fundo/90 px-4 py-3 backdrop-blur-md lg:hidden">
+      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-fundo/80 px-4 py-3 backdrop-blur-[14px] lg:hidden">
         <Marca nome={nomeBarbearia} />
         <button onClick={sair} className="btn">Sair</button>
       </header>
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-zinc-200 bg-fundo/95 p-2 backdrop-blur lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-[rgba(255,255,255,0.05)] bg-fundo/85 p-2 backdrop-blur-[14px] lg:hidden">
         {links.slice(0, 4).map((l) => {
           const Icone = ICONES[l.href] ?? UserRound;
           return (
@@ -145,8 +145,8 @@ export function Navegacao({
         )}
       </nav>
       {mais && (
-        <div className="fixed inset-0 z-30 bg-black/60 lg:hidden" onClick={() => setMais(false)}>
-          <div className="entrar-suave absolute inset-x-3 bottom-20 rounded-2xl border border-zinc-200 bg-white p-2" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-30 bg-[rgba(5,6,7,0.72)] backdrop-blur-[14px] lg:hidden" onClick={() => setMais(false)}>
+          <div className="entrar-suave black-painel absolute inset-x-3 bottom-20 max-h-[70vh] space-y-0.5 overflow-y-auto p-2" onClick={(e) => e.stopPropagation()}>
             {links.slice(4).map(item)}
           </div>
         </div>

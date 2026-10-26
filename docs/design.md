@@ -2,8 +2,12 @@
 
 ## Direção
 
-Identidade visual Black Barber: tema escuro (preto + grafite + dourado), fonte Inter, interface em português
-(`<html lang="pt-BR">`). Dois públicos ([PRODUCT.md](../PRODUCT.md)): a equipe no painel (celular e computador) e o
+**BarberOS Design System** (26/10/2026) com a personalidade Black Barber: preto frio e silencioso, cartões densos
+com aro fino, números grandes e leves, fonte Manrope, interface em português (`<html lang="pt-BR">`). Onde o design
+system usa o branco brilhante (botão principal, destaque, foco), o BarberOS usa o **dourado**; verde, amarelo e
+vermelho ficam só para status. Mantidos de propósito: o **dourado metálico do botão principal** (o brilho corre no
+hover), o **aro dourado no hover dos cartões clicáveis** e o **filete + tesoura que acompanham a rolagem**
+(`AcabamentoBlack`, só no computador e sem movimento reduzido). Dois públicos ([PRODUCT.md](../PRODUCT.md)): a equipe no painel (celular e computador) e o
 cliente na área `/c` (pensada para celular). Os jogos de recompensa têm um visual próprio, mais teatral, dentro da
 mesma paleta.
 
@@ -13,17 +17,20 @@ Fonte de verdade: `src/app/globals.css` (Tailwind 4, `@import "tailwindcss"` + `
 
 - **Paleta "Black" por reapontamento:** as telas usam as classes padrão do Tailwind (`white`, `zinc`, `emerald`,
   `red`, `amber`, `violet`, `sky`) e o `@theme` troca essas cores pelo tema escuro, num lugar só:
-  - `white` → superfície dos cartões (grafite); `black` → preto.
+  - `white` → superfície dos cartões (`#111215`); `black` → preto. Para branco de verdade com transparência use
+    `rgba(255,255,255,…)` (ex.: `border-[rgba(255,255,255,0.08)]`), não `white/…`.
   - `zinc` → escala invertida (50 = superfície, 900/950 = texto forte).
   - cores de status (`emerald`, `red`, `amber`, `sky`) → fundos escuros translúcidos + textos claros.
   - `violet` (selo "Assinante") → dourado.
 - **Tokens da marca:** `ouro`, `ouro-claro`, `ouro-escuro` e `fundo` (uso direto: `bg-ouro`, `text-ouro`...). Fundo
-  da página e `themeColor` do viewport em `#0a0a0a`; seleção de texto dourada; `color-scheme: dark` em campos.
-- **Tipografia:** Inter (`--font-inter`, pesos 400–900) e Geist Mono, carregadas por `next/font/google` em
+  da página e `themeColor` do viewport em `#08090b`; tokens do design system em `:root` (`--surface-*`, `--border-*`,
+  `--text-*`, `--glow-ouro`); seleção de texto dourada; `color-scheme: dark` em campos.
+- **Tipografia:** Manrope (`--font-manrope`, pesos 300–800; números em peso 400 com `-0.02em`) e Geist Mono, carregadas por `next/font/google` em
   `src/app/layout.tsx`.
-- **Utilitários (`@utility`) reaproveitados:** `btn`, `btn-primario` (dourado, caixa alta), `btn-perigo`, `campo`,
+- **Utilitários (`@utility`) reaproveitados:** `btn` (bloco escuro de 38px, raio 10px), `btn-primario` (dourado), `btn-perigo`, `campo`,
   `campo-linha`, `rotulo`, `cartao`, `cartao-clicavel`, `cartao-destaque`, `selo-ouro`, `entrar-suave`,
-  `titulo-marca`, `eyebrow`. Prefira-os a repetir classes.
+  `titulo-marca`, `eyebrow`, `numero-kpi`. Prefira-os a repetir classes. Área da equipe: `black-workspace.css`
+  (menu em painéis `black-painel`/`black-nav-item`, KPI `black-metric` com `--destaque` dourado ou `--ruim`).
 - **Jogos:** bloco próprio em `globals.css` (fundo com fumaça, carta do prêmio por raridade, roleta) e CSS Modules em
   `src/components/jogos/caixas/caixas.module.css` e `src/components/jogos/raspadinha/raspadinha.module.css`.
 - **Ícones:** `lucide-react`.
