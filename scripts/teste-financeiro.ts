@@ -52,6 +52,23 @@ async function main() {
     ok(f.diferenca === -321, "fecha registrando a diferença (faltou R$ 3,21)");
     ok(!(await caixaAberto()), "caixa fica fechado");
 
+    // Cenário do balcão: Pix fica separado da gaveta; serviço zerado não cria receita.
+    const turno = await abrirCaixa(s, 10000);
+    caixas.push(turno.id);
+    await nova(6500, [{ forma: "DINHEIRO", v: 6500 }]);
+    await nova(6500, [{ forma: "PIX", v: 6500 }]);
+    await nova(0, []);
+    await movimentarCaixa(s, "SUPRIMENTO", 5000, "[teste] entrada de troco");
+    await movimentarCaixa(s, "SANGRIA", 3000, "[teste] retirada para depósito");
+    const balc = await resumoCaixa((await caixaAberto())!);
+    ok(balc.esperado === 18500 && balc.totais.PIX === 6500 && balc.faturado === 13000,
+      "balcão: R$ 100 + R$ 65 + R$ 50 - R$ 30 = R$ 185 na gaveta; Pix separado e comanda zero sem receita");
+    await nova(10000, [{ forma: "DINHEIRO", v: 4000 }, { forma: "PIX", v: 6000 }]);
+    const dividido = await resumoCaixa((await caixaAberto())!);
+    ok(dividido.esperado === 22500 && dividido.totais.PIX === 12500,
+      "pagamento dividido: só os R$ 40 em dinheiro aumentam a gaveta");
+    ok((await fecharCaixa(s, 22500)).diferenca === 0, "fechamento do cenário do balcão sem diferença");
+
     // ================= CONCILIACAO
     const con = await conciliacao(hoje, hoje);
     const pix = con.linhas.find((l) => l.forma === "PIX")!;

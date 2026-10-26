@@ -1334,10 +1334,23 @@ model ChecklistItem {
   avaliadoPor    String?
   motivoRe       String?
   checklistPonto ChecklistPonto?
+  fotos          ChecklistFoto[]
 
   @@unique([pessoaId, tarefaId, data])
   @@index([data])
   @@map("checklist_itens")
+}
+
+model ChecklistFoto {
+  id        String        @id @default(cuid())
+  itemId    String
+  item      ChecklistItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  dados     Bytes
+  tipo      String
+  criadoEm  DateTime      @default(now()) @db.Timestamptz(3)
+
+  @@index([itemId])
+  @@map("checklist_fotos")
 }
 
 /// Mensagens do checklist ja enviadas (evita mandar duas vezes).
@@ -1733,6 +1746,48 @@ model CampanhaEnvio {
 
 /// Backups do banco, gravados pelo container de backup (deploy/backup.sh): cada copia, se a restauracao de teste
 /// num banco separado conferiu e se a copia criptografada foi para fora do servidor.
+model LancamentoPessoal {
+  id String @id @default(cuid())
+  usuarioId String
+  tipo String
+  descricao String
+  categoria String
+  valorCentavos Int
+  data DateTime @db.Date
+  realizado Boolean @default(true)
+  anulado Boolean @default(false)
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  @@index([usuarioId, data])
+  @@map("lancamentos_pessoais")
+}
+
+model CampanhaEquipe {
+  id String @id @default(cuid())
+  nome String
+  inicio DateTime @db.Timestamptz(3)
+  fim DateTime @db.Timestamptz(3)
+  metaQuantidade Int
+  metaCentavos Int
+  premios Json
+  criadoPorId String
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  bonus BonusEquipe[]
+  @@map("campanhas_equipe")
+}
+
+model BonusEquipe {
+  id String @id @default(cuid())
+  campanhaId String
+  campanha CampanhaEquipe @relation(fields: [campanhaId], references: [id])
+  barbeiroId String
+  ciclo Int
+  valorCentavos Int
+  pagoEm DateTime? @db.Timestamptz(3)
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([campanhaId, barbeiroId, ciclo])
+  @@map("bonus_equipe")
+}
+
 model BackupRegistro {
   id             String   @id
   /// DIARIO | DEPLOY | MANUAL
@@ -1818,4 +1873,63 @@ model RegraConciliacao {
   criadoEm    DateTime             @default(now()) @db.Timestamptz(3)
 
   @@map("regras_conciliacao")
+}
+
+// Recrutamento fica separado dos cadastros operacionais.
+model VagaRecrutamento {
+  id String @id @default(cuid())
+  titulo String
+  cidade String
+  descricao String
+  privacidade String
+  ativa Boolean @default(false)
+  criadoPorId String
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  candidaturas CandidaturaRecrutamento[]
+  @@map("recrutamento_vagas")
+}
+model CandidatoRecrutamento {
+  id String @id @default(cuid())
+  nome String
+  telefone String
+  cidade String
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  candidaturas CandidaturaRecrutamento[]
+  // Telefone declarado não é identidade verificada nem chave única.
+  @@map("recrutamento_candidatos")
+}
+model CandidaturaRecrutamento {
+  id String @id @default(cuid())
+  envioId String @unique
+  conteudoHash String
+  vagaId String
+  vaga VagaRecrutamento @relation(fields: [vagaId], references: [id], onDelete: Restrict)
+  candidatoId String
+  candidato CandidatoRecrutamento @relation(fields: [candidatoId], references: [id], onDelete: Cascade)
+  experienciaMeses Int
+  servicos String[]
+  disponibilidade String
+  portfolio String
+  instagram String
+  futurasOportunidades Boolean
+  formularioVersao String
+  avisoPrivacidade String
+  origem Json
+  etapa String @default("NOVO")
+  versao Int @default(0)
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  historico HistoricoRecrutamento[]
+  @@index([vagaId, etapa, criadoEm])
+  @@map("recrutamento_candidaturas")
+}
+model HistoricoRecrutamento {
+  id String @id @default(cuid())
+  candidaturaId String
+  candidatura CandidaturaRecrutamento @relation(fields: [candidaturaId], references: [id], onDelete: Cascade)
+  etapa String
+  motivo String
+  usuarioId String
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  @@index([candidaturaId, criadoEm])
+  @@map("recrutamento_historico")
 }

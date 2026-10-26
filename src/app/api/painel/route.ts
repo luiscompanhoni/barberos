@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { dataLocal } from "@/lib/agenda/tempo";
+import { resultadoDoMes } from "@/lib/conciliacao/resultado";
 import { pode } from "@/lib/auth/permissoes";
 import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { alertaBackup } from "@/lib/backups";
@@ -24,5 +26,12 @@ export const GET = rota(async () => {
     // Backup atrasado ou com erro: so o dono ve.
     s.papel === "DONO" ? alertaBackup() : null,
   ]);
-  return NextResponse.json({ dia, pendencias: { ...pend, estornosPendentes: estornos, produtosAcabando: acabando, esperas: esperas.map((e) => ({ id: e.id, data: e.data.toISOString().slice(0, 10), periodo: e.periodo, cliente: e.cliente.nome })) }, mes, pico, vendas, backup });
+  // A mesma fonte do financeiro; uma falha aqui não tira a agenda e as pendências do ar.
+  const financeiro = verResultado
+    ? await resultadoDoMes(dataLocal(Date.now(), pend.fuso).slice(0, 7))
+      .then((r) => ({ mes: r.mes, faturamento: r.registrado.total, despesas: r.despesas.total,
+        taxas: r.custos.total, lucro: r.lucro, alertas: r.alertas }))
+      .catch(() => null)
+    : null;
+  return NextResponse.json({ financeiro, dia, pendencias: { ...pend, estornosPendentes: estornos, produtosAcabando: acabando, esperas: esperas.map((e) => ({ id: e.id, data: e.data.toISOString().slice(0, 10), periodo: e.periodo, cliente: e.cliente.nome })) }, mes, pico, vendas, backup });
 });

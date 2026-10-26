@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { CaixaTela } from "./CaixaTela";
 import { ConciliacaoTela } from "./ConciliacaoTela";
 import { DespesasTela } from "./DespesasTela";
@@ -20,13 +21,15 @@ const ABAS: { k: Aba; r: string; resultado?: boolean }[] = [
 export function FinanceiroTela({ verResultado, gestao, abaInicial = "caixa", estornosPendentes = 0 }: { verResultado: boolean; gestao: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
   const [aba, setAba] = useState<Aba>(abaInicial);
   const [pendentes, setPendentes] = useState(estornosPendentes);
-  const abas = ABAS.filter((a) => !a.resultado || verResultado);
+  const abas = ABAS.filter((a) => a.k !== "caixa" && (!a.resultado || verResultado));
   return (
     <div className="space-y-4">
-      <div>
-        <p className="eyebrow">Financeiro</p>
-        <h1 className="titulo-marca text-2xl">{ABAS.find((a) => a.k === aba)!.r}</h1>
-      </div>
+      <header className="cabecalho-gestao">
+        <div><p className="eyebrow">Gestão da Black</p>
+          <h1 className="titulo-marca mt-1 text-3xl">Financeiro</h1>
+          <p className="mt-2 text-sm text-zinc-600">Acompanhe o resultado, organize despesas e confira os recebimentos.</p></div>
+        <Link href="/caixa" className="btn">Abrir caixa do balcão →</Link>
+      </header>
       <div className="flex flex-wrap gap-2 print:hidden">
         {abas.map((a) => (
           <button key={a.k} className={aba === a.k ? "btn-primario" : "btn"} onClick={() => setAba(a.k)}>

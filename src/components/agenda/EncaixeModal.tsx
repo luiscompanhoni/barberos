@@ -40,6 +40,8 @@ export function EncaixeModal(p: {
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [semPreferencia, setSemPreferencia] = useState(false);
+  const [realizado, setRealizado] = useState(false);
+  const [limiteRealizado, setLimiteRealizado] = useState(() => Date.now());
   const [avulso, setAvulso] = useState<{ preco: number } | null>(null);
   const [planoCliente, setPlanoCliente] = useState<{ nome: string; valida: boolean } | null>(null);
 
@@ -65,6 +67,7 @@ export function EncaixeModal(p: {
         if (!vivo) return;
         const d = r[0] ?? null;
         setDisp(d);
+        setLimiteRealizado(Date.now());
         const alvo = p.inicio ? new Date(p.inicio).toISOString() : "";
         setHorario(d?.horarios.includes(alvo) ? alvo : "");
       })
@@ -86,6 +89,9 @@ export function EncaixeModal(p: {
     setAvulso(null);
     if (!servicoId) return setErro("Escolha o serviço.");
     if (!horario) return setErro("Escolha um horário livre.");
+    if (realizado && disp && Date.parse(horario) + disp.duracaoMin * 60_000 > Date.now()) {
+      return setErro("Escolha um horário em que o atendimento já tenha terminado.");
+    }
     if (!cliente && (!nome.trim() || telefone.replace(/\D/g, "").length < 10)) {
       return setErro("Informe nome e celular com DDD do cliente (ou escolha um cliente da busca).");
     }
@@ -93,9 +99,9 @@ export function EncaixeModal(p: {
     try {
       await api("/api/agendamentos", {
         method: "POST",
-        body: { barbeiroId, servicoId, inicio: horario, semPreferencia, forcarAvulso, cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone } },
+        body: { barbeiroId, servicoId, inicio: horario, semPreferencia, forcarAvulso, realizado, cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone } },
       });
-      p.onCriado(`Encaixe criado às ${minParaHhmm(minutosLocal(Date.parse(horario), p.fuso))} para ${cliente?.nome ?? nome.trim()}.`);
+      p.onCriado(`${realizado ? "Atendimento realizado registrado" : "Encaixe criado"} às ${minParaHhmm(minutosLocal(Date.parse(horario), p.fuso))} para ${cliente?.nome ?? nome.trim()}.`);
     } catch (e) {
       setErro((e as Error).message);
       if (e instanceof ErroApi && e.codigo === "regra_plano") {
@@ -106,10 +112,15 @@ export function EncaixeModal(p: {
   }
 
   const hora = (iso: string) => minParaHhmm(minutosLocal(Date.parse(iso), p.fuso));
+  const horarios = disp?.horarios.filter((h) => !realizado || Date.parse(h) + disp.duracaoMin * 60_000 <= limiteRealizado) ?? [];
 
   return (
     <Modal titulo="Novo atendimento" onFechar={p.onFechar}>
       <form onSubmit={salvar} className="space-y-3">
+        <label className="flex items-start gap-3 rounded-xl border border-ouro/30 bg-ouro/5 p-3 text-sm">
+          <input type="checkbox" className="mt-1 h-4 w-4 accent-ouro" checked={realizado} onChange={(e) => { setRealizado(e.target.checked); setLimiteRealizado(Date.now()); }} />
+          <span><b className="block">Atendimento já realizado</b><span className="text-xs text-zinc-600">Use o horário real do corte. O registro entra como concluído; o recebimento é conferido na comanda.</span></span>
+        </label>
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="rotulo">Barbeiro</label>
@@ -128,12 +139,12 @@ export function EncaixeModal(p: {
         {disp && <p className="text-xs text-zinc-500">{disp.duracaoMin} min · {reais(disp.precoCentavos)}</p>}
 
         <div>
-          <label className="rotulo">Horário</label>
-          {disp && disp.horarios.length === 0 ? (
-            <p className="text-sm text-zinc-500">Sem horário livre para esse serviço nesse dia.</p>
+          <label className="rotulo">{realizado ? "Horário em que o atendimento começou" : "Horário"}</label>
+          {disp && horarios.length === 0 ? (
+            <p className="text-sm text-zinc-500">{realizado ? "Sem horário passado livre para registrar esse serviço nesse dia." : "Sem horário livre para esse serviço nesse dia."}</p>
           ) : (
             <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
-              {disp?.horarios.map((h) => (
+              {horarios.map((h) => (
                 <button type="button" key={h} onClick={() => setHorario(h)}
                   className={`rounded-md border px-2 py-1 text-sm ${h === horario ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 hover:bg-zinc-50"}`}>
                   {hora(h)}
@@ -193,7 +204,7 @@ export function EncaixeModal(p: {
         )}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" className="btn" onClick={p.onFechar}>Voltar</button>
-          <button className="btn-primario" disabled={salvando}>{salvando ? "Salvando..." : "Agendar"}</button>
+          <button className="btn-primario" disabled={salvando}>{salvando ? "Salvando..." : realizado ? "Registrar atendimento" : "Agendar"}</button>
         </div>
       </form>
     </Modal>

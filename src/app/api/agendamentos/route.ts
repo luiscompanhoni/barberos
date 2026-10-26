@@ -17,6 +17,7 @@ const schema = z.object({
   observacao: z.string().max(500).optional(),
   semPreferencia: z.boolean().optional(),
   forcarAvulso: z.boolean().optional(),
+  realizado: z.boolean().optional(),
 });
 
 export const POST = rota(async (req: Request) => {

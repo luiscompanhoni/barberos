@@ -96,7 +96,9 @@ export async function horariosDisponiveis(p: {
   });
   const mapa = await carregarDia(p.data, barbeiros.map((b) => b.id), { fuso: cfg.fuso });
   const agora = Date.now();
-  const naoAntesDe = p.paraCliente ? agora + cfg.antecedenciaMinimaMin * 60_000 : agora - cfg.granularidadeMin * 60_000;
+  // A equipe também registra atendimentos que já aconteceram. Bot e cliente
+  // continuam respeitando a antecedência; expediente e conflitos valem para todos.
+  const naoAntesDe = p.paraCliente ? agora + cfg.antecedenciaMinimaMin * 60_000 : -Infinity;
 
   const out = [];
   for (const b of barbeiros) {

@@ -5,10 +5,11 @@ import { CheckCircle2, Circle, Copy, Send, ThumbsDown, ThumbsUp, Undo2 } from "l
 import { api } from "@/lib/cliente-api";
 import { ChecklistCadastro } from "./ChecklistCadastro";
 import { ChecklistClassificacao } from "./ChecklistClassificacao";
+import { FotosTarefa } from "./FotosTarefa";
 
 type Item = {
   id: string; titulo: string; horario: string | null; feito: boolean; feitoEm: string | null; feitoPor: string | null;
-  pontos: number; avaliacao: "VALIDADO" | "RE" | null; avaliadoPor: string | null; motivoRe: string | null;
+  pontos: number; avaliacao: "VALIDADO" | "RE" | null; avaliadoPor: string | null; motivoRe: string | null; fotos: number;
 };
 type Pessoa = { id: string; nome: string; funcao: string; telefone: string; link: string; pontos: number; itens: Item[] };
 
@@ -124,6 +125,7 @@ export function ChecklistTela() {
                             </span>
                           </button>
                           <Avaliacao i={i} pontosRe={pontosRe} aoAvaliar={(a) => avaliar(i, p.nome, a)} />
+                          <FotosTarefa itemId={i.id} quantidade={i.fotos} validada={i.avaliacao === "VALIDADO"} />
                         </li>
                       ))}
                     </ul>

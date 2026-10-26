@@ -46,3 +46,6 @@ next-env.d.ts
 
 # grafo local do Graphify (docs/setup.md)
 /graphify-out/
+
+# Senha privada da homologacao (inclui arquivos temporarios de redefinicao).
+.senha-homolog*

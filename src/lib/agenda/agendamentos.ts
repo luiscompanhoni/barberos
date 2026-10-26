@@ -78,6 +78,8 @@ export type NovoAgendamento = {
   semPreferencia?: boolean;
   /** Assinante aceitou pagar quando a regra do plano nao cobre. */
   forcarAvulso?: boolean;
+  /** Equipe registrando um atendimento que já terminou. */
+  realizado?: boolean;
 };
 
 export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | null) {
@@ -92,6 +94,9 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
 
   const duracao = equipe && input.duracaoMin ? input.duracaoMin : sb.duracaoMin;
   const int = { inicio: input.inicio.getTime(), fim: input.inicio.getTime() + duracao * MIN };
+  if (input.realizado && (!equipe || int.fim > Date.now())) {
+    throw new ErroNegocio("Só a equipe pode registrar um atendimento já realizado, com término no passado.");
+  }
 
   // Cliente marcando sozinho (bot/site) respeita antecedencia e janela.
   if (!equipe) {
@@ -120,6 +125,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
           inicio: new Date(int.inicio),
           fim: new Date(int.fim),
           origem: input.origem,
+          ...(input.realizado ? { status: "CONCLUIDO" as const } : {}),
           precoCentavos: preco.precoCentavos,
           assinaturaId: preco.assinaturaId,
           observacao: input.observacao,
@@ -131,6 +137,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
         inicio: criado.inicio.toISOString(),
         barbeiroId: criado.barbeiroId,
         origem: criado.origem,
+        realizado: !!input.realizado,
       });
       return criado;
     });
