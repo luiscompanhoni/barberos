@@ -46,6 +46,8 @@ jobs:
         run: npx tsc --noEmit
       - name: Lint
         run: npm run lint
+      - name: Regras locais de lint (self-check)
+        run: npm run lint:rules
       - name: Testes unitários
         run: npm test
       - name: Migrações num banco limpo

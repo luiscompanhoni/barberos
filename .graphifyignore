@@ -1,0 +1,32 @@
+# Adaptado de templates/project/.graphifyignore.example (Vibe Coding Toolkit).
+# Nunca indexe segredos, dependencias, conteudo gerado ou vendorizado.
+.git/
+.next/
+node_modules/
+out/
+dist/
+build/
+coverage/
+graphify-out/
+.agents/
+.claude/
+.claude-flow/
+.codex/
+.vercel/
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+auth.json
+credentials.json
+*.log
+*.tsbuildinfo
+package-lock.json
+skills-lock.json
+
+# BarberOS
+backups/
+prisma/migrations/
+public/
