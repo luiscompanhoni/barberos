@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => {
-  const tx = { vagaRecrutamento: { findFirst: vi.fn() }, candidatoRecrutamento: { create: vi.fn() }, candidaturaRecrutamento: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() }, historicoRecrutamento: { create: vi.fn() } };
+  const tx = { vagaRecrutamento: { findFirst: vi.fn() }, candidatoRecrutamento: { create: vi.fn() }, candidaturaRecrutamento: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() }, historicoRecrutamento: { create: vi.fn() } };
   return { tx, db: { candidaturaRecrutamento: { findUnique: vi.fn() }, $transaction: vi.fn() }, auditar: vi.fn() };
 });
 vi.mock("@/lib/db", () => ({ db: m.db }));
@@ -59,6 +59,12 @@ describe("gravação de recrutamento", () => {
   it("não combina identidades por telefone não verificado", async () => {
     await receberCandidatura("vaga", entrada()); await receberCandidatura("vaga", { ...entrada(), envioId: "6488a4e4-8399-4315-b4ce-ab475b94d4d8" });
     expect(m.tx.candidatoRecrutamento.create).toHaveBeenCalledTimes(2);
+  });
+  it("mesmo WhatsApp na mesma vaga fica só com a primeira candidatura", async () => {
+    m.tx.candidaturaRecrutamento.findFirst.mockResolvedValue({ id: "anterior" });
+    await receberCandidatura("vaga", entrada());
+    expect(m.tx.candidaturaRecrutamento.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { vagaId: "vaga", candidato: { telefone: "5511999998888" } } }));
+    expect(m.tx.candidatoRecrutamento.create).not.toHaveBeenCalled();
   });
   it("não inclui no banco futuro sem consentimento", async () => {
     m.tx.candidaturaRecrutamento.findUnique.mockResolvedValue({ futurasOportunidades: false });

@@ -25,6 +25,9 @@ export async function receberCandidatura(vagaId: string, b: z.infer<typeof zCand
     await db.$transaction(async (tx) => {
       const vaga = await tx.vagaRecrutamento.findFirst({ where: { id: vagaId, ativa: true } });
       if (!vaga) throw naoEncontrado("Vaga aberta");
+      // Mesmo WhatsApp na mesma vaga: fica a primeira candidatura (evita duplicata e enxurrada).
+      const ja = await tx.candidaturaRecrutamento.findFirst({ where: { vagaId, candidato: { telefone: b.telefone! } }, select: { id: true } });
+      if (ja) return;
       const candidato = await tx.candidatoRecrutamento.create({ data: { nome: b.nome, telefone: b.telefone!, cidade: b.cidade } });
       const c = await tx.candidaturaRecrutamento.create({ data: {
         envioId: b.envioId, conteudoHash, vagaId, candidatoId: candidato.id, experienciaMeses: b.experienciaMeses, servicos: b.servicos,

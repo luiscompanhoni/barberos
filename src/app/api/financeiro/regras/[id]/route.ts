@@ -5,7 +5,7 @@ import { rota } from "@/lib/erros";
 
 /** Apaga uma regra (o que ja foi classificado por ela fica como esta). */
 export const DELETE = rota(async (_req: Request, ctx: RouteContext<"/api/financeiro/regras/[id]">) => {
-  const s = await exigirSessaoCom("resultado");
+  const s = await exigirSessaoCom("lucro");
   const { id } = await ctx.params;
   await excluirRegra(s, id);
   return NextResponse.json({ ok: true });

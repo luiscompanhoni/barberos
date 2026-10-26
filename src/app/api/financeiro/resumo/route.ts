@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** Resumo do mes (?mes=AAAA-MM): so o dono ve o resultado. */
 export const GET = rota(async (req: Request) => {
-  await exigirSessaoCom("resultado");
+  await exigirSessaoCom("lucro");
   const mes = zMes.parse(new URL(req.url).searchParams.get("mes"));
   return NextResponse.json(await resumoMes(mes));
 });

@@ -12,7 +12,7 @@ import { mapaDePico, pendencias, resumoDoDia, resumoDoMes } from "@/lib/painel";
 
 export const GET = rota(async () => {
   const s = await exigirSessao(BALCAO);
-  const verResultado = await pode(s, "resultado");
+  const [verResultado, verLucro] = await Promise.all([pode(s, "resultado"), pode(s, "lucro")]);
   const [dia, pend, mes, pico, vendas, acabando, esperas, estornos, backup] = await Promise.all([
     resumoDoDia(),
     pendencias(),
@@ -27,11 +27,11 @@ export const GET = rota(async () => {
     s.papel === "DONO" ? alertaBackup() : null,
   ]);
   // A mesma fonte do financeiro; uma falha aqui não tira a agenda e as pendências do ar.
-  const financeiro = verResultado
+  const financeiro = verLucro
     ? await resultadoDoMes(dataLocal(Date.now(), pend.fuso).slice(0, 7))
       .then((r) => ({ mes: r.mes, faturamento: r.registrado.total, despesas: r.despesas.total,
         taxas: r.custos.total, lucro: r.lucro, alertas: r.alertas }))
-      .catch(() => null)
+      .catch((e) => { console.error("[painel] resultado do mes", e); return null; })
     : null;
   return NextResponse.json({ financeiro, dia, pendencias: { ...pend, estornosPendentes: estornos, produtosAcabando: acabando, esperas: esperas.map((e) => ({ id: e.id, data: e.data.toISOString().slice(0, 10), periodo: e.periodo, cliente: e.cliente.nome })) }, mes, pico, vendas, backup });
 });

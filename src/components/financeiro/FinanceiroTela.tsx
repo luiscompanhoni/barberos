@@ -11,17 +11,17 @@ import { ResultadoTela } from "./ResultadoTela";
 import { ResumoTela } from "./ResumoTela";
 
 export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | "resumo" | "resultado";
-const ABAS: { k: Aba; r: string; resultado?: boolean }[] = [
+const ABAS: { k: Aba; r: string; lucro?: boolean }[] = [
   { k: "caixa", r: "Caixa" }, { k: "despesas", r: "Despesas" }, { k: "links", r: "Links de pagamento" }, { k: "estornos", r: "Estornos" },
-  { k: "conciliacao", r: "Conciliação" }, { k: "resumo", r: "Resumo do mês", resultado: true },
-  { k: "resultado", r: "Resultado (Celcash e Stone)", resultado: true },
+  { k: "conciliacao", r: "Conciliação" }, { k: "resumo", r: "Resumo do mês", lucro: true },
+  { k: "resultado", r: "Resultado (Celcash e Stone)", lucro: true },
 ];
 
-/** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (com a permissao "resultado") o resumo do mes. */
-export function FinanceiroTela({ verResultado, gestao, abaInicial = "caixa", estornosPendentes = 0 }: { verResultado: boolean; gestao: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
+/** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (com a permissao "lucro") o resumo e o resultado do mes. */
+export function FinanceiroTela({ verLucro, gestao, abaInicial = "caixa", estornosPendentes = 0 }: { verLucro: boolean; gestao: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
   const [aba, setAba] = useState<Aba>(abaInicial);
   const [pendentes, setPendentes] = useState(estornosPendentes);
-  const abas = ABAS.filter((a) => a.k !== "caixa" && (!a.resultado || verResultado));
+  const abas = ABAS.filter((a) => a.k !== "caixa" && (!a.lucro || verLucro));
   return (
     <div className="space-y-4">
       <header className="cabecalho-gestao">

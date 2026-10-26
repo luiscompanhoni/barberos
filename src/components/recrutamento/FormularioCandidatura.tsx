@@ -14,7 +14,7 @@ export function FormularioCandidatura({ vaga }: { vaga: Vaga }) {
       const r = await fetch(`/api/recrutamento/publico/${vaga.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
         envioId: id, nome: f.get("nome"), telefone: f.get("telefone"), cidade: f.get("cidade"), experienciaMeses: Number(f.get("experienciaMeses")),
         servicos: f.getAll("servicos"), disponibilidade: f.get("disponibilidade"), portfolio: f.get("portfolio"), instagram: f.get("instagram"),
-        cienciaPrivacidade: f.get("cienciaPrivacidade") === "on", futurasOportunidades: f.get("futurasOportunidades") === "on", origem,
+        cienciaPrivacidade: f.get("cienciaPrivacidade") === "on", futurasOportunidades: f.get("futurasOportunidades") === "on", origem, site: String(f.get("site") ?? ""),
       }) });
       const b = await r.json(); if (!r.ok) throw new Error(b.erro ?? "Não foi possível enviar."); setRecebido(true);
     } catch (e) { setErro((e as Error).message); } finally { setEnviando(false); }
@@ -24,6 +24,8 @@ export function FormularioCandidatura({ vaga }: { vaga: Vaga }) {
     <header><p className="eyebrow">Faça parte da Black</p><h1 className="titulo-marca text-3xl">{vaga.titulo}</h1><p className="text-ouro">{vaga.cidade}</p></header>
     <section className="cartao whitespace-pre-wrap">{vaga.descricao}</section>
     <form onSubmit={enviar} className="cartao space-y-4">
+      {/* Campo-isca para robôs: fora da tela e fora da navegação por teclado e leitor de tela. */}
+      <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden"><label>Site<input name="site" tabIndex={-1} autoComplete="off" /></label></div>
       <h2 className="text-xl font-semibold">Sua candidatura</h2><p className="text-sm text-zinc-500">Preencha seus dados profissionais. Portfólio e Instagram são opcionais.</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <label>Nome<input name="nome" className="campo" required minLength={2} maxLength={120} autoComplete="name" /></label>

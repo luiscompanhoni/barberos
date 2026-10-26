@@ -72,8 +72,8 @@ async function main() {
     await new Promise((r) => setTimeout(r, 20));
     await entrarNaEspera(e2.id, { data: dia, servicoId: servico.id, barbeiroId: barbeiro.id, origem: "BOT" });
     const dup = await entrarNaEspera(e1.id, { data: dia, servicoId: servico.id, barbeiroId: barbeiro.id, origem: "SITE" });
-    ok((await db.esperaHorario.count({ where: { clienteId: e1.id } })) === 1 && !!dup, "entrar duas vezes no mesmo dia n�o duplica");
-    ok((await processarEsperas(agora, { clienteIds: ids })) === 0, "sem vaga: ningu�m � avisado");
+    ok((await db.esperaHorario.count({ where: { clienteId: e1.id } })) === 1 && !!dup, "entrar duas vezes no mesmo dia não duplica");
+    ok((await processarEsperas(agora, { clienteIds: ids })) === 0, "sem vaga: ninguém é avisado");
 
     // Abre exatamente 1 horario (cancelamento): libera so o espaco de um corte.
     await db.bloqueio.deleteMany({ where: { id: { in: bloqueiosCriados.splice(0) } } });
@@ -85,17 +85,17 @@ async function main() {
     ok((await processarEsperas(agora, { clienteIds: ids })) === 1, "abriu 1 vaga: avisa 1 pessoa");
     const s1 = await db.esperaHorario.findFirstOrThrow({ where: { clienteId: e1.id } });
     const s2 = await db.esperaHorario.findFirstOrThrow({ where: { clienteId: e2.id } });
-    ok(s1.status === "AVISADA" && s2.status === "ATIVA", "o primeiro da fila � avisado primeiro");
+    ok(s1.status === "AVISADA" && s2.status === "ATIVA", "o primeiro da fila é avisado primeiro");
     const msgEspera = await db.mensagem.findFirst({
       where: { conversa: { clienteId: e1.id }, autor: "SISTEMA" },
       orderBy: { criadoEm: "desc" },
     });
-    ok(!!msgEspera?.texto.includes(barbeiro.nome), `mensagem com o hor�rio: "${msgEspera?.texto.slice(0, 90)}..."`);
-    ok((await processarEsperas(agora + 5 * MIN, { clienteIds: ids })) === 0, "5 min depois: ainda � a vez do primeiro");
-    ok((await processarEsperas(agora + 21 * MIN, { clienteIds: ids })) === 1, "20 min sem ningu�m pegar: vai para o pr�ximo da fila");
+    ok(!!msgEspera?.texto.includes(barbeiro.nome), `mensagem com o horário: "${msgEspera?.texto.slice(0, 90)}..."`);
+    ok((await processarEsperas(agora + 5 * MIN, { clienteIds: ids })) === 0, "5 min depois: ainda é a vez do primeiro");
+    ok((await processarEsperas(agora + 21 * MIN, { clienteIds: ids })) === 1, "20 min sem ninguém pegar: vai para o próximo da fila");
 
     // Com vaga, nao entra na espera (manda marcar)
-    // O dia seguinte pode estar fechado (por exemplo, domingo). Escolhe a pr�xima
+    // O dia seguinte pode estar fechado (por exemplo, domingo). Escolhe a próxima
     // data que realmente tenha vaga, sem depender do dia da semana em que o CI roda.
     let livre = somarDias(dia, 1);
     for (let i = 1; i < 15; i++) {
@@ -114,31 +114,31 @@ async function main() {
     // r2 ja tem horario marcado: nao precisa lembrar
     const futuro = instanteLocal(somarDias(hoje, 20), 6 * 60, cfg.fuso);
     await db.agendamento.create({ data: { barbeiroId: barbeiro.id, servicoId: servico.id, clienteId: r2.id, inicio: new Date(futuro), fim: new Date(futuro + 30 * MIN), status: "MARCADO", origem: "RECEPCAO", precoCentavos: 5000 } });
-    ok((await processarRetornos(agora, { clienteIds: ids })) === 1, "ritmo de 20 dias, 19 sem vir: lembra (e pula quem j� marcou)");
+    ok((await processarRetornos(agora, { clienteIds: ids })) === 1, "ritmo de 20 dias, 19 sem vir: lembra (e pula quem já marcou)");
     const msgRet = await db.mensagem.findFirst({ where: { conversa: { telefone: TELS[2] }, texto: { contains: "hora do trato" } } });
     ok(!!msgRet?.texto.match(/19 dias/), `mensagem de retorno: "${msgRet?.texto.slice(0, 110)}..."`);
-    ok((await processarRetornos(agora + 10 * MIN, { clienteIds: ids })) === 0, "n�o repete o lembrete");
+    ok((await processarRetornos(agora + 10 * MIN, { clienteIds: ids })) === 0, "não repete o lembrete");
 
     // ================= INDICACAO
     const s: Sessao = { usuarioId: (await db.usuario.findFirstOrThrow({ where: { papel: "DONO" } })).id, papel: "DONO", nome: "Dono", barbeiroId: null, clienteId: null };
     const codigo = await codigoDoCliente(ind.id);
-    ok(codigo === (await codigoDoCliente(ind.id)) && /^CRESC[A-Z2-9]{3}$/.test(codigo), `c�digo est�vel e leg�vel (${codigo})`);
+    ok(codigo === (await codigoDoCliente(ind.id)) && /^CRESC[A-Z2-9]{3}$/.test(codigo), `código estável e legível (${codigo})`);
     const eProprio = await falha(() => registrarIndicacao(ind.id, codigo, "SITE"));
-    ok(eProprio instanceof ErroNegocio, "n�o indica a si mesmo");
+    ok(eProprio instanceof ErroNegocio, "não indica a si mesmo");
     const eAntigo = await falha(() => registrarIndicacao(r1.id, codigo, "SITE"));
-    ok(eAntigo instanceof ErroNegocio, "quem j� cortou aqui n�o conta como indicado");
+    ok(eAntigo instanceof ErroNegocio, "quem já cortou aqui não conta como indicado");
     await registrarIndicacao(novo.id, codigo.toLowerCase(), "BOT");
     const novoDb = await db.cliente.findUniqueOrThrow({ where: { id: novo.id }, include: { beneficios: true } });
-    ok(novoDb.origem === "INDICACAO" && novoDb.beneficios[0]?.valorCentavos === 1000, "amigo marcado como indica��o e ganha R$ 10 de boas-vindas");
+    ok(novoDb.origem === "INDICACAO" && novoDb.beneficios[0]?.valorCentavos === 1000, "amigo marcado como indicação e ganha R$ 10 de boas-vindas");
     const eDupla = await falha(() => registrarIndicacao(novo.id, codigo, "SITE"));
-    ok(eDupla instanceof ErroNegocio, "ningu�m � indicado duas vezes");
+    ok(eDupla instanceof ErroNegocio, "ninguém é indicado duas vezes");
 
-    ok((await processarIndicacoes({ clienteIds: ids })) === 0, "antes do amigo cortar: sem pr�mio");
+    ok((await processarIndicacoes({ clienteIds: ids })) === 0, "antes do amigo cortar: sem prêmio");
     await visita(novo.id, Date.now() - 2 * D, 80);
-    ok((await processarIndicacoes({ clienteIds: ids })) === 1, "amigo cortou: quem indicou ganha e � avisado");
-    ok((await processarIndicacoes({ clienteIds: ids })) === 0, "pr�mio sai uma vez s�");
+    ok((await processarIndicacoes({ clienteIds: ids })) === 1, "amigo cortou: quem indicou ganha e é avisado");
+    ok((await processarIndicacoes({ clienteIds: ids })) === 0, "prêmio sai uma vez só");
     const premio = await db.beneficio.findFirstOrThrow({ where: { clienteId: ind.id } });
-    ok(premio.valorCentavos === 2000 && premio.status === "DISPONIVEL", "R$ 20 guardado para a pr�xima visita");
+    ok(premio.valorCentavos === 2000 && premio.status === "DISPONIVEL", "R$ 20 guardado para a próxima visita");
 
     // Saldo na comanda: usa, nao repete, devolve no cancelamento, divide o credito e gera cashback
     const produtos = await db.produto.findMany({ where: { ativo: true, categoria: { in: ["BAR", "LOJA"] }, precoCentavos: { gt: 0 } }, orderBy: { precoCentavos: "asc" } });
@@ -152,7 +152,7 @@ async function main() {
       const depois = await detalheComanda(id);
       ok(depois.resumo.desconto === Math.min(2000, antes.resumo.subtotal) && depois.saldoCliente === Math.max(0, 2000 - antes.resumo.subtotal), `saldo virou desconto (${depois.resumo.desconto})`);
       const eDenovo = await falha(() => usarSaldo(s, id));
-      ok(eDenovo instanceof ErroNegocio, "sem saldo, n�o usa de novo");
+      ok(eDenovo instanceof ErroNegocio, "sem saldo, não usa de novo");
       await cancelarComanda(s, id, "teste");
       ok((await saldoDoCliente(ind.id)) === 2000, "comanda cancelada devolve o saldo");
 
@@ -161,7 +161,7 @@ async function main() {
         const c2 = await abrirComanda(s, { clienteId: ind.id });
         await adicionarProduto(s, c2.id, barato.id, 1);
         await usarSaldo(s, c2.id);
-        ok((await saldoDoCliente(ind.id)) === 2000 - barato.precoCentavos, `usa s� o necess�rio e sobra ${2000 - barato.precoCentavos} centavos`);
+        ok((await saldoDoCliente(ind.id)) === 2000 - barato.precoCentavos, `usa só o necessário e sobra ${2000 - barato.precoCentavos} centavos`);
         await cancelarComanda(s, c2.id, "teste");
       }
 
@@ -179,7 +179,7 @@ async function main() {
       await cancelarComanda(s, c3.id, "teste");
       ok((await db.beneficio.findUniqueOrThrow({ where: { id: cb!.id } })).status === "CANCELADO", "comanda cancelada cancela o cashback");
       const indicados = await indicadosDoCliente(ind.id);
-      ok(indicados.length === 1 && indicados[0].veio && indicados[0].ganhouCentavos === 2000, "tela de indica��es mostra o amigo e o pr�mio");
+      ok(indicados.length === 1 && indicados[0].veio && indicados[0].ganhouCentavos === 2000, "tela de indicações mostra o amigo e o prêmio");
     } else {
       console.log("(pulado) sem produto cadastrado para testar a comanda");
     }

@@ -53,6 +53,15 @@ describe("financeiro no painel", () => {
     expect(dados.mes).toBeNull();
   });
 
+  it("quem ve faturamento mas nao o lucro nao recebe despesas nem lucro", async () => {
+    mocks.pode.mockImplementation(async (_s: unknown, p: string) => p === "resultado");
+    mocks.sessao.mockResolvedValue({ papel: "GERENTE", usuarioId: "gerente" });
+    const dados = await (await GET()).json();
+    expect(dados.financeiro).toBeNull();
+    expect(mocks.resultado).not.toHaveBeenCalled();
+    expect(dados.mes).not.toBeNull();
+  });
+
   it("preserva a operação e não expõe o erro interno quando o financeiro falha", async () => {
     mocks.resultado.mockRejectedValue(new Error("detalhe interno do banco"));
     const resposta = await GET();

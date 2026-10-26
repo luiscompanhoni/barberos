@@ -11,7 +11,7 @@ const zTipo = z.enum(["RECEBIMENTO", "TAXA", "ANTECIPACAO", "ESTORNO", "TRANSFER
 
 /** Movimentos do extrato externo no mes (?mes=AAAA-MM&tipo=PAGAMENTO). */
 export const GET = rota(async (req: Request) => {
-  await exigirSessaoCom("resultado");
+  await exigirSessaoCom("lucro");
   const q = new URL(req.url).searchParams;
   return NextResponse.json(await movimentosDoMes(zMes.parse(q.get("mes")), q.get("tipo") ? zTipo.parse(q.get("tipo")) : undefined));
 });

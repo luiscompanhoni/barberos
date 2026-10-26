@@ -37,6 +37,19 @@ export function dataLocal(instante: Date | number, fuso = FUSO_PADRAO): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
+/**
+ * Atendimento ja realizado lancado depois: precisa ter terminado. Recepcao e barbeiro so lancam o de hoje (gera
+ * comissao, fichas e indicadores); dias anteriores ficam com dono e gerente. Devolve o motivo da recusa, ou null.
+ */
+export function recusaRetroativo(papel: string, inicio: number, fim: number, agora: number, fuso = FUSO_PADRAO): string | null {
+  if (papel === "CLIENTE") return "Só a equipe pode registrar um atendimento já realizado.";
+  if (fim > agora) return "O atendimento ainda não terminou: registre só depois do término.";
+  if (papel !== "DONO" && papel !== "GERENTE" && dataLocal(inicio, fuso) !== dataLocal(agora, fuso)) {
+    return "Atendimento de outro dia só pode ser lançado pelo dono ou gerente.";
+  }
+  return null;
+}
+
 /** Minutos desde 00:00 do instante no fuso da barbearia. */
 export function minutosLocal(instante: Date | number, fuso = FUSO_PADRAO): number {
   const d = new TZDate(+instante, fuso);

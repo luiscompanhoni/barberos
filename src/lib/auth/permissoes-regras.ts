@@ -54,6 +54,12 @@ export const PERMISSOES = [
     detalhe: "Resumo do mês do financeiro, indicadores, horários de pico e resultado dos jogos.",
     papeis: ["GERENTE", "RECEPCAO"], padrao: ["GERENTE"],
   },
+  {
+    // Separado de "resultado": a equipe so ve despesas e lucro quando o dono liberar.
+    chave: "lucro", rotulo: "Ver despesas e lucro",
+    detalhe: "Resumo do mês e Resultado (Celcash e Stone) no financeiro, e o resultado no painel: despesas, taxas, retiradas e lucro.",
+    papeis: ["GERENTE", "RECEPCAO"], padrao: [],
+  },
 ] as const satisfies readonly { chave: string; rotulo: string; detalhe: string; papeis: readonly PapelConfiguravel[]; padrao: readonly PapelConfiguravel[] }[];
 
 export type Permissao = (typeof PERMISSOES)[number]["chave"];

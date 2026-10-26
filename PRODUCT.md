@@ -52,7 +52,8 @@ vai para a auditoria com o antes → depois. Acessos, Permissões, WhatsApp e Au
 | Alterar comissões | não | não | — |
 | Folha e salários | não | não | — |
 | Excluir e desfazer lançamentos (comanda fechada, conta a pagar, despesa paga) | não | não | — |
-| Ver faturamento e resultado (resumo do mês, indicadores, pico, resultado dos jogos) | sim | não | — |
+| Ver faturamento (indicadores, pico, resultado dos jogos) | sim | não | — |
+| Ver despesas e lucro (resumo do mês, resultado Celcash e Stone, visão financeira do painel) | não | não | — |
 
 ## Fluxos e telas
 

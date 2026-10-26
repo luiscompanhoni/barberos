@@ -7,7 +7,7 @@ import { corpo } from "@/lib/validacao";
 
 /** Corrige o tipo/categoria de um movimento do extrato (ex.: Pix para o barbeiro = FOLHA). */
 export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/financeiro/externos/[id]">) => {
-  const s = await exigirSessaoCom("resultado");
+  const s = await exigirSessaoCom("lucro");
   const { id } = await ctx.params;
   const b = await corpo(req, z.object({
     tipo: z.enum(["RECEBIMENTO", "TAXA", "ANTECIPACAO", "ESTORNO", "TRANSFERENCIA", "PAGAMENTO", "TARIFA", "OUTRO"]),

@@ -5,7 +5,8 @@ import { exigirSessao, GESTAO } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, proibido, rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
-import { painelCampanhas, vendasDaCampanha } from "@/lib/campanha-equipe";
+import { configuracao } from "@/lib/agenda/carregar";
+import { lancarBonusNaFolha, painelCampanhas, vendasDaCampanha } from "@/lib/campanha-equipe";
 import { auditar } from "@/lib/auditoria";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export const POST = rota(async (req: Request) => {
   }
   if (!s.barbeiroId) throw proibido();
   const barbeiroId = s.barbeiroId;
+  const { fuso } = await configuracao();
   return NextResponse.json(await db.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM campanhas_equipe WHERE id = ${b.campanhaId} FOR UPDATE`;
     const c = await tx.campanhaEquipe.findUniqueOrThrow({ where: { id: b.campanhaId } });
@@ -40,7 +42,8 @@ export const POST = rota(async (req: Request) => {
     if (usados >= vendas.ciclos) throw new ErroNegocio("Complete mais uma meta de vendas para liberar sua próxima rodada.");
     const premios = z.array(valor).min(1).parse(c.premios);
     const bonus = await tx.bonusEquipe.create({ data: { campanhaId: c.id, barbeiroId, ciclo: usados + 1, valorCentavos: premios[randomInt(premios.length)] } });
-    await auditar(tx, s.usuarioId, "sortear_bonus", "campanha_equipe", c.id, { barbeiroId, ciclo: bonus.ciclo, bonusId: bonus.id, valorCentavos: bonus.valorCentavos });
+    const folha = await lancarBonusNaFolha(tx, { barbeiroId, valorCentavos: bonus.valorCentavos, descricao: `Bônus da campanha ${c.nome} (rodada ${bonus.ciclo})`, porId: s.usuarioId, fuso });
+    await auditar(tx, s.usuarioId, "sortear_bonus", "campanha_equipe", c.id, { barbeiroId, ciclo: bonus.ciclo, bonusId: bonus.id, valorCentavos: bonus.valorCentavos, folhaLancamentoId: folha.id, competencia: folha.competencia });
     return bonus;
   }));
 });

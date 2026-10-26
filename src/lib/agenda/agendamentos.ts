@@ -10,7 +10,7 @@ import { precificar } from "@/lib/assinaturas/agenda";
 import { normalizarTelefone } from "@/lib/telefone";
 import { carregarDia, configuracao, servicoDoBarbeiro } from "./carregar";
 import { contido, sobrepoe, type Intervalo } from "./disponibilidade";
-import { dataLocal, minParaHhmm, minutosLocal } from "./tempo";
+import { dataLocal, minParaHhmm, minutosLocal, recusaRetroativo } from "./tempo";
 
 const MIN = 60_000;
 
@@ -94,8 +94,9 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
 
   const duracao = equipe && input.duracaoMin ? input.duracaoMin : sb.duracaoMin;
   const int = { inicio: input.inicio.getTime(), fim: input.inicio.getTime() + duracao * MIN };
-  if (input.realizado && (!equipe || int.fim > Date.now())) {
-    throw new ErroNegocio("Só a equipe pode registrar um atendimento já realizado, com término no passado.");
+  if (input.realizado) {
+    const recusa = recusaRetroativo(ator?.papel ?? "CLIENTE", int.inicio, int.fim, Date.now(), cfg.fuso);
+    if (recusa) throw new ErroNegocio(recusa);
   }
 
   // Cliente marcando sozinho (bot/site) respeita antecedencia e janela.

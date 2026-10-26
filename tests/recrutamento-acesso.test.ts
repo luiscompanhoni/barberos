@@ -33,5 +33,14 @@ describe("API pública", () => {
     const r = await POST(req(JSON.stringify({ envioId: "37f1774b-6347-481c-b685-b0b0cf4f61ab", nome: "Teste profissional", telefone: "11999998888", cidade: "Rio do Sul", experienciaMeses: 12, servicos: ["Barba"], disponibilidade: "Segunda a sexta", cienciaPrivacidade: true })), ctx);
     expect(r.status).toBe(201); expect(await r.json()).toEqual({ recebido: true }); expect(r.headers.get("Cache-Control")).toBe("no-store");
   });
-  it("limita tentativas repetidas", async () => { for (let i = 0; i < 10; i++) await POST(req("{}"), ctx); expect((await POST(req("{}"), ctx)).status).toBe(429); });
+  it("limita tentativas repetidas", async () => { for (let i = 0; i < 5; i++) await POST(req("{}"), ctx); expect((await POST(req("{}"), ctx)).status).toBe(429); });
+  it("campo-isca preenchido: responde como aceito e não grava", async () => {
+    const r = await POST(req(JSON.stringify({ envioId: "37f1774b-6347-481c-b685-b0b0cf4f61ab", nome: "Robo", telefone: "11999998888", cidade: "Rio do Sul", experienciaMeses: 1, servicos: ["Barba"], disponibilidade: "Sempre", cienciaPrivacidade: true, site: "http://spam" })), ctx);
+    expect(r.status).toBe(201); expect(m.receber).not.toHaveBeenCalled();
+  });
+  it("teto por vaga vale mesmo trocando de IP", async () => {
+    const deIp = (i: number) => new Request("http://localhost/api/recrutamento/publico/vaga", { method: "POST", body: "{}", headers: { "x-forwarded-for": "10.0.0." + i } });
+    for (let i = 0; i < 100; i++) await POST(deIp(i), ctx);
+    expect((await POST(deIp(200), ctx)).status).toBe(429);
+  });
 });

@@ -1,6 +1,21 @@
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
-import { ciclosDaCampanha } from "./equipe-regras";
+import { dataLocal } from "@/lib/agenda/tempo";
+import { ErroNegocio } from "@/lib/erros";
+import { ciclosDaCampanha, competenciaDoBonus } from "./equipe-regras";
+
+/**
+ * O bonus sorteado entra na folha do vendedor como BONUS: sai no pagamento da folha (despesa FOLHA) e assim
+ * desconta do lucro. Folha do mes ja fechada: vai para o mes seguinte.
+ */
+export async function lancarBonusNaFolha(tx: Prisma.TransactionClient, d: { barbeiroId: string; valorCentavos: number; descricao: string; porId: string; fuso: string }) {
+  const pessoa = await tx.checklistPessoa.findUnique({ where: { barbeiroId: d.barbeiroId }, select: { id: true } });
+  if (!pessoa) throw new ErroNegocio("Seu cadastro ainda não está ligado à folha de pagamento (RH). Peça à gestão para ligar antes de girar.", 409, "sem_folha");
+  const atual = dataLocal(Date.now(), d.fuso).slice(0, 7);
+  const fechada = await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: atual, pessoaId: pessoa.id } }, select: { id: true } });
+  const competencia = competenciaDoBonus(atual, !!fechada);
+  return tx.folhaLancamento.create({ data: { pessoaId: pessoa.id, competencia, tipo: "BONUS", valorCentavos: d.valorCentavos, descricao: d.descricao, porId: d.porId } });
+}
 
 /** Apenas produtos atribuídos ao vendedor em comandas fechadas e efetivamente pagas. */
 export async function vendasDaCampanha(tx: Prisma.TransactionClient, c: { inicio: Date; fim: Date; metaQuantidade: number; metaCentavos: number }, barbeiroId: string) {

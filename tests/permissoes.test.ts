@@ -11,8 +11,9 @@ describe("permissoes: padrao por papel", () => {
     const r = permissoesDoPapel("RECEPCAO", []);
     expect(r).toMatchObject({ desconto: true, caixa: true, saldo: true, estorno: false, resultado: false, folha: false, excluir: false, assinatura: false });
   });
-  it("gerente ve o resultado por padrao; estorno, folha e exclusao so se o dono ligar", () => {
-    expect(permissoesDoPapel("GERENTE", [])).toMatchObject({ resultado: true, desconto: true, caixa: true, estorno: false, folha: false, comissao: false, excluir: false });
+  it("gerente ve o faturamento por padrao; lucro, estorno, folha e exclusao so se o dono ligar", () => {
+    expect(permissoesDoPapel("GERENTE", [])).toMatchObject({ resultado: true, lucro: false, desconto: true, caixa: true, estorno: false, folha: false, comissao: false, excluir: false });
+    expect(permissoesDoPapel("GERENTE", [{ papel: "GERENTE", permissao: "lucro", permitido: true }]).lucro).toBe(true);
     expect(permissoesDoPapel("GERENTE", [{ papel: "GERENTE", permissao: "estorno", permitido: true }]).estorno).toBe(true);
   });
   it("barbeiro: so desconto e saldo sao configuraveis (linha salva para outra acao nao vale)", () => {

@@ -9,12 +9,12 @@ export const dynamic = "force-dynamic";
 
 /** Regras de classificacao por nome (destino/origem) da conciliacao. */
 export const GET = rota(async () => {
-  await exigirSessaoCom("resultado");
+  await exigirSessaoCom("lucro");
   return NextResponse.json(await listarRegras());
 });
 
 export const POST = rota(async (req: Request) => {
-  const s = await exigirSessaoCom("resultado");
+  const s = await exigirSessaoCom("lucro");
   const b = await corpo(req, z.object({
     padrao: z.string().trim().min(3).max(80),
     tipo: z.enum(["RECEBIMENTO", "TAXA", "ANTECIPACAO", "ESTORNO", "TRANSFERENCIA", "PAGAMENTO", "TARIFA", "OUTRO"]),
