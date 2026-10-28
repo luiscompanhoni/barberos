@@ -13,6 +13,7 @@ import { publicar } from "@/lib/eventos";
 import { precificar } from "@/lib/assinaturas/agenda";
 import { configuracao, servicoDoBarbeiro } from "./carregar";
 import { conflitoHorario, criarAgendamento, travarBarbeiro, validarEncaixe } from "./agendamentos";
+import { validarCadeira } from "./cadeiras";
 import { dataLocal } from "./tempo";
 
 const MIN = 60_000;
@@ -165,13 +166,16 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
         intervaloEntreClientes: cfg.intervaloEntreClientes,
         ignorarAgendamentoId: ag.id,
       });
+      const barbeiro = await tx.barbeiro.findUniqueOrThrow({ where: { id: destino } });
+      const cadeiraId = destino === ag.barbeiroId ? ag.cadeiraId : barbeiro.cadeiraId;
+      await validarCadeira(tx, cadeiraId, { inicio, fim }, ag.id, cfg.intervaloEntreClientes);
       const preco = await precificar({
         clienteId, servicoId: ag.servicoId, barbeiroId: destino, inicio, precoBase: sb.precoCentavos,
         fuso: cfg.fuso, forcarAvulso, ignorarAgendamentoId: ag.id, c: tx,
       });
       const n = await tx.agendamento.update({
         where: { id: ag.id },
-        data: { inicio: new Date(inicio), fim: new Date(fim), barbeiroId: destino, precoCentavos: preco.precoCentavos, assinaturaId: preco.assinaturaId },
+        data: { cadeiraId, inicio: new Date(inicio), fim: new Date(fim), barbeiroId: destino, precoCentavos: preco.precoCentavos, assinaturaId: preco.assinaturaId },
       });
       await auditar(tx, null, "remarcar_pelo_cliente", "agendamento", ag.id, {
         de: ag.inicio.toISOString(),

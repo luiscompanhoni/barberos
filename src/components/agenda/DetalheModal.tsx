@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Receipt } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { BotaoEstorno } from "@/components/estornos/BotaoEstorno";
+import { AjustarHorario } from "./AjustarHorario";
 import { CadastroCliente } from "./CadastroCliente";
 import { api, reais } from "@/lib/cliente-api";
 import { minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
@@ -87,6 +88,7 @@ export function DetalheModal(p: {
         {!!ag.premios?.length && <><dt className="text-zinc-500">Prêmio</dt><dd className="font-semibold text-ouro">{ag.premios.map((p) => `${p.rotulo} (${p.codigo})`).join(", ")} <span className="text-xs font-normal text-zinc-500">valide na comanda</span></dd></>}
         <dt className="text-zinc-500">Barbeiro</dt>
         <dd>{p.barbeiroNome}{ag.semPreferencia && <span className="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-800">sem preferência: pode trocar</span>}</dd>
+        {ag.cadeira && <><dt className="text-zinc-500">Cadeira</dt><dd>{ag.cadeira.nome}</dd></>}
         <dt className="text-zinc-500">Situação</dt><dd>{ROTULO_STATUS[ag.status]}</dd>
         <dt className="text-zinc-500">Celular</dt>
         <dd><a className="underline" href={whats} target="_blank" rel="noreferrer">{formatarTelefone(ag.cliente.telefone)}</a></dd>
@@ -120,6 +122,7 @@ export function DetalheModal(p: {
         </div>
       )}
 
+      {p.podeEditar && <AjustarHorario ag={ag} fuso={p.fuso} onAlterado={p.onAlterado} />}
       {ag.pagoAntes && (p.papel === "DONO" || p.papel === "GERENTE" || p.papel === "RECEPCAO") && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 p-3 text-sm">
           <span className="flex-1">Pago online antes: {reais(ag.precoCentavos)}</span>

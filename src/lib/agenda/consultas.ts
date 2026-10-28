@@ -1,6 +1,9 @@
 import { db } from "@/lib/db";
 import { carregarDia, configuracao, limitesDoDia, servicoDoBarbeiro } from "./carregar";
 import { horariosLivres } from "./disponibilidade";
+import { ocupacaoCadeira } from "./cadeiras";
+import { erroDuracao } from "./encaixes-regras";
+import { ErroNegocio } from "@/lib/erros";
 import { somarDias } from "./tempo";
 
 /** Tudo que a tela de agenda precisa para desenhar um dia (ou varios, na semana). */
@@ -26,7 +29,8 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
       },
       include: {
         cliente: { select: { id: true, nome: true, telefone: true, observacoes: true } },
-        servico: { select: { id: true, nome: true } },
+        servico: { select: { id: true, nome: true, minimoDuracaoMin: true } },
+        cadeira: { select: { id: true, nome: true } },
         antecipado: { select: { status: true } },
         premiosGanhos: { where: { status: "RESERVADO" }, select: { rotulo: true, codigo: true } },
         adicionais: { where: { status: { not: "CANCELADO" } }, select: { servico: { select: { nome: true } } } },
@@ -44,10 +48,13 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
   return {
     fuso: cfg.fuso,
     granularidadeMin: cfg.granularidadeMin,
+    intervaloEntreClientesMin: cfg.intervaloEntreClientes,
     barbeiros,
     agendamentos: agendamentos.map((a) => ({
       id: a.id,
       barbeiroId: a.barbeiroId,
+      cadeiraId: a.cadeiraId,
+      cadeira: a.cadeira,
       inicio: a.inicio.toISOString(),
       fim: a.fim.toISOString(),
       status: a.status,
@@ -87,12 +94,14 @@ export async function horariosDisponiveis(p: {
   servicoId: string;
   barbeiroId?: string;
   paraCliente: boolean;
+  duracaoMin?: number;
+  cadeiraId?: string | null;
 }) {
   const cfg = await configuracao();
   const barbeiros = await db.barbeiro.findMany({
     where: { ativo: true, ...(p.barbeiroId ? { id: p.barbeiroId } : {}), servicos: { some: { servicoId: p.servicoId } } },
     orderBy: [{ ordem: "asc" }, { nome: "asc" }],
-    select: { id: true, nome: true },
+    select: { id: true, nome: true, cadeiraId: true },
   });
   const mapa = await carregarDia(p.data, barbeiros.map((b) => b.id), { fuso: cfg.fuso });
   const agora = Date.now();
@@ -105,11 +114,16 @@ export async function horariosDisponiveis(p: {
     const sb = await servicoDoBarbeiro(b.id, p.servicoId);
     if (!sb) continue;
     const dia = mapa.get(b.id)!;
+    const duracao = p.paraCliente ? sb.duracaoMin : p.duracaoMin ?? sb.duracaoMin;
+    const erro = erroDuracao(duracao, sb.minimoDuracaoMin);
+    if (erro) throw new ErroNegocio(erro);
+    const cadeiraId = p.paraCliente || p.cadeiraId === undefined ? b.cadeiraId : p.cadeiraId;
+    const cadeira = cadeiraId ? await ocupacaoCadeira(cadeiraId, limitesDoDia(p.data, cfg.fuso)) : [];
     const inicios = horariosLivres({
       janelas: dia.janelas,
       bloqueios: dia.bloqueios,
-      agendamentos: dia.agendamentos,
-      duracaoMin: sb.duracaoMin,
+      agendamentos: [...dia.agendamentos, ...cadeira.map(a => ({ inicio: +a.inicio, fim: +a.fim }))],
+      duracaoMin: duracao,
       granularidadeMin: cfg.granularidadeMin,
       intervaloEntreClientesMin: cfg.intervaloEntreClientes,
       naoAntesDe,
@@ -117,7 +131,8 @@ export async function horariosDisponiveis(p: {
     out.push({
       barbeiroId: b.id,
       nome: b.nome,
-      duracaoMin: sb.duracaoMin,
+      duracaoMin: duracao,
+      minimoDuracaoMin: sb.minimoDuracaoMin,
       precoCentavos: sb.precoCentavos,
       horarios: inicios.map((ms) => new Date(ms).toISOString()),
     });

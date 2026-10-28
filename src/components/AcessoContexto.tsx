@@ -12,7 +12,7 @@ export function AcessoProvider({ valor, children }: { valor: Acesso; children: R
   return <Contexto value={valor}>{children}</Contexto>;
 }
 
-const NENHUMA = { estorno: false, desconto: false, saldo: false, assinatura: false, caixa: false, comissao: false, folha: false, excluir: false, resultado: false, lucro: false } satisfies Permissoes;
+const NENHUMA = { estorno: false, desconto: false, saldo: false, assinatura: false, caixa: false, comissao: false, folha: false, excluir: false, resultado: false, lucro: false, reunioes: false, comissoes_equipe: false, avaliar_equipe: false, duracao: false, bloquear_agenda: false } satisfies Permissoes;
 
 export function useAcesso(): Acesso {
   return useContext(Contexto) ?? { papel: "", permissoes: NENHUMA };

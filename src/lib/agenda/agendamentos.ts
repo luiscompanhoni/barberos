@@ -4,11 +4,14 @@ import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
+import { exigirPermissao } from "@/lib/auth/permissoes";
+import { validarCadeira } from "./cadeiras";
+import { erroDuracao } from "./encaixes-regras";
 import { exigirGestaoBarbeiro, type Sessao } from "@/lib/auth/sessao";
 import { avisarMudanca } from "@/lib/whatsapp/avisos";
 import { precificar } from "@/lib/assinaturas/agenda";
 import { normalizarTelefone } from "@/lib/telefone";
-import { carregarDia, configuracao, servicoDoBarbeiro } from "./carregar";
+import { carregarDia, configuracao, servicoDoBarbeiro, STATUS_ATIVOS } from "./carregar";
 import { contido, sobrepoe, type Intervalo } from "./disponibilidade";
 import { dataLocal, minParaHhmm, minutosLocal, recusaOutroDia, recusaRetroativo } from "./tempo";
 
@@ -42,6 +45,7 @@ export async function validarEncaixe(
   opts: { fuso: string; intervaloEntreClientes: number; ignorarAgendamentoId?: string },
 ) {
   await travarBarbeiro(tx, barbeiroId);
+  if (!(await tx.barbeiro.findFirst({ where: { id: barbeiroId, ativo: true }, select: { id: true } }))) throw new ErroNegocio("O barbeiro está inativo.", 409);
   const data = dataLocal(int.inicio, opts.fuso);
   if (dataLocal(int.fim - 1, opts.fuso) !== data) {
     throw new ErroNegocio("O atendimento precisa começar e terminar no mesmo dia.");
@@ -72,6 +76,7 @@ export type NovoAgendamento = {
   inicio: Date;
   /** Duracao diferente da padrao (so equipe). */
   duracaoMin?: number;
+  cadeiraId?: string | null;
   cliente: { id: string } | { telefone: string; nome: string };
   origem: OrigemAgendamento;
   observacao?: string;
@@ -92,7 +97,11 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
   const sb = await servicoDoBarbeiro(input.barbeiroId, input.servicoId);
   if (!sb) throw new ErroNegocio(`${barbeiro.nome} não faz esse serviço.`);
 
-  const duracao = equipe && input.duracaoMin ? input.duracaoMin : sb.duracaoMin;
+  const duracao = equipe && input.duracaoMin !== undefined ? input.duracaoMin : sb.duracaoMin;
+  if (equipe && duracao !== sb.duracaoMin) await exigirPermissao(ator, "duracao");
+  const erro = erroDuracao(duracao, sb.minimoDuracaoMin);
+  if (erro) throw new ErroNegocio(erro);
+  const cadeiraId = equipe && input.cadeiraId !== undefined ? input.cadeiraId : barbeiro.cadeiraId;
   const int = { inicio: input.inicio.getTime(), fim: input.inicio.getTime() + duracao * MIN };
   if (input.realizado) {
     const recusa = recusaRetroativo(ator?.papel ?? "CLIENTE", int.inicio, int.fim, Date.now(), cfg.fuso);
@@ -113,6 +122,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
   try {
     const ag = await db.$transaction(async (tx) => {
       await validarEncaixe(tx, input.barbeiroId, int, { fuso: cfg.fuso, intervaloEntreClientes: cfg.intervaloEntreClientes });
+      await validarCadeira(tx, cadeiraId, int, undefined, cfg.intervaloEntreClientes);
       const clienteId = await resolverCliente(tx, input.cliente);
       const preco = await precificar({
         clienteId, servicoId: input.servicoId, barbeiroId: input.barbeiroId, inicio: int.inicio,
@@ -121,6 +131,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
       const criado = await tx.agendamento.create({
         data: {
           barbeiroId: input.barbeiroId,
+          cadeiraId,
           clienteId,
           servicoId: input.servicoId,
           inicio: new Date(int.inicio),
@@ -145,7 +156,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
     publicar({ tipo: "agenda", barbeiroIds: [ag.barbeiroId], datas: [dataLocal(ag.inicio, cfg.fuso)] });
     return ag;
   } catch (e) {
-    if (ehConflitoNoBanco(e)) throw conflitoHorario();
+    if (ehConflitoNoBanco(e) || (e instanceof Error && e.message.includes("agendamentos_cadeira_sem_sobreposicao"))) throw conflitoHorario();
     throw e;
   }
 }
@@ -172,6 +183,8 @@ export type AlteracaoAgendamento = {
   fim?: Date;
   barbeiroId?: string;
   servicoId?: string;
+  cadeiraId?: string | null;
+  motivo?: string;
 };
 
 /** Mover (arrastar), mudar duracao (esticar), trocar barbeiro ou servico. So equipe. */
@@ -180,7 +193,7 @@ export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, 
   const atual = await db.agendamento.findUnique({ where: { id } });
   if (!atual) throw naoEncontrado("Agendamento");
   exigirGestaoBarbeiro(ator, atual.barbeiroId);
-  if (atual.status === "CANCELADO") throw new ErroNegocio("Agendamento cancelado não pode ser alterado.");
+  if (["CANCELADO", "CONCLUIDO"].includes(atual.status)) throw new ErroNegocio("Atendimento concluído ou cancelado não pode ter horário alterado.");
 
   const barbeiroId = mud.barbeiroId ?? atual.barbeiroId;
   if (barbeiroId !== atual.barbeiroId) exigirGestaoBarbeiro(ator, barbeiroId);
@@ -194,18 +207,28 @@ export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, 
   if (mud.servicoId && mud.servicoId !== atual.servicoId) duracao = sb.duracaoMin * MIN;
   const fim = mud.fim ? mud.fim.getTime() : inicio + duracao;
   if (fim <= inicio) throw new ErroNegocio("O fim precisa ser depois do início.");
-  if (fim - inicio > 8 * 60 * MIN) throw new ErroNegocio("Atendimento longo demais.");
+  const erro = erroDuracao((fim - inicio) / MIN, sb.minimoDuracaoMin);
+  if (erro) throw new ErroNegocio(erro);
+  if (fim - inicio !== +atual.fim - +atual.inicio) await exigirPermissao(ator, "duracao");
+  const destino = await db.barbeiro.findUniqueOrThrow({ where: { id: barbeiroId } });
+  if (!destino.ativo) throw new ErroNegocio("O barbeiro está inativo.");
+  const cadeiraId = mud.cadeiraId !== undefined ? mud.cadeiraId : barbeiroId === atual.barbeiroId ? atual.cadeiraId : destino.cadeiraId;
 
   try {
     const ag = await db.$transaction(async (tx) => {
+      for (const b of [...new Set([atual.barbeiroId, barbeiroId])].sort()) await travarBarbeiro(tx, b);
+      const vigente = await tx.agendamento.findUniqueOrThrow({ where: { id } });
+      if (+vigente.inicio !== +atual.inicio || +vigente.fim !== +atual.fim || vigente.status !== atual.status || vigente.barbeiroId !== atual.barbeiroId || vigente.cadeiraId !== atual.cadeiraId) throw conflitoHorario();
       await validarEncaixe(tx, barbeiroId, { inicio, fim }, {
         fuso: cfg.fuso,
         intervaloEntreClientes: cfg.intervaloEntreClientes,
         ignorarAgendamentoId: id,
       });
+      await validarCadeira(tx, cadeiraId, { inicio, fim }, id, cfg.intervaloEntreClientes);
       const novo = await tx.agendamento.update({
         where: { id },
         data: {
+          cadeiraId,
           inicio: new Date(inicio),
           fim: new Date(fim),
           barbeiroId,
@@ -223,7 +246,8 @@ export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, 
       });
       await auditar(tx, ator.usuarioId, "alterar", "agendamento", id, {
         de: { inicio: atual.inicio.toISOString(), fim: atual.fim.toISOString(), barbeiroId: atual.barbeiroId },
-        para: { inicio: novo.inicio.toISOString(), fim: novo.fim.toISOString(), barbeiroId },
+        para: { inicio: novo.inicio.toISOString(), fim: novo.fim.toISOString(), barbeiroId, cadeiraId },
+        motivo: mud.motivo ?? null,
       });
       return novo;
     });
@@ -236,7 +260,7 @@ export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, 
     else if (ag.barbeiroId !== atual.barbeiroId) void avisarMudanca(ag.id, "transferido");
     return ag;
   } catch (e) {
-    if (ehConflitoNoBanco(e)) throw conflitoHorario();
+    if (ehConflitoNoBanco(e) || (e instanceof Error && e.message.includes("agendamentos_cadeira_sem_sobreposicao"))) throw conflitoHorario();
     throw e;
   }
 }
@@ -256,6 +280,13 @@ export async function alterarStatus(id: string, status: StatusAgendamento, ator:
 
   try {
     const ag = await db.$transaction(async (tx) => {
+      await travarBarbeiro(tx, atual.barbeiroId);
+      const vigente = await tx.agendamento.findUniqueOrThrow({ where: { id } });
+      if (vigente.status !== atual.status || +vigente.inicio !== +atual.inicio || +vigente.fim !== +atual.fim || vigente.barbeiroId !== atual.barbeiroId) throw conflitoHorario();
+      if ((STATUS_ATIVOS as readonly string[]).includes(status) && !(STATUS_ATIVOS as readonly string[]).includes(atual.status)) {
+        await validarEncaixe(tx, atual.barbeiroId, { inicio: +atual.inicio, fim: +atual.fim }, { fuso: cfg.fuso, intervaloEntreClientes: cfg.intervaloEntreClientes, ignorarAgendamentoId: id });
+        await validarCadeira(tx, atual.cadeiraId, { inicio: +atual.inicio, fim: +atual.fim }, id, cfg.intervaloEntreClientes);
+      }
       const novo = await tx.agendamento.update({ where: { id }, data: { status } });
       // Servico adicional da comanda acompanha o atendimento principal (concluiu, faltou, cancelou...).
       await tx.agendamento.updateMany({ where: { adicionalDeId: id }, data: { status } });
@@ -270,7 +301,7 @@ export async function alterarStatus(id: string, status: StatusAgendamento, ator:
     return ag;
   } catch (e) {
     // Reativar um cancelado cujo horario ja foi ocupado.
-    if (ehConflitoNoBanco(e)) throw conflitoHorario();
+    if (ehConflitoNoBanco(e) || (e instanceof Error && e.message.includes("agendamentos_cadeira_sem_sobreposicao"))) throw conflitoHorario();
     throw e;
   }
 }

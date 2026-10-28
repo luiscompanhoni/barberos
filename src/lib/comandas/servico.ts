@@ -1,6 +1,6 @@
 import type { FormaRecebimento, Prisma } from "@prisma/client";
 import { auditar } from "@/lib/auditoria";
-import { exigirPermissao, permissoesDe } from "@/lib/auth/permissoes";
+import { exigirPermissao, permissoesDoUsuario } from "@/lib/auth/permissoes";
 import { BALCAO, type Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
@@ -244,7 +244,7 @@ export async function fecharComanda(s: Sessao, comandaId: string) {
  * o dinheiro/cartao ja recebido precisa ser devolvido por fora (estorno na maquininha).
  */
 export async function cancelarComanda(s: Sessao, comandaId: string, motivo: string) {
-  const podeFechada = (await permissoesDe(s.papel)).excluir;
+  const podeFechada = (await permissoesDoUsuario(s)).excluir;
   await db.$transaction(async (tx) => {
     const c = await travar(tx, comandaId, false);
     if (c.status === "CANCELADA") return;

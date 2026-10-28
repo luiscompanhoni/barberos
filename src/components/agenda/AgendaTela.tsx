@@ -4,7 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/cliente-api";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 import { DetalheModal } from "./DetalheModal";
-import { EncaixeModal, type ServicoApi } from "./EncaixeModal";
+import { type ServicoApi } from "./EncaixeModal";
+import { useAcesso } from "@/components/AcessoContexto";
+import { HorarioModal } from "./HorarioModal";
+import { EncaixesPainel, type DestaqueEncaixe } from "./EncaixesPainel";
+import { ConfiguracaoAgenda } from "./ConfiguracaoAgenda";
 import { Grade } from "./Grade";
 import { montarColunas, type AgendamentoApi, type Coluna } from "./tipos";
 import { useAgenda } from "./useAgenda";
@@ -24,22 +28,31 @@ export function AgendaTela(p: {
   barbeiroFixo?: string;
   /** Mostra seletor de barbeiro na semana. */
   escolherBarbeiro?: boolean;
+  dataInicial?: string;
+  barbeiroInicial?: string;
+  servicoInicial?: string;
+  encaixesInicial?: boolean;
   papel: string;
   meuBarbeiroId: string | null;
 }) {
+  const { permissoes } = useAcesso();
+  const [mostrarEncaixes, setMostrarEncaixes] = useState(p.encaixesInicial ?? false);
+  const [arrastarToque, setArrastarToque] = useState(false);
+  const [configurar, setConfigurar] = useState(false);
+  const [destaques, setDestaques] = useState<DestaqueEncaixe[]>([]);
   const [modo, setModo] = useState(p.modoInicial);
-  const [data, setData] = useState(() => dataLocal(Date.now(), FUSO));
-  const [barbeiroSel, setBarbeiroSel] = useState<string | undefined>(p.barbeiroFixo);
+  const [data, setData] = useState(() => p.dataInicial ?? dataLocal(Date.now(), FUSO));
+  const [barbeiroSel, setBarbeiroSel] = useState<string | undefined>(p.barbeiroFixo ?? p.barbeiroInicial);
   const [servicos, setServicos] = useState<ServicoApi[]>([]);
   const [todosBarbeiros, setTodosBarbeiros] = useState<{ id: string; nome: string; ativo: boolean }[]>([]);
-  const [encaixe, setEncaixe] = useState<{ coluna: Coluna | null; inicio: number | null } | null>(null);
+  const [encaixe, setEncaixe] = useState<{ coluna: Coluna | null; inicio: number | null; fim?: number; servicoInicial?: string } | null>(null);
   const [aberto, setAberto] = useState<AgendamentoApi | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; erro?: boolean } | null>(null);
 
   const dias = modo === "semana" ? 7 : 1;
   const dataConsulta = modo === "semana" ? inicioSemana(data) : data;
   // Na semana sem barbeiro escolhido, usa o primeiro.
-  const filtro = modo === "semana" ? (barbeiroSel ?? todosBarbeiros.find((b) => b.ativo)?.id) : p.barbeiroFixo;
+  const filtro = p.barbeiroFixo ?? (modo === "semana" ? (barbeiroSel ?? todosBarbeiros.find((b) => b.ativo)?.id) : barbeiroSel);
   const { agenda, erro, aoVivo, recarregar } = useAgenda(dataConsulta, dias, modo === "semana" && !filtro ? "__nenhum__" : filtro);
 
   useEffect(() => {
@@ -86,7 +99,7 @@ export function AgendaTela(p: {
           <button className="btn" onClick={() => setData(dataLocal(Date.now(), FUSO))}>Hoje</button>
           <button className="btn" onClick={() => setData(somarDias(data, passo))} aria-label="Próximo">›</button>
         </div>
-        <input type="date" className="campo w-auto" value={data} onChange={(e) => e.target.value && setData(e.target.value)} />
+        <input aria-label="Data da agenda" type="date" className="campo w-auto" value={data} onChange={(e) => e.target.value && setData(e.target.value)} />
         <span className="text-sm font-medium capitalize text-zinc-700">
           {modo === "semana" ? `Semana de ${new Date(`${dataConsulta}T12:00:00Z`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}` : rotuloData}
         </span>
@@ -98,8 +111,9 @@ export function AgendaTela(p: {
             ))}
           </div>
         )}
-        {p.escolherBarbeiro && modo === "semana" && (
-          <select className="campo w-auto" value={filtro ?? ""} onChange={(e) => setBarbeiroSel(e.target.value)}>
+        {p.escolherBarbeiro && !p.barbeiroFixo && (
+          <select aria-label="Profissional da agenda" className="campo w-auto" value={filtro ?? ""} onChange={(e) => setBarbeiroSel(e.target.value || undefined)}>
+            {modo === "dia" && <option value="">Todos os profissionais</option>}
             {todosBarbeiros.filter((b) => b.ativo).map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
           </select>
         )}
@@ -113,6 +127,13 @@ export function AgendaTela(p: {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        <button className="btn" aria-pressed={mostrarEncaixes} onClick={() => setMostrarEncaixes(!mostrarEncaixes)}>{mostrarEncaixes ? "Ocultar encaixes" : "Mostrar encaixes"}</button>
+        <button className="btn md:hidden" aria-pressed={arrastarToque} onClick={() => setArrastarToque(!arrastarToque)}>{arrastarToque ? "Voltar a rolar" : "Arrastar intervalo no celular"}</button>
+        {p.papel === "DONO" && <button className="btn" onClick={() => setConfigurar(true)}>Cadeiras e limites</button>}
+      </div>
+      {mostrarEncaixes && <EncaixesPainel data={data} barbeiroId={filtro} servicoInicial={p.servicoInicial} destacarInicial={p.encaixesInicial} versao={agenda} onDestacar={setDestaques} onAgendar={(barbeiroId, servicoInicial, inicio, fim) => setEncaixe({ coluna: colunas.find(c => c.barbeiroId === barbeiroId && c.data === data) ?? null, inicio, fim, servicoInicial })} />}
+      {configurar && <ConfiguracaoAgenda onFechar={() => { setConfigurar(false); recarregar(); }} />}
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       {!agenda ? (
         <div className="cartao text-sm text-zinc-500">Carregando agenda...</div>
@@ -125,20 +146,26 @@ export function AgendaTela(p: {
           fuso={agenda.fuso}
           granularidadeMin={agenda.granularidadeMin}
           podeEditar={podeEditar}
+          podeDuracao={permissoes.duracao}
+          arrastarToque={arrastarToque}
+          destaques={destaques}
+          intervaloEntreClientesMin={agenda.intervaloEntreClientesMin}
           onMover={mover}
-          onVazio={(coluna, inicio) => setEncaixe({ coluna, inicio })}
+          onVazio={(coluna, inicio, fim) => setEncaixe({ coluna, inicio, fim })}
           onAbrir={setAberto}
         />
       )}
       <p className="text-xs text-zinc-500">
-        Clique num horário vazio para encaixar. Arraste o cartão para mudar horário ou barbeiro e puxe a borda de baixo para mudar a duração.
+        Arraste um intervalo vazio para agendar ou bloquear. Use “+ Atendimento” para escolher pelo teclado. Mova o cartão ou use “Alterar horário” para ajustar uma reserva.
       </p>
 
       {encaixe && agenda && (
-        <EncaixeModal
+        <HorarioModal
           data={encaixe.coluna?.data ?? data}
-          barbeiroId={encaixe.coluna?.barbeiroId ?? p.meuBarbeiroId ?? filtro ?? agenda.barbeiros[0]?.id ?? ""}
+          barbeiroId={encaixe.coluna?.barbeiroId ?? filtro ?? p.meuBarbeiroId ?? agenda.barbeiros[0]?.id ?? ""}
           inicio={encaixe.inicio}
+          fim={encaixe.fim}
+          servicoInicial={encaixe.servicoInicial}
           fuso={agenda.fuso}
           barbeiros={(p.papel === "BARBEIRO" ? todosBarbeiros.filter((b) => b.id === p.meuBarbeiroId) : todosBarbeiros).filter((b) => b.ativo)}
           servicos={servicos}

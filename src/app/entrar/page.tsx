@@ -3,6 +3,7 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { modoCodigoNaTela } from "@/lib/auth/otp";
 
 export const dynamic = "force-dynamic";
+export const metadata = { manifest: "/manifest-equipe.webmanifest" };
 
 export default async function EntrarEquipe() {
   const cfg = await configuracao();

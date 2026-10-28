@@ -4,7 +4,9 @@ import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
-import { exigirConfigBarbeiro, type Sessao } from "@/lib/auth/sessao";
+import { exigirPermissao } from "@/lib/auth/permissoes";
+import { validarCadeira } from "./cadeiras";
+import { exigirGestaoBarbeiro, exigirConfigBarbeiro, type Sessao } from "@/lib/auth/sessao";
 import { avisarMudanca } from "@/lib/whatsapp/avisos";
 import { carregarDia, configuracao, servicoDoBarbeiro, STATUS_ATIVOS } from "./carregar";
 import { contido, sobrepoe, type IntervaloMin } from "./disponibilidade";
@@ -81,6 +83,7 @@ export async function salvarExpediente(
   ator: Sessao,
 ) {
   exigirConfigBarbeiro(ator, barbeiroId);
+  await exigirPermissao(ator, "bloquear_agenda");
   validarIntervalos(intervalos);
   await db.$transaction(async (tx) => {
     await tx.expedientePadrao.deleteMany({ where: { barbeiroId } });
@@ -97,6 +100,7 @@ export async function salvarExcecao(
   ator: Sessao,
 ) {
   exigirConfigBarbeiro(ator, barbeiroId);
+  await exigirPermissao(ator, "bloquear_agenda");
   const intervalos = e.tipo === "HORARIO_ESPECIAL" ? (e.intervalos ?? []) : [];
   if (e.tipo === "HORARIO_ESPECIAL") {
     if (!intervalos.length) throw new ErroNegocio("Informe o horário desse dia.");
@@ -118,6 +122,7 @@ export async function salvarExcecao(
 
 export async function removerExcecao(barbeiroId: string, data: string, ator: Sessao) {
   exigirConfigBarbeiro(ator, barbeiroId);
+  await exigirPermissao(ator, "bloquear_agenda");
   await db.$transaction(async (tx) => {
     await tx.excecaoAgenda.deleteMany({ where: { barbeiroId, data: dataParaColuna(data) } });
     await auditar(tx, ator.usuarioId, "remover_excecao", "barbeiro", barbeiroId, { data });
@@ -140,7 +145,8 @@ export async function fecharAgenda(
   p: { inicio: Date; fim: Date; motivo?: string; confirmar: boolean; resolucoes?: Resolucao[] },
   ator: Sessao,
 ) {
-  exigirConfigBarbeiro(ator, barbeiroId);
+  exigirGestaoBarbeiro(ator, barbeiroId);
+  await exigirPermissao(ator, "bloquear_agenda");
   if (p.fim <= p.inicio) throw new ErroNegocio("O fim precisa ser depois do início.");
   const cfg = await configuracao();
 
@@ -186,13 +192,21 @@ export async function fecharAgenda(
   const tocados = new Set<string>([barbeiroId]);
   try {
     const bloqueio = await db.$transaction(async (tx) => {
-      await travarBarbeiro(tx, barbeiroId);
+      const destinos = (p.resolucoes ?? []).flatMap(r => r.acao === "transferir" ? [r.barbeiroDestinoId] : []);
+      for (const b of [...new Set([barbeiroId, ...destinos])].sort()) await travarBarbeiro(tx, b);
+      const cadeirasDestino = await tx.barbeiro.findMany({ where: { id: { in: destinos } }, select: { cadeiraId: true } });
+      for (const cadeiraId of [...new Set(cadeirasDestino.map(b => b.cadeiraId).filter((id): id is string => !!id))].sort()) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cadeira:${cadeiraId}`}))`;
+      }
+      const vigentes = await tx.agendamento.findMany({ where: { barbeiroId, status: { in: [...STATUS_ATIVOS].filter(s => s !== "CONCLUIDO") }, inicio: { lt: p.fim }, fim: { gt: p.inicio } } });
+      if (vigentes.length !== afetados.length || vigentes.some(a => !afetados.some(b => b.id === a.id && +b.inicio === +a.inicio && +b.fim === +a.fim && b.status === a.status))) throw new ErroNegocio("A agenda mudou. Confira os atendimentos afetados novamente.", 409);
       for (const a of afetados) {
         const r = res.get(a.id)!;
         if (r.acao === "cancelar") {
           await tx.agendamento.update({ where: { id: a.id }, data: { status: "CANCELADO" } });
           await auditar(tx, ator.usuarioId, "cancelar_por_fechamento", "agendamento", a.id);
         } else {
+          exigirGestaoBarbeiro(ator, r.barbeiroDestinoId);
           if (!(await servicoDoBarbeiro(r.barbeiroDestinoId, a.servicoId, tx))) {
             throw new ErroNegocio(`O barbeiro escolhido não faz ${a.servico.nome}.`);
           }
@@ -200,7 +214,10 @@ export async function fecharAgenda(
             fuso: cfg.fuso,
             intervaloEntreClientes: cfg.intervaloEntreClientes,
           });
-          await tx.agendamento.update({ where: { id: a.id }, data: { barbeiroId: r.barbeiroDestinoId } });
+          const destino = await tx.barbeiro.findUniqueOrThrow({ where: { id: r.barbeiroDestinoId } });
+          if (!destino.ativo) throw new ErroNegocio("O barbeiro de destino está inativo.");
+          await validarCadeira(tx, destino.cadeiraId, { inicio: +a.inicio, fim: +a.fim }, a.id, cfg.intervaloEntreClientes);
+          await tx.agendamento.update({ where: { id: a.id }, data: { barbeiroId: r.barbeiroDestinoId, cadeiraId: destino.cadeiraId } });
           await auditar(tx, ator.usuarioId, "transferir_por_fechamento", "agendamento", a.id, { para: r.barbeiroDestinoId });
           tocados.add(r.barbeiroDestinoId);
         }
@@ -231,7 +248,8 @@ export async function fecharAgenda(
 export async function reabrirAgenda(bloqueioId: string, ator: Sessao) {
   const b = await db.bloqueio.findUnique({ where: { id: bloqueioId } });
   if (!b) throw naoEncontrado("Bloqueio");
-  exigirConfigBarbeiro(ator, b.barbeiroId);
+  exigirGestaoBarbeiro(ator, b.barbeiroId);
+  await exigirPermissao(ator, "bloquear_agenda");
   await db.$transaction(async (tx) => {
     await tx.bloqueio.delete({ where: { id: bloqueioId } });
     await auditar(tx, ator.usuarioId, "reabrir_agenda", "bloqueio", bloqueioId);

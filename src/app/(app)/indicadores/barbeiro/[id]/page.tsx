@@ -8,6 +8,6 @@ export default async function IndicadoresBarbeiro(props: PageProps<"/indicadores
   const periodo = (await props.searchParams).periodo;
   const s = (await sessaoAtual())!;
   const verTodos = await pode(s, "resultado");
-  if (!verTodos && !(s.papel === "BARBEIRO" && s.barbeiroId === id)) redirect("/");
+  if (!verTodos && !(s.barbeiroId === id)) redirect("/");
   return <BarbeiroTela id={id} periodoInicial={typeof periodo === "string" ? periodo : "30d"} voltar={verTodos ? "/indicadores" : null} />;
 }

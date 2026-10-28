@@ -27,8 +27,8 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/barbeiros/
 
 /** Dono e gerente trocam a foto de qualquer um; barbeiro so a propria. */
 async function exigirPermissao(id: string): Promise<Sessao> {
-  const s = await exigirSessao([...GESTAO, "BARBEIRO"]);
-  if (s.papel === "BARBEIRO" && s.barbeiroId !== id) throw proibido();
+  const s = await exigirSessao([...GESTAO, "BARBEIRO", "LIDER"]);
+  if (!GESTAO.includes(s.papel) && s.barbeiroId !== id) throw proibido();
   return s;
 }
 

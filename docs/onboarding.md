@@ -32,8 +32,13 @@ Variáveis do `.env.example`: `DATABASE_URL`, `SESSION_SECRET`, `TZ_BARBEARIA`, 
 `SITE_URL`, `PAINEL_URL`, `APP_URL`, `PAGARME_SECRET_KEY`, `PAGARME_PUBLIC_KEY`, `PAGARME_WEBHOOK_TOKEN`,
 `NOME_FATURA`, `COBRANCA_ENDERECO`, `COBRANCA_CEP`, `COBRANCA_CIDADE`, `COBRANCA_UF`, `CELCASH_AMBIENTE`,
 `CELCASH_GALAX_ID`, `CELCASH_GALAX_HASH`, `CELCASH_WEBHOOK_TOKEN`, `CELCASH_WEBHOOK_HASH`, `MAQUININHA`,
-`STONE_POS_SERIAL`, `STONE_POS_NOMES`, `EMAIL_BALCAO`. Configuração de cada integração: ver
+`STONE_POS_SERIAL`, `STONE_POS_NOMES`, `EMAIL_BALCAO`, `PUSH_PROVIDER`, `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`,
+`VAPID_SUBJECT`. Configuração de cada integração: ver
 [architecture.md](architecture.md#configurar-integrações).
+
+Push começa desativado. Para preparar as chaves, `npm run push:chaves` cria `.env.push` privado sem alterar o `.env`.
+Use `PUSH_PROVIDER=simulado` no desenvolvimento; `AMBIENTE=homologacao` sempre bloqueia transporte real.
+Instalação e configuração definitiva: [app-notificacoes.md](app-notificacoes.md).
 
 ### Entrar
 
@@ -75,7 +80,8 @@ Variáveis do `.env.example`: `DATABASE_URL`, `SESSION_SECRET`, `TZ_BARBEARIA`, 
 
 Áreas de `teste:<área>`: `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`,
 `automacoes`, `crescimento`, `login`, `jogos`, `financeiro`, `despesas`, `estorno`, `rh`, `permissoes`,
-`campanhas` e `backups`.
+`campanhas`, `backups` e `evolucao`. A última cria bancos locais separados para oito módulos, incluindo geração
+e envio simulado de notificações; exige permissão local de criar bancos e nunca usa o banco da barbearia.
 
 O CI (`.github/workflows/ci.yml`) roda em cada push na `main` e em cada PR: `npm ci`, tipos, lint, regras locais
 (`lint:rules`), testes unitários, migrações num banco limpo + checagem de schema, `db:seed`, `teste:todos` e build. Detalhes de qualidade

@@ -7,6 +7,7 @@ import type { Jogo, Prisma } from "@prisma/client";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { db } from "@/lib/db";
+import { atendimentoCondicionadoAvaliacao } from "@/lib/avaliacoes/convites";
 import { fichasDevidas, gratisDevida } from "./regras";
 
 type Tx = Prisma.TransactionClient;
@@ -18,12 +19,15 @@ export function contarDesde(j: Pick<Jogo, "contarDesde" | "inicioEm">) {
 
 /** Cria as fichas que faltam para o cliente neste jogo. */
 export async function sincronizarFichas(tx: Tx, clienteId: string, jogo: Jogo, agora = new Date()) {
+  const condicionado = await atendimentoCondicionadoAvaliacao(tx, clienteId, jogo.id, agora);
   const desde = contarDesde(jogo);
   const fuso = (await configuracao(tx)).fuso;
   const precisa = (n: number) => n > 0;
   const [atendimentos, indicacoes, mensalidades, cliente, ultimaGratis] = await Promise.all([
     precisa(jogo.jogadasPorAtendimento)
-      ? tx.agendamento.findMany({ where: { clienteId, status: "CONCLUIDO", inicio: { gte: desde } }, select: { id: true, precoCentavos: true, servico: { select: { precoCentavos: true } } } })
+      ? tx.agendamento.findMany({ where: { clienteId, status: "CONCLUIDO", inicio: { gte: desde },
+        ...(condicionado ? { NOT: { OR: [{ id: condicionado }, { adicionalDeId: condicionado }] } } : {}),
+      }, select: { id: true, precoCentavos: true, servico: { select: { precoCentavos: true } } } })
       : [],
     precisa(jogo.jogadasPorIndicacao)
       ? tx.indicacao.findMany({ where: { indicadorId: clienteId, convertidaEm: { gte: desde } }, select: { id: true } })

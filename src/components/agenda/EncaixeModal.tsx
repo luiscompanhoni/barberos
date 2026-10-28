@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAcesso } from "@/components/AcessoContexto";
 import { Modal } from "@/components/Modal";
 import { api, ErroApi, reais } from "@/lib/cliente-api";
 import { minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
@@ -21,15 +22,23 @@ export function EncaixeModal(p: {
   data: string;
   barbeiroId: string;
   inicio: number | null;
+  fim?: number;
+  servicoInicial?: string;
+  cabecalho?: React.ReactNode;
   fuso: string;
   barbeiros: { id: string; nome: string }[];
   servicos: ServicoApi[];
   onFechar: () => void;
   onCriado: (msg: string) => void;
 }) {
+  const { permissoes } = useAcesso();
+  const [duracao, setDuracao] = useState(p.fim && p.inicio && permissoes.duracao ? String((p.fim - p.inicio) / 60_000) : "");
+  const [cadeiraId, setCadeiraId] = useState("padrao");
+  const [cadeiras, setCadeiras] = useState<{ id: string; nome: string; ativa: boolean }[]>([]);
+  useEffect(() => { api<typeof cadeiras>("/api/cadeiras").then(setCadeiras).catch(() => {}); }, []);
   const [barbeiroId, setBarbeiroId] = useState(p.barbeiroId);
   const servicosDoBarbeiro = p.servicos.filter((s) => s.ativo && s.barbeiros.some((b) => b.barbeiroId === barbeiroId));
-  const [servicoId, setServicoId] = useState(servicosDoBarbeiro[0]?.id ?? "");
+  const [servicoId, setServicoId] = useState(p.servicoInicial ?? servicosDoBarbeiro[0]?.id ?? "");
   const [disp, setDisp] = useState<Disp | null>(null);
   const [horario, setHorario] = useState<string>("");
   const [busca, setBusca] = useState("");
@@ -62,7 +71,7 @@ export function EncaixeModal(p: {
       Promise.resolve().then(() => vivo && setDisp(null));
       return () => { vivo = false; };
     }
-    api<Disp[]>(`/api/disponibilidade?${new URLSearchParams({ data: p.data, servicoId, barbeiroId })}`)
+    api<Disp[]>(`/api/disponibilidade?${new URLSearchParams({ data: p.data, servicoId, barbeiroId, ...(duracao ? { duracaoMin: duracao } : {}), ...(cadeiraId !== "padrao" ? { cadeiraId } : {}) })}`)
       .then((r) => {
         if (!vivo) return;
         const d = r[0] ?? null;
@@ -73,7 +82,7 @@ export function EncaixeModal(p: {
       })
       .catch((e) => vivo && setErro(e.message));
     return () => { vivo = false; };
-  }, [servicoId, barbeiroId, p.data, p.inicio]);
+  }, [servicoId, barbeiroId, p.data, p.inicio, duracao, cadeiraId]);
 
   useEffect(() => {
     if (cliente || busca.trim().length < 2) return;
@@ -99,7 +108,7 @@ export function EncaixeModal(p: {
     try {
       await api("/api/agendamentos", {
         method: "POST",
-        body: { barbeiroId, servicoId, inicio: horario, semPreferencia, forcarAvulso, realizado, cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone } },
+        body: { barbeiroId, servicoId, ...(duracao ? { duracaoMin: Number(duracao) } : {}), ...(cadeiraId !== "padrao" ? { cadeiraId: cadeiraId || null } : {}), inicio: horario, semPreferencia, forcarAvulso, realizado, cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone } },
       });
       p.onCriado(`${realizado ? "Atendimento realizado registrado" : "Encaixe criado"} às ${minParaHhmm(minutosLocal(Date.parse(horario), p.fuso))} para ${cliente?.nome ?? nome.trim()}.`);
     } catch (e) {
@@ -115,7 +124,8 @@ export function EncaixeModal(p: {
   const horarios = disp?.horarios.filter((h) => !realizado || Date.parse(h) + disp.duracaoMin * 60_000 <= limiteRealizado) ?? [];
 
   return (
-    <Modal titulo="Novo atendimento" onFechar={p.onFechar}>
+    <Modal titulo="Novo horário" onFechar={p.onFechar}>
+      {p.cabecalho}
       <form onSubmit={salvar} className="space-y-3">
         <label className="flex items-start gap-3 rounded-xl border border-ouro/30 bg-ouro/5 p-3 text-sm">
           <input type="checkbox" className="mt-1 h-4 w-4 accent-ouro" checked={realizado} onChange={(e) => { setRealizado(e.target.checked); setLimiteRealizado(Date.now()); }} />
@@ -135,6 +145,15 @@ export function EncaixeModal(p: {
               {servicosDoBarbeiro.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
             </select>
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          {permissoes.duracao && <label className="rotulo">Duração deste atendimento (min)
+            <input className="campo" type="number" min={5} max={480} value={duracao} placeholder="Padrão do serviço" onChange={e => setDuracao(e.target.value)} />
+          </label>}
+          <label className="rotulo">Cadeira<select className="campo" value={cadeiraId} onChange={e => setCadeiraId(e.target.value)}>
+            <option value="padrao">Padrão do profissional</option><option value="">Não informada</option>
+            {cadeiras.filter(c => c.ativa).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </select></label>
         </div>
         {disp && <p className="text-xs text-zinc-500">{disp.duracaoMin} min · {reais(disp.precoCentavos)}</p>}
 
