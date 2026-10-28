@@ -9,6 +9,7 @@ const schema = z.object({
   barbeiroId: zId,
   servicoId: zId,
   inicio: zInstante,
+  cadeiraId: zId.nullable().optional(),
   duracaoMin: z.number().int().min(5).max(480).optional(),
   cliente: z.union([
     z.object({ id: zId }),

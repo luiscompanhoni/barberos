@@ -10,7 +10,7 @@ import { resolverPeriodo } from "@/lib/indicadores/periodo";
 export const GET = rota(async (req: Request, ctx: RouteContext<"/api/indicadores/barbeiro/[id]">) => {
   const s = await exigirSessao();
   const { id } = await ctx.params;
-  if (!(s.papel === "BARBEIRO" && s.barbeiroId === id)) await exigirPermissao(s, "resultado");
+  if (!(s.barbeiroId === id)) await exigirPermissao(s, "resultado");
   const cfg = await configuracao();
   const p = resolverPeriodo(new URL(req.url).searchParams.get("periodo"), cfg.fuso);
   return NextResponse.json({ periodo: { chave: p.chave, rotulo: p.rotulo }, ...(await indicadoresDoBarbeiro(id, p)) });

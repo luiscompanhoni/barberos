@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import type { Papel } from "@prisma/client";
 import { COOKIE_INDICACAO, registrarIndicacao } from "@/lib/crescimento/indicacao";
 import { criarSessao } from "./sessao";
+import { revogarAoTrocarConta } from "@/lib/notificacoes/inscricoes";
 
 type UsuarioLogin = {
   id: string; papel: Papel; nome: string; senhaHash: string | null; trocarSenha: boolean;
@@ -10,6 +11,7 @@ type UsuarioLogin = {
 
 /** Abre a sessao e diz o que a tela precisa fazer em seguida (criar senha, trocar a temporaria, informar o nome). */
 export async function abrirSessao(u: UsuarioLogin) {
+  await revogarAoTrocarConta(u.id);
   await criarSessao({
     usuarioId: u.id,
     papel: u.papel,

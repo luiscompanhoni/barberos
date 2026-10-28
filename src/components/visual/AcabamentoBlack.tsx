@@ -1,11 +1,21 @@
 "use client";
 
-import { motion, useReducedMotion, useScroll, useSpring, useTransform } from "motion/react";
+import { useSyncExternalStore } from "react";
+import { motion, useScroll, useSpring, useTransform } from "motion/react";
+
+const consulta = "(prefers-reduced-motion: reduce)";
+function assinarMovimento(atualizar: () => void) {
+  const media = window.matchMedia(consulta);
+  media.addEventListener("change", atualizar);
+  return () => media.removeEventListener("change", atualizar);
+}
+const movimentoPermitido = () => !window.matchMedia(consulta).matches;
+const semMovimentoNoServidor = () => false;
 
 /** Detalhe decorativo de rolagem. Não representa conclusão de tarefas nem captura cliques. */
 export function AcabamentoBlack() {
-  const reduzir = useReducedMotion();
-  return reduzir === false ? <TrilhaDeCorte /> : null;
+  const animar = useSyncExternalStore(assinarMovimento, movimentoPermitido, semMovimentoNoServidor);
+  return animar ? <TrilhaDeCorte /> : null;
 }
 
 function TrilhaDeCorte() {

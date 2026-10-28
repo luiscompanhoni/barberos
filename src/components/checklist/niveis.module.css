@@ -1,0 +1,39 @@
+.legend {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  animation: aura 4s ease-in-out infinite;
+}
+.legend::after {
+  content: "";
+  position: absolute;
+  inset: -40% -60%;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.65) 48%, transparent 60%);
+  transform: translateX(-60%);
+  animation: brilho 5s ease-in-out infinite;
+  z-index: -1;
+}
+.legend svg { filter: drop-shadow(0 0 3px rgba(255,255,255,.7)); }
+.conquista {
+  position: fixed;
+  z-index: 80;
+  inset: auto 1rem 2rem;
+  margin: auto;
+  width: min(28rem, calc(100% - 2rem));
+  padding: 1.5rem;
+  text-align: center;
+  color: #fff3b0;
+  background: radial-gradient(ellipse at top, #59431d, #12100b 75%);
+  border: 1px solid #d3ab45;
+  border-radius: 1.25rem;
+  box-shadow: 0 0 65px #d3ab4555;
+  animation: conquista .65s cubic-bezier(.16,1,.3,1) both;
+}
+@keyframes aura { 50% { box-shadow: 0 0 22px #f2c94c88, inset 0 0 10px #ffffff35; } }
+@keyframes brilho { 0%, 45% { transform: translateX(-60%); } 75%, 100% { transform: translateX(60%); } }
+@keyframes conquista { from { transform: translateY(35px) scale(.9); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .legend, .legend::after, .conquista { animation: none; }
+  .legend::after { display: none; }
+}

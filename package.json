@@ -12,6 +12,7 @@
     "test": "vitest run",
     "check": "npm run lint && npm run lint:rules && npm run typecheck && npm test && npm run build",
     "db:seed": "tsx prisma/seed.ts",
+    "push:chaves": "node scripts/gerar-chaves-push.mjs",
     "db:migrate": "prisma migrate dev",
     "db:demo": "tsx prisma/demo-historico.ts",
     "criar-dono": "tsx prisma/criar-dono.ts",
@@ -34,7 +35,8 @@
     "teste:checkout": "tsx --env-file=.env scripts/teste-checkout.ts",
     "teste:estorno": "tsx --env-file=.env scripts/teste-estorno.ts",
     "teste:permissoes": "tsx --env-file=.env scripts/teste-permissoes.ts",
-    "teste:cancelamento": "tsx --env-file=.env scripts/teste-cancelamento.ts"
+    "teste:cancelamento": "tsx --env-file=.env scripts/teste-cancelamento.ts",
+    "teste:evolucao": "node --env-file=.env scripts/teste-evolucao.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",
@@ -47,6 +49,7 @@
     "next": "16.3.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "web-push": "^3.6.7",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -54,6 +57,7 @@
     "@types/node": "^24.19.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "eslint": "^9",
     "eslint-config-next": "16.3.7",
     "prisma": "^6.19.3",

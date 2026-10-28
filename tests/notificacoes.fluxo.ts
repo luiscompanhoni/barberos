@@ -1,0 +1,118 @@
+/** Banco local exclusivo; transporte substituído antes de qualquer teste em modo real. */
+import assert from "node:assert/strict";
+import { createECDH, randomBytes } from "node:crypto";
+import webPush from "web-push";
+import { db } from "@/lib/db";
+import type { Sessao } from "@/lib/auth/sessao";
+import { salvarInscricaoPush, revogarInscricaoPush, dispositivosDoUsuario } from "@/lib/notificacoes/inscricoes";
+import { publicarNotificacao, caixaNotificacoes, marcarNotificacaoLida } from "@/lib/notificacoes/caixa";
+import { processarPush } from "@/lib/notificacoes/envio";
+import { salvarPreferenciasNotificacoes } from "@/lib/notificacoes/preferencias";
+import { testarNotificacoes } from "@/lib/notificacoes/teste";
+import { PREFERENCIAS_PADRAO } from "@/lib/notificacoes/regras";
+
+async function main() {
+  const url = new URL(process.env.DATABASE_URL ?? "");
+  assert.equal(url.pathname, "/barberos_test_notificacoes");
+  assert(["localhost", "127.0.0.1"].includes(url.hostname));
+  const ec = createECDH("prime256v1"); ec.generateKeys();
+  process.env.VAPID_PUBLIC_KEY = ec.getPublicKey().toString("base64url");
+  process.env.VAPID_PRIVATE_KEY = ec.getPrivateKey().toString("base64url");
+  process.env.VAPID_SUBJECT = "mailto:teste@example.test";
+  process.env.PUSH_PROVIDER = "webpush"; process.env.AMBIENTE = "homologacao";
+  const origemSite = "https://cliente.example.test", origemPainel = "https://painel.example.test";
+  process.env.SITE_URL = origemSite; process.env.PAINEL_URL = origemPainel;
+  const ids: string[] = [];
+  const agora = new Date();
+  let chamadas = 0;
+  let resposta: "ok" | "410" | "timeout" | "429" = "ok";
+  const original = webPush.sendNotification;
+  // Nenhum caminho desta execução pode chamar a rede.
+  Object.defineProperty(webPush, "sendNotification", { configurable: true, writable: true, value: async (_sub: unknown, payload: string) => {
+    chamadas++;
+    assert.deepEqual(Object.keys(JSON.parse(payload)).sort(), ["href", "id"]);
+    if (resposta === "410") throw { statusCode: 410 };
+    if (resposta === "timeout") throw { code: "ETIMEDOUT" };
+    if (resposta === "429") throw { statusCode: 429, headers: { "retry-after": "60" } };
+    return { statusCode: 201, body: "", headers: {} };
+  } });
+  try {
+    const sufixo = Date.now().toString().slice(-7);
+    const u1 = await db.usuario.create({ data: { nome: "Teste Push A", telefone: `551199${sufixo}`, papel: "BARBEIRO" } }); ids.push(u1.id);
+    const u2 = await db.usuario.create({ data: { nome: "Teste Push B", telefone: `551198${sufixo}`, papel: "CLIENTE" } }); ids.push(u2.id);
+    const sessao = (u: typeof u1): Sessao => ({ usuarioId: u.id, nome: u.nome, papel: u.papel, barbeiroId: null, clienteId: null });
+    const s1 = sessao(u1), s2 = sessao(u2);
+    const entrada = (nome: string) => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${nome}-${sufixo}`, keys: { p256dh: process.env.VAPID_PUBLIC_KEY!, auth: randomBytes(16).toString("base64url") }, nome });
+    const e1 = entrada("aparelhoA"), e2 = entrada("aparelhoB"), e3 = entrada("outroUsuario");
+    let d1 = await salvarInscricaoPush(s1, e1, origemPainel);
+    const d2 = await salvarInscricaoPush(s1, e2, origemPainel);
+    await salvarInscricaoPush(s2, e3, origemSite);
+    await assert.rejects(() => salvarInscricaoPush(s2, e1, origemSite), /outra sessão/);
+    await assert.rejects(() => salvarInscricaoPush(s1, e1, "https://intruso.test"), /Origem/);
+    await assert.rejects(() => revogarInscricaoPush(s2.usuarioId, null, d1.id), /não encontrado/);
+    const dados = (chave: string, usuarioId = u1.id) => ({ usuarioId, categoria: "TESTE" as const, chave, titulo: "Aviso de teste", corpo: "Consulte sua central.", href: "/notificacoes", criadoEm: agora, expiraEm: new Date(+agora + 3_600_000) });
+    const repetidos = await Promise.all(Array.from({ length: 6 }, () => publicarNotificacao(dados("evento-unico"))));
+    assert.equal(repetidos.filter((r) => r?.criada).length, 1);
+    const unico = repetidos[0]!;
+    assert.equal(await db.pushEntrega.count({ where: { notificacaoId: unico.id } }), 2);
+    const outro = await publicarNotificacao(dados("outro-usuario", u2.id));
+    assert.equal((await processarPush(agora, { usuarioIds: [] })).processados, 0);
+    const lotes = await Promise.all([processarPush(agora, { usuarioIds: [u1.id] }), processarPush(agora, { usuarioIds: [u1.id] })]);
+    assert.equal(lotes.reduce((n, l) => n + l.simulados, 0), 2); assert.equal(chamadas, 0);
+    assert.equal(await db.pushEntrega.count({ where: { notificacaoId: outro!.id, estado: "PENDENTE" } }), 1);
+    const painel = await caixaNotificacoes(s1, d1.token);
+    assert(painel.itens.every((n) => n.id !== outro!.id));
+    assert.equal(painel.dispositivos.filter((d) => d.atual).length, 1);
+    assert(!JSON.stringify(painel).includes(e1.endpoint)); assert(!JSON.stringify(painel).includes(e1.keys.auth));
+    await assert.rejects(() => marcarNotificacaoLida(s2, unico.id), /não encontrado/);
+    await marcarNotificacaoLida(s1, unico.id);
+    assert((await caixaNotificacoes(s1)).itens.find((n) => n.id === unico.id)?.lidaEm);
+    const expirado = await publicarNotificacao({ ...dados("expirado"), criadoEm: new Date(+agora - 120_000), expiraEm: new Date(+agora - 60_000) });
+    assert.equal((await processarPush(agora, { notificacaoIds: [expirado!.id] })).cancelados, 2);
+    const preferencias = await publicarNotificacao({ ...dados("preferencias"), categoria: "EQUIPE" });
+    await salvarPreferenciasNotificacoes(s1, { ...PREFERENCIAS_PADRAO, equipe: false });
+    assert.equal(await db.pushEntrega.count({ where: { notificacaoId: preferencias!.id, estado: "CANCELADO" } }), 2);
+    const semOptin = await publicarNotificacao({ ...dados("sem-consentimento"), categoria: "RECOMPRA" }); assert.equal(semOptin, null);
+    const cancelado = await publicarNotificacao(dados("revogacao-dispositivo"), undefined, { inscricaoIds: [d1.id] });
+    await revogarInscricaoPush(u1.id, d1.token);
+    assert.equal(await db.pushEntrega.count({ where: { notificacaoId: cancelado!.id, estado: "CANCELADO" } }), 1);
+    assert((await dispositivosDoUsuario(u1.id)).find((d) => d.id === d2.id)?.ativo);
+    d1 = await salvarInscricaoPush(s1, e1, origemPainel, d1.token);
+    const pendenteConta = await publicarNotificacao(dados("conta-desativada"), undefined, { inscricaoIds: [d1.id] });
+    await db.usuario.update({ where: { id: u1.id }, data: { ativo: false } });
+    assert.equal((await processarPush(agora, { notificacaoIds: [pendenteConta!.id] })).cancelados, 1);
+    assert.equal(await publicarNotificacao(dados("usuario-inativo")), null);
+    await db.usuario.update({ where: { id: u1.id }, data: { ativo: true } });
+    process.env.AMBIENTE = "teste";
+    const novo = async (chave: string) => (await publicarNotificacao(dados(chave), undefined, { inscricaoIds: [d1.id] }))!;
+    resposta = "410"; const removido = await novo("provedor-removido");
+    assert.equal((await processarPush(agora, { notificacaoIds: [removido.id] })).falhas, 1);
+    assert.equal((await db.pushInscricao.findUniqueOrThrow({ where: { id: d1.id } })).ativo, false);
+    d1 = await salvarInscricaoPush(s1, e1, origemPainel, d1.token);
+    resposta = "timeout"; const incerto = await novo("timeout"); const antesTimeout = chamadas;
+    assert.equal((await processarPush(agora, { notificacaoIds: [incerto.id] })).incertos, 1);
+    await processarPush(new Date(+agora + 180_000), { notificacaoIds: [incerto.id] }); assert.equal(chamadas, antesTimeout + 1);
+    const interrompido = await novo("interrompido");
+    await db.pushEntrega.updateMany({ where: { notificacaoId: interrompido.id }, data: { estado: "ENVIANDO", tentadoEm: new Date(+agora - 180_000) } });
+    const antesInterrompido = chamadas;
+    assert.equal((await processarPush(agora, { notificacaoIds: [interrompido.id] })).incertos, 1); assert.equal(chamadas, antesInterrompido);
+    resposta = "429"; const limitado = await novo("limite-provedor");
+    assert.equal((await processarPush(agora, { notificacaoIds: [limitado.id] })).adiados, 1);
+    const antesEspera = chamadas;
+    await processarPush(new Date(+agora + 30_000), { notificacaoIds: [limitado.id] }); assert.equal(chamadas, antesEspera);
+    resposta = "ok"; assert.equal((await processarPush(new Date(+agora + 61_000), { notificacaoIds: [limitado.id] })).enviados, 1);
+    // Usa nova conta para limite de testes; os eventos acima também pertencem à categoria TESTE.
+    await db.notificacao.deleteMany({ where: { usuarioId: u2.id } });
+    process.env.AMBIENTE = "homologacao";
+    const testeInterno = await testarNotificacoes(s2, null, agora); assert(testeInterno.simulado); assert(testeInterno.mensagem.includes("nenhuma notificação real"));
+    await testarNotificacoes(s2, null, new Date(+agora + 61_000)); await testarNotificacoes(s2, null, new Date(+agora + 122_000));
+    await assert.rejects(() => testarNotificacoes(s2, null, new Date(+agora + 183_000)), /três testes/);
+    assert.equal(await db.pushEntrega.count({ where: { notificacao: { usuarioId: u2.id } } }), 0);
+    console.log("PASS notificações: isolamento, consentimento, idempotência concorrente, simulação, revogação, 410, timeout sem reenvio, retry429 e limite de testes.");
+  } finally {
+    Object.defineProperty(webPush, "sendNotification", { configurable: true, writable: true, value: original });
+    await db.usuario.deleteMany({ where: { id: { in: ids } } });
+    await db.$disconnect();
+  }
+}
+main().catch((e) => { console.error(e.message); process.exitCode = 1; });

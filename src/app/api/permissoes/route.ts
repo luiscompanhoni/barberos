@@ -18,6 +18,6 @@ const zPapel = z.partialRecord(z.enum(CHAVES as [Permissao, ...Permissao[]]), z.
 
 export const PUT = rota(async (req: Request) => {
   const s = await exigirSessao(["DONO"]);
-  const b = await corpo(req, z.object({ GERENTE: zPapel, RECEPCAO: zPapel, BARBEIRO: zPapel }));
+  const b = await corpo(req, z.object({ GERENTE: zPapel, LIDER: zPapel.optional(), RECEPCAO: zPapel, BARBEIRO: zPapel }));
   return NextResponse.json(await salvarPermissoes(s, b));
 });

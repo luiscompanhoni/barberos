@@ -252,6 +252,31 @@ Conferência: `relatorio-migracao.ts [--clientes=Clientes.csv] [--assinantes=Rel
 o banco e mostra clientes e dados completos, histórico e frequência, assinaturas, possíveis duplicados e
 incompletos; com os CSVs, quem ficou de fora; com `--saida`, grava CSVs (fora da pasta do projeto).
 
+## Reuniões e evolução da equipe
+
+- `src/lib/reunioes/`: agrega vendas, produção e comissões, salva snapshots imutáveis e protege a apresentação por permissão. Edição de conteúdo/ações usa controle de versão.
+- `src/lib/desempenho/`: adesão, marcações imutáveis, ajustes revisados, notas e regras por competência. Bônus compartilha a trava de `checklist_pessoas` com a folha, grava prêmio/pontos atomicamente e conserva a memória de cálculo.
+- `src/lib/avaliacoes/`: primeiro atendimento elegível, convite único, resposta e ficha transacionais. Resumos públicos só avançam em lotes de cinco; identidade é exclusiva do dono, auditada.
+- `src/lib/recompras/`: histórico realizado/pago, recomendações, aceite com reserva real, desconto limitado e fila de avisos. Reserva por cliente e índice parcial impedem envios concorrentes; resultado incerto não recebe retry automático.
+- `src/lib/auth/equipe*` e `PermissaoUsuario`: edição atômica preserva identidade e vínculos. O papel LIDER não concede folha ou configurações gerais. Consultas usam permissões da pessoa, lidas por requisição.
+- `Cadeira` e exclusão SQL em `Agendamento`: a cadeira física também impede sobreposição. As novas colunas opcionais preservam registros antigos. `ChecklistPessoa.usuarioId` recebe vínculo demonstrável pelo barbeiro; os demais são confirmados pelo dono.
+- Migrações de 28/10: `reunioes_evolucao_equipe`, `presenca_batida_ausente` e `recompra_reserva_cliente`. Não apagar tabelas nem reaplicar migrations manualmente em produção; o deploy aplica a sequência normal.
+
+Uso e ativação: [guia da equipe](evolucao-equipe.md). As regras de recompra, mensagens de avaliação, prêmios e bônus exigem configuração.
+
+## Aplicativo instalável e notificações
+
+- Manifestos públicos em `/manifest-cliente.webmanifest` e `/manifest-equipe.webmanifest`, com identidade e início próprios (`/c` e `/painel`). `public/sw.js` usa escopo `/`, sem cache de API, RSC ou HTML privado. Guarda apenas `/offline.html`. Ícones próprios em `public/pwa/`.
+- `src/lib/pwa/` trata instalação e inscrição por gesto, permissões do navegador e destinos internos permitidos. `src/components/notificacoes/` oferece central, sino, preferências e aparelhos.
+- `src/lib/notificacoes/` separa geração, caixa, inscrições, configuração e envio por `web-push`. Rotas `/api/notificacoes/**` exigem sessão ativa; mutações também conferem origem. A caixa usa `private, no-store`. Respostas nunca incluem endpoints, chaves de inscrição ou VAPID privado.
+- Migração `20261028160000_app_notificacoes`: `NotificacaoPreferencia`, `Notificacao`, `PushInscricao`, `PushEntrega`. Evento único por usuário/chave; fila única por aviso/aparelho, criada na mesma transação. Recompra é opt-in independente de WhatsApp. Conta e categoria são revalidadas na leitura e no envio.
+- A rotina de automações gera até 50 usuários por rodada, ordenados pelo último processamento, e processa até 20 entregas. Geração e envio automático respeitam 8h–21h no fuso configurado. Fila persistente sobrevive ao reinício; uma reserva abandonada vira `INCERTO`. Atrasos por lote precisam ser acompanhados em bases grandes.
+- O envio reserva atomicamente cada entrega e revalida dispositivo, preferência e evento. HTTP 404/410 desativa inscrição; 429 permite espera e no máximo três tentativas. Timeout ou resposta ambígua não provocam reenvio automático. `ENVIADO` significa aceitação pelo provedor, sem comprovante de exibição/leitura. TTL máximo de 24 horas, limitado também pela validade do aviso.
+- Token aleatório de dispositivo fica em cookie HttpOnly; o banco guarda seu hash. Sair ou trocar de conta revoga somente aquele aparelho. VAPID diferente exige nova inscrição. A revogação não recupera um envio já aceito pelo provedor.
+- `PUSH_PROVIDER=desativado` é o padrão. `simulado` não usa transporte externo; homologação sempre força esse modo. `webpush` exige par VAPID válido e `VAPID_SUBJECT` de contato. `npm run push:chaves` gera `.env.push` privado, sem imprimir nem sobrescrever credenciais. Não há serviço pago adicional configurado.
+
+Ativação, instalação e teste em aparelho: [app-notificacoes.md](app-notificacoes.md). A implementação local não publica a versão nem ativa envio em produção.
+
 ## Manutenção
 
 Atualize este mapa ao alterar diretórios, dependências relevantes, contratos, rotinas ou o processo de deploy.

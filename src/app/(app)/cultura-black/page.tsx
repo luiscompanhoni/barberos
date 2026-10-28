@@ -11,7 +11,7 @@ export default async function CulturaBlack() {
   const sessao = await sessaoAtual();
   if (!sessao) redirect("/entrar");
   if (sessao.papel === "CLIENTE") redirect("/c");
-  const checklist = sessao.papel === "BARBEIRO" && sessao.barbeiroId
+  const checklist = ["BARBEIRO", "LIDER"].includes(sessao.papel) && sessao.barbeiroId
     ? await db.checklistPessoa.findUnique({ where: { barbeiroId: sessao.barbeiroId }, select: { ativo: true, token: true } })
     : null;
   const hrefChecklist = linkDoChecklist(sessao.papel, checklist?.ativo ? checklist.token : null);

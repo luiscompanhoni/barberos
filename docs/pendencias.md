@@ -13,6 +13,8 @@ Entrega: base migrada e validada, pagamentos funcionando, permissões, app funci
 rastreável e o primeiro grupo de clientes pronto para entrar. Jogos, IA e financeiro pessoal só depois disto.
 
 ### A0. Abertos desta semana
+
+- [ ] Publicar a etapa de aplicativo instalável e notificações (implementada em 28/10), configurar VAPID definitivo e validar instalação/envio em Android e iPhone físicos. Central, preferências, inscrição, revogação e transporte simulado implementados; nenhum push real foi enviado nesta entrega. [Guia de ativação](app-notificacoes.md).
 - [ ] Achar a causa do 404 em appblackbarber.com (preciso do link exato que deu erro). 👤
 - [ ] Merge do PR #2 (README, CEP da Pagar.me, página 404 em português) e deploy (`bash scripts/deploy.sh root@IP`). 👤
 - [ ] Conferir `WHATSAPP_NUMERO_PUBLICO` no `.env` do servidor (botão do WhatsApp na página 404 e na vitrine). 👤
@@ -168,8 +170,7 @@ Falta:
       balcão e recomendações pelo que o cliente compra.
 - [ ] 19. Foto do cliente ⬜: envio pelo cliente ou pela recepção, compressão, consentimento, aparece no
       perfil/agendamento. A foto dos barbeiros já existe e serve de base.
-- [ ] 25. Avaliação anônima do atendimento ⬜: nota + comentário (atendimento, corte, ambiente, pontualidade),
-      anônima para o barbeiro, ligada ao atendimento para a administração, média por profissional.
+- [ ] 25. Avaliação interna do atendimento 🟡: implementada em desenvolvimento para primeira visita, com nota/comentário, identidade exclusiva do dono, médias por profissional em lotes de cinco e recompensa idempotente. Falta publicar e configurar o jogo/canal real; recorrência além da primeira visita permanece futura. Ver [guia da equipe](evolucao-equipe.md).
 - [ ] 24. Outros jogos ⬜: motor único de recompensas (prêmio, probabilidade, custo, validade, resgate, antifraude),
       depois raspadinha e baú. A roleta atual é a base.
 - [ ] 39. Analytics do produto ⬜: módulos usados, cliques, abandono, erros, telas mais acessadas.
@@ -246,7 +247,7 @@ Falta:
   - Funil por campanha: enviadas → entregues → lidas → abriram o link → giraram → ganharam → abriram o app → têm conta
     → agendaram → compareceram → resgataram, com % e o faturado nas comandas desses atendimentos.
   - Entregue/lida vêm do WhatsApp (API oficial e Evolution); clique só conta em navegador de verdade.
-  - "Baixou o app": o app ainda não é instalável (sem PWA), então conta quem entrou na área do cliente.
+  - "Baixou o app": o indicador continua contando quem entrou na área do cliente; não mede instalações. A instalação PWA foi implementada em 28/10, com publicação e validação física ainda pendentes. Não reinterpretar o histórico como instalações confirmadas.
 - **2. Segmentação da base:** tela Campanhas com o tamanho de cada grupo (0–30, 31–60, 61–90, 91–180, +180 dias,
   assinante, ex-assinante, perdido, novo e quem nunca veio) e quantos podem receber. Campanha por segmentos, liberada
   em lotes, com limite diário; a primeira sugerida é para quem veio nos últimos 60 dias. Mostra enviados, quem marcou

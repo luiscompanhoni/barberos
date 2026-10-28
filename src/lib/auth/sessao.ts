@@ -41,8 +41,9 @@ export async function sessaoAtual(): Promise<Sessao | null> {
   };
 }
 
-export const EQUIPE: Papel[] = ["DONO", "GERENTE", "RECEPCAO", "BARBEIRO"];
+export const EQUIPE: Papel[] = ["DONO", "GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"];
 /** Dono e gerente: cadastros (servicos, planos, produtos, barbeiros), horarios de todos e configuracoes. */
+export const LIDERANCA: Papel[] = ["DONO", "GERENTE", "LIDER"];
 export const GESTAO: Papel[] = ["DONO", "GERENTE"];
 /** Quem atende no balcao: gestao + recepcao (caixa, comandas, financeiro do dia, assinaturas...). */
 export const BALCAO: Papel[] = ["DONO", "GERENTE", "RECEPCAO"];
@@ -57,8 +58,8 @@ export async function exigirSessao(papeis: Papel[] = EQUIPE): Promise<Sessao> {
 
 /** Dono, gerente e recepcao mexem em qualquer agenda; barbeiro so na propria. */
 export function podeGerirBarbeiro(s: Sessao, barbeiroId: string): boolean {
-  if (BALCAO.includes(s.papel)) return true;
-  return s.papel === "BARBEIRO" && s.barbeiroId === barbeiroId;
+  if (BALCAO.includes(s.papel) || s.papel === "LIDER") return true;
+  return EQUIPE.includes(s.papel) && s.barbeiroId === barbeiroId;
 }
 
 export function exigirGestaoBarbeiro(s: Sessao, barbeiroId: string) {
@@ -67,7 +68,7 @@ export function exigirGestaoBarbeiro(s: Sessao, barbeiroId: string) {
 
 /** Expediente, folgas e fechar agenda: dono, gerente ou o proprio barbeiro. */
 export function podeConfigurarBarbeiro(s: Sessao, barbeiroId: string): boolean {
-  return GESTAO.includes(s.papel) || (s.papel === "BARBEIRO" && s.barbeiroId === barbeiroId);
+  return GESTAO.includes(s.papel) || (EQUIPE.includes(s.papel) && s.barbeiroId === barbeiroId);
 }
 
 export function exigirConfigBarbeiro(s: Sessao, barbeiroId: string) {

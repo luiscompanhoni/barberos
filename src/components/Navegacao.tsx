@@ -4,15 +4,23 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  BarChart3, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Megaphone, Menu,
+  BarChart3, Bell, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Megaphone, Menu,
   MessageSquareText, Package, PanelLeft, Receipt, Settings, ShieldCheck, Smartphone, UserRound, X, type LucideIcon,
 } from "lucide-react";
 import { Marca } from "./Marca";
+import { SinoNotificacoes } from "./notificacoes/SinoNotificacoes";
+import { desativarPushLocal } from "@/lib/pwa/push-cliente";
 
-const PAPEIS: Record<string, string> = { DONO: "Dono", GERENTE: "Gerente", RECEPCAO: "Recepção", BARBEIRO: "Barbeiro" };
+const PAPEIS: Record<string, string> = { DONO: "Dono", GERENTE: "Gerente", LIDER: "Líder de equipe", RECEPCAO: "Recepção", BARBEIRO: "Barbeiro" };
 
 const ICONES: Record<string, LucideIcon> = {
+  "/notificacoes": Bell,
   "/painel": LayoutDashboard,
+  "/reunioes": BarChart3,
+  "/meu-dia": CalendarDays,
+  "/desempenho": ClipboardCheck,
+  "/avaliacoes": MessageSquareText,
+  "/recompras": Megaphone,
   "/recepcao": PanelLeft,
   "/semana": CalendarRange,
   "/conversas": MessageSquareText,
@@ -63,7 +71,9 @@ export function Navegacao({
   const ativo = (href: string) => path.startsWith(href);
 
   async function sair() {
-    await fetch("/api/auth/sair", { method: "POST" });
+    const resposta = await fetch("/api/auth/sair", { method: "POST" });
+    if (!resposta.ok) return;
+    await desativarPushLocal({ servidor: false }).catch(() => {});
     router.replace("/entrar");
     router.refresh();
   }
@@ -102,13 +112,13 @@ export function Navegacao({
     <>
       {/* Computador */}
       <aside className="sticky top-0 hidden h-screen w-[236px] shrink-0 flex-col gap-2 p-2 pr-0 lg:flex">
-        <div className="black-painel flex h-[60px] items-center px-4"><Marca nome={nomeBarbearia} /></div>
+        <div className="black-painel flex min-h-[60px] items-center justify-between gap-1 px-3"><div className="min-w-0 flex-1 [&>span]:max-w-full [&>span>span:last-child]:truncate"><Marca nome={nomeBarbearia} /></div><SinoNotificacoes href="/notificacoes" area="equipe" /></div>
         <div className="black-painel flex min-h-0 flex-1 flex-col p-3">
         <nav aria-label="Menu principal" className="flex-1 space-y-5 overflow-y-auto">
           {[
-            { titulo: "Dia a dia", rotas: ["/painel", "/recepcao", "/caixa", "/comandas", "/conversas", "/semana", "/minha-agenda"] },
-            { titulo: "Gestão", rotas: ["/financeiro", "/meu-financeiro", "/campanhas-equipe", "/indicadores", "/assinaturas", "/estoque", "/campanhas", "/planos", "/jogos"] },
-            { titulo: "Equipe e ajustes", rotas: ["/checklist", "/rh", "/recrutamento", "/expediente", "/equipe", "/whatsapp", "/auditoria", "/simulador"] },
+            { titulo: "Dia a dia", rotas: ["/painel", "/meu-dia", "/recepcao", "/caixa", "/comandas", "/conversas", "/semana", "/minha-agenda"] },
+            { titulo: "Gestão", rotas: ["/reunioes", "/financeiro", "/meu-financeiro", "/campanhas-equipe", "/indicadores", "/assinaturas", "/estoque", "/campanhas", "/recompras", "/planos", "/jogos"] },
+            { titulo: "Equipe e ajustes", rotas: ["/notificacoes", "/desempenho", "/avaliacoes", "/checklist", "/rh", "/recrutamento", "/expediente", "/equipe", "/whatsapp", "/auditoria", "/simulador"] },
           ].map((g) => {
             const itens = links.filter((l) => g.rotas.includes(l.href) || (g.titulo === "Gestão" && l.href.startsWith("/indicadores/")));
             return itens.length > 0 && <div key={g.titulo}><p className="mb-1.5 px-3 text-xs text-zinc-400">{g.titulo}</p><div className="space-y-0.5">{itens.map(item)}</div></div>;
@@ -122,7 +132,7 @@ export function Navegacao({
       {/* Celular: topo com a marca + barra inferior */}
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-fundo/80 px-4 py-3 backdrop-blur-[14px] lg:hidden">
         <Marca nome={nomeBarbearia} />
-        <button onClick={sair} className="btn">Sair</button>
+        <div className="flex items-center gap-2"><SinoNotificacoes href="/notificacoes" area="equipe" /><button onClick={sair} className="btn">Sair</button></div>
       </header>
       <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-[rgba(255,255,255,0.05)] bg-fundo/85 p-2 backdrop-blur-[14px] lg:hidden">
         {links.slice(0, 4).map((l) => {

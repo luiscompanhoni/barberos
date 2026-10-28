@@ -3,10 +3,10 @@ import { horariosDisponiveis } from "@/lib/agenda/consultas";
 import { recusaOutroDia, recusaRetroativo } from "@/lib/agenda/tempo";
 
 const m = vi.hoisted(() => ({ dia: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { barbeiro: { findMany: async () => [{ id: "fauli", nome: "Faúli" }] } } }));
+vi.mock("@/lib/db", () => ({ db: { barbeiro: { findMany: async () => [{ id: "fauli", nome: "Faúli", cadeiraId: null }] } } }));
 vi.mock("@/lib/agenda/carregar", () => ({
   configuracao: async () => ({ fuso: "America/Sao_Paulo", granularidadeMin: 15, antecedenciaMinimaMin: 30, intervaloEntreClientes: 0 }),
-  servicoDoBarbeiro: async () => ({ duracaoMin: 30, precoCentavos: 6500 }),
+  servicoDoBarbeiro: async () => ({ duracaoMin: 30, minimoDuracaoMin: 5, precoCentavos: 6500 }),
   carregarDia: m.dia,
 }));
 

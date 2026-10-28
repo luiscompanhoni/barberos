@@ -1,0 +1,42 @@
+"use client";
+
+import { useState } from "react";
+import { dataLocal, instanteLocal, hhmmParaMin, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
+import { TIPOS_MARCACAO } from "@/lib/desempenho/schemas";
+import type { Acao, PainelDesempenho, ResumoDesempenho } from "./tipos";
+
+const NOME: Record<string, string> = { ENTRADA: "Entrada", PAUSA: "Pausa", RETORNO: "Retorno", SAIDA: "Saída" };
+const ESTADO: Record<string, string> = { CUMPRIU: "Cumpriu", FORA_CRITERIO: "Fora do critério", PENDENTE: "Conferir marcações", FOLGA: "Folga", FUTURO: "Ainda em andamento" };
+
+export function PresencaPainel(p: { resumo: ResumoDesempenho; contexto: PainelDesempenho["contexto"]; acao: Acao; salvando: boolean }) {
+  const r = p.resumo, propria = r.pessoa.usuarioId === p.contexto.usuarioId;
+  const [marcacaoId, setMarcacaoId] = useState(""), [tipo, setTipo] = useState("ENTRADA"), [data, setData] = useState(p.contexto.hoje), [hora, setHora] = useState("09:00"), [motivo, setMotivo] = useState("");
+  const [dataJustificativa, setDataJustificativa] = useState(p.contexto.hoje), [tipoJustificativa, setTipoJustificativa] = useState("FOLGA"), [justificativa, setJustificativa] = useState("");
+  const formatar = (v: string) => new Date(v).toLocaleString("pt-BR", { timeZone: r.fuso });
+  const porDia = new Map<string, typeof r.ajustes>();
+  for (const a of r.ajustes.filter((a) => a.status === "PENDENTE")) { const dia = dataLocal(new Date(a.instante), r.fuso); porDia.set(dia, [...(porDia.get(dia) ?? []), a]); }
+  const grupos = [...porDia].filter(([, ajustes]) => ajustes.length > 1 && ajustes.every((a) => a.solicitadoPorId !== p.contexto.usuarioId));
+  function escolher(id: string) {
+    setMarcacaoId(id);
+    const m = r.marcacoes.find((x) => x.id === id);
+    if (m) { setData(new Intl.DateTimeFormat("en-CA", { timeZone: r.fuso, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(m.instante))); setHora(minParaHhmm(minutosLocal(new Date(m.instante), r.fuso))); }
+  }
+  async function corrigir(e: React.FormEvent) {
+    e.preventDefault();
+    const instante = new Date(instanteLocal(data, hhmmParaMin(hora), r.fuso)).toISOString();
+    if (await p.acao({ acao: "solicitar_ajuste", pessoaId: r.pessoa.id, ...(marcacaoId ? { marcacaoId } : { tipo }), instante, motivo })) setMotivo("");
+  }
+  return <div className="space-y-4">
+    {propria && r.competencia === p.contexto.hoje.slice(0, 7) && <section className="cartao space-y-3"><h2 className="font-semibold">Registrar agora</h2><p className="text-sm text-zinc-500">O horário é registrado pelo servidor, no fuso da barbearia.</p><div className="flex flex-wrap gap-2">{r.proximasMarcacoes.map((t) => <button className="btn-primario" key={t} disabled={p.salvando} onClick={() => p.acao({ acao: "marcar", pessoaId: r.pessoa.id, tipo: t, chave: crypto.randomUUID() })}>{NOME[t]}</button>)}</div>{r.proximasMarcacoes.length === 0 && <p className="text-sm">Jornada encerrada. Use a solicitação de correção se precisar ajustar um registro.</p>}</section>}
+    <section className="cartao space-y-3"><h2 className="font-semibold">Marcações e histórico</h2>{r.marcacoes.length ? <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr><th className="py-2">Tipo</th><th>Horário considerado</th><th>Original</th></tr></thead><tbody>{r.marcacoes.map((m) => <tr key={m.id} className="border-t border-zinc-200"><td className="py-2">{NOME[m.tipo]}</td><td>{formatar(m.instante)}</td><td className="text-zinc-500">{m.instante === m.instanteOriginal ? "Sem ajuste" : formatar(m.instanteOriginal)}</td></tr>)}</tbody></table></div> : <p className="text-sm text-zinc-500">Nenhuma marcação nesta competência.</p>}</section>
+    {!r.fechado && <form className="cartao space-y-3" onSubmit={corrigir}><h2 className="font-semibold">Solicitar correção ou batida esquecida</h2><p className="text-sm text-zinc-500">Outra pessoa da liderança confere a solicitação. O registro original continua no histórico.</p>
+      <label className="block text-sm">Marcação<select className="campo mt-1" value={marcacaoId} onChange={(e) => escolher(e.target.value)}><option value="">Adicionar uma batida esquecida</option>{r.marcacoes.map((m) => <option key={m.id} value={m.id}>{NOME[m.tipo]} · {formatar(m.instante)}</option>)}</select></label>
+      <div className="grid gap-3 sm:grid-cols-3">{!marcacaoId && <label className="text-sm">Tipo<select className="campo mt-1" value={tipo} onChange={(e) => setTipo(e.target.value)}>{TIPOS_MARCACAO.map((t) => <option key={t} value={t}>{NOME[t]}</option>)}</select></label>}<label className="text-sm">Data<input required type="date" className="campo mt-1" value={data} max={p.contexto.hoje} onChange={(e) => setData(e.target.value)} /></label><label className="text-sm">Horário<input required type="time" className="campo mt-1" value={hora} onChange={(e) => setHora(e.target.value)} /></label></div>
+      <label className="block text-sm">Motivo<textarea required minLength={10} maxLength={500} className="campo mt-1" value={motivo} onChange={(e) => setMotivo(e.target.value)} /></label><button className="btn" disabled={p.salvando}>Enviar para revisão</button>
+    </form>}
+    {r.ajustes.length > 0 && <section className="cartao space-y-3"><h2 className="font-semibold">Solicitações de correção</h2>{r.ajustes.map((a) => <article className="border-t border-zinc-200 pt-3 text-sm" key={a.id}><p>{a.tipo ? `${NOME[a.tipo]} · ` : "Correção · "}{formatar(a.instante)} · <b>{a.status === "PENDENTE" ? "Aguardando revisão" : a.status === "APROVADO" ? "Aprovada" : "Recusada"}</b></p><p className="my-2 text-zinc-500">{a.motivo}</p>{a.status === "PENDENTE" && p.contexto.avaliar && !propria && a.solicitadoPorId !== p.contexto.usuarioId && <div className="flex gap-2"><button className="btn" disabled={p.salvando} onClick={() => p.acao({ acao: "revisar_ajuste", id: a.id, aprovar: true })}>Aprovar</button><button className="btn" disabled={p.salvando} onClick={() => p.acao({ acao: "revisar_ajuste", id: a.id, aprovar: false })}>Recusar</button></div>}</article>)}</section>}
+    <section className="cartao space-y-3"><h2 className="font-semibold">Conferência dos dias</h2>{r.presenca.dias.length ? r.presenca.dias.map((d) => <p className="border-t border-zinc-200 pt-2 text-sm" key={d.data}><b>{d.data.split("-").reverse().join("/")}</b> · {ESTADO[d.estado]}{d.minutos !== null ? ` · ${d.minutos} min registrados` : ""}<span className="block text-xs text-zinc-500">{d.motivo}</span></p>) : <p className="text-sm text-zinc-500">Sem dias combinados elegíveis neste mês. Confira a adesão.</p>}</section>
+    {p.contexto.avaliar && !propria && grupos.length > 0 && <section className="cartao space-y-3"><h2 className="font-semibold">Correções do mesmo dia</h2><p className="text-sm text-zinc-500">Confira os pedidos acima. Pausa e retorno esquecidos precisam ser aprovados juntos para manter a sequência correta.</p>{grupos.map(([dia, ajustes]) => <button className="btn" key={dia} disabled={p.salvando} onClick={() => p.acao({ acao: "revisar_ajustes", ids: ajustes!.map((a) => a.id), aprovar: true })}>Aprovar {ajustes!.length} correções de {dia.split("-").reverse().join("/")}</button>)}</section>}
+    {p.contexto.avaliar && !propria && !r.fechado && <form className="cartao space-y-3" onSubmit={async (e) => { e.preventDefault(); if (await p.acao({ acao: "justificar", pessoaId: r.pessoa.id, data: dataJustificativa, tipo: tipoJustificativa, motivo: justificativa })) setJustificativa(""); }}><h2 className="font-semibold">Registrar folga ou abono</h2><div className="grid gap-3 sm:grid-cols-2"><label className="text-sm">Data<input required type="date" className="campo mt-1" value={dataJustificativa} onChange={(e) => setDataJustificativa(e.target.value)} /></label><label className="text-sm">Tipo<select className="campo mt-1" value={tipoJustificativa} onChange={(e) => setTipoJustificativa(e.target.value)}><option value="FOLGA">Folga — retirar do cálculo</option><option value="ABONO">Abono — considerar cumprido</option></select></label></div><label className="block text-sm">Justificativa<textarea required minLength={10} maxLength={500} className="campo mt-1" value={justificativa} onChange={(e) => setJustificativa(e.target.value)} /></label><button className="btn" disabled={p.salvando}>Registrar justificativa</button></form>}
+  </div>;
+}
