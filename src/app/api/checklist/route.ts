@@ -45,6 +45,7 @@ export const PUT = rota(async (req: Request) => {
       pontos: z.number().int().min(0).max(10000).optional(),
       ativo: z.boolean(),
     })).max(200),
+    confirmarFaixas: z.boolean().optional(),
   }));
   return NextResponse.json(await salvarCadastro(s, b));
 });

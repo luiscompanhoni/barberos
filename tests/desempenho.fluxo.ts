@@ -7,11 +7,13 @@ import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { avaliarDesempenho } from "@/lib/desempenho/avaliacoes";
 import { aprovarBonus } from "@/lib/desempenho/bonus";
-import { proporAdesao, responderAdesao, salvarPrograma } from "@/lib/desempenho/configuracao";
+import { justificarPresenca, proporAdesao, responderAdesao, salvarPrograma } from "@/lib/desempenho/configuracao";
 import { painelDesempenho, resumoPessoa } from "@/lib/desempenho/consultas";
 import { marcarPresenca, revisarAjuste, revisarAjustes, solicitarAjuste } from "@/lib/desempenho/presenca";
 import { PROGRAMA_INICIAL } from "@/lib/desempenho/schemas";
 import { excluirLancamento, fecharFolha } from "@/lib/rh/folha";
+import { avaliarItem } from "@/lib/checklist/pontos";
+import { marcarNoPainel, salvarCadastro } from "@/lib/checklist/servico";
 
 async function main() {
   const url = new URL(process.env.DATABASE_URL ?? "");
@@ -56,6 +58,17 @@ async function main() {
     await assert.rejects(() => avaliarDesempenho(lider.s, { pessoaId: lider.p.id, data: hoje, tipo: "DIARIA", notas: { execucao: 5, organizacao: 5, atendimento: 5, colaboracao: 5 }, comentario: "" }), { status: 403 });
     await assert.rejects(() => avaliarDesempenho(lider.s, { pessoaId: profissional.p.id, data: hoje, tipo: "DIARIA", notas: { execucao: 1, organizacao: 5, atendimento: 5, colaboracao: 5 }, comentario: "" }), /Explique/);
     await assert.rejects(() => salvarPrograma(dono.s, comp, PROGRAMA_INICIAL), /próximo mês/);
+    // Abono conta como dia cumprido: a liderança registra folga, mas só o dono concede ou troca um abono.
+    const folga = { pessoaId: profissional.p.id, data: hoje, motivo: "Combinado com a gestão da barbearia" };
+    await assert.rejects(() => justificarPresenca(lider.s, { ...folga, tipo: "ABONO" }), { status: 403 });
+    await justificarPresenca(lider.s, { ...folga, tipo: "FOLGA" });
+    await justificarPresenca(dono.s, { ...folga, tipo: "ABONO" });
+    await assert.rejects(() => justificarPresenca(lider.s, { ...folga, tipo: "FOLGA" }), { status: 403 });
+    assert.equal((await db.presencaJustificativa.findUniqueOrThrow({ where: { pessoaId_data: { pessoaId: profissional.p.id, data: hoje } } })).tipo, "ABONO");
+    // Com outro dono ativo, ninguém aprova o próprio bônus.
+    const socio = await criar("Sócio", "DONO");
+    await assert.rejects(() => aprovarBonus(dono.s, dono.p.id, comp), /Outro dono/);
+    await db.usuario.update({ where: { id: socio.s.usuarioId }, data: { ativo: false } });
     const programa = structuredClone(PROGRAMA_INICIAL);
     programa.ativo = true; programa.pontosPresenca = 10; programa.pontosLider = 15;
     programa.faixas.PLATINA = { bonusCentavos: 20000, presencaMinPct: 100, checklistMinPct: 100, liderMin: 4, clientesMin: null };
@@ -90,6 +103,26 @@ async function main() {
     assert.equal(memoria.resultado.criterios.find((c) => c.nome === "Checklist")?.cumpriu, true, "A aprovação preserva os critérios usados na época");
     await assert.rejects(() => avaliarDesempenho(lider.s, { pessoaId: profissional.p.id, data: dia, tipo: "DIARIA", notas: { execucao: 4, organizacao: 4, atendimento: 4, colaboracao: 4 }, comentario: "Não pode alterar período fechado" }), { status: 409 });
     await fecharFolha(dono.s, comp, profissional.p.id);
+    // Pontos de mês fechado não mudam: desfazer, dar ré ou desmarcar a tarefa é recusado.
+    const itemFechado = await db.checklistItem.create({ data: { pessoaId: profissional.p.id, data: dataParaColuna(dia), titulo: "Tarefa do mês fechado", ordem: 1, feito: true, avaliacao: "VALIDADO" } });
+    await db.checklistPonto.create({ data: { pessoaId: profissional.p.id, itemId: itemFechado.id, pontos: 10, descricao: "Validada: Tarefa do mês fechado", criadoEm: new Date(instanteLocal(dia, 700, fuso)) } });
+    await assert.rejects(() => avaliarItem(dono.s, itemFechado.id, null), /mês já fechado/);
+    await assert.rejects(() => avaliarItem(dono.s, itemFechado.id, "RE", "Marcou sem fazer"), /mês já fechado/);
+    await assert.rejects(() => marcarNoPainel(dono.s, itemFechado.id, false), /mês já fechado/);
+    assert.equal((await db.checklistPonto.findUniqueOrThrow({ where: { itemId: itemFechado.id } })).pontos, 10);
+    // Mês aberto: reavaliar troca os pontos, mas mantém a data original (o ponto não muda de mês).
+    const itemAberto = await db.checklistItem.create({ data: { pessoaId: segundo.p.id, data: dataParaColuna(hoje), titulo: "Tarefa do mês aberto", ordem: 1, feito: true } });
+    await avaliarItem(dono.s, itemAberto.id, "VALIDADO");
+    const dataOriginal = new Date(instanteLocal(`${hoje.slice(0, 7)}-01`, 0, fuso));
+    await db.checklistPonto.update({ where: { itemId: itemAberto.id }, data: { criadoEm: dataOriginal } });
+    await avaliarItem(dono.s, itemAberto.id, "RE", "Marcou sem fazer");
+    const reavaliado = await db.checklistPonto.findUniqueOrThrow({ where: { itemId: itemAberto.id } });
+    assert(reavaliado.pontos < 0); assert.equal(+reavaliado.criadoEm, +dataOriginal);
+    // Mudar os pontos das faixas: só o dono, e quem muda de faixa aparece antes de salvar (nada é gravado).
+    const faixasNovas = { config: { ativo: false, horaEnvio: "08:00", horaResumo: "20:00", nivelPlatina: 100_000, nivelLegend: 200_000 }, pessoas: [], tarefas: [] };
+    await assert.rejects(() => salvarCadastro(lider.s, faixasNovas), { status: 403 });
+    await assert.rejects(() => salvarCadastro(dono.s, faixasNovas), (e: { codigo?: string; detalhes?: { mudancas: { nome: string; para: string }[] } }) =>
+      e.codigo === "confirmar_faixas" && !!e.detalhes?.mudancas.some((m) => m.nome === profissional.p.nome && m.para === "ELITE"));
     assert.equal((await db.folhaPagamento.findUniqueOrThrow({ where: { competencia_pessoaId: { competencia: comp, pessoaId: profissional.p.id } } })).adicionaisCentavos, 20000);
     await Promise.allSettled([aprovarBonus(dono.s, segundo.p.id, comp), fecharFolha(dono.s, comp, segundo.p.id)]);
     const folhaSegunda = await db.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: comp, pessoaId: segundo.p.id } } });

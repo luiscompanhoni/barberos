@@ -191,7 +191,8 @@ A atualização de equipe acrescenta **Reuniões** (`/reunioes`), **Meu dia** (`
 - **Checklist** (`/checklist`, dono e recepção): tarefas por função (diarista, barbeiro, gerente) e dia da semana;
   de manhã cada pessoa recebe a lista no WhatsApp com link sem login (`/t/<código>`), à noite sai o resumo das
   pendências. O gerente valida (ganha pontos) ou dá "re" (marcou sem fazer: perde pontos e a tarefa volta). Faixas
-  BLACK ELITE, BLACK PLATINA e BLACK LEGEND, com classificação.
+  BLACK ELITE, BLACK PLATINA e BLACK LEGEND, com classificação. Só o dono muda os pontos das faixas, e antes de salvar
+  vê quem sobe ou desce. Pontos de um mês com bônus ou folha fechados não mudam: a correção é um ajuste de pontos.
 - **RH** (`/rh`):
   - Funcionários (mesmo cadastro do checklist).
   - Comissão de avulsos: % ou fixo por serviço, exceção por barbeiro, sobre o valor efetivamente cobrado (desconto

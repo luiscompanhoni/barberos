@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Plus, RefreshCw, Save, Trash2 } from "lucide-react";
-import { api } from "@/lib/cliente-api";
+import { api, type ErroApi } from "@/lib/cliente-api";
+import { useAcesso } from "@/components/AcessoContexto";
 
 type Funcao = "DIARISTA" | "BARBEIRO" | "GERENTE";
 type Pessoa = { id?: string; chave: string; nome: string; telefone: string; funcao: Funcao; ativo: boolean; link?: string };
@@ -26,6 +27,8 @@ export function ChecklistCadastro({ aoSalvar }: { aoSalvar: () => void }) {
   const [funcao, setFuncao] = useState<Funcao>("DIARISTA");
   const [msg, setMsg] = useState<{ t: string; erro?: boolean } | null>(null);
   const [salvando, setSalvando] = useState(false);
+  // Pontos das faixas valem para o bônus: só o dono muda (o servidor confere).
+  const souDono = useAcesso().papel === "DONO";
 
   function aplicar(d: Dados) {
     setCfg(d.config);
@@ -34,7 +37,7 @@ export function ChecklistCadastro({ aoSalvar }: { aoSalvar: () => void }) {
   }
   useEffect(() => { api<Dados>("/api/checklist").then(aplicar).catch((e) => setMsg({ t: e.message, erro: true })); }, []);
 
-  async function salvar() {
+  async function salvar(confirmarFaixas = false) {
     if (!cfg) return;
     setMsg(null);
     setSalvando(true);
@@ -45,13 +48,20 @@ export function ChecklistCadastro({ aoSalvar }: { aoSalvar: () => void }) {
           config: cfg,
           pessoas: pessoas.map(({ id, nome, telefone, funcao: f, ativo }) => ({ ...(id ? { id } : {}), nome, telefone, funcao: f, ativo })),
           tarefas: tarefas.map(({ id, titulo, funcao: f, diasSemana, horario, ativo, pontos }) => ({ ...(id ? { id } : {}), titulo, funcao: f, diasSemana, horario: horario || null, ativo, pontos })),
+          ...(confirmarFaixas ? { confirmarFaixas } : {}),
         },
       });
       aplicar(d);
       aoSalvar();
       setMsg({ t: "Checklist salvo." });
     } catch (e) {
-      setMsg({ t: (e as Error).message, erro: true });
+      const { codigo, detalhes, message } = e as ErroApi;
+      const mudancas = (detalhes as { mudancas?: { nome: string; pontos: number; de: string; para: string }[] } | undefined)?.mudancas;
+      if (codigo === "confirmar_faixas" && mudancas) {
+        const lista = mudancas.map((m) => `${m.nome} (${m.pontos} pts): BLACK ${m.de} → BLACK ${m.para}`).join("\n");
+        if (confirm(`${message}\n\n${lista}\n\nSalvar mesmo assim?`)) return salvar(true);
+        setMsg({ t: "Nada foi salvo: as faixas continuam como estavam.", erro: true });
+      } else setMsg({ t: message, erro: true });
     } finally {
       setSalvando(false);
     }
@@ -92,7 +102,7 @@ export function ChecklistCadastro({ aoSalvar }: { aoSalvar: () => void }) {
             ["nivelPlatina", "BLACK PLATINA a partir de"],
             ["nivelLegend", "BLACK LEGEND a partir de"],
           ] as const).map(([k, r]) => (
-            <div key={k}><label className="rotulo">{r}</label><input className="campo w-36" inputMode="numeric" value={cfg[k]} onChange={(e) => setCfg({ ...cfg, [k]: Number(e.target.value.replace(/\D/g, "")) || 0 })} /></div>
+            <div key={k}><label className="rotulo">{r}</label><input className="campo w-36" inputMode="numeric" disabled={k !== "pontosRe" && !souDono} value={cfg[k]} onChange={(e) => setCfg({ ...cfg, [k]: Number(e.target.value.replace(/\D/g, "")) || 0 })} /></div>
           ))}
         </div>
         <p className="text-xs text-zinc-500">Todo mundo começa como BLACK ELITE. O gerente valida as tarefas feitas (ganha os pontos da tarefa) ou dá ré quando marcaram sem fazer (perde os pontos acima).</p>
@@ -148,7 +158,7 @@ export function ChecklistCadastro({ aoSalvar }: { aoSalvar: () => void }) {
         <button className="btn" onClick={() => setTarefas((xs) => [...xs, { chave: `t${++seq}`, titulo: "", funcao, diasSemana: [], horario: "", ativo: true, pontos: 10 }])}><Plus size={15} /> Adicionar tarefa</button>
       </section>
 
-      <button className="btn-primario" disabled={salvando} onClick={salvar}><Save size={16} /> {salvando ? "Salvando…" : "Salvar checklist"}</button>
+      <button className="btn-primario" disabled={salvando} onClick={() => salvar()}><Save size={16} /> {salvando ? "Salvando…" : "Salvar checklist"}</button>
     </div>
   );
 }

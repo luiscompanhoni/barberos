@@ -9,7 +9,11 @@ import { resumoPessoa } from "./consultas";
 /** Aprovação mensal única, junto ao lançamento e pontos; não paga nem altera comissão. */
 export async function aprovarBonus(s: Sessao, pessoaId: string, competencia: string) {
   exigirDono(s);
-  await exigirPessoa(s, pessoaId);
+  const { propria } = await exigirPessoa(s, pessoaId);
+  // Com mais de um dono, quem recebe não aprova o próprio bônus.
+  if (propria && await db.usuario.count({ where: { papel: "DONO", ativo: true, id: { not: s.usuarioId } } })) {
+    throw new ErroNegocio("Outro dono deve aprovar o seu próprio bônus.", 403, "propria_aprovacao");
+  }
   return db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ${pessoaId} FOR UPDATE`;
     const anterior = await tx.desempenhoBonus.findUnique({ where: { pessoaId_competencia: { pessoaId, competencia } } });

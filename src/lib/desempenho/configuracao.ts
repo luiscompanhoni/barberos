@@ -57,6 +57,8 @@ export async function justificarPresenca(s: Sessao, d: { pessoaId: string; data:
   return db.$transaction(async (tx) => {
     await travarCompetencia(tx, d.pessoaId, d.data.slice(0, 7));
     const antes = await tx.presencaJustificativa.findUnique({ where: { pessoaId_data: { pessoaId: d.pessoaId, data: d.data } } });
+    // Abono conta o dia como cumprido para o bônus: só o dono concede ou troca (a liderança registra folgas).
+    if (d.tipo === "ABONO" || antes?.tipo === "ABONO") exigirDono(s);
     const j = await tx.presencaJustificativa.upsert({ where: { pessoaId_data: { pessoaId: d.pessoaId, data: d.data } }, create: { pessoaId: d.pessoaId, data: d.data, tipo: d.tipo, motivo: d.motivo, porId: s.usuarioId }, update: { tipo: d.tipo, motivo: d.motivo, porId: s.usuarioId } });
     await auditar(tx, s.usuarioId, "presenca_justificar", "presenca_justificativa", j.id, { antes: antes ? { tipo: antes.tipo, motivo: antes.motivo } : null, depois: d });
     return j;
