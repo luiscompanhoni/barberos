@@ -52,10 +52,20 @@ async function main() {
     assert.equal(desligado.ativo, false); assert.equal(desligado.barbeiro?.ativo, false);
     await ativarBarbeiro(s, barbeiroId, true);
     assert.equal((await db.usuario.findUniqueOrThrow({ where: { id: criado.id } })).ativo, true);
+    // Desativar em Acessos tira o acesso todo (login, agenda e checklist); reativar devolve.
+    await salvarAcesso(s, criado.id, { ativo: false });
+    const semAcesso = await db.usuario.findUniqueOrThrow({ where: { id: criado.id }, include: { barbeiro: true, checklistPessoa: true } });
+    assert.equal(semAcesso.ativo, false); assert.equal(semAcesso.barbeiro?.ativo, false); assert.equal(semAcesso.checklistPessoa?.ativo, false);
+    await salvarAcesso(s, criado.id, { ativo: true, atende: true });
+    const religado = await db.usuario.findUniqueOrThrow({ where: { id: criado.id }, include: { barbeiro: true, checklistPessoa: true } });
+    assert.equal(religado.ativo, true); assert.equal(religado.barbeiro?.ativo, true); assert.equal(religado.checklistPessoa?.ativo, true);
     // Desativar um barbeiro sem ficha (cadastro antigo) não cria ficha nova de checklist.
     const semFicha = await db.barbeiro.create({ data: { nome: "Teste Sem Ficha", usuario: { create: { nome: "Teste Sem Ficha", telefone: "5511988800010", papel: "BARBEIRO" } } } }); ids.push(semFicha.usuarioId);
     await ativarBarbeiro(s, semFicha.id, false);
     assert.equal(await db.checklistPessoa.count({ where: { usuarioId: semFicha.usuarioId } }), 0);
+    // Reativar quem é barbeiro (botão "reativar" de Acessos) devolve a agenda.
+    await salvarAcesso(s, semFicha.usuarioId, { ativo: true });
+    assert.equal((await db.barbeiro.findUniqueOrThrow({ where: { id: semFicha.id } })).ativo, true);
     await salvarAcesso(s, dono.id, { atende: true });
     const barbeiroDono = await db.barbeiro.findUniqueOrThrow({ where: { usuarioId: dono.id } });
     await assert.rejects(() => ativarBarbeiro(s, barbeiroDono.id, false), /pelo menos um dono/);

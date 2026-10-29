@@ -62,7 +62,8 @@ webhooks / rotinas ─────────┘
 - **Sessão:** JWT HS256 (jose) no cookie `barberos_sessao`, httpOnly, `sameSite=lax`, 30 dias, `secure` quando
   site e painel são https. `SESSION_SECRET` com 32+ caracteres. `src/proxy.ts` só faz a checagem otimista; a
   autorização real é em cada rota (`exigirSessao`/`exigirCliente`), e `sessaoAtual()` revalida o usuário no banco
-  (desativado perde acesso na hora). Senhas com scrypt; código de login (OTP) por WhatsApp ou console.
+  (desativado perde acesso na hora). Desativar tira o acesso todo: login, agenda e lista do checklist, e é recusado
+  enquanto houver atendimentos marcados; reativar devolve o login e o checklist (e a agenda de quem é barbeiro). Senhas com scrypt; código de login (OTP) por WhatsApp ou console.
 - **Permissões:** papéis + matriz `PermissaoPapel` (`src/lib/auth/permissoes*.ts`, função `pode()`).
 - **Auditoria:** `auditar(tx, ...)`/`auditarMudanca(...)` gravam na mesma transação da mudança, com IP
   (`x-forwarded-for` posto pelo Caddy) e aparelho; `auditarMudanca` guarda só os campos que mudaram. Migração

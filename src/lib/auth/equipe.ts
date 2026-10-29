@@ -58,10 +58,12 @@ async function prepararEdicao(tx: Tx, s: Sessao) {
   if (!ator?.ativo || ator.papel !== "DONO") throw proibido();
 }
 
-async function atualizarPerfil(tx: Tx, usuarioId: string, d: EdicaoUsuario) {
+async function atualizarPerfil(tx: Tx, usuarioId: string, d: EdicaoUsuario, ativoAntes = true) {
   const u = await tx.usuario.findUniqueOrThrow({ where: { id: usuarioId }, include: { barbeiro: { include: { checklistPessoa: true } }, checklistPessoa: true } });
   let b = u.barbeiro;
-  const atende = d.atende ?? b?.ativo ?? u.papel === "BARBEIRO";
+  // Desativado perde o acesso todo: login, agenda e lista do checklist. Reativar devolve a agenda de quem é barbeiro.
+  const religou = !ativoAntes && u.ativo;
+  const atende = !u.ativo ? false : d.atende ?? (religou && u.papel === "BARBEIRO" ? true : b?.ativo ?? u.papel === "BARBEIRO");
   if (b && !atende && b.ativo) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${b.id}))`;
     const futuros = await tx.agendamento.count({ where: { barbeiroId: b.id, fim: { gt: new Date() }, status: { in: ["MARCADO", "CONFIRMADO", "CHEGOU", "EM_ATENDIMENTO"] } } });
@@ -74,10 +76,10 @@ async function atualizarPerfil(tx: Tx, usuarioId: string, d: EdicaoUsuario) {
   }
   const pessoa = u.checklistPessoa ?? b?.checklistPessoa;
   if (pessoa) {
-    await tx.checklistPessoa.update({ where: { id: pessoa.id }, data: { usuarioId: u.id, nome: u.nome, telefone: u.telefone, ...(b ? { barbeiroId: b.id } : {}), ...(d.cargo !== undefined ? { cargo: d.cargo || null } : {}), ...(d.funcaoChecklist ? { funcao: d.funcaoChecklist } : {}) } });
+    await tx.checklistPessoa.update({ where: { id: pessoa.id }, data: { usuarioId: u.id, nome: u.nome, telefone: u.telefone, ...(b ? { barbeiroId: b.id } : {}), ...(ativoAntes !== u.ativo ? { ativo: u.ativo } : {}), ...(d.cargo !== undefined ? { cargo: d.cargo || null } : {}), ...(d.funcaoChecklist ? { funcao: d.funcaoChecklist } : {}) } });
   } else if ((b && atende) || d.funcaoChecklist) {
     // Tirar da agenda (ou desligar) não cria ficha nova de checklist.
-    await tx.checklistPessoa.create({ data: { usuarioId: u.id, barbeiroId: b?.id, nome: u.nome, telefone: u.telefone, token: randomBytes(24).toString("hex"), funcao: d.funcaoChecklist ?? "BARBEIRO", cargo: d.cargo || null } });
+    await tx.checklistPessoa.create({ data: { usuarioId: u.id, ativo: u.ativo, barbeiroId: b?.id, nome: u.nome, telefone: u.telefone, token: randomBytes(24).toString("hex"), funcao: d.funcaoChecklist ?? "BARBEIRO", cargo: d.cargo || null } });
   }
   if (d.servicoIds !== undefined) {
     if (!b && d.servicoIds.length) throw new ErroNegocio("Ative a agenda antes de escolher os serviços.");
@@ -121,7 +123,7 @@ export async function salvarAcesso(s: Sessao, id: string | null, d: EdicaoUsuari
       const u = anterior
         ? await tx.usuario.update({ where: { id: anterior.id }, data: dados })
         : await tx.usuario.create({ data: { nome: dados.nome!, telefone: dados.telefone!, papel: dados.papel!, login: dados.login, ativo: dados.ativo } });
-      await atualizarPerfil(tx, u.id, d);
+      await atualizarPerfil(tx, u.id, d, anterior?.ativo ?? true);
       if (d.permissoes) {
         for (const [permissao, permitido] of Object.entries(d.permissoes)) {
           const k = PERMISSOES.find((p) => p.chave === permissao)?.chave;

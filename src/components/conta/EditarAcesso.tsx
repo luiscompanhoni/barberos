@@ -67,7 +67,7 @@ function Formulario({ opcoes, onSalvo }: { opcoes: Opcoes; onSalvo: () => void }
       <label className="rotulo">Usuário de acesso<input className="campo" autoComplete="off" maxLength={30} value={login} onChange={(e) => setLogin(e.target.value)} /></label>
       <label className="rotulo">Função<select className="campo" value={papel} disabled={u.eu} onChange={(e) => setPapel(e.target.value as PapelEquipe)}>{Object.entries(PAPEIS_EQUIPE).map(([k, nome]) => <option key={k} value={k}>{nome}</option>)}</select></label>
     </div>
-    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={ativo} disabled={u.eu} onChange={(e) => setAtivo(e.target.checked)} /> Acesso ativo</label>
+    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={ativo} disabled={u.eu} onChange={(e) => setAtivo(e.target.checked)} /> Acesso ativo <span className="text-xs text-zinc-500">(desativado perde o login, a agenda e o checklist)</span></label>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={atende} onChange={(e) => setAtende(e.target.checked)} /> Também atende como barbeiro e aparece na agenda</label>
     {u.eu && <p className="text-xs text-zinc-500">Outro dono deve alterar sua função ou desativar seu acesso.</p>}
     {atende && <fieldset className="space-y-2 rounded-xl border border-zinc-200 p-3">
