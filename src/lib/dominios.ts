@@ -22,7 +22,7 @@ export function ehHostPainel(host: string | null) {
 
 /** Paginas que moram no site (cliente): o resto e do painel. */
 export function ehPaginaDoSite(path: string) {
-  return path === "/" || path === "/assine" || path === "/entrar" || path === "/c" || path.startsWith("/c/") || path.startsWith("/i/") || path.startsWith("/vagas/");
+  return path === "/" || path === "/assine" || path === "/entrar" || path === "/c" || path.startsWith("/c/") || path.startsWith("/i/") || path.startsWith("/vagas/") || path === "/privacidade" || path === "/termos";
 }
 
 /**

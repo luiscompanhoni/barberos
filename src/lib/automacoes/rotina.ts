@@ -3,6 +3,7 @@
  * lembretes, aviso depois da falta, agradecimento pos-atendimento e reativacao de sumidos.
  * Cada envio grava antes uma linha unica (tipo + chave): nada sai duas vezes.
  */
+import { apagarCandidaturasVencidas } from "@/lib/recrutamento/servico";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { processarCampanhas } from "@/lib/campanhas/servico";
@@ -95,6 +96,9 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
 
   // ---- premios de jogo: vence o que passou da validade e solta reserva de horario cancelado
   if (!opts.clienteIds) await atualizarPremios().catch((e) => console.error("[jogos] atualizar premios", e));
+
+  // ---- LGPD: candidaturas sem autorizacao para futuras oportunidades saem em 12 meses
+  if (!opts.clienteIds) await apagarCandidaturasVencidas(agora).catch((e) => console.error("[lgpd] candidaturas", e));
 
   // ---- aniversario (a partir das 9h, uma vez por ano)
   if (cfg.aniversario && minutosLocal(agora, cfg.fuso) >= 9 * 60) {

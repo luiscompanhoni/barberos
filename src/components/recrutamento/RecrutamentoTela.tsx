@@ -47,6 +47,12 @@ export function RecrutamentoTela() {
     try { await api("/api/recrutamento/vagas", { method: "PATCH", body: { id: v.id, ativa: !v.ativa } }); setRevisao((x) => x + 1); setMensagem(v.ativa ? "Inscrições encerradas." : "Inscrições abertas. O formulário pode ser compartilhado."); }
     catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
   }
+  async function excluir(c: Candidatura) {
+    if (!confirm(`Excluir a candidatura de ${c.candidato.nome}? Os dados pessoais são apagados e não dá para desfazer.`)) return;
+    setOcupado(true); setErro("");
+    try { await api(`/api/recrutamento/candidaturas/${c.id}`, { method: "DELETE" }); setRevisao((x) => x + 1); setMensagem("Candidatura excluída."); }
+    catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
+  }
   async function etapa(e: FormEvent<HTMLFormElement>, c: Candidatura) {
     e.preventDefault(); const f = new FormData(e.currentTarget); setOcupado(true); setErro("");
     try { await api(`/api/recrutamento/candidaturas/${c.id}`, { method: "PATCH", body: { etapa: f.get("etapa"), motivo: f.get("motivo"), versao: c.versao } }); setRevisao((x) => x + 1); setMensagem("Acompanhamento salvo."); }
@@ -73,7 +79,7 @@ export function RecrutamentoTela() {
         <div className="flex flex-wrap gap-3 text-sm">{c.portfolio && <a className="text-ouro underline" href={c.portfolio} rel="noopener noreferrer" target="_blank">Portfólio</a>}{c.instagram && <a className="text-ouro underline" href={c.instagram} rel="noopener noreferrer" target="_blank">Instagram profissional</a>}</div>
         <p className="text-xs text-zinc-500">Recebido: {new Date(c.criadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}. Futuras oportunidades: {c.futurasOportunidades ? "autorizadas" : "não autorizadas"}.</p>
         {Object.keys(c.origem).length > 0 && <p className="text-xs break-words text-zinc-500">Origem declarada: {Object.entries(c.origem).map(([k, v]) => `${k}: ${v}`).join(" · ")}</p>}
-        <form className="space-y-2 border-t border-zinc-500/20 pt-3" onSubmit={(e) => etapa(e, c)}><label className="block text-sm">Etapa<select className="campo" name="etapa" defaultValue={c.etapa}>{ETAPAS.filter((x) => x !== "BANCO" || c.futurasOportunidades).map((x) => <option key={x} value={x}>{ROTULOS[x]}</option>)}</select></label><label className="block text-sm">Registro da análise profissional<textarea className="campo" name="motivo" minLength={2} maxLength={1500} required rows={2} placeholder="Evidências do trabalho, entrevista ou próximo passo." /></label><button className="btn" disabled={ocupado}>Salvar acompanhamento</button></form>
+        <form className="space-y-2 border-t border-zinc-500/20 pt-3" onSubmit={(e) => etapa(e, c)}><label className="block text-sm">Etapa<select className="campo" name="etapa" defaultValue={c.etapa}>{ETAPAS.filter((x) => x !== "BANCO" || c.futurasOportunidades).map((x) => <option key={x} value={x}>{ROTULOS[x]}</option>)}</select></label><label className="block text-sm">Registro da análise profissional<textarea className="campo" name="motivo" minLength={2} maxLength={1500} required rows={2} placeholder="Evidências do trabalho, entrevista ou próximo passo." /></label><div className="flex flex-wrap gap-2"><button className="btn" disabled={ocupado}>Salvar acompanhamento</button><button type="button" className="btn-perigo" disabled={ocupado} onClick={() => excluir(c)}>Excluir dados</button></div></form>
         {c.historico.length > 0 && <details><summary className="cursor-pointer text-sm">Histórico recente</summary><ol className="mt-2 space-y-2 text-xs">{c.historico.map((h) => <li className="whitespace-pre-wrap" key={h.id}>{ROTULOS[h.etapa]} · {new Date(h.criadoEm).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}: {h.motivo}</li>)}</ol></details>}
       </article>)}</div>
       {dados && dados.total > 30 && <div className="flex items-center justify-between gap-2"><button className="btn" disabled={filtro.pagina <= 1} onClick={() => setFiltro({ ...filtro, pagina: filtro.pagina - 1 })}>Anterior</button><span>Página {dados.pagina}</span><button className="btn" disabled={filtro.pagina * 30 >= dados.total} onClick={() => setFiltro({ ...filtro, pagina: filtro.pagina + 1 })}>Próxima</button></div>}

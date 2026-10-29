@@ -146,7 +146,10 @@ Falta:
 ### Outros itens da fase A (vindos dos blocos anteriores)
 - [ ] 36. Backups: criar o bucket fora do servidor e preencher `BACKUP_S3_*` e `BACKUP_SENHA` (ver README). 👤
 - [ ] 38. Homologação: criar o DNS `homolog.appblackbarber.com` e rodar `deploy.sh ... homolog` (ver README). 👤
-- [ ] LGPD ⬜: termos de uso, política de privacidade, consentimento e pedido de exclusão/exportação dos dados.
+- [x] LGPD (27/10): `/privacidade` e `/termos` (dados do controlador vêm do `.env`: `EMPRESA_RAZAO_SOCIAL`, `EMPRESA_CNPJ`,
+      `EMPRESA_EMAIL_PRIVACIDADE` opcionais), aceite no cadastro e aviso para quem já tinha conta, "Meus dados" no app
+      (mensagens de divulgação, cópia dos dados em JSON, exclusão imediata com anonimização), exclusão de candidato pela
+      gestão e retenção de 12 meses das candidaturas. Falta: 👤 informar razão social e CNPJ; revisão jurídica do texto.
 
 ---
 

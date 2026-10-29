@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
@@ -87,6 +88,10 @@ export function PerfilTela() {
       <button className="btn-primario w-full py-3">Salvar</button>
       </form>
       <TrocarSenha equipe={false} />
+      <Link href="/c/privacidade" className="cartao-clicavel block text-sm">
+        <b className="block text-zinc-900">Meus dados e privacidade</b>
+        <span className="text-zinc-500">Baixar seus dados, mensagens de divulgação e excluir a conta</span>
+      </Link>
     </div>
   );
 }

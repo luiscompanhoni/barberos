@@ -2,6 +2,7 @@
  * Login por celular (ou usuario) + senha, cadastro do cliente e troca de senha.
  * O login por codigo (otp.ts) continua como "primeiro acesso / esqueci a senha".
  */
+import { VERSAO_TERMOS } from "@/lib/lgpd/textos";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
@@ -79,7 +80,8 @@ export async function criarContaCliente(p: { nome: string; telefone: string; sen
   const u = usuario
     ? await db.usuario.update({ where: { id: usuario.id }, data: { senhaHash, nome } })
     : await db.usuario.create({ data: { telefone: tel, nome, papel: "CLIENTE", senhaHash } });
-  await db.cliente.upsert({ where: { telefone: tel }, create: { telefone: tel, nome, usuarioId: u.id }, update: { usuarioId: u.id, nome } });
+  const aceite = { termosVersao: VERSAO_TERMOS, termosAceitosEm: new Date() };
+  await db.cliente.upsert({ where: { telefone: tel }, create: { telefone: tel, nome, usuarioId: u.id, ...aceite }, update: { usuarioId: u.id, nome, ...aceite } });
   return db.usuario.findUniqueOrThrow({ where: { id: u.id }, include: incluir });
 }
 

@@ -218,6 +218,10 @@ export default async function Assine() {
             )}
           </div>
         </div>
+        <div className="mx-auto flex max-w-6xl gap-5 px-5 pb-10 text-xs text-zinc-500 lg:px-8">
+          <Link href="/privacidade" className="underline hover:text-zinc-900">Política de privacidade</Link>
+          <Link href="/termos" className="underline hover:text-zinc-900">Termos de uso</Link>
+        </div>
       </footer>
 
       {v.whatsapp && (

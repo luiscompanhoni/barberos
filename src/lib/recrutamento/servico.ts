@@ -53,3 +53,27 @@ export async function mudarEtapa(id: string, usuarioId: string, b: z.infer<typeo
     await auditar(tx, usuarioId, "recrutamento.etapa.alterada", "CandidaturaRecrutamento", id, { antes: c.etapa, depois: b.etapa });
   });
 }
+
+/** Apaga a candidatura (pedido da pessoa ou decisao da gestao) e o candidato, se nao tiver outra candidatura. */
+export async function excluirCandidatura(id: string, usuarioId: string | null) {
+  await db.$transaction(async (tx) => {
+    const c = await tx.candidaturaRecrutamento.findUnique({ where: { id }, select: { candidatoId: true, vagaId: true } });
+    if (!c) throw naoEncontrado("Candidatura");
+    await tx.candidaturaRecrutamento.delete({ where: { id } });
+    if (!(await tx.candidaturaRecrutamento.count({ where: { candidatoId: c.candidatoId } }))) await tx.candidatoRecrutamento.delete({ where: { id: c.candidatoId } });
+    // Sem dado pessoal na auditoria: so que a candidatura saiu.
+    await auditar(tx, usuarioId, "recrutamento.candidatura.excluida", "CandidaturaRecrutamento", id, { vagaId: c.vagaId, pelo: usuarioId ? "gestao" : "retencao" });
+  });
+}
+
+/** Retencao (LGPD): sem autorizacao para futuras oportunidades e sem contratacao, a candidatura sai em 12 meses. */
+export const RETENCAO_CANDIDATURA_DIAS = 365;
+export async function apagarCandidaturasVencidas(agora = Date.now()) {
+  const limite = new Date(agora - RETENCAO_CANDIDATURA_DIAS * 86_400_000);
+  const vencidas = await db.candidaturaRecrutamento.findMany({
+    where: { futurasOportunidades: false, etapa: { not: "CONTRATADO" }, criadoEm: { lt: limite } },
+    select: { id: true }, take: 200,
+  });
+  for (const v of vencidas) await excluirCandidatura(v.id, null);
+  return vencidas.length;
+}

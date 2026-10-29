@@ -271,6 +271,11 @@ model Cliente {
   origemDetalhe      String?
   /// Codigo curto do link "indique e ganhe" (criado na primeira vez que o cliente pede o link).
   codigoIndicacao    String?               @unique
+  /// LGPD: versao dos termos e da politica de privacidade que o cliente aceitou, e quando (lib/lgpd/textos.ts).
+  termosVersao       String?
+  termosAceitosEm    DateTime?             @db.Timestamptz(3)
+  /// LGPD: o proprio cliente excluiu a conta; os dados pessoais foram apagados e o historico ficou anonimo.
+  excluidoEm         DateTime?             @db.Timestamptz(3)
   esperas            EsperaHorario[]
   indicacoesFeitas   Indicacao[]           @relation("indicador")
   indicadoPor        Indicacao?            @relation("indicado")

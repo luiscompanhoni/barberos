@@ -20,11 +20,14 @@ type RespostaLogin = { definirSenha?: boolean; precisaNome?: boolean };
 
 function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel }: Props) {
   const router = useRouter();
-  const voltar = useSearchParams().get("voltar") ?? destinoPadrao;
+  const busca = useSearchParams();
+  const voltar = busca.get("voltar") ?? destinoPadrao;
+  const contaExcluida = area === "cliente" && busca.get("excluida") === "1";
   const [modo, setModo] = useState<Modo>("senha");
   const [identificador, setIdentificador] = useState("");
   const [senha, setSenha] = useState("");
   const [nome, setNome] = useState("");
+  const [aceite, setAceite] = useState(false);
   const [verSenha, setVerSenha] = useState(false);
   const [codigo, setCodigo] = useState("");
   const [codigoTeste, setCodigoTeste] = useState("");
@@ -62,9 +65,10 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel }
     if (nome.trim().length < 2) return setErro("Digite seu nome.");
     if (identificador.replace(/\D/g, "").length < 10) return setErro("Digite o celular com DDD.");
     if (senha.length < 8) return setErro("A senha precisa de pelo menos 8 caracteres.");
+    if (!aceite) return setErro("Aceite os Termos de uso e a Política de privacidade para criar a conta.");
     executar(async () => {
       try {
-        seguir(await api<RespostaLogin>("/api/auth/cadastro", { method: "POST", body: { nome, telefone: identificador, senha } }));
+        seguir(await api<RespostaLogin>("/api/auth/cadastro", { method: "POST", body: { nome, telefone: identificador, senha, aceiteTermos: true } }));
       } catch (e) {
         if (e instanceof ErroApi && e.codigo === "ja_tem_conta") { setModo("senha"); setSenha(""); }
         throw e;
@@ -159,6 +163,10 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel }
             </div>
             {campoCelular("Celular", false)}
             {campoSenha}
+            <label className="flex items-start gap-3 text-sm leading-6 text-zinc-600">
+              <input type="checkbox" className="mt-1 h-4 w-4 accent-ouro" checked={aceite} onChange={(e) => { setAceite(e.target.checked); setErro(""); }} />
+              <span>Li e aceito os <Link href="/termos" target="_blank" className="font-semibold text-ouro underline">Termos de uso</Link> e a <Link href="/privacidade" target="_blank" className="font-semibold text-ouro underline">Política de privacidade</Link>.</span>
+            </label>
             <button className="btn-primario w-full py-3" disabled={enviando}>{enviando ? "Criando..." : <>Criar conta e entrar <ArrowRight size={16} /></>}</button>
             <button type="button" className="flex items-center gap-2 text-sm font-semibold text-zinc-500 hover:text-zinc-900" onClick={() => trocar("senha")}>
               <ArrowLeft size={15} /> Já tenho conta
@@ -198,11 +206,18 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel }
           </form>
         )}
 
+        {contaExcluida && <p role="status" className="mt-4 text-sm text-emerald-700">Sua conta foi excluída e seus dados pessoais foram apagados.</p>}
         {erro && <p className="mt-4 text-sm text-red-600">{erro}</p>}
         {area === "cliente" && modo === "senha" && (
           <Link href="/assine" className="mt-10 flex items-center gap-2 text-sm font-semibold text-zinc-500 hover:text-zinc-900">
             Ainda não é assinante? <span className="text-ouro">Conheça os planos</span> <ArrowRight size={14} className="text-ouro" />
           </Link>
+        )}
+        {area === "cliente" && (
+          <p className="mt-8 flex gap-4 text-xs text-zinc-500">
+            <Link href="/privacidade" className="underline hover:text-zinc-900">Política de privacidade</Link>
+            <Link href="/termos" className="underline hover:text-zinc-900">Termos de uso</Link>
+          </p>
         )}
       </div>
     </main>
