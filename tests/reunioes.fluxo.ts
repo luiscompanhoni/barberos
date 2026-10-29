@@ -91,7 +91,17 @@ async function main() {
   ok(aberto.semFechamento === 1 && aberto.atual.comissaoCentavos === base.atual.comissaoCentavos! + 2600, "comissão do atendimento sem comanda usa o preço do horário, como no RH");
   ok(aberto.atual.margemCentavos === base.atual.margemCentavos, "margem total ignora o atendimento ainda sem venda");
   ok(linhaDe(barbeiro.id).comissaoCentavos !== null && linhaDe(barbeiro.id).margemCentavos !== null, "profissional sem pendência mantém comissão e margem");
-  ok(linhaDe(outro.id).comissaoCentavos === 2600 && linhaDe(outro.id).margemCentavos === 0, "profissional com comanda aberta mostra a comissão e margem só do que foi vendido");
+  ok(linhaDe(outro.id).comissaoCentavos === 2600 && linhaDe(outro.id).margemCentavos === null, "profissional só com comanda aberta mostra a comissão, e a margem fica pendente (não R$ 0,00)");
+  // Falta de regra num atendimento que já está fora da margem só deixa a comissão pendente.
+  const barba = await db.servico.create({ data: { nome: "Barba sem regra teste", duracaoMin: 20, precoCentavos: 3000, custoCentavos: 300 } });
+  await db.agendamento.create({ data: { barbeiroId: outro.id, clienteId: cliente.id, servicoId: barba.id, inicio: hora(840), fim: hora(860), status: "CONCLUIDO", origem: "RECEPCAO", precoCentavos: 3000 } });
+  const semRegra = await dadosDoPeriodo(data, data);
+  ok(semRegra.atual.comissaoCentavos === null && semRegra.atual.margemCentavos === aberto.atual.margemCentavos, "regra ausente fora da margem não anula a margem total");
+  // Pote desligado: mensalidade só no total; o atendimento de plano não deixa a margem do profissional negativa.
+  await db.poteConfig.update({ where: { id: "pote" }, data: { ativo: false } });
+  const semPote = await dadosDoPeriodo(data, data);
+  const linhaSemPote = semPote.barbeiros.find((g) => g.id === barbeiro.id)!;
+  ok(linhaSemPote.margemCentavos === devolvido.atual.margemCentavos, "sem pote, a margem do profissional considera só o avulso pareado");
   console.log(`Reuniões: ${verificacoes} verificações passaram em banco isolado.`);
 }
 main().catch((e: Error) => { console.error(e.message); process.exitCode = 1; }).finally(() => db.$disconnect());

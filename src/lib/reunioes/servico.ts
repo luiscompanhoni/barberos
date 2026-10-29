@@ -37,6 +37,7 @@ export async function montarSnapshot(inicio: string, fim: string, tipo: "DIARIA"
     "Estornos de itens ajustam a venda original; o total de estornos do período e o resultado de caixa seguem a data da devolução.",
   ];
   if (atual.semFechamento) avisos.push(`${atual.semFechamento} atendimento(s) avulso(s) concluído(s) sem comanda fechada no período. A produção e a comissão aparecem, mas essas vendas não entram no faturamento e a margem não considera esses atendimentos.`);
+  if (!atual.poteLigado && atual.atual.assinantes) avisos.push("Pote das assinaturas desligado: a mensalidade entra só no total, e os atendimentos de plano ficam fora da margem por profissional, serviço e cadeira.");
   if (atual.datasDiferentes) avisos.push("Há vendas cujo atendimento não foi concluído neste mesmo período. Elas entram no faturamento, mas não na margem, para não misturar as bases de venda e produção.");
   if (atual.atual.custosPendentes) avisos.push(`${atual.atual.custosPendentes} serviço(s) ou item(ns) sem custo cadastrado. Complete os custos para calcular a margem estimada.`);
   const profissionais = await db.barbeiro.findMany({ where: { ativo: true }, select: { id: true, nome: true } });

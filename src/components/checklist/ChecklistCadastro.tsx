@@ -56,10 +56,11 @@ export function ChecklistCadastro({ aoSalvar }: { aoSalvar: () => void }) {
       setMsg({ t: "Checklist salvo." });
     } catch (e) {
       const { codigo, detalhes, message } = e as ErroApi;
-      const mudancas = (detalhes as { mudancas?: { nome: string; pontos: number; de: string; para: string }[] } | undefined)?.mudancas;
+      const mudancas = (detalhes as { mudancas?: { nome: string; pontos: number; de: string; para: string; quando: string }[] } | undefined)?.mudancas;
       if (codigo === "confirmar_faixas" && mudancas) {
-        const lista = mudancas.map((m) => `${m.nome} (${m.pontos} pts): BLACK ${m.de} → BLACK ${m.para}`).join("\n");
-        if (confirm(`${message}\n\n${lista}\n\nSalvar mesmo assim?`)) return salvar(true);
+        const lista = mudancas.map((m) => `${m.nome} (${m.pontos} pts${m.quando === "agora" ? "" : `, bônus de ${m.quando} ainda não aprovado`}): BLACK ${m.de} → BLACK ${m.para}`).join("\n");
+        // Espera o reenvio: o botão segue em "Salvando…" até terminar (evita salvar duas vezes).
+        if (confirm(`${message}\n\n${lista}\n\nSalvar mesmo assim?`)) return await salvar(true);
         setMsg({ t: "Nada foi salvo: as faixas continuam como estavam.", erro: true });
       } else setMsg({ t: message, erro: true });
     } finally {

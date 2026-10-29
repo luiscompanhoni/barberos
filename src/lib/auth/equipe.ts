@@ -75,7 +75,8 @@ async function atualizarPerfil(tx: Tx, usuarioId: string, d: EdicaoUsuario) {
   const pessoa = u.checklistPessoa ?? b?.checklistPessoa;
   if (pessoa) {
     await tx.checklistPessoa.update({ where: { id: pessoa.id }, data: { usuarioId: u.id, nome: u.nome, telefone: u.telefone, ...(b ? { barbeiroId: b.id } : {}), ...(d.cargo !== undefined ? { cargo: d.cargo || null } : {}), ...(d.funcaoChecklist ? { funcao: d.funcaoChecklist } : {}) } });
-  } else if (b || d.funcaoChecklist) {
+  } else if ((b && atende) || d.funcaoChecklist) {
+    // Tirar da agenda (ou desligar) não cria ficha nova de checklist.
     await tx.checklistPessoa.create({ data: { usuarioId: u.id, barbeiroId: b?.id, nome: u.nome, telefone: u.telefone, token: randomBytes(24).toString("hex"), funcao: d.funcaoChecklist ?? "BARBEIRO", cargo: d.cargo || null } });
   }
   if (d.servicoIds !== undefined) {

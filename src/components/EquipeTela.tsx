@@ -144,11 +144,11 @@ export function EquipeTela() {
           ))}
         </ul>
         <input ref={arquivoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={enviarFoto} />
-        <form onSubmit={novoBarbeiro} className="flex flex-wrap gap-2">
+        {souDono && <form onSubmit={novoBarbeiro} className="flex flex-wrap gap-2">
           <input className="campo max-w-48" placeholder="Nome" value={nb.nome} onChange={(e) => setNb({ ...nb, nome: e.target.value })} />
           <input className="campo max-w-48" placeholder="Celular (login)" inputMode="tel" value={nb.telefone} onChange={(e) => setNb({ ...nb, telefone: e.target.value })} />
           <button className="btn-primario">Adicionar barbeiro</button>
-        </form>
+        </form>}
         <p className="text-xs text-zinc-500">Toque na foto para trocar. O barbeiro entra no sistema com esse celular. Depois de cadastrar, configure os horários dele em Horários da equipe.</p>
       </section>
 
