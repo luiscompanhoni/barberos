@@ -1,7 +1,7 @@
 /** Fluxo real isolado: DATABASE_URL deve apontar para barberos_test_acessos. */
 import assert from "node:assert/strict";
 import { db } from "@/lib/db";
-import { salvarAcesso } from "@/lib/auth/equipe";
+import { ativarBarbeiro, salvarAcesso } from "@/lib/auth/equipe";
 import { permissoesDoUsuario } from "@/lib/auth/permissoes";
 import type { Sessao } from "@/lib/auth/sessao";
 
@@ -37,6 +37,24 @@ async function main() {
     assert.equal((await db.usuario.findUniqueOrThrow({ where: { id: criado.id } })).nome, "Teste Líder");
     await assert.rejects(() => salvarAcesso(s, dono.id, { ativo: false }), /pelo menos um dono/);
     await assert.rejects(() => salvarAcesso(lider, dono.id, { papel: "LIDER" }), /permissão/);
+    // Lista de barbeiros: desativar corta o login, então segue as mesmas regras de Acessos.
+    const barbeiroId = original.barbeiro.id;
+    await assert.rejects(() => ativarBarbeiro({ ...s, usuarioId: criado.id, papel: "GERENTE" }, barbeiroId, false), /permissão/);
+    const cliente = await db.cliente.create({ data: { nome: "Teste Cliente Acessos", telefone: "5511988800009" } });
+    const inicio = new Date(Date.now() + 86_400_000);
+    const futuro = await db.agendamento.create({ data: { barbeiroId, clienteId: cliente.id, servicoId: servico.id, inicio, fim: new Date(inicio.getTime() + 30 * 60_000), origem: "RECEPCAO", precoCentavos: 6500 } });
+    await assert.rejects(() => ativarBarbeiro(s, barbeiroId, false), /atendimentos futuros/);
+    assert.equal((await db.usuario.findUniqueOrThrow({ where: { id: criado.id } })).ativo, true);
+    await db.agendamento.delete({ where: { id: futuro.id } });
+    await db.cliente.delete({ where: { id: cliente.id } });
+    await ativarBarbeiro(s, barbeiroId, false);
+    const desligado = await db.usuario.findUniqueOrThrow({ where: { id: criado.id }, include: { barbeiro: true } });
+    assert.equal(desligado.ativo, false); assert.equal(desligado.barbeiro?.ativo, false);
+    await ativarBarbeiro(s, barbeiroId, true);
+    assert.equal((await db.usuario.findUniqueOrThrow({ where: { id: criado.id } })).ativo, true);
+    await salvarAcesso(s, dono.id, { atende: true });
+    const barbeiroDono = await db.barbeiro.findUniqueOrThrow({ where: { usuarioId: dono.id } });
+    await assert.rejects(() => ativarBarbeiro(s, barbeiroDono.id, false), /pelo menos um dono/);
     await salvarAcesso(s, criado.id, { papel: "DONO" });
     assert.equal(await db.permissaoUsuario.count({ where: { usuarioId: criado.id } }), 0);
     const s2: Sessao = { ...lider, papel: "DONO" };

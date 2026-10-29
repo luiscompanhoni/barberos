@@ -9,16 +9,19 @@ import { relatorioComissoes } from "@/lib/rh/comissoes";
 import { ratearCentavos } from "./regras";
 import type { GrupoReuniao, IndicadoresReuniao } from "./tipos";
 
-type Grupo = GrupoReuniao & { custo: number; comissaoPendente: boolean };
-const novo = (id: string, nome: string): Grupo => ({ id, nome, atendimentos: 0, avulsos: 0, assinantes: 0, vendasCentavos: 0, receitaAssinaturasCentavos: 0, comissaoCentavos: 0, margemCentavos: null, custosPendentes: 0, faltas: 0, cancelamentos: 0, custo: 0, comissaoPendente: false });
+// vendasFora/comissaoFora: o que não tem par no período (venda sem atendimento concluído nele, ou atendimento sem venda).
+type Grupo = GrupoReuniao & { custo: number; comissaoPendente: boolean; vendasForaCentavos: number; comissaoForaCentavos: number };
+const novo = (id: string, nome: string): Grupo => ({ id, nome, atendimentos: 0, avulsos: 0, assinantes: 0, vendasCentavos: 0, receitaAssinaturasCentavos: 0, comissaoCentavos: 0, margemCentavos: null, custosPendentes: 0, faltas: 0, cancelamentos: 0, custo: 0, comissaoPendente: false, vendasForaCentavos: 0, comissaoForaCentavos: 0 });
 const linha = (m: Map<string, Grupo>, id: string, nome: string) => {
   if (!m.has(id)) m.set(id, novo(id, nome));
   return m.get(id)!;
 };
+/** A margem só junta venda e produção do mesmo período; o que ficou sem par não entra nela (fica nos avisos). */
 function finalizar(g: Grupo): GrupoReuniao {
-  const { custo, comissaoPendente, ...r } = g;
+  const { custo, comissaoPendente, vendasForaCentavos, comissaoForaCentavos, ...r } = g;
   return { ...r, comissaoCentavos: comissaoPendente ? null : r.comissaoCentavos,
-    margemCentavos: r.custosPendentes || comissaoPendente ? null : r.vendasCentavos + r.receitaAssinaturasCentavos - custo - (r.comissaoCentavos ?? 0) };
+    margemCentavos: r.custosPendentes || comissaoPendente ? null
+      : r.vendasCentavos - vendasForaCentavos + r.receitaAssinaturasCentavos - custo - ((r.comissaoCentavos ?? 0) - comissaoForaCentavos) };
 }
 
 /** Vendas: fechamento da comanda; producao/comissoes: dia do atendimento; mensalidades: pagamento. */
@@ -46,7 +49,11 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
   const bs = new Map<string, Grupo>(), ss = new Map<string, Grupo>(), cs = new Map<string, Grupo>();
   const total = novo("total", "Barbearia");
   const comPorAg = new Map(comissoes.barbeiros.flatMap((b) => b.atendimentos.map((a) => [a.id, a] as const)));
+  const vendidoNoPeriodo = (c: { status: string; fechadaEm: Date | null } | undefined) => c?.status === "FECHADA" && !!c.fechadaEm && c.fechadaEm >= janela.gte && c.fechadaEm < janela.lt;
+  let semFechamento = 0;
   for (const a of ags) {
+    const semVenda = a.status === "CONCLUIDO" && !a.assinaturaId && !vendidoNoPeriodo(a.itemComanda?.comanda);
+    if (semVenda) semFechamento++;
     const grupos = [total, linha(bs, a.barbeiroId, a.barbeiro.nome), linha(ss, a.servicoId, a.servico.nome), linha(cs, a.cadeiraId ?? "sem-cadeira", a.cadeira?.nome ?? "Cadeira não informada")];
     for (const g of grupos) {
       if (a.status === "FALTOU") g.faltas++;
@@ -54,14 +61,14 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
       if (a.status !== "CONCLUIDO") continue;
       g.atendimentos++;
       if (a.assinaturaId) g.assinantes++; else g.avulsos++;
-      if (a.servico.custoCentavos === null) g.custosPendentes++; else g.custo += a.servico.custoCentavos;
       const com = comPorAg.get(a.id);
       if (!com || com.regra === "Sem regra") g.comissaoPendente = true;
       g.comissaoCentavos! += com?.comissao ?? 0;
+      // Ainda sem venda no período: comissão aparece, mas custo e comissão desse atendimento ficam fora da margem.
+      if (semVenda) g.comissaoForaCentavos += com?.comissao ?? 0;
+      else if (a.servico.custoCentavos === null) g.custosPendentes++; else g.custo += a.servico.custoCentavos;
     }
   }
-  let semFechamento = 0;
-  for (const a of feitos) if (!a.assinaturaId && a.itemComanda?.comanda.status !== "FECHADA") semFechamento++;
   let datasDiferentes = false;
   for (const c of comandas) {
     const r = resumoComanda(c.itens, c.pagamentos, c.descontoCentavos);
@@ -73,9 +80,11 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
       const grupos = [total, linha(bs, barbeiroId ?? "sem-profissional", nome),
         linha(ss, a?.servicoId ?? (i.produtoId ? `produto:${i.produtoId}` : "outros"), a?.servico.nome ?? i.descricao),
         linha(cs, a?.cadeiraId ?? "sem-cadeira", a?.cadeira?.nome ?? "Cadeira não informada")];
-      if (a && !feitosIds.has(a.id)) datasDiferentes = true;
+      const semProducao = !!a && !feitosIds.has(a.id);
+      if (semProducao) datasDiferentes = true;
       for (const g of grupos) {
         g.vendasCentavos += valores[ix];
+        if (semProducao) g.vendasForaCentavos += valores[ix];
         if (!a) {
           if (i.produto) g.custo += i.produto.custoCentavos * i.quantidade;
           else g.custosPendentes++;
@@ -109,8 +118,8 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
   }
   const mensalidades = (recebidas._sum.valorCentavos ?? 0) - estornos.filter((e) => e.tipo === "MENSALIDADE").reduce((s, e) => s + e.valorCentavos, 0);
   total.receitaAssinaturasCentavos = mensalidades;
-  const grupos = (mapa: Map<string, Grupo>) => [...mapa.values()].map((g) => finalizar({ ...g, comissaoPendente: g.comissaoPendente || datasDiferentes || semFechamento > 0 })).sort((a, b) => b.vendasCentavos + b.receitaAssinaturasCentavos - a.vendasCentavos - a.receitaAssinaturasCentavos);
-  const t = finalizar({ ...total, comissaoPendente: total.comissaoPendente || datasDiferentes || semFechamento > 0 });
+  const grupos = (mapa: Map<string, Grupo>) => [...mapa.values()].map(finalizar).sort((a, b) => b.vendasCentavos + b.receitaAssinaturasCentavos - a.vendasCentavos - a.receitaAssinaturasCentavos);
+  const t = finalizar(total);
   const atual: IndicadoresReuniao = { atendimentos: total.atendimentos, avulsos: total.avulsos, assinantes: total.assinantes, clientes: clientes.length,
     faltas: total.faltas, cancelamentos: total.cancelamentos, vendasCentavos: total.vendasCentavos, mensalidadesCentavos: mensalidades,
     faturamentoCentavos: total.vendasCentavos + mensalidades, estornosCentavos: estornos.reduce((s, e) => s + e.valorCentavos, 0),

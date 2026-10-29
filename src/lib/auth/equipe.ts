@@ -97,6 +97,16 @@ function dadosNormalizados(d: EdicaoUsuario) {
   return { nome: d.nome, telefone: telefone ?? undefined, login, papel: d.papel, ativo: d.ativo };
 }
 
+/**
+ * Desativar pela lista de barbeiros tira da agenda e corta o login: passa pelas mesmas regras de Acessos
+ * (só o dono, nunca o último dono, sem atendimentos futuros pendentes e com auditoria do acesso).
+ */
+export async function ativarBarbeiro(s: Sessao, barbeiroId: string, ativo: boolean) {
+  const b = await db.barbeiro.findUnique({ where: { id: barbeiroId }, select: { usuarioId: true } });
+  if (!b) throw naoEncontrado("Barbeiro");
+  return salvarAcesso(s, b.usuarioId, { ativo, atende: ativo });
+}
+
 /** Atualização única preserva os identificadores de agenda, RH, pontos e comissões. */
 export async function salvarAcesso(s: Sessao, id: string | null, d: EdicaoUsuario) {
   if (s.papel !== "DONO") throw proibido();

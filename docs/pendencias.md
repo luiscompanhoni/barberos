@@ -1,6 +1,6 @@
 # Pendências do BarberOS
 
-Lista de trabalho combinada em 14/10/2026. Os números são os da lista original (1 a 41). Cada item diz o que
+Lista de trabalho combinada em 14/10/2026 e atualizada em 29/10/2026. Os números são os da lista original (1 a 41). Cada item diz o que
 **já existe** no sistema e o que **falta**. Itens já concluídos ficam no fim, só para registro.
 
 Legenda: 🟡 parcial (falta o que está listado) · ⬜ não começado · 👤 depende de ação sua (fora do código)
@@ -16,7 +16,9 @@ rastreável e o primeiro grupo de clientes pronto para entrar. Jogos, IA e finan
 
 - [ ] Publicar a etapa de aplicativo instalável e notificações (implementada em 28/10), configurar VAPID definitivo e validar instalação/envio em Android e iPhone físicos. Central, preferências, inscrição, revogação e transporte simulado implementados; nenhum push real foi enviado nesta entrega. [Guia de ativação](app-notificacoes.md).
 - [ ] Achar a causa do 404 em appblackbarber.com (preciso do link exato que deu erro). 👤
-- [ ] Merge do PR #2 (README, CEP da Pagar.me, página 404 em português) e deploy (`bash scripts/deploy.sh root@IP`). 👤
+- [x] PRs #1 a #8 mesclados na `main` (último em 28/10), com o CI verde.
+- [ ] Conferir a versão no ar depois do deploy (`bash scripts/deploy.sh root@IP`): rodar `backup.sh agora`,
+      reconectar a Evolution (entregue/lida), revisar a matriz de permissões e ligar os jogos que forem usar. 👤
 - [ ] Conferir `WHATSAPP_NUMERO_PUBLICO` no `.env` do servidor (botão do WhatsApp na página 404 e na vitrine). 👤
 - [ ] Confirmar `PAGAMENTOS_PROVIDER` no servidor: vazio = modo simulado (nada é cobrado de verdade). 👤
 
@@ -25,6 +27,9 @@ Já existe: scripts de importação de cadastro (serviços, barbeiros, planos, p
 e-mail, nascimento; telefone repetido vira um cadastro só), assinantes, histórico (agendamentos com barbeiro,
 comandas e pagamentos, horários futuros) e mensalidades pagas. Rodar de novo não duplica. Telefone é único no
 banco; cada cliente tem ID interno. Última visita e frequência saem do histórico importado.
+Reimportar o histórico atualiza as reservas (atendida, cancelada ou sumida do CashBarber) e `--sem-lembretes`
+segura os lembretes do BarberOS enquanto o CashBarber ainda manda os dele. As mensalidades que o CashBarber não
+trouxe vêm direto do extrato da Celcash (`scripts/importar-mensalidades-celcash.ts`), sem duplicar.
 
 Feito: `scripts/relatorio-migracao.ts` confere o banco e, com os CSVs do CashBarber, mostra quem ficou de fora.
 Relatório na tela e em CSV:
@@ -66,53 +71,33 @@ Falta:
 - [ ] Alerta automático de divergência.
 
 #### 13b. Conciliação completa: CashBarber + Celcash + Stone 🟡
-Objetivo: fechar por mês faturamento, despesas e lucro com o que de fato entrou e saiu. Fontes:
-- **CashBarber:** tudo o que já existe lá entra no BarberOS, conferido tópico por tópico. Já entram clientes,
-  assinantes, histórico, as entradas das Movimentações e as mensalidades. Faltam as saídas: despesas, contas
-  a pagar e sangria/suprimento do caixa.
-- **Celcash (Celcoin):** o dinheiro que realmente entrou, com as taxas, os estornos e as saídas (saques e
-  transferências). Cobre o que faltar no CashBarber.
-- **Stone (depois):** extrato bancário. Fecha o veredito de faturamento, despesa e lucro.
-- **Dinheiro em espécie:** não tem fonte externa. Só o fechamento do caixa.
+Objetivo: fechar por mês faturamento, despesas e lucro com o que de fato entrou e saiu. Dinheiro em espécie não tem
+fonte externa: só o fechamento do caixa.
 
-Decidido com o dono (15/10):
-- **Celcash:** acesso pela chave de API.
-- **CashBarber:** acesso pelo login do painel.
-- **Período:** todo o histórico.
-- **Credenciais:** ficam como segredo do ambiente da sessão na nuvem, nunca no chat nem no projeto:
-  `CELCASH_GALAX_ID`, `CELCASH_GALAX_HASH`, `CELCASH_AMBIENTE=producao`, `CASHBARBER_EMAIL` e
-  `CASHBARBER_SENHA`. Uma sessão nova lê os segredos.
-- **Dados pessoais baixados:** ficam fora do projeto (scratchpad da sessão).
+Feito (14/10):
+- **Extrato da Celcash dentro do BarberOS:**
+  - Cada movimento é guardado uma vez e classificado: recebimento, taxa, antecipação, tarifa, estorno,
+    transferência entre contas da empresa ou pagamento a terceiro.
+  - O histórico inteiro é puxado pelo painel, e a rotina atualiza os últimos dias (no máximo 1x por hora).
+- **Extrato da Stone:** o CSV sobe em Financeiro → Resultado. Cada linha entra uma vez, a tarifa vira taxa à parte
+  e o repasse da Celcash conta como transferência.
+- **Regras por nome:** por exemplo, CELESC → energia e sócio → retirada. Valem na Stone e na Celcash; "lembrar
+  para esse nome" cria a regra e reaplica.
+- **Resultado do mês**, com Celcash e Stone:
+  - recebido por forma;
+  - taxas, incluindo a da maquininha, estimada pelas taxas da conciliação;
+  - despesas por categoria;
+  - retiradas fora do lucro;
+  - divergências de cartão, Pix e mensalidades.
+- **Mensalidades da Celcash:** importador do que o CashBarber não trouxe, pareando com o que já veio de lá.
+- **Acesso:** despesas e lucro só com a permissão "lucro", que fica desligada por padrão.
 
-O que já se sabe (para a próxima sessão):
-- **Celcash API v2** (`https://api-celcash.celcoin.com.br/v2`, responde daqui). Token como em
-  `src/lib/pagamentos/celcash.ts`. Endpoints:
-  - Extrato: `GET /company/balance/movements` (escopo `balance.read`).
-  - Saldo: `balance/get-balance`.
-  - Transações: `GET /transactions` (escopo `transactions.read`).
-  - Taxas: `fees/list`. Chargebacks: `chargebacks/list`. Antecipações: `antecipation/list`.
-  - A documentação (docs-celpayments.celcoin.com.br) não mostra os campos: ver a resposta real com a
-    chave, pedindo só escopos de leitura.
-- **CashBarber:**
-  - O painel (`painel.cashbarber.com.br`) é um app React que fala com `https://api.cashbarber.com.br`.
-  - Login: `POST /api/auth/login` com `{ email, password, captchaToken }`. O token vem do reCAPTCHA
-    Enterprise, então entrar pelo navegador (Chromium/Playwright já instalado).
-  - Pode pedir verificação em duas etapas (`/api/auth/mfa/verify`).
-  - Depois do login, achar os endpoints dos relatórios no próprio app.
-  - O painel usa a Galax Pay (Celcash) para cobrar as assinaturas.
-
-Etapas:
-- [ ] Baixar do CashBarber todo o histórico (cadastros, agendamentos, movimentações com entradas e saídas,
-      faturamento, despesas e contas a pagar, caixa) e comparar, tópico por tópico, com o que já está no BarberOS.
-- [ ] Importar o que falta, sem duplicar, incluindo despesas e as saídas do caixa.
-- [ ] Sincronizar o extrato e as transações da Celcash no BarberOS: guardar cada movimento, e o servidor
-      atualiza todo dia.
-- [ ] Tela "Resultado do mês", lado a lado:
-      - o faturamento registrado por forma;
-      - o que caiu na Celcash;
-      - as taxas, os estornos, as saídas e as despesas;
-      - o lucro, com as divergências marcadas.
-- [ ] Stone: importar o extrato bancário na mesma tela.
+Falta:
+- [ ] Saídas do CashBarber (despesas, contas a pagar, sangria/suprimento) não são importadas. Ver se ainda fazem
+      falta depois do extrato da Stone.
+- [ ] Rodar a sincronização da Celcash e subir o extrato da Stone em produção, todo o histórico, e conferir mês a
+      mês. 👤
+- [ ] Revisar a classificação das saídas e criar as regras por nome que faltarem. 👤
 
 ### 14. WhatsApp API oficial 🟡
 Já existe: integração com a Cloud API da Meta (webhook assinado), modelos de código e de aviso, saída por "PARAR",
@@ -171,8 +156,7 @@ Falta:
 - [ ] 19. Foto do cliente ⬜: envio pelo cliente ou pela recepção, compressão, consentimento, aparece no
       perfil/agendamento. A foto dos barbeiros já existe e serve de base.
 - [ ] 25. Avaliação interna do atendimento 🟡: implementada em desenvolvimento para primeira visita, com nota/comentário, identidade exclusiva do dono, médias por profissional em lotes de cinco e recompensa idempotente. Falta publicar e configurar o jogo/canal real; recorrência além da primeira visita permanece futura. Ver [guia da equipe](evolucao-equipe.md).
-- [ ] 24. Outros jogos ⬜: motor único de recompensas (prêmio, probabilidade, custo, validade, resgate, antifraude),
-      depois raspadinha e baú. A roleta atual é a base.
+- [x] 24. Outros jogos: ✅ feito (ver "Concluídos").
 - [ ] 39. Analytics do produto ⬜: módulos usados, cliques, abandono, erros, telas mais acessadas.
 - [ ] 37. Monitor de saúde 🟡: o `/api/saude` já existe. Falta: painel técnico (banco, pagamentos, WhatsApp,
       automações, erros) e alerta automático quando algo parar.
@@ -276,3 +260,17 @@ Falta:
   - IP e aparelho de quem fez, em toda ação feita pelo painel ou pelo site (rotinas automáticas ficam sem).
   - Bloqueio no banco: o registro não pode ser alterado, apagado nem truncado, nem por script.
 - **Item 18 (quase todo):** ver Fase B.
+- **24. Jogos de recompensa:**
+  - Motor único para Roleta Black, caixas-surpresa (Black, Gold e Legend) e Raspadinha Black. Os quatro vêm criados e
+    desligados; o dono ou o gerente liga e ajusta cada um em `/jogos`.
+  - Jogadas por atendimento (com valor mínimo), indicação, renovação do plano, aniversário e grátis a cada N dias.
+    Cada evento libera uma vez só.
+  - Prêmios com chance (total de 100%), raridade, estoque, limite por mês e custo. Tipos: crédito, brinde, serviço
+    grátis, desconto e "não foi dessa vez". Há simulação antes de publicar.
+  - Antifraude: sorteio no servidor gravado antes da animação, trava por cliente e a mesma jogada ao atualizar a
+    página.
+  - Caminho do prêmio: disponível → reservado (agendou) → utilizado (validado na comanda). Horário cancelado
+    devolve, vencido expira, e só a gerência cancela, com motivo.
+  - Campanha pode dar uma jogada de presente em qualquer jogo. O endereço antigo da roleta continua funcionando.
+- **Serviço adicional na comanda** (fora da lista): sobrancelha junto do corte, por exemplo. Conta na comissão, no
+  plano e nos relatórios, sem ocupar horário na agenda.

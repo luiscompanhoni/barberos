@@ -5,12 +5,14 @@
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, instanteLocal } from "@/lib/agenda/tempo";
 import { auditar } from "@/lib/auditoria";
+import type { Prisma } from "@prisma/client";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
+import { travarCompetencia } from "@/lib/desempenho/acesso";
 import { urlPainel } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { notificarCliente } from "@/lib/whatsapp/conversas";
-import { progressoNivel, textoRe, type LimitesNivel } from "./regras";
+import { mudancasDeFaixa, progressoNivel, textoRe, type LimitesNivel } from "./regras";
 
 export type Avaliacao = "VALIDADO" | "RE";
 
@@ -25,6 +27,27 @@ export async function totaisDePontos(pessoaIds?: string[]) {
   return new Map(g.map((x) => [x.pessoaId, x._sum.pontos ?? 0]));
 }
 
+/** Com os pontos atuais, quem muda de faixa se os limites mudarem. */
+export async function previaDeFaixas(de: LimitesNivel, para: LimitesNivel) {
+  const [pessoas, totais] = await Promise.all([db.checklistPessoa.findMany({ where: { ativo: true }, select: { id: true, nome: true } }), totaisDePontos()]);
+  return mudancasDeFaixa(pessoas.map((p) => ({ nome: p.nome, pontos: totais.get(p.id) ?? 0 })), de, para);
+}
+
+/** Pontos de mês com bônus ou folha fechados não mudam; para corrigir, faz-se um ajuste de pontos no mês atual. */
+export async function travarPontoDoItem(tx: Prisma.TransactionClient, itemId: string) {
+  const ponto = await tx.checklistPonto.findUnique({ where: { itemId } });
+  if (!ponto) return;
+  const competencia = dataLocal(ponto.criadoEm, (await configuracao()).fuso).slice(0, 7);
+  try {
+    await travarCompetencia(tx, ponto.pessoaId, competencia);
+  } catch (e) {
+    if (e instanceof ErroNegocio && e.codigo === "competencia_fechada") {
+      throw new ErroNegocio("Essa pontuação é de um mês já fechado (bônus ou folha). Para corrigir, faça um ajuste de pontos com o motivo.", 409, "competencia_fechada");
+    }
+    throw e;
+  }
+}
+
 /** Pontos, faixa e progresso de uma pessoa (link publico e ficha do RH). */
 export async function resumoPontos(pessoaId: string) {
   const [cfg, totais] = await Promise.all([limites(), totaisDePontos([pessoaId])]);
@@ -32,7 +55,7 @@ export async function resumoPontos(pessoaId: string) {
   return { pontos, ...progressoNivel(pontos, cfg) };
 }
 
-/** Gerente avalia uma tarefa (null desfaz a avaliacao). Reavaliar substitui o lancamento anterior. */
+/** Gerente avalia uma tarefa (null desfaz a avaliacao). Reavaliar substitui o lancamento anterior, na mesma data. */
 export async function avaliarItem(s: Sessao, itemId: string, avaliacao: Avaliacao | null, motivo?: string | null) {
   const item = await db.checklistItem.findUnique({ where: { id: itemId }, include: { pessoa: true } });
   if (!item) throw naoEncontrado("Tarefa");
@@ -41,6 +64,7 @@ export async function avaliarItem(s: Sessao, itemId: string, avaliacao: Avaliaca
   const pontos = avaliacao === "VALIDADO" ? item.pontos : -cfg.pontosRe;
   const descricao = avaliacao === "VALIDADO" ? `Validada: ${item.titulo}` : `Ré: ${item.titulo}${motivo ? ` (${motivo})` : ""}`;
   await db.$transaction(async (tx) => {
+    await travarPontoDoItem(tx, itemId);
     if (!avaliacao) {
       await tx.checklistPonto.deleteMany({ where: { itemId } });
       await tx.checklistItem.update({ where: { id: itemId }, data: { avaliacao: null, avaliadoEm: null, avaliadoPor: null, motivoRe: null } });
@@ -48,7 +72,7 @@ export async function avaliarItem(s: Sessao, itemId: string, avaliacao: Avaliaca
       await tx.checklistPonto.upsert({
         where: { itemId },
         create: { itemId, pessoaId: item.pessoaId, pontos, descricao, porNome: s.nome },
-        update: { pontos, descricao, porNome: s.nome, criadoEm: new Date() },
+        update: { pontos, descricao, porNome: s.nome },
       });
       await tx.checklistItem.update({
         where: { id: itemId },

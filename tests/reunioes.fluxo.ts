@@ -77,9 +77,21 @@ async function main() {
   ok(diariaEquipe.snapshot.diaria.every((d) => d.comissaoAvulsaCentavos === null), "slides diários da equipe ocultam comissões de terceiros");
   await db.reuniao.update({ where: { id: reuniao.id }, data: { criadoPorId: lider.id } });
   ok((await lerReuniao(sl, reuniao.id)).conteudo === "", "autoria não recupera conteúdo financeiro depois de revogar privilégios");
+  const base = await dadosDoPeriodo(data, data);
+  ok(base.atual.margemCentavos !== null && base.atual.comissaoCentavos !== null, "período completo tem comissão e margem");
   const incompleto = await db.agendamento.create({ data: { barbeiroId: barbeiro.id, cadeiraId: cadeira.id, clienteId: cliente.id, servicoId: corte.id, inicio: hora(720), fim: hora(750), status: "MARCADO", origem: "RECEPCAO", precoCentavos: 6500 } });
   await db.comanda.create({ data: { status: "FECHADA", fechadaEm: hora(760), itens: { create: { agendamentoId: incompleto.id, descricao: "Corte não finalizado", precoUnitCentavos: 6500 } } } });
-  ok((await dadosDoPeriodo(data, data)).atual.margemCentavos === null, "comanda fechada com serviço não concluído não fabrica margem sem custos/comissão");
+  const foraDoPeriodo = await dadosDoPeriodo(data, data);
+  ok(foraDoPeriodo.atual.faturamentoCentavos === base.atual.faturamentoCentavos + 6500 && foraDoPeriodo.atual.margemCentavos === base.atual.margemCentavos,
+    "venda de atendimento não concluído no período entra no faturamento, mas não fabrica margem sem custos/comissão");
+  // Um atendimento sem comanda fechada não pode apagar comissão e margem dos outros profissionais nem do total.
+  await db.agendamento.create({ data: { barbeiroId: outro.id, clienteId: cliente.id, servicoId: corte.id, inicio: hora(780), fim: hora(810), status: "CONCLUIDO", origem: "RECEPCAO", precoCentavos: 6500 } });
+  const aberto = await dadosDoPeriodo(data, data);
+  const linhaDe = (id: string) => aberto.barbeiros.find((g) => g.id === id)!;
+  ok(aberto.semFechamento === 1 && aberto.atual.comissaoCentavos === base.atual.comissaoCentavos! + 2600, "comissão do atendimento sem comanda usa o preço do horário, como no RH");
+  ok(aberto.atual.margemCentavos === base.atual.margemCentavos, "margem total ignora o atendimento ainda sem venda");
+  ok(linhaDe(barbeiro.id).comissaoCentavos !== null && linhaDe(barbeiro.id).margemCentavos !== null, "profissional sem pendência mantém comissão e margem");
+  ok(linhaDe(outro.id).comissaoCentavos === 2600 && linhaDe(outro.id).margemCentavos === 0, "profissional com comanda aberta mostra a comissão e margem só do que foi vendido");
   console.log(`Reuniões: ${verificacoes} verificações passaram em banco isolado.`);
 }
 main().catch((e: Error) => { console.error(e.message); process.exitCode = 1; }).finally(() => db.$disconnect());

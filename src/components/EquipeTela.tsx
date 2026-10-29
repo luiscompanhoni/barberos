@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, Trash2 } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import { useAcesso } from "@/components/AcessoContexto";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { formatarTelefone } from "@/lib/telefone";
 import type { ServicoApi } from "@/components/agenda/EncaixeModal";
@@ -37,6 +38,8 @@ const CORES = ["#378ADD", "#1D9E75", "#D85A30", "#7F77DD", "#D4537E", "#BA7517",
 
 /** Painel do dono: cadastro de barbeiros e servicos (quem faz o que). */
 export function EquipeTela() {
+  // Desativar corta o login: só o dono (o servidor confere).
+  const souDono = useAcesso().papel === "DONO";
   const [barbeiros, setBarbeiros] = useState<BarbeiroApi[]>([]);
   const [servicos, setServicos] = useState<ServicoApi[]>([]);
   const [erro, setErro] = useState("");
@@ -132,9 +135,11 @@ export function EquipeTela() {
                   <Trash2 size={12} /> remover foto
                 </button>
               )}
-              <button className={`${b.fotoVersao > 0 && enviandoFoto !== b.id ? "" : "ml-auto "}text-xs text-zinc-600 underline`} onClick={() => acao(() => api(`/api/barbeiros/${b.id}`, { method: "PATCH", body: { ativo: !b.ativo } }))}>
-                {b.ativo ? "desativar" : "reativar"}
-              </button>
+              {souDono && (
+                <button className={`${b.fotoVersao > 0 && enviandoFoto !== b.id ? "" : "ml-auto "}text-xs text-zinc-600 underline`} onClick={() => acao(() => api(`/api/barbeiros/${b.id}`, { method: "PATCH", body: { ativo: !b.ativo } }))}>
+                  {b.ativo ? "desativar" : "reativar"}
+                </button>
+              )}
             </li>
           ))}
         </ul>
