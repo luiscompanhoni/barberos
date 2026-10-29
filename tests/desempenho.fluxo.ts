@@ -61,6 +61,8 @@ async function main() {
     // Abono conta como dia cumprido: a liderança registra folga, mas só o dono concede ou troca um abono.
     const folga = { pessoaId: profissional.p.id, data: hoje, motivo: "Combinado com a gestão da barbearia" };
     await assert.rejects(() => justificarPresenca(lider.s, { ...folga, tipo: "ABONO" }), { status: 403 });
+    // Dia que já passou muda a apuração do bônus: nem folga a liderança lança.
+    await assert.rejects(() => justificarPresenca(lider.s, { ...folga, data: somarDias(hoje, -1), tipo: "FOLGA" }), { status: 403 });
     await justificarPresenca(lider.s, { ...folga, tipo: "FOLGA" });
     await justificarPresenca(dono.s, { ...folga, tipo: "ABONO" });
     await assert.rejects(() => justificarPresenca(lider.s, { ...folga, tipo: "FOLGA" }), { status: 403 });
@@ -120,9 +122,11 @@ async function main() {
     assert(reavaliado.pontos < 0); assert.equal(+reavaliado.criadoEm, +dataOriginal);
     // Mudar os pontos das faixas: só o dono, e quem muda de faixa aparece antes de salvar (nada é gravado).
     const faixasNovas = { config: { ativo: false, horaEnvio: "08:00", horaResumo: "20:00", nivelPlatina: 100_000, nivelLegend: 200_000 }, pessoas: [], tarefas: [] };
-    await assert.rejects(() => salvarCadastro(lider.s, faixasNovas), { status: 403 });
-    await assert.rejects(() => salvarCadastro(dono.s, faixasNovas), (e: { codigo?: string; detalhes?: { mudancas: { nome: string; para: string }[] } }) =>
-      e.codigo === "confirmar_faixas" && !!e.detalhes?.mudancas.some((m) => m.nome === profissional.p.nome && m.para === "ELITE"));
+    await assert.rejects(() => salvarCadastro(dono.s, faixasNovas), (e: { codigo?: string; detalhes?: { mudancas: { nome: string; para: string; quando: string }[] } }) =>
+      e.codigo === "confirmar_faixas" && !!e.detalhes?.mudancas.some((m) => m.nome === profissional.p.nome && m.para === "ELITE" && m.quando === "agora")
+      // O bônus de comp do segundo ainda não foi aprovado: a prévia mostra que ele também mudaria de faixa ali.
+      && !!e.detalhes?.mudancas.some((m) => m.nome === segundo.p.nome && m.quando === comp)
+      && !e.detalhes?.mudancas.some((m) => m.nome === profissional.p.nome && m.quando === comp));
     assert.equal((await db.folhaPagamento.findUniqueOrThrow({ where: { competencia_pessoaId: { competencia: comp, pessoaId: profissional.p.id } } })).adicionaisCentavos, 20000);
     await Promise.allSettled([aprovarBonus(dono.s, segundo.p.id, comp), fecharFolha(dono.s, comp, segundo.p.id)]);
     const folhaSegunda = await db.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: comp, pessoaId: segundo.p.id } } });

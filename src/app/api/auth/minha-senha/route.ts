@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { normalizarLogin, trocarPropriaSenha } from "@/lib/auth/acesso";
-import { exigirSessao } from "@/lib/auth/sessao";
+import { EQUIPE, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
-const TODOS = ["DONO", "GERENTE", "RECEPCAO", "BARBEIRO", "CLIENTE"] as const;
+// Toda a equipe (inclusive líder) e o cliente cuidam da própria senha.
+const TODOS = [...EQUIPE, "CLIENTE" as const];
 
 /** Situacao da conta: tem senha? precisa trocar? qual o usuario? */
 export const GET = rota(async () => {

@@ -52,6 +52,10 @@ async function main() {
     assert.equal(desligado.ativo, false); assert.equal(desligado.barbeiro?.ativo, false);
     await ativarBarbeiro(s, barbeiroId, true);
     assert.equal((await db.usuario.findUniqueOrThrow({ where: { id: criado.id } })).ativo, true);
+    // Desativar um barbeiro sem ficha (cadastro antigo) não cria ficha nova de checklist.
+    const semFicha = await db.barbeiro.create({ data: { nome: "Teste Sem Ficha", usuario: { create: { nome: "Teste Sem Ficha", telefone: "5511988800010", papel: "BARBEIRO" } } } }); ids.push(semFicha.usuarioId);
+    await ativarBarbeiro(s, semFicha.id, false);
+    assert.equal(await db.checklistPessoa.count({ where: { usuarioId: semFicha.usuarioId } }), 0);
     await salvarAcesso(s, dono.id, { atende: true });
     const barbeiroDono = await db.barbeiro.findUniqueOrThrow({ where: { usuarioId: dono.id } });
     await assert.rejects(() => ativarBarbeiro(s, barbeiroDono.id, false), /pelo menos um dono/);

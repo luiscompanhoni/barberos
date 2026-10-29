@@ -3,7 +3,7 @@
  * sem fazer: perde pontos e a tarefa volta para nao feita). Faixas BLACK ELITE/PLATINA/LEGEND.
  */
 import { configuracao } from "@/lib/agenda/carregar";
-import { dataLocal, instanteLocal } from "@/lib/agenda/tempo";
+import { dataLocal, instanteLocal, somarDias } from "@/lib/agenda/tempo";
 import { auditar } from "@/lib/auditoria";
 import type { Prisma } from "@prisma/client";
 import type { Sessao } from "@/lib/auth/sessao";
@@ -27,17 +27,34 @@ export async function totaisDePontos(pessoaIds?: string[]) {
   return new Map(g.map((x) => [x.pessoaId, x._sum.pontos ?? 0]));
 }
 
-/** Com os pontos atuais, quem muda de faixa se os limites mudarem. */
+/**
+ * Quem muda de faixa se os limites mudarem: com os pontos de hoje e, para quem participa do bônus e ainda não teve o
+ * mês anterior aprovado, com os pontos até o fim daquele mês (o bônus pendente é calculado com os limites atuais).
+ */
 export async function previaDeFaixas(de: LimitesNivel, para: LimitesNivel) {
-  const [pessoas, totais] = await Promise.all([db.checklistPessoa.findMany({ where: { ativo: true }, select: { id: true, nome: true } }), totaisDePontos()]);
-  return mudancasDeFaixa(pessoas.map((p) => ({ nome: p.nome, pontos: totais.get(p.id) ?? 0 })), de, para);
+  const fuso = (await configuracao()).fuso;
+  const mes = dataLocal(Date.now(), fuso).slice(0, 7), anterior = somarDias(`${mes}-01`, -1).slice(0, 7);
+  const [pessoas, totais, ateAnterior, participantes, aprovados] = await Promise.all([
+    db.checklistPessoa.findMany({ where: { ativo: true }, select: { id: true, nome: true } }),
+    totaisDePontos(),
+    db.checklistPonto.groupBy({ by: ["pessoaId"], _sum: { pontos: true }, where: { criadoEm: { lt: new Date(instanteLocal(`${mes}-01`, 0, fuso)) } } }),
+    db.desempenhoAdesao.findMany({ where: { aceitaEm: { not: null }, inicio: { lt: `${mes}-01` } }, select: { pessoaId: true }, distinct: ["pessoaId"] }),
+    db.desempenhoBonus.findMany({ where: { competencia: anterior }, select: { pessoaId: true } }),
+  ]);
+  const pontosAnterior = new Map(ateAnterior.map((x) => [x.pessoaId, x._sum.pontos ?? 0]));
+  const pendentes = new Set(participantes.map((a) => a.pessoaId));
+  for (const b of aprovados) pendentes.delete(b.pessoaId);
+  return [
+    ...mudancasDeFaixa(pessoas.map((p) => ({ nome: p.nome, pontos: totais.get(p.id) ?? 0 })), de, para).map((m) => ({ ...m, quando: "agora" })),
+    ...mudancasDeFaixa(pessoas.filter((p) => pendentes.has(p.id)).map((p) => ({ nome: p.nome, pontos: pontosAnterior.get(p.id) ?? 0 })), de, para).map((m) => ({ ...m, quando: anterior })),
+  ];
 }
 
 /** Pontos de mês com bônus ou folha fechados não mudam; para corrigir, faz-se um ajuste de pontos no mês atual. */
 export async function travarPontoDoItem(tx: Prisma.TransactionClient, itemId: string) {
   const ponto = await tx.checklistPonto.findUnique({ where: { itemId } });
   if (!ponto) return;
-  const competencia = dataLocal(ponto.criadoEm, (await configuracao()).fuso).slice(0, 7);
+  const competencia = dataLocal(ponto.criadoEm, (await configuracao(tx)).fuso).slice(0, 7);
   try {
     await travarCompetencia(tx, ponto.pessoaId, competencia);
   } catch (e) {

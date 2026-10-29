@@ -54,6 +54,8 @@ export async function justificarPresenca(s: Sessao, d: { pessoaId: string; data:
   await exigirPessoa(s, d.pessoaId, { avaliar: true });
   const hoje = dataLocal(Date.now(), (await configuracao()).fuso);
   if (d.data > somarDias(hoje, 366)) throw new ErroNegocio("Informe uma data nos próximos 12 meses ou no histórico aberto.");
+  // Folga ou abono num dia que já passou muda a apuração do bônus: só o dono (a liderança registra de hoje em diante).
+  if (d.data < hoje) exigirDono(s);
   return db.$transaction(async (tx) => {
     await travarCompetencia(tx, d.pessoaId, d.data.slice(0, 7));
     const antes = await tx.presencaJustificativa.findUnique({ where: { pessoaId_data: { pessoaId: d.pessoaId, data: d.data } } });

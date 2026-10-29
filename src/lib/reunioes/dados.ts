@@ -10,17 +10,20 @@ import { ratearCentavos } from "./regras";
 import type { GrupoReuniao, IndicadoresReuniao } from "./tipos";
 
 // vendasFora/comissaoFora: o que não tem par no período (venda sem atendimento concluído nele, ou atendimento sem venda).
-type Grupo = GrupoReuniao & { custo: number; comissaoPendente: boolean; vendasForaCentavos: number; comissaoForaCentavos: number };
-const novo = (id: string, nome: string): Grupo => ({ id, nome, atendimentos: 0, avulsos: 0, assinantes: 0, vendasCentavos: 0, receitaAssinaturasCentavos: 0, comissaoCentavos: 0, margemCentavos: null, custosPendentes: 0, faltas: 0, cancelamentos: 0, custo: 0, comissaoPendente: false, vendasForaCentavos: 0, comissaoForaCentavos: 0 });
+// pareados/fora contam o que entrou ou ficou fora da margem; margemPendente só olha o que entra nela.
+type Grupo = GrupoReuniao & { custo: number; comissaoPendente: boolean; margemPendente: boolean; vendasForaCentavos: number; comissaoForaCentavos: number; pareados: number; fora: number };
+const novo = (id: string, nome: string): Grupo => ({ id, nome, atendimentos: 0, avulsos: 0, assinantes: 0, vendasCentavos: 0, receitaAssinaturasCentavos: 0, comissaoCentavos: 0, margemCentavos: null, custosPendentes: 0, faltas: 0, cancelamentos: 0, custo: 0, comissaoPendente: false, margemPendente: false, vendasForaCentavos: 0, comissaoForaCentavos: 0, pareados: 0, fora: 0 });
 const linha = (m: Map<string, Grupo>, id: string, nome: string) => {
   if (!m.has(id)) m.set(id, novo(id, nome));
   return m.get(id)!;
 };
 /** A margem só junta venda e produção do mesmo período; o que ficou sem par não entra nela (fica nos avisos). */
 function finalizar(g: Grupo): GrupoReuniao {
-  const { custo, comissaoPendente, vendasForaCentavos, comissaoForaCentavos, ...r } = g;
+  const { custo, comissaoPendente, margemPendente, vendasForaCentavos, comissaoForaCentavos, pareados, fora, ...r } = g;
+  // Grupo só com itens sem par: margem pendente, não um R$ 0,00 que parece resultado.
+  const semBase = !pareados && !r.receitaAssinaturasCentavos && fora > 0;
   return { ...r, comissaoCentavos: comissaoPendente ? null : r.comissaoCentavos,
-    margemCentavos: r.custosPendentes || comissaoPendente ? null
+    margemCentavos: r.custosPendentes || margemPendente || semBase ? null
       : r.vendasCentavos - vendasForaCentavos + r.receitaAssinaturasCentavos - custo - ((r.comissaoCentavos ?? 0) - comissaoForaCentavos) };
 }
 
@@ -50,6 +53,7 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
   const total = novo("total", "Barbearia");
   const comPorAg = new Map(comissoes.barbeiros.flatMap((b) => b.atendimentos.map((a) => [a.id, a] as const)));
   const vendidoNoPeriodo = (c: { status: string; fechadaEm: Date | null } | undefined) => c?.status === "FECHADA" && !!c.fechadaEm && c.fechadaEm >= janela.gte && c.fechadaEm < janela.lt;
+  const poteLigado = !!comissoes.assinaturas;
   let semFechamento = 0;
   for (const a of ags) {
     const semVenda = a.status === "CONCLUIDO" && !a.assinaturaId && !vendidoNoPeriodo(a.itemComanda?.comanda);
@@ -62,11 +66,14 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
       g.atendimentos++;
       if (a.assinaturaId) g.assinantes++; else g.avulsos++;
       const com = comPorAg.get(a.id);
-      if (!com || com.regra === "Sem regra") g.comissaoPendente = true;
+      // Fora da margem (a comissão continua aparecendo): avulso ainda sem venda no período; e, com o pote desligado,
+      // o atendimento de plano nos grupos, porque a mensalidade só existe no total.
+      const foraDaMargem = semVenda || (!!a.assinaturaId && !poteLigado && g !== total);
+      if (!com || com.regra === "Sem regra") { g.comissaoPendente = true; if (!foraDaMargem) g.margemPendente = true; }
       g.comissaoCentavos! += com?.comissao ?? 0;
-      // Ainda sem venda no período: comissão aparece, mas custo e comissão desse atendimento ficam fora da margem.
-      if (semVenda) g.comissaoForaCentavos += com?.comissao ?? 0;
-      else if (a.servico.custoCentavos === null) g.custosPendentes++; else g.custo += a.servico.custoCentavos;
+      if (foraDaMargem) { g.comissaoForaCentavos += com?.comissao ?? 0; g.fora++; continue; }
+      g.pareados++;
+      if (a.servico.custoCentavos === null) g.custosPendentes++; else g.custo += a.servico.custoCentavos;
     }
   }
   let datasDiferentes = false;
@@ -84,7 +91,7 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
       if (semProducao) datasDiferentes = true;
       for (const g of grupos) {
         g.vendasCentavos += valores[ix];
-        if (semProducao) g.vendasForaCentavos += valores[ix];
+        if (semProducao) { g.vendasForaCentavos += valores[ix]; g.fora++; } else g.pareados++;
         if (!a) {
           if (i.produto) g.custo += i.produto.custoCentavos * i.quantidade;
           else g.custosPendentes++;
@@ -128,5 +135,5 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
     comissaoCentavos: t.comissaoCentavos, margemCentavos: t.margemCentavos, custosPendentes: total.custosPendentes };
   const servicosAvulsos = comissoes.barbeiros.reduce((s, b) => s + b.avulso.base, 0);
   atual.ticketAvulsoCentavos = atual.avulsos ? Math.round(servicosAvulsos / atual.avulsos) : null;
-  return { atual, barbeiros: grupos(bs), servicos: grupos(ss), cadeiras: grupos(cs), semFechamento, datasDiferentes };
+  return { atual, barbeiros: grupos(bs), servicos: grupos(ss), cadeiras: grupos(cs), semFechamento, datasDiferentes, poteLigado };
 }
