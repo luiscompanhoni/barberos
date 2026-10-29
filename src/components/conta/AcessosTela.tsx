@@ -79,7 +79,7 @@ export function AcessosTela() {
               </div>
               <button className="btn py-1 text-xs" onClick={() => setEditar(a.id)}><Pencil size={12} /> Editar cadastro</button>
               <button className="btn py-1 text-xs" onClick={() => gerar(a)} disabled={!a.ativo}><KeyRound size={12} /> {a.temSenha ? "Nova senha temporária" : "Gerar senha"}</button>
-              <button className="text-xs text-zinc-500 underline" onClick={() => api(`/api/usuarios/${a.id}`, { method: "PATCH", body: { acao: a.ativo ? "desativar" : "ativar" } }).then(carregar).catch((e) => setMsg({ texto: e.message, erro: true }))}>
+              <button className="text-xs text-zinc-500 underline" onClick={() => (!a.ativo || confirm(`Desativar ${a.nome}? A pessoa perde o login, sai da agenda e para de receber o checklist.`)) && api(`/api/usuarios/${a.id}`, { method: "PATCH", body: { acao: a.ativo ? "desativar" : "ativar" } }).then(carregar).catch((e) => setMsg({ texto: e.message, erro: true }))}>
                 {a.ativo ? "desativar" : "reativar"}
               </button>
             </li>
