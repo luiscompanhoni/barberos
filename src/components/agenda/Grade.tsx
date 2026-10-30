@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { horariosLivres } from "@/lib/agenda/disponibilidade";
+import { subtrair } from "@/lib/agenda/disponibilidade";
 import { dataLocal, instanteLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
+import { useSelecaoGrade } from "./useSelecaoGrade";
 import { ROTULO_ORIGEM, ROTULO_STATUS, type AgendamentoApi, type Coluna, type Status } from "./tipos";
 
 const PX_MIN = 1.6; // 15 min = 24 px
@@ -35,7 +36,11 @@ export function Grade(props: {
   granularidadeMin: number;
   podeEditar: (barbeiroId: string) => boolean;
   onMover: (ag: AgendamentoApi, coluna: Coluna, inicio: number, fim: number) => Promise<void>;
-  onVazio: (coluna: Coluna, inicio: number) => void;
+  onVazio: (coluna: Coluna, inicio: number, fim?: number) => void;
+  podeDuracao: boolean;
+  arrastarToque?: boolean;
+  intervaloEntreClientesMin: number;
+  destaques?: { chave: string; inicio: string; fim: string; quantidade: number }[];
   onAbrir: (ag: AgendamentoApi) => void;
 }) {
   const { colunas, agendamentos, fuso, granularidadeMin: gran } = props;
@@ -70,19 +75,14 @@ export function Grade(props: {
   const altura = (fimDia - iniDia) * PX_MIN;
   const y = (min: number) => (min - iniDia) * PX_MIN;
 
+  const selecao = useSelecaoGrade({ inicioDia: iniDia, fimDia, pxMin: PX_MIN, gran, fuso, onSelecionar: props.onVazio });
   function livres(c: Coluna) {
-    const ags = agendamentos
-      .filter((a) => colunaDeAg(a) === c.chave && a.status !== "FALTOU")
-      .map((a) => ({ inicio: Date.parse(a.inicio), fim: Date.parse(a.fim) }));
-    return horariosLivres({
-      janelas: c.janelas.map((j) => ({ inicio: Date.parse(j.inicio), fim: Date.parse(j.fim) })),
-      bloqueios: c.bloqueios.map((b) => ({ inicio: Date.parse(b.inicio), fim: Date.parse(b.fim) })),
-      agendamentos: ags,
-      duracaoMin: 30,
-      granularidadeMin: 30,
-      intervaloEntreClientesMin: 0,
-      naoAntesDe: agora,
-    }).length;
+    const folga = props.intervaloEntreClientesMin * 60_000;
+    const ocupados = agendamentos.filter(a => colunaDeAg(a) === c.chave && a.status !== "FALTOU")
+      .map(a => ({ inicio: Date.parse(a.inicio) - folga, fim: Date.parse(a.fim) + folga }));
+    const janelas = subtrair(c.janelas.map(j => ({ inicio: Date.parse(j.inicio), fim: Date.parse(j.fim) })),
+      [...ocupados, ...c.bloqueios.map(b => ({ inicio: Date.parse(b.inicio), fim: Date.parse(b.fim) }))]);
+    return Math.floor(janelas.reduce((total, j) => total + Math.max(0, j.fim - Math.max(j.inicio, agora)), 0) / 60_000);
   }
 
   function colunaSobPonteiro(x: number): string | null {
@@ -95,6 +95,7 @@ export function Grade(props: {
 
   function iniciarArrasto(e: React.PointerEvent, ag: AgendamentoApi, modo: Arrasto["modo"]) {
     e.stopPropagation();
+    if (modo === "esticar" && !props.podeDuracao) { props.onAbrir(ag); return; }
     if (!props.podeEditar(ag.barbeiroId) || ag.status === "CONCLUIDO") {
       props.onAbrir(ag);
       return;
@@ -108,6 +109,7 @@ export function Grade(props: {
   }
 
   function mover(e: React.PointerEvent) {
+    selecao.mover(e);
     const a = arrasto.current;
     if (!a) return;
     if (!a.moveu && Math.abs(e.clientY - a.y0) + Math.abs(e.clientX - a.x0) < LIMIAR_ARRASTO) return;
@@ -123,6 +125,7 @@ export function Grade(props: {
   }
 
   async function soltar() {
+    if (selecao.soltar()) return;
     const a = arrasto.current;
     arrasto.current = null;
     if (!a) return;
@@ -145,18 +148,13 @@ export function Grade(props: {
     }
   }
 
-  function clicarVazio(e: React.MouseEvent, c: Coluna) {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const min = Math.floor((iniDia + (e.clientY - r.top) / PX_MIN) / gran) * gran;
-    props.onVazio(c, instanteLocal(c.data, min, fuso));
-  }
 
   const horas: number[] = [];
   for (let m = Math.ceil(iniDia / 60) * 60; m < fimDia; m += 60) horas.push(m);
   const hoje = dataLocal(agora, fuso);
 
   return (
-    <div className="max-h-[calc(100vh-150px)] overflow-auto rounded-xl border border-zinc-200 bg-white" onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => { arrasto.current = null; setPrevia(null); }}>
+    <div className="max-h-[calc(100vh-150px)] overflow-auto rounded-xl border border-zinc-200 bg-white" onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => { arrasto.current = null; setPrevia(null); selecao.cancelar(); }} onKeyDown={e => { if (e.key === "Escape") { arrasto.current = null; setPrevia(null); selecao.cancelar(); } }}>
       <div className="grid select-none" style={{ gridTemplateColumns: `52px repeat(${colunas.length}, minmax(150px, 1fr))`, minWidth: 52 + colunas.length * 150 }}>
         <div className="sticky left-0 top-0 z-30 border-b border-zinc-200 bg-white" />
         {colunas.map((c) => (
@@ -168,7 +166,7 @@ export function Grade(props: {
                   {c.titulo} {c.subtitulo && <span className="font-normal text-zinc-500">{c.subtitulo}</span>}
                 </div>
                 <div className="text-xs text-emerald-700">
-                  {c.janelas.length === 0 ? <span className="text-zinc-400">Não trabalha</span> : `${livres(c)} horários livres`}
+                  {c.janelas.length === 0 ? <span className="text-zinc-400">Não trabalha</span> : `${livres(c)} min livres`}
                 </div>
               </div>
             </div>
@@ -186,7 +184,8 @@ export function Grade(props: {
           return (
             <div key={c.chave} ref={(el) => { if (el) refsColunas.current.set(c.chave, el); else refsColunas.current.delete(c.chave); }}
               className={`relative border-l border-zinc-200 bg-zinc-100 ${editavel ? "cursor-cell" : ""}`}
-              style={{ height: altura }} onClick={(e) => editavel && clicarVazio(e, c)}>
+              style={{ height: altura, touchAction: props.arrastarToque ? "none" : "pan-y" }}
+              onPointerDown={e => { if (editavel) selecao.iniciar(e, c); }}>
               {c.janelas.map((j) => (
                 <div key={j.inicio} className="absolute inset-x-0 bg-white" style={{ top: y(minLocal(j.inicio)), height: ((minLocal(j.fim) || 1440) - minLocal(j.inicio)) * PX_MIN }} />
               ))}
@@ -203,11 +202,20 @@ export function Grade(props: {
                   <div key={b.id} className="absolute inset-x-1 rounded-md border border-dashed border-zinc-400 px-2 py-1 text-xs text-zinc-600"
                     style={{ top: y(Math.max(ini, iniDia)), height: (Math.min(fim, fimDia) - Math.max(ini, iniDia)) * PX_MIN,
                       background: "repeating-linear-gradient(135deg,#141312,#141312 6px,#1c1b19 6px,#1c1b19 12px)" }}
-                    onClick={(e) => e.stopPropagation()}>
+                    onPointerDown={e => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
                     Agenda fechada{b.motivo ? ` · ${b.motivo}` : ""}
                   </div>
                 );
               })}
+              {(props.destaques ?? []).filter(d => d.chave === c.chave).map(d => <div key={d.inicio}
+                className="pointer-events-none absolute inset-x-1 rounded-lg border-2 border-emerald-500 bg-emerald-500/15 px-2 text-xs font-semibold text-emerald-700"
+                style={{ top: y(minLocal(d.inicio)), height: ((minLocal(d.fim) || 1440) - minLocal(d.inicio)) * PX_MIN }}>
+                {d.quantidade} encaixe(s)
+              </div>)}
+              {selecao.selecao?.coluna.chave === c.chave && <div role="status" className="pointer-events-none absolute inset-x-1 z-20 rounded-lg border-2 border-ouro bg-ouro/20 p-2 text-xs font-bold text-ouro shadow-lg transition-[box-shadow] motion-reduce:transition-none"
+                style={{ top: y(selecao.selecao.inicioMin), height: (selecao.selecao.fimMin - selecao.selecao.inicioMin) * PX_MIN }}>
+                {minParaHhmm(selecao.selecao.inicioMin)}–{minParaHhmm(selecao.selecao.fimMin)} · {selecao.selecao.fimMin - selecao.selecao.inicioMin} min
+              </div>}
               {c.data === hoje && minLocal(agora) > iniDia && minLocal(agora) < fimDia && (
                 <div className="pointer-events-none absolute inset-x-0 z-10 border-t-2 border-red-500" style={{ top: y(minLocal(agora)) }} />
               )}
@@ -215,7 +223,7 @@ export function Grade(props: {
                 <Cartao key={a.id} ag={a} cor={c.cor} topo={y(minLocal(a.inicio))}
                   alturaPx={((minLocal(a.fim) || 1440) - minLocal(a.inicio)) * PX_MIN}
                   horario={`${minParaHhmm(minLocal(a.inicio))}-${minParaHhmm(minLocal(a.fim))}`}
-                  onPointerDown={(e, modo) => iniciarArrasto(e, a, modo)} />
+                  onAbrir={() => props.onAbrir(a)} onPointerDown={(e, modo) => iniciarArrasto(e, a, modo)} />
               ))}
               {previa && previa.coluna === c.chave && (() => {
                 const a = agendamentos.find((x) => x.id === previa.agId)!;
@@ -239,6 +247,7 @@ function Cartao(p: {
   alturaPx: number;
   horario: string;
   fantasma?: boolean;
+  onAbrir?: () => void;
   onPointerDown?: (e: React.PointerEvent, modo: "mover" | "esticar") => void;
 }) {
   const { ag } = p;
@@ -250,6 +259,8 @@ function Cartao(p: {
       style={{ top: p.topo + 1, height: Math.max(p.alturaPx - 2, 18), borderLeftColor: p.cor, background: `${p.cor}1f` }}
       onPointerDown={(e) => p.onPointerDown?.(e, "mover")}
       onClick={(e) => e.stopPropagation()}
+      role={p.fantasma ? undefined : "button"} tabIndex={p.fantasma ? undefined : 0}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); p.onAbrir?.(); } }}
       title={`${ag.cliente.nome} · ${ag.servico.nome} · ${ROTULO_STATUS[ag.status]}`}
     >
       <div className="flex items-center gap-1 font-semibold text-zinc-900">

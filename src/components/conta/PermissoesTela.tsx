@@ -4,11 +4,11 @@ import { useCallback, useEffect, useState } from "react";
 import { RotateCcw, Save, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/cliente-api";
 
-type Papel = "GERENTE" | "RECEPCAO" | "BARBEIRO";
+type Papel = "GERENTE" | "LIDER" | "RECEPCAO" | "BARBEIRO";
 type Celula = { permitido: boolean; padrao: boolean } | null;
 type Linha = { chave: string; rotulo: string; detalhe: string; papeis: Record<Papel, Celula> };
 
-const PAPEIS: { k: Papel; r: string }[] = [{ k: "GERENTE", r: "Gerente" }, { k: "RECEPCAO", r: "Recepção" }, { k: "BARBEIRO", r: "Barbeiro" }];
+const PAPEIS: { k: Papel; r: string }[] = [{ k: "GERENTE", r: "Gerente" }, { k: "LIDER", r: "Líder" }, { k: "RECEPCAO", r: "Recepção" }, { k: "BARBEIRO", r: "Barbeiro" }];
 
 /** Matriz de permissoes por acao (so o dono): o que gerente, recepcao e barbeiro podem fazer. */
 export function PermissoesTela() {
@@ -49,11 +49,11 @@ export function PermissoesTela() {
         <h2 className="font-semibold">Permissões</h2>
       </div>
       <p className="text-sm text-zinc-500">
-        O dono pode tudo, sempre. Aqui você escolhe o que o gerente, a recepção e os barbeiros podem fazer nas ações sensíveis.
+        O dono pode tudo, sempre. Aqui você escolhe o que o gerente, o líder, a recepção e os barbeiros podem fazer nas ações sensíveis.
         Acessos, permissões, WhatsApp e auditoria são só do dono. Toda mudança fica na auditoria.
       </p>
       {!linhas ? <p className="text-sm text-zinc-500">Carregando...</p> : (
-        <div className="divide-y divide-zinc-200">
+        <div className="divide-y divide-zinc-200 overflow-x-auto">
           <div className="flex items-end gap-2 pb-2 text-xs font-semibold text-zinc-500">
             <span className="flex-1">Ação</span>
             {PAPEIS.map((p) => <span key={p.k} className="w-14 text-center sm:w-20">{p.r}</span>)}

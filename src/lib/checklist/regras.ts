@@ -47,6 +47,14 @@ export function nivelDoFuncionario(pontos: number, cfg: LimitesNivel): Nivel {
   return "ELITE";
 }
 
+/** Quem muda de faixa se os pontos das faixas mudarem (o dono confere antes de salvar). */
+export function mudancasDeFaixa(pessoas: { nome: string; pontos: number }[], de: LimitesNivel, para: LimitesNivel) {
+  return pessoas.flatMap((p) => {
+    const antes = nivelDoFuncionario(p.pontos, de), depois = nivelDoFuncionario(p.pontos, para);
+    return antes === depois ? [] : [{ nome: p.nome, pontos: p.pontos, de: antes, para: depois }];
+  });
+}
+
 /** Quanto falta para a proxima faixa (percentual 0-100 dentro da faixa atual; LEGEND = 100). */
 export function progressoNivel(pontos: number, cfg: LimitesNivel) {
   const nivel = nivelDoFuncionario(pontos, cfg);

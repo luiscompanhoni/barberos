@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hhmmParaMinutos, nivelDoFuncionario, progressoNivel, tarefasDoDia, textoLista, textoRe, textoResumo } from "@/lib/checklist/regras";
+import { hhmmParaMinutos, mudancasDeFaixa, nivelDoFuncionario, progressoNivel, tarefasDoDia, textoLista, textoRe, textoResumo } from "@/lib/checklist/regras";
 
 const T = (id: string, funcao: string, extra: Partial<{ diasSemana: number[]; horario: string | null; ordem: number; ativo: boolean }> = {}) =>
   ({ id, titulo: id, funcao, diasSemana: [], horario: null, ordem: 0, ativo: true, ...extra });
@@ -40,6 +40,15 @@ describe("checklist", () => {
 });
 
 describe("pontos e faixas", () => {
+  it("prévia lista só quem sobe ou desce de faixa com os limites novos", () => {
+    const pessoas = [{ nome: "Ana", pontos: 450 }, { nome: "Bia", pontos: 700 }, { nome: "Caio", pontos: 1600 }];
+    const de = { nivelPlatina: 500, nivelLegend: 1500 };
+    expect(mudancasDeFaixa(pessoas, de, de)).toEqual([]);
+    expect(mudancasDeFaixa(pessoas, de, { nivelPlatina: 400, nivelLegend: 2000 })).toEqual([
+      { nome: "Ana", pontos: 450, de: "ELITE", para: "PLATINA" },
+      { nome: "Caio", pontos: 1600, de: "LEGEND", para: "PLATINA" },
+    ]);
+  });
   const cfg = { nivelPlatina: 500, nivelLegend: 1500 };
   it("faixa pelo total acumulado (negativo continua ELITE)", () => {
     expect(nivelDoFuncionario(-40, cfg)).toBe("ELITE");

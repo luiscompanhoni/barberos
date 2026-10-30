@@ -29,16 +29,17 @@ Entregas já feitas:
 - **Dono** (proprietário): pode tudo. Cria acessos, muda papéis e edita a matriz de permissões.
 - **Gerente** (administrador): o que a recepção faz + serviços, barbeiros, produtos, planos, horários de todos,
   jogos e configurações; o resto pela matriz de permissões.
+- **Líder de equipe**: reuniões e acompanhamento da equipe; pode continuar atendendo com o mesmo cadastro. Lucro e comissões de terceiros exigem autorização individual ou por função.
 - **Recepção**: agenda, comandas, caixa, conversas, assinaturas (sem cancelar) e entrega de prêmios no balcão.
 - **Barbeiro**: Minha agenda (`/minha-agenda`), Barbearia hoje (tela da recepção), Comandas, Meus horários e Meus
   números (os indicadores dele). Só altera a própria agenda.
 - **Cliente**: área do cliente em `/c` no site (agendar, planos, pagamentos, saldo, jogos e prêmios, perfil).
 
-Papéis no banco: enum `Papel` (`DONO`, `GERENTE`, `RECEPCAO`, `BARBEIRO`, `CLIENTE`) em `prisma/schema.prisma`.
+Papéis no banco: enum `Papel` (`DONO`, `GERENTE`, `LIDER`, `RECEPCAO`, `BARBEIRO`, `CLIENTE`) em `prisma/schema.prisma`.
 
 ### Matriz de permissões (padrão)
 
-O dono liga e desliga por papel em Configurações → Permissões. Regras em `src/lib/auth/permissoes-regras.ts`; o
+O dono liga e desliga por papel em Configurações → Permissões e define exceções individuais em Acessos → Editar cadastro. Regras em `src/lib/auth/permissoes-regras.ts`; o
 servidor confere tudo, a tela só esconde. A mudança vale na hora (papel e permissões são lidos a cada requisição) e
 vai para a auditoria com o antes → depois. Acessos, Permissões, WhatsApp e Auditoria são sempre só do dono.
 
@@ -86,6 +87,10 @@ senha. Páginas públicas sem login: `/c/pagar/`, `/c/assinar/`, `/c/link/`, `/c
 Login: celular + senha (a equipe também pode usar nome de usuário). "Primeiro acesso ou esqueci a senha" manda um
 código pelo WhatsApp (`OTP_PROVIDER="whatsapp"`); em teste local (`OTP_PROVIDER="console"`, fora de produção) o
 código aparece na própria tela de login. O dono pode gerar senha temporária para a equipe em Configurações.
+
+A atualização de equipe acrescenta **Reuniões** (`/reunioes`), **Meu dia** (`/meu-dia`), **Presença e desempenho** (`/desempenho`), **Avaliações dos clientes** (`/avaliacoes`) e **Recompra e custos** (`/recompras`, dono). O cliente avalia em `/c/avaliacoes`. A agenda passa a selecionar intervalos vazios, bloquear com permissão individual, configurar cadeiras e mostrar encaixes por serviço. Implementação local; publicação e ativação de regras comerciais são separadas. Consulte [Configurar a evolução da equipe](docs/evolucao-equipe.md).
+
+**App e notificações** (`/notificacoes` e `/c/notificacoes`): instalação na tela inicial, central privada, preferências por assunto e gerenciamento dos próprios aparelhos. Lembretes de agenda, avaliação interna, recompra com adesão e resumo diário do profissional alimentam a central e o push opcional. O aviso na tela bloqueada é genérico. Sem conexão, aparece uma página pública; operações exigem internet. Configuração e limites em [Aplicativo no celular](docs/app-notificacoes.md).
 
 ## Módulos presentes
 
@@ -186,7 +191,8 @@ código aparece na própria tela de login. O dono pode gerar senha temporária p
 - **Checklist** (`/checklist`, dono e recepção): tarefas por função (diarista, barbeiro, gerente) e dia da semana;
   de manhã cada pessoa recebe a lista no WhatsApp com link sem login (`/t/<código>`), à noite sai o resumo das
   pendências. O gerente valida (ganha pontos) ou dá "re" (marcou sem fazer: perde pontos e a tarefa volta). Faixas
-  BLACK ELITE, BLACK PLATINA e BLACK LEGEND, com classificação.
+  BLACK ELITE, BLACK PLATINA e BLACK LEGEND, com classificação. Só o dono muda os pontos das faixas, e antes de salvar
+  vê quem sobe ou desce (hoje e no bônus do mês anterior ainda não aprovado). Pontos de um mês com bônus ou folha fechados não mudam: a correção é um ajuste de pontos.
 - **RH** (`/rh`):
   - Funcionários (mesmo cadastro do checklist).
   - Comissão de avulsos: % ou fixo por serviço, exceção por barbeiro, sobre o valor efetivamente cobrado (desconto
@@ -217,9 +223,8 @@ código aparece na própria tela de login. O dono pode gerar senha temporária p
 
 Itens pendentes ou adiados ficam em [docs/pendencias.md](docs/pendencias.md): LGPD (termos, consentimento,
 exclusão/exportação), conclusão da migração do CashBarber, testes reais de cartão na Pagar.me, decisão WhatsApp
-oficial × Evolution, CRM de prospecção, loja no app, foto do cliente, avaliação anônima, analytics do produto,
-monitor de saúde, white-label, agentes de IA e o financeiro pessoal do barbeiro (produto separado). O app não é
-instalável (sem PWA).
+oficial × Evolution, CRM de prospecção, loja no app, foto do cliente, analytics do produto,
+monitor de saúde, white-label, agentes de IA e o financeiro pessoal do barbeiro (produto separado).
 
 ## Requisitos (regras garantidas pelo sistema)
 

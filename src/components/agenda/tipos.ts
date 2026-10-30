@@ -3,6 +3,8 @@ export type Status = "MARCADO" | "CONFIRMADO" | "CHEGOU" | "EM_ATENDIMENTO" | "C
 export type AgendamentoApi = {
   id: string;
   barbeiroId: string;
+  cadeiraId?: string | null;
+  cadeira?: { id: string; nome: string } | null;
   inicio: string;
   fim: string;
   status: Status;
@@ -26,6 +28,7 @@ export type IntervaloIso = { inicio: string; fim: string };
 export type AgendaApi = {
   fuso: string;
   granularidadeMin: number;
+  intervaloEntreClientesMin: number;
   barbeiros: { id: string; nome: string; cor: string; fotoVersao: number }[];
   agendamentos: AgendamentoApi[];
   dias: {

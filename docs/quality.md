@@ -28,8 +28,32 @@ Durante o trabalho, rode o teste escopado (`npx vitest run tests/<arquivo>.test.
 
 - **Unitários (`tests/`):** regras puras e decisões (agenda, preços, conciliação, jogos, checkout etc.). Rodam sem banco.
 - **Fluxo (`scripts/teste-*.ts`):** cenários de ponta a ponta contra um Postgres real, com gateways de pagamento e WhatsApp falsos. Cobrem idempotência, concorrência, permissões e estornos.
-- Não existe suíte E2E de navegador. Telas são verificadas manualmente no dev server (`.claude/launch.json`, nome `barberos`).
+- `npm run teste:evolucao`: cria/migra bancos locais `barberos_test_*` e executa oito fluxos: acessos, agenda, reuniões, avaliações, recompra, desempenho, notificações e geração de avisos. Exige PostgreSQL local com permissão de criar bancos; força provedores simulados e não usa dados da barbearia. Também roda em `teste:todos`. O fluxo de notificações substitui o transporte antes de testar respostas do provedor; nenhum caso usa push real.
+- Não existe suíte E2E de navegador versionada. Telas são verificadas manualmente no dev server (`.claude/launch.json`, nome `barberos`).
 - Teste comportamento, fronteiras e regressões; não escreva testes que só repetem a implementação.
+
+### Validação da evolução da equipe — 28/10/2026
+
+- `npm run check` passou: lint, regras locais, TypeScript, 402 testes unitários em 51 arquivos e build de produção.
+- `npm run teste:todos` passou nas 18 suítes, usando PostgreSQL local com dados sintéticos e provedores simulados.
+  A suíte `teste:evolucao` executa seis módulos; foi repetida após os ajustes finais das regras de negócio.
+- As 42 migrações foram aplicadas em banco vazio. `prisma migrate diff` entre o banco migrado e o schema não
+  encontrou diferenças. `git diff --check` passou.
+- Chromium verificou reuniões/slides, edição de função, revogação na sessão aberta, seleção de intervalo e
+  bloqueio, encaixes, projeção combinada, presença sem agenda e avaliação com nota baixa/recompensa única.
+  Telas em computador e celular não tiveram erros de execução nem transbordamento horizontal nos cenários
+  verificados. Os roteiros usados nessa conferência local não constituem uma suíte E2E versionada.
+
+Esses resultados validam a implementação local; não comprovam publicação, canais reais ou uso em aparelho físico.
+
+### Aplicativo e notificações — 28/10/2026
+
+- `npm run check` passou: lint, regras locais, TypeScript, unitários e build de produção.
+- 486 testes unitários em 57 arquivos: inclui validação de endpoints/chaves, classificação de erros, ausência de transporte em homologação, destinos seguros, cache público, inscrição/rotação VAPID e geração por categoria.
+- `npm run teste:todos` passou nas 18 suítes em banco local sintético; `teste:evolucao` agora cobre oito módulos. O fluxo de notificações passou novamente após o ajuste de tipos do próprio teste. Verifica isolamento, preferências, concorrência, revogação, 410, timeout sem reenvio, 429 e limites do teste. A geração possui 34 verificações em banco isolado.
+- 43 migrações aplicadas, incluindo execução em bancos novos do runner. Comparação do schema com o banco migrado sem diferenças; `git diff --check` limpo.
+- Chromium/Playwright verificou centrais cliente/equipe, metadados, gesto de instalação emulado, simulação de aviso, leitura, preferências, instruções de iPhone, isolamento entre contas, bloqueio de origem externa, cookie HttpOnly, revogação por logout e troca de conta. Offline usou apenas o fallback público. Layouts de computador/celular sem transbordamento horizontal nem erro JavaScript nos cenários executados.
+- O navegador recebeu inscrições sintéticas para testar a API; não houve registro em provedor externo nem envio real. Instalação física, permissão do sistema operacional e entrega com o aplicativo fechado ainda exigem validação após publicação. Os roteiros de navegador permanecem fora da suíte versionada.
 
 ## Revisão após implementação ou correção
 

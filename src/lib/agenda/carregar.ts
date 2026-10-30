@@ -96,6 +96,7 @@ export async function servicoDoBarbeiro(barbeiroId: string, servicoId: string, c
   return {
     servico: bs.servico,
     duracaoMin: bs.duracaoMin ?? bs.servico.duracaoMin,
+    minimoDuracaoMin: bs.minimoDuracaoMin ?? bs.servico.minimoDuracaoMin,
     precoCentavos: bs.precoCentavos ?? bs.servico.precoCentavos,
   };
 }

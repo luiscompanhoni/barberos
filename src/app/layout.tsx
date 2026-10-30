@@ -10,6 +10,9 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: "BarberOS",
   description: "Agenda, atendimento e assinaturas da barbearia",
+  manifest: "/manifest-cliente.webmanifest",
+  appleWebApp: { capable: true, title: "Black Barber", statusBarStyle: "black" },
+  icons: { icon: "/pwa/icon-192.png", apple: "/pwa/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#08090b" };

@@ -12,7 +12,7 @@ import { db } from "@/lib/db";
 import { urlPainel } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { notificarCliente } from "@/lib/whatsapp/conversas";
-import { resumoPontos, totaisDePontos } from "./pontos";
+import { previaDeFaixas, resumoPontos, totaisDePontos, travarPontoDoItem } from "./pontos";
 import { hhmmParaMinutos, tarefasDoDia, textoLista, textoResumo } from "./regras";
 
 const PADRAO: { titulo: string; funcao: FuncaoChecklist; diasSemana?: number[]; horario?: string }[] = [
@@ -93,7 +93,10 @@ async function marcar(itemId: string, feito: boolean, por: string, pessoaId?: st
   if (!item) throw naoEncontrado("Tarefa");
   if (item.avaliacao === "VALIDADO" && !feito && pessoaId) throw new ErroNegocio("Essa tarefa já foi validada pelo gerente.", 409, "validada");
   await db.$transaction(async (tx) => {
-    if (item.avaliacao === "VALIDADO" && !feito) await tx.checklistPonto.deleteMany({ where: { itemId } });
+    if (item.avaliacao === "VALIDADO" && !feito) {
+      await travarPontoDoItem(tx, itemId);
+      await tx.checklistPonto.deleteMany({ where: { itemId } });
+    }
     if (item.avaliacao === "RE" && feito) await tx.checklistPonto.updateMany({ where: { itemId }, data: { itemId: null } });
     const limpa = (item.avaliacao === "VALIDADO" && !feito) || (item.avaliacao === "RE" && feito);
     await tx.checklistItem.update({
@@ -145,13 +148,24 @@ export async function cadastro() {
   };
 }
 
-export async function salvarCadastro(s: Sessao, d: { config: ConfigEntrada; pessoas: PessoaEntrada[]; tarefas: TarefaEntrada[] }) {
+export async function salvarCadastro(s: Sessao, d: { config: ConfigEntrada; pessoas: PessoaEntrada[]; tarefas: TarefaEntrada[]; confirmarFaixas?: boolean }) {
   if (hhmmParaMinutos(d.config.horaResumo) <= hhmmParaMinutos(d.config.horaEnvio)) throw new ErroNegocio("O resumo precisa ser depois do envio das listas.");
-  if (d.config.nivelPlatina !== undefined && d.config.nivelLegend !== undefined && d.config.nivelLegend <= d.config.nivelPlatina) {
-    throw new ErroNegocio("O BLACK LEGEND precisa de mais pontos que o BLACK PLATINA.");
+  // As faixas valem para o bônus: só o dono muda (de quem não é dono, os valores enviados são ignorados).
+  const config = s.papel === "DONO" ? d.config : { ...d.config, nivelPlatina: undefined, nivelLegend: undefined };
+  const atual = await configChecklist();
+  const antes = { nivelPlatina: atual.nivelPlatina, nivelLegend: atual.nivelLegend };
+  const faixas = { nivelPlatina: config.nivelPlatina ?? antes.nivelPlatina, nivelLegend: config.nivelLegend ?? antes.nivelLegend };
+  if (faixas.nivelLegend <= faixas.nivelPlatina) throw new ErroNegocio("O BLACK LEGEND precisa de mais pontos que o BLACK PLATINA.");
+  const mudaFaixas = faixas.nivelPlatina !== antes.nivelPlatina || faixas.nivelLegend !== antes.nivelLegend;
+  // Antes de salvar, o dono vê quem sobe ou desce (hoje e no bônus ainda não aprovado do mês anterior).
+  if (mudaFaixas) {
+    const mudancas = await previaDeFaixas(antes, faixas);
+    if (mudancas.length && !d.confirmarFaixas) {
+      throw new ErroNegocio(`${mudancas.length} pessoa(s) mudam de faixa com esses pontos. Confira antes de salvar.`, 409, "confirmar_faixas", { mudancas });
+    }
   }
   await db.$transaction(async (tx) => {
-    await tx.checklistConfig.upsert({ where: { id: 1 }, create: { id: 1, ...d.config }, update: d.config });
+    await tx.checklistConfig.upsert({ where: { id: 1 }, create: { id: 1, ...config }, update: config });
     const idsP = d.pessoas.map((p) => p.id).filter((x): x is string => !!x);
     await tx.checklistPessoa.updateMany({ where: { id: { notIn: idsP } }, data: { ativo: false } });
     for (const p of d.pessoas) {
@@ -172,7 +186,7 @@ export async function salvarCadastro(s: Sessao, d: { config: ConfigEntrada; pess
     }
     // Itens de hoje que ainda nao foram feitos acompanham a mudanca (tarefa desativada sai da lista).
     await tx.checklistItem.deleteMany({ where: { feito: false, data: { gte: dataDb(dataLocal(Date.now())) }, OR: [{ tarefa: { ativo: false } }, { pessoa: { ativo: false } }] } });
-    await auditar(tx, s.usuarioId, "checklist_configurar", "configuracao", "checklist", { pessoas: d.pessoas.length, tarefas: d.tarefas.length, ativo: d.config.ativo });
+    await auditar(tx, s.usuarioId, "checklist_configurar", "configuracao", "checklist", { pessoas: d.pessoas.length, tarefas: d.tarefas.length, ativo: config.ativo, ...(mudaFaixas ? { faixas: { antes, depois: faixas } } : {}) });
   });
   return cadastro();
 }

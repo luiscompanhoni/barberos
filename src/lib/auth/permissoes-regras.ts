@@ -6,7 +6,7 @@
  */
 import type { Papel } from "@prisma/client";
 
-export type PapelConfiguravel = "GERENTE" | "RECEPCAO" | "BARBEIRO";
+export type PapelConfiguravel = "GERENTE" | "LIDER" | "RECEPCAO" | "BARBEIRO";
 
 export const PERMISSOES = [
   {
@@ -17,12 +17,12 @@ export const PERMISSOES = [
   {
     chave: "desconto", rotulo: "Dar desconto na comanda",
     detalhe: "Lançar ou mudar o desconto de uma comanda aberta.",
-    papeis: ["GERENTE", "RECEPCAO", "BARBEIRO"], padrao: ["GERENTE", "RECEPCAO"],
+    papeis: ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"], padrao: ["GERENTE", "RECEPCAO"],
   },
   {
     chave: "saldo", rotulo: "Usar o saldo do cliente",
     detalhe: "Usar cashback, indicação e créditos do cliente como desconto na comanda.",
-    papeis: ["GERENTE", "RECEPCAO", "BARBEIRO"], padrao: ["GERENTE", "RECEPCAO", "BARBEIRO"],
+    papeis: ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"], padrao: ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"],
   },
   {
     chave: "assinatura", rotulo: "Cancelar assinaturas",
@@ -58,7 +58,32 @@ export const PERMISSOES = [
     // Separado de "resultado": a equipe so ve despesas e lucro quando o dono liberar.
     chave: "lucro", rotulo: "Ver despesas e lucro",
     detalhe: "Resumo do mês e Resultado (Celcash e Stone) no financeiro, e o resultado no painel: despesas, taxas, retiradas e lucro.",
-    papeis: ["GERENTE", "RECEPCAO"], padrao: [],
+    papeis: ["GERENTE", "LIDER", "RECEPCAO"], padrao: [],
+  },
+  {
+    chave: "reunioes", rotulo: "Acessar reuniões",
+    detalhe: "Reuniões diárias e semanais, apresentações e planos de ação da equipe.",
+    papeis: ["GERENTE", "LIDER"], padrao: ["GERENTE", "LIDER"],
+  },
+  {
+    chave: "comissoes_equipe", rotulo: "Ver comissões da equipe",
+    detalhe: "Comissões e projeções individuais nas reuniões, sem acesso à folha inteira.",
+    papeis: ["GERENTE", "LIDER"], padrao: [],
+  },
+  {
+    chave: "avaliar_equipe", rotulo: "Avaliar desempenho da equipe",
+    detalhe: "Registrar avaliações da liderança e acompanhar presença e qualidade.",
+    papeis: ["GERENTE", "LIDER"], padrao: ["GERENTE", "LIDER"],
+  },
+  {
+    chave: "duracao", rotulo: "Ajustar duração dos atendimentos",
+    detalhe: "Alterar a duração de uma reserva, respeitando o mínimo do serviço e a agenda permitida.",
+    papeis: ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"], padrao: ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"],
+  },
+  {
+    chave: "bloquear_agenda", rotulo: "Bloquear e reabrir horários",
+    detalhe: "Barbeiros podem bloquear somente a própria agenda; liderança e recepção, as agendas sob sua gestão.",
+    papeis: ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"], padrao: ["GERENTE", "LIDER", "BARBEIRO"],
   },
 ] as const satisfies readonly { chave: string; rotulo: string; detalhe: string; papeis: readonly PapelConfiguravel[]; padrao: readonly PapelConfiguravel[] }[];
 
@@ -67,7 +92,7 @@ export type Permissoes = Record<Permissao, boolean>;
 export type LinhaPermissao = { papel: Papel; permissao: string; permitido: boolean };
 
 export const CHAVES = PERMISSOES.map((p) => p.chave) as Permissao[];
-export const PAPEIS_CONFIGURAVEIS: PapelConfiguravel[] = ["GERENTE", "RECEPCAO", "BARBEIRO"];
+export const PAPEIS_CONFIGURAVEIS: PapelConfiguravel[] = ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"];
 
 const def = (p: Permissao) => PERMISSOES.find((x) => x.chave === p)!;
 
@@ -87,7 +112,7 @@ export function permissoesDoPapel(papel: Papel, linhas: LinhaPermissao[]): Permi
 }
 
 /** Linhas a gravar: so o que difere do padrao (voltar ao padrao apaga a linha). */
-export function linhasParaSalvar(matriz: Record<PapelConfiguravel, Partial<Permissoes>>) {
+export function linhasParaSalvar(matriz: Partial<Record<PapelConfiguravel, Partial<Permissoes>>>) {
   const gravar: LinhaPermissao[] = [];
   const apagar: { papel: PapelConfiguravel; permissao: Permissao }[] = [];
   for (const papel of PAPEIS_CONFIGURAVEIS) {
@@ -102,3 +127,15 @@ export function linhasParaSalvar(matriz: Record<PapelConfiguravel, Partial<Permi
 }
 
 export const rotuloPermissao = (p: Permissao) => def(p).rotulo;
+
+/** Exceções individuais só valem para ações configuráveis da função atual. */
+export function aplicarPermissoesIndividuais(papel: Papel, base: Permissoes, linhas: { permissao: string; permitido: boolean }[]): Permissoes {
+  const resultado = { ...base };
+  if (papel === "DONO" || papel === "CLIENTE") return resultado;
+  for (const k of CHAVES) {
+    if (!configuravel(papel, k)) continue;
+    const linha = linhas.find((l) => l.permissao === k);
+    if (linha) resultado[k] = linha.permitido;
+  }
+  return resultado;
+}

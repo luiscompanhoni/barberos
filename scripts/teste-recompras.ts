@@ -1,0 +1,72 @@
+import assert from "node:assert/strict";
+import { db } from "../src/lib/db";
+import { dataLocal, instanteLocal, somarDias } from "../src/lib/agenda/tempo";
+import { oportunidadesDoDia } from "../src/lib/recompras/servico";
+import { registrarOferta } from "../src/lib/recompras/ofertas";
+import { ciclosDoCliente, processarRecompras } from "../src/lib/recompras/rotina";
+import { salvarConfig, PADRAO } from "../src/lib/recompras/configuracao";
+import type { Sessao } from "../src/lib/auth/sessao";
+
+if (new URL(process.env.DATABASE_URL!).pathname !== "/barberos_test_recompras") throw new Error("Use somente o banco isolado barberos_test_recompras.");
+const uid = Date.now().toString(36);
+const fuso = "America/Sao_Paulo";
+const dia = somarDias(dataLocal(Date.now(), fuso), 2);
+const passado = somarDias(dia, -45);
+let checks = 0;
+const ok = (v: unknown, mensagem: string) => { assert(v, mensagem); checks++; };
+
+async function main() {
+  await db.configuracao.upsert({ where: { id: 1 }, create: { id: 1, intervaloEntreClientes: 0, fuso }, update: { intervaloEntreClientes: 0, fuso } });
+  const usuario = await db.usuario.create({ data: { nome: `Dono ${uid}`, telefone: `${Date.now()}`, papel: "DONO" } });
+  const s: Sessao = { usuarioId: usuario.id, nome: usuario.nome, papel: "DONO", barbeiroId: null, clienteId: null };
+  const barbeiro = await db.barbeiro.create({ data: { nome: `Barbeiro ${uid}`, usuarioId: usuario.id, expediente: { create: Array.from({ length: 7 }, (_, diaSemana) => ({ diaSemana, inicioMin: 480, fimMin: 1200 })) } } });
+  const cliente = await db.cliente.create({ data: { nome: `Cliente ${uid}`, telefone: `c${uid}` } });
+  const corte = await db.servico.create({ data: { nome: `Corte ${uid}`, duracaoMin: 30, precoCentavos: 6500, barbeiros: { create: { barbeiroId: barbeiro.id } } } });
+  const hidratacao = await db.servico.create({ data: { nome: `Hidratação ${uid}`, duracaoMin: 20, precoCentavos: 5000, custoCentavos: 1000, intervaloRecompraDias: 10, barbeiros: { create: { barbeiroId: barbeiro.id } } } });
+  const sobrancelha = await db.servico.create({ data: { nome: `Sobrancelha ${uid}`, duracaoMin: 10, precoCentavos: 2000, custoCentavos: 200, intervaloRecompraDias: 10, barbeiros: { create: { barbeiroId: barbeiro.id } } } });
+  const semPagar = await db.servico.create({ data: { nome: `Sem pagar ${uid}`, duracaoMin: 10, precoCentavos: 2000, intervaloRecompraDias: 10, barbeiros: { create: { barbeiroId: barbeiro.id } } } });
+  await db.comissaoServico.createMany({ data: [hidratacao, sobrancelha].map(servico => ({ servicoId: servico.id, avulsoTipo: "PERCENTUAL", avulsoValor: 4000, planoTipo: "FIXO", planoValor: 1000 })) });
+  async function historico(servicoId: string, precoCentavos: number, pago: boolean, minutos: number) {
+    const a = await db.agendamento.create({ data: { barbeiroId: barbeiro.id, clienteId: cliente.id, servicoId, inicio: new Date(instanteLocal(passado, minutos, fuso)), fim: new Date(instanteLocal(passado, minutos + 20, fuso)), status: "CONCLUIDO", origem: "PAINEL", precoCentavos } });
+    if (pago) await db.comanda.create({ data: { clienteId: cliente.id, status: "FECHADA", itens: { create: { agendamentoId: a.id, descricao: "Serviço anterior", quantidade: 1, precoUnitCentavos: precoCentavos, barbeiroId: barbeiro.id } }, pagamentos: { create: { forma: "PIX", valorCentavos: precoCentavos, status: "PAGO" } } } });
+  }
+  await historico(hidratacao.id, 5000, true, 540);
+  await historico(sobrancelha.id, 2000, true, 570);
+  await historico(semPagar.id, 2000, false, 600);
+  const principal = await db.agendamento.create({ data: { barbeiroId: barbeiro.id, clienteId: cliente.id, servicoId: corte.id, inicio: new Date(instanteLocal(dia, 540, fuso)), fim: new Date(instanteLocal(dia, 570, fuso)), origem: "PAINEL", precoCentavos: 6500 } });
+  await salvarConfig(s, { ...PADRAO, ativo: true, descontoAtivo: true, descontoPct: 20, descontoMaxCentavos: 1000, margemMinimaPct: 20, servicos: [] });
+  let oportunidades = await oportunidadesDoDia(barbeiro.id, dia);
+  ok(oportunidades.length === 2, "Inclui duas recompras pagas e exclui atendimento sem recebimento");
+  const hidratacaoOferta = oportunidades.find(o => o.servicoId === hidratacao.id)!;
+  ok(hidratacaoOferta.precoCentavos === 5000 && hidratacaoOferta.comissaoCentavos === 2000, "Preço e comissão reais");
+  ok(hidratacaoOferta.descontoCentavos === 1000 && hidratacaoOferta.podeEncaixar, "Desconto permitido e tempo disponível");
+  await assert.rejects(registrarOferta({ ...s, papel: "BARBEIRO", barbeiroId: "outro" }, { agendamentoId: principal.id, servicoId: hidratacao.id, estado: "ACEITOU", aplicarDesconto: false })); checks++;
+  await registrarOferta(s, { agendamentoId: principal.id, servicoId: sobrancelha.id, estado: "RECUSOU", aplicarDesconto: false });
+  oportunidades = await oportunidadesDoDia(barbeiro.id, dia);
+  ok(oportunidades.length === 1, "Recusa suspende sugestão do ciclo");
+  const dois = await Promise.allSettled([1, 2].map(() => registrarOferta(s, { agendamentoId: principal.id, servicoId: hidratacao.id, estado: "ACEITOU", aplicarDesconto: true })));
+  ok(dois.every(r => r.status === "fulfilled"), "Cliques concorrentes são idempotentes");
+  const novos = await db.agendamento.findMany({ where: { clienteId: cliente.id, servicoId: hidratacao.id, inicio: { gte: principal.fim } }, include: { itemComanda: true } });
+  ok(novos.length === 1 && !!novos[0].itemComanda, "Cria um atendimento e um item de comanda");
+  ok(novos[0].precoCentavos === 4000 && novos[0].itemComanda!.precoUnitCentavos === 4000, "Desconto somente no serviço recomprado");
+  ok(!novos[0].adicionalDeId && +novos[0].inicio === +principal.fim && +novos[0].fim - +novos[0].inicio === 20 * 60_000, "Reserva tempo real na agenda");
+  ok((await oportunidadesDoDia(barbeiro.id, dia)).length === 0, "Agendado não continua sendo oferecido");
+  ok((await ciclosDoCliente(cliente.id, Date.now(), fuso)).length === 0, "Cliente não recebe lembrete de item recusado/agendado");
+  ok(await processarRecompras(Date.now(), { clienteIds: [cliente.id] }) === 0, "WhatsApp desativado não produz envio");
+  ok(await db.recompraAviso.count({ where: { clienteId: cliente.id } }) === 0, "Nenhum efeito externo ou outbox com canal desligado");
+  const tela = await salvarConfig(s, { ...PADRAO, ativo: true, servicos: [] });
+  ok(tela.conversao.ofertas >= 2 && tela.conversao.aceitas >= 1 && tela.conversao.recusadas >= 1, "Conversão baseada nas ofertas registradas");
+  const clienteAviso = await db.cliente.create({ data: { nome: `Lembrete ${uid}`, telefone: `a${uid}` } });
+  const comprado = await db.agendamento.create({ data: { barbeiroId: barbeiro.id, clienteId: clienteAviso.id, servicoId: hidratacao.id, inicio: new Date(instanteLocal(passado, 660, fuso)), fim: new Date(instanteLocal(passado, 680, fuso)), status: "CONCLUIDO", origem: "PAINEL", precoCentavos: 5000 } });
+  await db.comanda.create({ data: { clienteId: clienteAviso.id, status: "FECHADA", itens: { create: { agendamentoId: comprado.id, descricao: "Histórico pago", quantidade: 1, precoUnitCentavos: 5000, barbeiroId: barbeiro.id } }, pagamentos: { create: { forma: "PIX", valorCentavos: 5000, status: "PAGO" } } } });
+  await salvarConfig(s, { ...PADRAO, ativo: true, whatsapp: true, servicos: [] });
+  const agoraComercial = instanteLocal(dia, 660, fuso);
+  await Promise.all([1, 2].map(() => processarRecompras(agoraComercial, { clienteIds: [clienteAviso.id] })));
+  ok(await db.recompraAviso.count({ where: { clienteId: clienteAviso.id, estado: "ENVIADO" } }) === 1, "Duas rotinas concorrentes enviam um único aviso no simulador");
+  ok(await processarRecompras(agoraComercial + 1000, { clienteIds: [clienteAviso.id] }) === 0, "Intervalo mínimo bloqueia novo contato");
+  await db.cliente.update({ where: { id: clienteAviso.id }, data: { aceitaMensagens: false } });
+  ok(await processarRecompras(agoraComercial + 8 * 86_400_000, { clienteIds: [clienteAviso.id] }) === 0, "Preferência PARAR impede novos contatos");
+  await salvarConfig(s, { ...PADRAO, ativo: true, servicos: [] });
+  console.log(`PASS recompras: ${checks} verificações com banco isolado; nenhum envio externo.`);
+}
+main().finally(() => db.$disconnect());

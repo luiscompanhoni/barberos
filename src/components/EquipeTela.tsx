@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, Trash2 } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import { useAcesso } from "@/components/AcessoContexto";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { formatarTelefone } from "@/lib/telefone";
 import type { ServicoApi } from "@/components/agenda/EncaixeModal";
@@ -37,6 +38,8 @@ const CORES = ["#378ADD", "#1D9E75", "#D85A30", "#7F77DD", "#D4537E", "#BA7517",
 
 /** Painel do dono: cadastro de barbeiros e servicos (quem faz o que). */
 export function EquipeTela() {
+  // Desativar corta o login: só o dono (o servidor confere).
+  const souDono = useAcesso().papel === "DONO";
   const [barbeiros, setBarbeiros] = useState<BarbeiroApi[]>([]);
   const [servicos, setServicos] = useState<ServicoApi[]>([]);
   const [erro, setErro] = useState("");
@@ -132,18 +135,20 @@ export function EquipeTela() {
                   <Trash2 size={12} /> remover foto
                 </button>
               )}
-              <button className={`${b.fotoVersao > 0 && enviandoFoto !== b.id ? "" : "ml-auto "}text-xs text-zinc-600 underline`} onClick={() => acao(() => api(`/api/barbeiros/${b.id}`, { method: "PATCH", body: { ativo: !b.ativo } }))}>
-                {b.ativo ? "desativar" : "reativar"}
-              </button>
+              {souDono && (
+                <button className={`${b.fotoVersao > 0 && enviandoFoto !== b.id ? "" : "ml-auto "}text-xs text-zinc-600 underline`} onClick={() => acao(() => api(`/api/barbeiros/${b.id}`, { method: "PATCH", body: { ativo: !b.ativo } }))}>
+                  {b.ativo ? "desativar" : "reativar"}
+                </button>
+              )}
             </li>
           ))}
         </ul>
         <input ref={arquivoRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={enviarFoto} />
-        <form onSubmit={novoBarbeiro} className="flex flex-wrap gap-2">
+        {souDono && <form onSubmit={novoBarbeiro} className="flex flex-wrap gap-2">
           <input className="campo max-w-48" placeholder="Nome" value={nb.nome} onChange={(e) => setNb({ ...nb, nome: e.target.value })} />
           <input className="campo max-w-48" placeholder="Celular (login)" inputMode="tel" value={nb.telefone} onChange={(e) => setNb({ ...nb, telefone: e.target.value })} />
           <button className="btn-primario">Adicionar barbeiro</button>
-        </form>
+        </form>}
         <p className="text-xs text-zinc-500">Toque na foto para trocar. O barbeiro entra no sistema com esse celular. Depois de cadastrar, configure os horários dele em Horários da equipe.</p>
       </section>
 

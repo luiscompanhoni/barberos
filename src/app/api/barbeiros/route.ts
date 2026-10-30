@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
+import { salvarAcesso } from "@/lib/auth/equipe";
+import { exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
-import { ErroNegocio, rota } from "@/lib/erros";
-import { normalizarTelefone } from "@/lib/telefone";
+import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
 export const GET = rota(async () => {
@@ -15,9 +15,9 @@ export const GET = rota(async () => {
   return NextResponse.json(barbeiros);
 });
 
-/** Cadastra barbeiro (cria o usuario de acesso com o telefone dele). So o dono. */
+/** Cadastra barbeiro (cria o usuario de acesso com o telefone dele). So o dono, pelas regras de Acessos (auditoria e ficha). */
 export const POST = rota(async (req: Request) => {
-  await exigirSessao(GESTAO);
+  const s = await exigirSessao(["DONO"]);
   const b = await corpo(
     req,
     z.object({
@@ -26,19 +26,6 @@ export const POST = rota(async (req: Request) => {
       cor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default("#378ADD"),
     }),
   );
-  const telefone = normalizarTelefone(b.telefone);
-  if (!telefone) throw new ErroNegocio("Telefone inválido.", 400);
-  if (await db.usuario.findUnique({ where: { telefone } })) {
-    throw new ErroNegocio("Já existe um usuário com esse telefone.", 409);
-  }
-  const total = await db.barbeiro.count();
-  const barbeiro = await db.barbeiro.create({
-    data: {
-      nome: b.nome,
-      cor: b.cor,
-      ordem: total,
-      usuario: { create: { telefone, nome: b.nome, papel: "BARBEIRO" } },
-    },
-  });
-  return NextResponse.json(barbeiro, { status: 201 });
+  const { id } = await salvarAcesso(s, null, { nome: b.nome, telefone: b.telefone, papel: "BARBEIRO", atende: true, cor: b.cor });
+  return NextResponse.json(await db.barbeiro.findUnique({ where: { usuarioId: id } }), { status: 201 });
 });

@@ -62,6 +62,25 @@ O que está implementado:
 - **Erros da API** chegam como `{ erro, codigo }` com mensagem pronta em português (ver `src/lib/erros.ts`).
 - **Ambiente:** `FaixaAmbiente` mostra uma faixa amarela fixa "HOMOLOGAÇÃO" quando `AMBIENTE=homologacao`.
 
+### Reuniões e evolução da equipe
+
+- **Agenda:** arrastar um intervalo vazio mostra a prévia dourada com início, fim e duração. Soltar abre o modal
+  com as opções de agendar ou bloquear; gravar exige confirmação. O botão **+ Atendimento** oferece os campos
+  equivalentes para teclado e celular. O modo de arrasto no celular é explícito, para preservar a rolagem normal.
+  **Mostrar encaixes** destaca as janelas do serviço escolhido e informa a capacidade, sem somar alternativas
+  que ocupam o mesmo intervalo. O ajuste da duração fica no detalhe da reserva.
+- **Reuniões:** a apresentação ocupa a tela, aceita teclado e pode ser impressa como slides. A opção para a equipe
+  recebe do servidor uma versão sem dados reservados. O editor mantém conteúdo e ações separados dos números
+  preservados na geração. Valores ausentes aparecem como pendentes, nunca como zero presumido.
+- **Avaliações:** estrelas são opções de um grupo de rádio com nomes acessíveis; cor e texto indicam a nota.
+  O convite explica quem pode consultar a identidade. Médias públicas usam lotes de cinco clientes e mostram
+  estado de formação quando a amostra é insuficiente. A recompensa é igual para qualquer nota válida.
+- **Níveis:** ELITE usa escudo preto/dourado, PLATINA usa metal/prata e LEGEND usa coroa com aura e brilho suave.
+  A conquista tem destaque próprio; `prefers-reduced-motion` desativa esses efeitos. A nota dos clientes fica
+  separada do nível acumulado. O acabamento de rolagem consulta essa preferência após a hidratação para manter
+  a primeira renderização consistente entre servidor e navegador.
+- Guia de ativação e configuração: [evolucao-equipe.md](evolucao-equipe.md).
+
 ## Layout e revisão
 
 - **Painel:** `Navegacao` mostra menu lateral fixo (largura 60) a partir de `lg`; abaixo disso, cabeçalho no topo e
@@ -72,8 +91,9 @@ O que está implementado:
 - **Tempo real:** recepção, comandas e conversas atualizam por SSE.
 - Revisão em aparelho: a tela inicial com jogada pendente foi testada em iPhone e Android emulados no Chromium;
   teste em aparelho real está pendente ([pendencias.md](pendencias.md)).
-- Não documentado: guia de estados vazios/erro/carregamento por tela, auditoria formal de contraste ou de leitor de
-  tela. Não há PWA (o app não é instalável).
+- **Aplicativo instalável:** cliente e equipe têm manifestos próprios e ícones Black Barber. A central apresenta instalação, avisos, aparelhos e preferências; o sino do cabeçalho indica os não lidos. Instalação e permissão de notificações dependem de gesto explícito. No iPhone, orienta Safari e Tela de Início; bloqueio, falta de suporte, simulação e indisponibilidade têm mensagens próprias.
+- **Offline:** página pública curta, sem dados da conta, com tentativa de reconexão. O service worker não armazena telas privadas nem respostas de API. Guia: [app-notificacoes.md](app-notificacoes.md).
+- Não documentado: guia de estados vazios/erro/carregamento por tela, auditoria formal de contraste ou de leitor de tela.
 
 ## Manutenção
 

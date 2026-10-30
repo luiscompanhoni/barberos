@@ -8,6 +8,10 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { processarCampanhas } from "@/lib/campanhas/servico";
 import { db } from "@/lib/db";
+import { processarConvitesAvaliacao } from "@/lib/avaliacoes/automacao";
+import { processarRecompras } from "@/lib/recompras/rotina";
+import { gerarNotificacoes } from "@/lib/notificacoes/geracao";
+import { processarPush } from "@/lib/notificacoes/envio";
 import { atualizarPremios } from "@/lib/jogos/premios";
 import { sincronizarRecentes } from "@/lib/conciliacao/celcash";
 import { processarEsperas, processarIndicacoes, processarRetornos } from "@/lib/crescimento/rotina";
@@ -25,9 +29,20 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   const comercial = horarioComercial(agora, cfg.fuso);
   const cont = { lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0 };
 
+  // O canal do aplicativo tem preferências próprias; uma falha não interrompe os canais existentes.
+  try {
+    const usuarios = opts.clienteIds
+      ? await db.usuario.findMany({ where: { cliente: { id: { in: opts.clienteIds } } }, select: { id: true } })
+      : undefined;
+    await gerarNotificacoes(new Date(agora), opts);
+    await processarPush(new Date(agora), { ...(usuarios ? { usuarioIds: usuarios.map(u => u.id) } : {}) });
+  } catch { console.error("[notificacoes] Falha na rotina de avisos do aplicativo."); }
+
   // Vaga que abriu e premio de indicacao nao esperam o horario comercial das outras mensagens.
   cont.espera = await processarEsperas(agora, opts);
   cont.indicacao = await processarIndicacoes(opts);
+  await processarConvitesAvaliacao(opts, new Date(agora));
+  await processarRecompras(agora, opts);
 
   // ---- lembretes
   const horizonte = Math.max(cfg.lembreteHorasAntes * 60, cfg.lembreteMinutosAntes) * MIN;

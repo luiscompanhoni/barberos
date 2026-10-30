@@ -84,6 +84,9 @@ export async function lancar(s: Sessao, d: { competencia: string; pessoaId: stri
 export async function excluirLancamento(s: Sessao, id: string) {
   const l = await db.folhaLancamento.findUnique({ where: { id } });
   if (!l) throw naoEncontrado("Lançamento");
+  if (await db.desempenhoBonus.findUnique({ where: { folhaLancamentoId: id }, select: { id: true } })) {
+    throw new ErroNegocio("Este lançamento pertence a um bônus de desempenho aprovado. Preserve o histórico e registre um ajuste separado.", 409, "bonus_vinculado");
+  }
   const { f } = await pessoaComFolha(l.competencia, l.pessoaId);
   if (f) throw new ErroNegocio("A folha desse funcionário já foi fechada. Reabra para mexer.", 409, "folha_fechada");
   // O dinheiro ja saiu da gaveta: corrigir com suprimento no caixa e um lancamento novo.

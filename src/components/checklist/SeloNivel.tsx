@@ -1,4 +1,5 @@
 import { Crown, Gem, Shield } from "lucide-react";
+import estilos from "./niveis.module.css";
 
 export type Nivel = "ELITE" | "PLATINA" | "LEGEND";
 export const NOME_NIVEL: Record<Nivel, string> = { ELITE: "BLACK ELITE", PLATINA: "BLACK PLATINA", LEGEND: "BLACK LEGEND" };
@@ -15,7 +16,7 @@ const ICONE = { ELITE: Shield, PLATINA: Gem, LEGEND: Crown };
 export function SeloNivel({ nivel, pequeno }: { nivel: Nivel; pequeno?: boolean }) {
   const Icone = ICONE[nivel];
   return (
-    <span style={ESTILO[nivel]} className={`inline-flex items-center gap-1 rounded-full font-black tracking-wider whitespace-nowrap ${pequeno ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs"}`}>
+    <span style={ESTILO[nivel]} className={`inline-flex items-center gap-1 rounded-full font-black tracking-wider whitespace-nowrap ${nivel === "LEGEND" ? estilos.legend : ""} ${pequeno ? "px-2 py-0.5 text-[10px]" : "px-3 py-1 text-xs"}`}>
       <Icone size={pequeno ? 11 : 13} /> {NOME_NIVEL[nivel]}
     </span>
   );
