@@ -11,7 +11,7 @@ import deploy_vps as deploy
 
 
 class RecuperacaoTest(unittest.TestCase):
-    def executar_cenario(self, falha):
+    def executar_cenario(self, falha, backup_sem_imagem=False):
         with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
             base = Path(d)
             commit = "a" * 40
@@ -28,6 +28,8 @@ class RecuperacaoTest(unittest.TestCase):
             def comando(args, **_kw):
                 chamadas.append(args)
                 if args[:3] == ["docker", "image", "inspect"]:
+                    if backup_sem_imagem and args[-1] == antigo["Image"]:
+                        raise RuntimeError("Imagem antiga de backup ausente")
                     return json.dumps([{"Config": {"Labels": {"org.opencontainers.image.revision": commit}}}]).encode()
                 return b""
 
@@ -75,6 +77,7 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertEqual(backup.call_count, 2)
                 self.assertTrue(registro["concluido"])
                 self.assertTrue((base / "versao-ativa.json").is_file())
+                self.assertEqual(registro["backupAnteriorPreservado"], not backup_sem_imagem)
 
     def test_falha_backup_bloqueia_migracao_e_troca(self):
         self.executar_cenario("backup")
@@ -84,6 +87,9 @@ class RecuperacaoTest(unittest.TestCase):
 
     def test_sucesso_exige_ensaio_e_backups_antes_e_depois(self):
         self.executar_cenario(None)
+
+    def test_backup_legado_sem_imagem_so_e_substituido_apos_restauracao_nova(self):
+        self.executar_cenario(None, backup_sem_imagem=True)
 
 
 if __name__ == "__main__":

@@ -22,7 +22,10 @@ exclusiva para cifrar o relatório. Não é necessário manipular a chave SSH no
 3. Uma trava no servidor impede duas publicações simultâneas. O script exige a imagem antiga esperada,
    banco/app saudáveis, memória/disco mínimos e migrações conhecidas. A migração nova permitida nesta
    entrega é `20261025000000_estudio_black`; futuras migrations precisam de revisão explícita do código.
-4. As imagens antigas recebem tags de preservação. O backup novo cria o par banco/mídia e restaura
+4. A imagem antiga do app recebe tag de preservação obrigatória. A imagem anterior do backup também é
+   preservada quando ainda existe no Docker; a instalação legada pode manter um container de backup cuja
+   imagem foi removida. Essa ausência fica registrada e não libera a troca sem verificar o backup novo.
+   O backup novo cria o par banco/mídia e restaura
    ambos para verificar integridade. Durante a publicação, não faz limpeza de backups nem envio externo.
 5. Um segundo banco exclusivo ensaia as migrations, confere schema e testa os modelos do cliente Prisma
    anterior. Não inicia o servidor antigo nessa cópia, evitando cron, pagamentos e mensagens reais.
@@ -57,6 +60,15 @@ a publicação antes de acessar a VPS: o HyperFrames exige 1 GiB livre tanto no 
 e `/tmp` tinha limite de 256 MiB; `/worker/jobs`, de exatamente 1 GiB, já continha o vídeo de entrada.
 A correção usa a mesma área `TMPDIR=/worker/jobs` com limite de 1,5 GiB, mantendo o limite total de memória
 em 2 GiB. A verificação de espaço do motor permanece ativa e o teste real continua obrigatório.
+
+Na [execução 41349187957](https://github.com/luiscompanhoni/barberos/actions/runs/41349187957), imagens,
+restauração sintética e render real passaram. A preservação da imagem app também concluiu. A preparação
+parou ao tentar preservar a imagem do backup antigo, antes de executar backup, migration ou troca.
+A [consulta 41349909425](https://github.com/luiscompanhoni/barberos/actions/runs/41349909425) confirmou
+que essa imagem já não existia no Docker, embora o container continuasse rodando; a tag do backup apontava
+para outra imagem. A correção registra essa condição, mantém o container até validar o backup novo e
+preserva a recuperação obrigatória do aplicativo. O retorno do app continua usando o backup novo, que
+cobre as mídias do Studio, sem restaurar destrutivamente o banco.
 
 Se a conexão cair, consulte primeiro a instalação e `operacao.json`; não repita automaticamente uma
 execução incerta. Uma release existente é preservada e não é sobrescrita. Não se executa `image prune`.

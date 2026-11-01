@@ -69,7 +69,16 @@ def publicar(base, projeto, commit, imagem_esperada):
     estado.update(imagemAnterior=app["Image"], backupAnterior=backup_anterior["Image"], composeAnterior=configs_antigos, migracoesPendentes=pendentes)
     etapa("preservar")
     executar(["docker", "tag", app["Image"], "barberos-app:antes-" + commit])
-    executar(["docker", "tag", backup_anterior["Image"], "barberos-backup:antes-" + commit])
+    try:
+        executar(["docker", "image", "inspect", backup_anterior["Image"]])
+    except RuntimeError:
+        # A instalação legada pode manter o container após remover sua imagem.
+        # A troca só prossegue se o backup NOVO restaurar banco/mídias e o app anterior for compatível.
+        estado["backupAnteriorPreservado"] = False
+    else:
+        executar(["docker", "tag", backup_anterior["Image"], "barberos-backup:antes-" + commit])
+        estado["backupAnteriorPreservado"] = True
+    etapa("preservar")
     env_app = ambiente_container(app)
     env_backup = ambiente_container(backup_anterior)
     volume = projeto + "_estudio_media"
