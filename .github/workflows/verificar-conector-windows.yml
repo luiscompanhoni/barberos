@@ -13,6 +13,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Reproduzir preparacao com chave descartavel e sem acesso a VPS
+      - name: Validar leitura, permissoes e preservacao com chaves descartaveis
         shell: powershell
-        run: .\scripts\publicacao\reproduzir-preparacao-windows.ps1
+        run: .\scripts\publicacao\testar-chave-windows.ps1 -Fonte .\scripts\publicacao\funcoes-chave-conector.ps1
