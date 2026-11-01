@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Plus, X } from "lucide-react";
+import NextLink from "next/link";
 
 type Link = { href: string; rotulo: string };
 /** Uma aba = uma secao do painel (link de prefixo mais longo); guarda a ultima subpagina e a rolagem. */
@@ -48,6 +49,7 @@ function gravar(chave: string, abas: Aba[]) {
 export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  const busca = useSearchParams().toString();
   const chaveLs = `barberos:abas:${chave}`;
   const [abas, setAbas] = useState<Aba[]>([]);
   const [carregado, setCarregado] = useState(false);
@@ -64,10 +66,14 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
 
   // Abre (ou atualiza) a aba da rota atual e aplica o limite.
   useEffect(() => {
-    const caminho = pathname + window.location.search;
+    const caminho = pathname + (busca ? `?${busca}` : "");
     // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza com a URL e o localStorage
     setAbas((prev) => {
-      const lista = carregado ? prev : ler(chaveLs);
+      const salvas = carregado ? prev : ler(chaveLs);
+      const lista = Array.from(new Map(salvas.map(a => {
+        const atual = a.base === "/meu-financeiro" ? { ...a, base: "/financeiro", caminho: "/financeiro?area=pessoal" } : a;
+        return [atual.base, atual] as const;
+      })).values());
       const agora = Date.now();
       let nova = lista.some((a) => a.base === base)
         ? lista.map((a) => (a.base === base ? { ...a, caminho, uso: agora } : a))
@@ -80,7 +86,7 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
     });
     setCarregado(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- so quando muda a rota
-  }, [pathname, base, chaveLs]);
+  }, [pathname, busca, base, chaveLs]);
 
   useEffect(() => {
     if (carregado) gravar(chaveLs, abas);
@@ -162,7 +168,7 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
 
   return (
     <div className="relative -mt-1 mb-3 flex h-9 items-end gap-1 border-b border-zinc-200 sm:mb-4">
-      <div ref={barraRef} role="tablist" aria-label="Telas abertas"
+      <div ref={barraRef} role="navigation" aria-label="Telas abertas"
         className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {lista.map((a) => {
           const ativa = a.base === base;
@@ -171,11 +177,11 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
               className={`group flex h-8 max-w-[180px] shrink-0 items-center rounded-t-lg border border-b-0 text-xs transition ${
                 ativa ? "border-zinc-200 bg-white font-semibold text-zinc-900" : "border-transparent text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
               }`}>
-              <button role="tab" aria-selected={ativa} onClick={() => !ativa && irPara(a.caminho)} title={rotuloDe(links, a.base)}
+              <NextLink href={a.caminho} scroll={false} aria-current={ativa ? "page" : undefined} title={rotuloDe(links, a.base)}
                 className={`flex h-full min-w-0 items-center gap-1.5 pl-3 ${lista.length > 1 ? "pr-1" : "pr-3"}`}>
                 {ativa && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ouro" />}
                 <span className="truncate">{rotuloDe(links, a.base)}</span>
-              </button>
+              </NextLink>
               {lista.length > 1 && (
                 <button onClick={() => fechar(a)} aria-label={`Fechar ${rotuloDe(links, a.base)}`}
                   className={`mr-1 grid h-5 w-5 shrink-0 place-items-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-900 ${ativa ? "" : "sm:opacity-0 sm:group-hover:opacity-100"}`}>

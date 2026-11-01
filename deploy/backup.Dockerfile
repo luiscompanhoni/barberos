@@ -1,7 +1,8 @@
 # Container de backup: pg_dump/psql do Postgres 16 + rclone (copia fora do servidor) + openssl (criptografia).
 FROM postgres:16-alpine
-RUN apk add --no-cache rclone openssl bash
-COPY backup.sh /usr/local/bin/backup.sh
-RUN chmod +x /usr/local/bin/backup.sh
+RUN --mount=type=secret,id=build_ca,target=/etc/ssl/certs/ca-certificates.crt \
+    apk add --no-cache rclone openssl bash python3 util-linux
+COPY backup.sh backup-estudio.py /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/backup.sh && chmod 0644 /usr/local/bin/backup-estudio.py
 ENTRYPOINT ["backup.sh"]
 CMD ["loop"]

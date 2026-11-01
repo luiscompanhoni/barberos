@@ -1,4 +1,6 @@
 node_modules
+**/node_modules
+workers
 .next
 .git
 .env
@@ -10,3 +12,7 @@ tsconfig.tsbuildinfo
 .senha-homolog*
 .tools
 .test-temp
+
+.data
+.test-estudio
+docs/estudio-evidencias

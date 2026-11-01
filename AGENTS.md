@@ -16,7 +16,7 @@ Sistema de gestão da barbearia Black: agenda, comandas, assinaturas, pagamentos
 
 - Escopo e módulos: `PRODUCT.md`. Estrutura e decisões: `docs/architecture.md`. Pendências: `docs/pendencias.md`.
 - Stack: Next.js 16.3 (App Router) + React 19.2, TypeScript strict, Prisma 6.19 + PostgreSQL 16, Tailwind 4, zod 4, Vitest 5, tsx. Node 24, npm 11 (`package-lock.json`).
-- Produção: VPS com docker compose (app, db, caddy, backup, evolution). Deploy só com pedido: `bash scripts/deploy.sh <usuario>@<host>`, que faz backup antes.
+- Produção: VPS com docker compose (app, db, caddy, backup, evolution). Deploy só com pedido; a entrada de produção de `scripts/deploy.sh` está bloqueada até validar substituição e recuperação. Consulte `docs/publicacao-sem-terminal.md`.
 - Setup das ferramentas de IA e evidências: `docs/setup.md`.
 
 ## Comandos canônicos

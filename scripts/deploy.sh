@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sobe o BarberOS num VPS (Ubuntu) com Docker.
-#   bash scripts/deploy.sh root@IP              producao: sistema + Postgres + Caddy (https) + backup
+#   Producao bloqueada: consultar docs/publicacao-sem-terminal.md.
 #   bash scripts/deploy.sh root@IP homolog      homologacao (testes): sistema + Postgres proprios, no mesmo VPS
 # - Envia o codigo atual (sem .env local, node_modules nem .next).
 # - Producao: antes de trocar qualquer coisa, faz um backup do banco; se ele falhar, o deploy para.
@@ -10,7 +10,9 @@ set -euo pipefail
 ALVO="${1:?uso: bash scripts/deploy.sh usuario@ip [homolog]}"
 AMBIENTE="${2:-producao}"
 case "$AMBIENTE" in
-  producao) DIR=/opt/barberos; COMPOSE=deploy/docker-compose.yml; EXEMPLO=deploy/env.producao.exemplo ;;
+  producao)
+    echo "Produção bloqueada neste script legado: falta validar backup de banco/mídias e recuperação da versão anterior. Consulte docs/publicacao-sem-terminal.md." >&2
+    exit 2 ;;
   homolog) DIR=/opt/barberos-homolog; COMPOSE=deploy/docker-compose.homolog.yml; EXEMPLO=deploy/env.homolog.exemplo ;;
   *) echo "ambiente desconhecido: $AMBIENTE (use 'homolog' ou nada para producao)"; exit 2 ;;
 esac
@@ -19,7 +21,7 @@ cd "$(dirname "$0")/.."
 PACOTE="$(mktemp -d)/barberos.tgz"
 # Arquivos do projeto (versionados + novos, sem os ignorados), pulando os que nao existem mais no disco.
 git ls-files -co --exclude-standard -z | while IFS= read -r -d "" f; do [ -e "$f" ] && printf '%s\0' "$f"; done | tar --null -T - -czf "$PACOTE"
-echo ">> $AMBIENTE · pacote: $(du -h "$PACOTE" | cut -f1)"
+echo ">> $AMBIENTE ┬À pacote: $(du -h "$PACOTE" | cut -f1)"
 scp -q "$PACOTE" "$ALVO:/tmp/barberos-$AMBIENTE.tgz"
 
 ssh "$ALVO" DIR="$DIR" COMPOSE="$COMPOSE" EXEMPLO="$EXEMPLO" AMBIENTE="$AMBIENTE" bash -s <<'REMOTO'
@@ -84,6 +86,15 @@ if [ "$AMBIENTE" = producao ]; then
   fi
 fi
 
+# Estudio Black fica ativo somente na homologacao; a chave nunca e enviada ao navegador.
+if [ "$AMBIENTE" = homolog ]; then
+  grep -q '^ESTUDIO_HABILITADO=' .env || echo 'ESTUDIO_HABILITADO="true"' >> .env
+  sed -i 's/^ESTUDIO_HABILITADO=.*/ESTUDIO_HABILITADO="true"/' .env
+  grep -q '^ESTUDIO_WORKER_TOKEN=' .env || echo 'ESTUDIO_WORKER_TOKEN=' >> .env
+  if ! grep -Eq '^ESTUDIO_WORKER_TOKEN=.{32,}$' .env; then
+    sed -i "s|^ESTUDIO_WORKER_TOKEN=.*|ESTUDIO_WORKER_TOKEN=$(openssl rand -hex 32)|" .env
+  fi
+fi
 # Rede que o Caddy da producao divide com a homologacao.
 docker network inspect barberos-proxy >/dev/null 2>&1 || docker network create barberos-proxy >/dev/null
 docker compose --env-file .env -f "$COMPOSE" up -d --build </dev/null

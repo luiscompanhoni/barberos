@@ -19,7 +19,7 @@ const ABAS: { k: Aba; r: string; lucro?: boolean }[] = [
 
 /** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (com a permissao "lucro") o resumo e o resultado do mes. */
 export function FinanceiroTela({ verLucro, gestao, abaInicial = "caixa", estornosPendentes = 0 }: { verLucro: boolean; gestao: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
-  const [aba, setAba] = useState<Aba>(abaInicial);
+  const aba = abaInicial;
   const [pendentes, setPendentes] = useState(estornosPendentes);
   const abas = ABAS.filter((a) => a.k !== "caixa" && (!a.lucro || verLucro));
   return (
@@ -30,16 +30,16 @@ export function FinanceiroTela({ verLucro, gestao, abaInicial = "caixa", estorno
           <p className="mt-2 text-sm text-zinc-600">Acompanhe o resultado, organize despesas e confira os recebimentos.</p></div>
         <Link href="/caixa" className="btn">Abrir caixa do balcão →</Link>
       </header>
-      <div className="flex flex-wrap gap-2 print:hidden">
+      <nav className="black-finance-tabs print:hidden" aria-label="Áreas do financeiro da barbearia">
         {abas.map((a) => (
-          <button key={a.k} className={aba === a.k ? "btn-primario" : "btn"} onClick={() => setAba(a.k)}>
+          <Link key={a.k} href={`/financeiro?area=empresa&aba=${a.k}`} scroll={false} aria-current={aba === a.k ? "page" : undefined}>
             {a.r}
             {a.k === "estornos" && pendentes > 0 && (
               <span className="rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-black" title="Pedidos de estorno esperando o dono">{pendentes}</span>
             )}
-          </button>
+          </Link>
         ))}
-      </div>
+      </nav>
       {aba === "caixa" ? <CaixaTela /> : aba === "despesas" ? <DespesasTela /> : aba === "links" ? <LinksPagamentoTela />
         : aba === "estornos" ? <EstornosTela onMudou={() => fetch("/api/estornos").then((r) => r.json()).then((x) => setPendentes(x.pendentes?.filter((p: { status: string }) => p.status === "PENDENTE").length ?? 0)).catch(() => {})} />
           : aba === "conciliacao" ? <ConciliacaoTela gestao={gestao} /> : aba === "resultado" ? <ResultadoTela /> : <ResumoTela />}

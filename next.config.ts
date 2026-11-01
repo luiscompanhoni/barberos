@@ -3,6 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Build enxuto para rodar em Docker (Railway, Render, Fly.io ou VPS).
   output: "standalone",
+  // Mídia privada/configuração são fornecidas em runtime; o worker tem imagem própria.
+  outputFileTracingExcludes: {
+    "/*": ["./.env*", "./.data/**/*", "./.test-estudio/**/*", "./backups/**/*", "./workers/**/*", "./docs/estudio-evidencias/**/*"],
+  },
   poweredByHeader: false,
   // Painel no computador em painel.localhost:3000 (site em localhost:3000).
   allowedDevOrigins: ["painel.localhost", "*.localhost"],

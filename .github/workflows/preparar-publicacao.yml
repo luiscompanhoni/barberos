@@ -1,0 +1,125 @@
+name: Preparar atualização (sem publicar)
+
+on:
+  workflow_dispatch:
+    inputs:
+      consultar_vps:
+        description: Consultar a VPS com o acesso previamente autorizado
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preparar-publicacao-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  operacao-windows:
+    if: github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Testes portáveis sem exigir Python no Windows
+        run: npm run check:publicacao
+
+  preparar:
+    if: github.ref == 'refs/heads/main'
+    needs: operacao-windows
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: barberos
+          POSTGRES_PASSWORD: barberos
+          POSTGRES_DB: barberos
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U barberos"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      DATABASE_URL: postgresql://barberos:barberos@localhost:5432/barberos
+      AMBIENTE: teste
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Instalar e configurar apenas o banco descartável
+        run: |
+          npm ci
+          cp .env.example .env
+          npx prisma generate
+      - name: Verificações do aplicativo e da operação
+        run: |
+          npm run check
+          npm run check:publicacao:servidor
+          node --test workers/video/tests/render.test.mjs
+      - name: Migrações e fluxos no banco descartável
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
+          npm run db:seed
+          npm run teste:todos
+      - name: Backup e restauração com dados sintéticos
+        run: |
+          docker build -t barberos-backup-validacao:teste -f deploy/backup.Dockerfile deploy
+          python3 scripts/publicacao/teste-backup-container.py barberos-backup-validacao:teste
+      - name: Preparar pacote identificado pelo commit
+        run: node scripts/publicacao/preparar.mjs "$RUNNER_TEMP/barberos-release"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: barberos-${{ github.sha }}
+          path: ${{ runner.temp }}/barberos-release
+          retention-days: 1
+          if-no-files-found: error
+      - name: Registrar limite desta operação
+        run: |
+          printf 'Pacote preparado para o commit `%s`. Nenhum deploy ou migração de produção foi executado.\n' "$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+  consultar:
+    if: github.ref == 'refs/heads/main' && inputs.consultar_vps
+    needs: preparar
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: producao
+    env:
+      VPS_HOST: ${{ vars.VPS_HOST }}
+      VPS_USER: ${{ vars.VPS_USER }}
+      VPS_PORT: ${{ vars.VPS_PORT }}
+      VPS_DIR: ${{ vars.VPS_DIR }}
+      VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Consultar sem modificar o servidor
+        run: node scripts/publicacao/consultar-vps.mjs "$RUNNER_TEMP/vps.json"
+      - name: Resumo sem configuração privada
+        run: |
+          node --input-type=module <<'JS'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const r = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/vps.json', 'utf8'));
+          const mib = (bytes) => Math.floor((bytes || 0) / 1024 / 1024);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Consulta somente de leitura: ${r.servicos.length} serviços; RAM disponível ${mib(r.memoriaBytes.MemAvailable)} MiB; disco livre ${mib(r.discoBytes.livre)} MiB; ${r.bloqueios.length} bloqueios. Backup restaurável ainda não comprovado.\n`);
+          JS
+      - name: Remover relatório privado do executor
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vps.json"

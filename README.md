@@ -33,7 +33,9 @@ npm run dev                   # site: http://localhost:3000 · painel: http://pa
 | `npm run teste:<área>` | um fluxo: `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`, `automacoes`, `crescimento`, `login`, `jogos`, `financeiro`, `despesas`, `estorno`, `rh`, `permissoes`, `campanhas`, `backups` |
 | `npm run db:migrate` / `npm run db:seed` | migrações (dev) e dados de exemplo |
 | `npm run db:planos` / `db:produtos` / `db:demo` / `criar-dono` | planos, produtos, histórico de demonstração e dono |
-| `bash scripts/deploy.sh <usuario>@<ip> [homolog]` | deploy no VPS (faz backup antes) |
+| `npm run check:publicacao` | testes operacionais portáveis (Node/Git, inclusive Windows; sem consulta SSH real) |
+| `npm run check:publicacao:servidor` | testes portáveis + testes Python de inspeção e backup no Linux |
+| `bash scripts/deploy.sh <usuario>@<ip> homolog` | script legado de homologação; produção bloqueada até validar recuperação |
 
 O CI (`.github/workflows/ci.yml`) roda tipos, lint, regras locais, testes unitários, migrações num banco limpo, testes de fluxo e
 build em cada push na `main` e em cada PR.
@@ -46,6 +48,8 @@ build em cada push na `main` e em cada PR.
   restauração, homologação, domínio e importação do CashBarber.
 - [Design e acessibilidade](docs/design.md): paleta Black, utilitários, layout e movimento reduzido.
 - [Checks de qualidade](docs/quality.md).
+- [Continuidade e publicação](docs/operacao-producao.md): preservar cópias, identificar a versão instalada e validar backup, deploy e recuperação.
+- [Preparação pelo GitHub](docs/publicacao-sem-terminal.md): testes e pacote por commit, consulta segura da VPS e requisitos ainda pendentes para publicar.
 - [Instruções para agentes](AGENTS.md).
 - [Setup e evidências](docs/setup.md).
 - [Pendências](docs/pendencias.md): o que falta, por fase.

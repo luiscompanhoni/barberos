@@ -16,7 +16,7 @@ export const onRequestError: Instrumentation.onRequestError = async (err, reques
  * - cria o dono no primeiro deploy a partir de DONO_TELEFONE / DONO_NOME.
  */
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  if (process.env.NEXT_RUNTIME === "nodejs") {
   // Rotina de pagamentos (Pix mensal e cobrancas vencidas) roda tambem em desenvolvimento.
   (await import("@/lib/assinaturas/rotina")).agendarRotina();
   // Lembretes, pos-falta, pos-atendimento e reativacao (a cada 5 min).
@@ -59,4 +59,5 @@ export async function register() {
     update: {},
   });
   console.log(`[BarberOS] Dono criado para ${tel}.`);
+  }
 }

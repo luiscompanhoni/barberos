@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { CircleCheck, Pencil, Plus, Repeat, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 import { useAcesso } from "@/components/AcessoContexto";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
@@ -24,6 +24,7 @@ const FILTROS: { k: Filtro; r: string }[] = [{ k: "abertas", r: "Abertas" }, { k
 
 /** Contas a pagar: cadastro, filtros, pagar (inclusive com dinheiro do caixa), editar, excluir e estornar. */
 export function DespesasTela() {
+  const camposId = useId();
   const podeExcluir = useAcesso().permissoes.excluir;
   const [mes, setMes] = useState(mesAtual);
   const [l, setL] = useState<Lista | null>(null);
@@ -88,12 +89,12 @@ export function DespesasTela() {
       <section className="cartao space-y-3">
         <div className="flex flex-wrap items-end gap-2">
           <div>
-            <label className="rotulo">Mês (pagas)</label>
-            <input type="month" className="campo" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} />
+            <label className="rotulo" htmlFor={`${camposId}-campo-1`}>Mês (pagas)</label>
+            <input id={`${camposId}-campo-1`} type="month" className="campo" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} />
           </div>
           <div>
-            <label className="rotulo">Categoria</label>
-            <select className="campo" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+            <label className="rotulo" htmlFor={`${camposId}-campo-2`}>Categoria</label>
+            <select id={`${camposId}-campo-2`} className="campo" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
               <option value="">Todas</option>
               {CATEGORIAS_DESPESA.map((c) => <option key={c} value={c}>{ROTULO_CATEGORIA[c]}</option>)}
             </select>
@@ -110,16 +111,16 @@ export function DespesasTela() {
 
         {form && (
           <form className="grid gap-2 rounded-xl border border-zinc-200 p-3 sm:grid-cols-2" onSubmit={salvar}>
-            <div className="sm:col-span-2"><label className="rotulo">Descrição</label><input className="campo w-full" value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} placeholder="Ex.: Aluguel do salão" autoFocus required minLength={2} /></div>
-            <div><label className="rotulo">Categoria</label>
-              <select className="campo w-full" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
+            <div className="sm:col-span-2"><label className="rotulo" htmlFor={`${camposId}-campo-3`}>Descrição</label><input id={`${camposId}-campo-3`} className="campo w-full" value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} placeholder="Ex.: Aluguel do salão" autoFocus required minLength={2} /></div>
+            <div><label className="rotulo" htmlFor={`${camposId}-campo-4`}>Categoria</label>
+              <select id={`${camposId}-campo-4`} className="campo w-full" value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })}>
                 {CATEGORIAS_DESPESA.map((c) => <option key={c} value={c}>{ROTULO_CATEGORIA[c]}</option>)}
               </select>
             </div>
-            <div><label className="rotulo">Valor</label><input className="campo w-full" inputMode="decimal" placeholder="0,00" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} /></div>
-            <div><label className="rotulo">Vencimento</label><input type="date" className="campo w-full" value={form.vencimento} onChange={(e) => setForm({ ...form, vencimento: e.target.value })} /></div>
-            <div><label className="rotulo">Fornecedor (opcional)</label><input className="campo w-full" value={form.fornecedor} onChange={(e) => setForm({ ...form, fornecedor: e.target.value })} /></div>
-            <div className="sm:col-span-2"><label className="rotulo">Observação (opcional)</label><input className="campo w-full" value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} /></div>
+            <div><label className="rotulo" htmlFor={`${camposId}-campo-5`}>Valor</label><input id={`${camposId}-campo-5`} className="campo w-full" inputMode="decimal" placeholder="0,00" value={form.valor} onChange={(e) => setForm({ ...form, valor: e.target.value })} /></div>
+            <div><label className="rotulo" htmlFor={`${camposId}-campo-6`}>Vencimento</label><input id={`${camposId}-campo-6`} type="date" className="campo w-full" value={form.vencimento} onChange={(e) => setForm({ ...form, vencimento: e.target.value })} /></div>
+            <div><label className="rotulo" htmlFor={`${camposId}-campo-7`}>Fornecedor (opcional)</label><input id={`${camposId}-campo-7`} className="campo w-full" value={form.fornecedor} onChange={(e) => setForm({ ...form, fornecedor: e.target.value })} /></div>
+            <div className="sm:col-span-2"><label className="rotulo" htmlFor={`${camposId}-campo-8`}>Observação (opcional)</label><input id={`${camposId}-campo-8`} className="campo w-full" value={form.observacao} onChange={(e) => setForm({ ...form, observacao: e.target.value })} /></div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.recorrente} onChange={(e) => setForm({ ...form, recorrente: e.target.checked })} /> Repete todo mês</label>
             <div className="flex justify-end gap-2"><button className="btn-primario" disabled={ocupado}>Salvar</button><button type="button" className="btn" onClick={() => setForm(null)}>Cancelar</button></div>
           </form>
@@ -157,13 +158,13 @@ export function DespesasTela() {
                 </div>
                 {pagar?.id === d.id && (
                   <form className="mt-2 flex flex-wrap items-end gap-2 rounded-xl border border-zinc-200 p-3" onSubmit={(e) => { e.preventDefault(); agir(() => api(`/api/financeiro/despesas/${d.id}`, { method: "PATCH", body: { acao: "pagar", forma: pagar.forma, data: pagar.data } }), d.recorrente ? "Despesa paga. A do mês que vem já foi lançada." : "Despesa paga."); }}>
-                    <div><label className="rotulo">Forma</label>
-                      <select className="campo" value={pagar.forma} onChange={(e) => setPagar({ ...pagar, forma: e.target.value })}>
+                    <div><label className="rotulo" htmlFor={`${camposId}-campo-9`}>Forma</label>
+                      <select id={`${camposId}-campo-9`} className="campo" value={pagar.forma} onChange={(e) => setPagar({ ...pagar, forma: e.target.value })}>
                         {FORMAS_DESPESA.map((f) => <option key={f} value={f}>{ROTULO_FORMA_DESPESA[f]}</option>)}
                       </select>
                     </div>
                     {pagar.forma === "DINHEIRO_CAIXA" ? <p className="pb-2 text-xs text-zinc-500">Sai agora do caixa aberto, como sangria.</p> : (
-                      <div><label className="rotulo">Data do pagamento</label><input type="date" className="campo" max={l.hoje} value={pagar.data} onChange={(e) => setPagar({ ...pagar, data: e.target.value })} /></div>
+                      <div><label className="rotulo" htmlFor={`${camposId}-campo-10`}>Data do pagamento</label><input id={`${camposId}-campo-10`} type="date" className="campo" max={l.hoje} value={pagar.data} onChange={(e) => setPagar({ ...pagar, data: e.target.value })} /></div>
                     )}
                     <button className="btn-primario" disabled={ocupado}>Confirmar pagamento</button>
                     <button type="button" className="btn" onClick={() => setPagar(null)}>Cancelar</button>

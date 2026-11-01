@@ -10,6 +10,7 @@
 # Cada backup fica registrado na tabela "backups" (o painel do dono mostra o ultimo e avisa se atrasar ou falhar).
 # Copia fora do servidor: so com BACKUP_S3_* e BACKUP_SENHA (o arquivo sobe criptografado com AES-256).
 set -uo pipefail
+umask 077
 
 PASTA=${BACKUP_PASTA:-/backups}
 DIAS_LOCAL=${BACKUP_DIAS_LOCAL:-14}
@@ -17,7 +18,8 @@ DIAS_FORA=${BACKUP_DIAS_FORA:-30}
 HORA=${BACKUP_HORA:-0300}
 export PGHOST=${PGHOST:-db} PGUSER=${PGUSER:-barberos}
 BANCO=${PGDATABASE:-barberos}
-TESTE=barberos_teste_restauracao
+MIDIAS=${BACKUP_ESTUDIO_MEDIA:-}
+SCRIPT_MIDIAS="$(dirname "${BASH_SOURCE[0]}")/backup-estudio.py"
 
 log() { echo "[backup] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
 contar() { psql -d "$1" -tAc "$2" 2>/dev/null | tr -d '[:space:]'; }
@@ -34,12 +36,12 @@ SQL
 
 # Restaura num banco descartavel e confere: mesmas tabelas, mesma ultima migracao e nada a menos do que
 # o banco tinha logo antes da copia. Imprime o resumo; volta 1 se algo nao bater.
-verificar() { # arquivo [clientes_antes] [atendimentos_antes]
-  local arq=$1 cli_antes=${2:-0} ag_antes=${3:-0}
-  dropdb --if-exists "$TESTE" 2>/dev/null
+verificar() { # arquivo [clientes_antes] [atendimentos_antes] [criar|verificar]
+  local arq=$1 cli_antes=${2:-0} ag_antes=${3:-0} modo=${4:-verificar} midias=""
+  local TESTE="barberos_teste_$(date +%s)_$RANDOM"
   createdb "$TESTE" || { echo "nao criou o banco de teste"; return 1; }
-  if ! gunzip -c "$arq" | psql -d "$TESTE" -q -v ON_ERROR_STOP=1 >/tmp/restauracao.log 2>&1; then
-    echo "a restauracao parou: $(tail -n 3 /tmp/restauracao.log | tr '\n' ' ' | cut -c1-200)"
+  if ! gunzip -c "$arq" | psql -X -d "$TESTE" -q -v ON_ERROR_STOP=1 >/dev/null 2>&1; then
+    echo "a restauracao do banco falhou; detalhes privados nao foram exibidos"
     dropdb --if-exists "$TESTE"; return 1
   fi
   local sql_tabelas="select count(*) from information_schema.tables where table_schema = 'public'"
@@ -48,13 +50,26 @@ verificar() { # arquivo [clientes_antes] [atendimentos_antes]
   tabelas=$(contar "$TESTE" "$sql_tabelas"); migracao=$(contar "$TESTE" "$sql_migracao")
   clientes=$(contar "$TESTE" "select count(*) from clientes"); atendimentos=$(contar "$TESTE" "select count(*) from agendamentos")
   tabelas_vivo=$(contar "$BANCO" "$sql_tabelas"); migracao_vivo=$(contar "$BANCO" "$sql_migracao")
-  dropdb --if-exists "$TESTE"
   local resumo="${tabelas:-0} tabelas · ${clientes:-0} clientes · ${atendimentos:-0} atendimentos · migração ${migracao:-?}"
   if [ "${tabelas:-0}" != "${tabelas_vivo:-x}" ] || [ "${migracao:-}" != "${migracao_vivo:-x}" ] \
     || [ "${clientes:-0}" -lt "$cli_antes" ] || [ "${atendimentos:-0}" -lt "$ag_antes" ]; then
     echo "nao bateu com o banco ($resumo; banco: ${tabelas_vivo} tabelas, ${cli_antes} clientes, ${ag_antes} atendimentos, ${migracao_vivo})"
+    dropdb --if-exists "$TESTE" >/dev/null
     return 1
   fi
+  if [ -n "$MIDIAS" ]; then
+    if ! midias=$(python3 "$SCRIPT_MIDIAS" "$modo" "$arq" "$TESTE" "${arq%.sql.gz}.studio.tar.gz" "$MIDIAS" 2>/dev/null); then
+      dropdb --if-exists "$TESTE" >/dev/null
+      echo "a restauracao das midias falhou; conferir volume, referencias, integridade e espaco livre"
+      return 1
+    fi
+    resumo="$resumo · $midias"
+  elif ! python3 "$SCRIPT_MIDIAS" exigir-vazio "$arq" "$TESTE" - >/dev/null 2>&1; then
+    dropdb --if-exists "$TESTE" >/dev/null
+    echo "banco possui midias ou nao pode ser conferido; configure BACKUP_ESTUDIO_MEDIA com o volume correto"
+    return 1
+  fi
+  dropdb --if-exists "$TESTE" >/dev/null || return 1
   echo "$resumo"
 }
 
@@ -78,27 +93,39 @@ fora() { # arquivo
 
 backup() { # tipo
   local tipo=${1:-MANUAL} nome arq bytes=0 erro="" conferencia="" restaurado=false foraok=false
-  mkdir -p "$PASTA"
-  nome="barberos-$(date +%Y%m%d-%H%M).sql.gz"; arq="$PASTA/$nome"
+  mkdir -p "$PASTA" || return 1
+  exec 9>"$PASTA/.backup.lock"
+  flock -n 9 || { log "outro backup esta em andamento"; return 1; }
+  nome="barberos-$(date +%Y%m%d-%H%M%S)-$RANDOM.sql.gz"; arq="$PASTA/$nome"
   # O que o banco tem agora: a copia restaurada nao pode ter menos.
   local cli_antes ag_antes
   cli_antes=$(contar "$BANCO" "select count(*) from clientes"); ag_antes=$(contar "$BANCO" "select count(*) from agendamentos")
   if pg_dump -d "$BANCO" | gzip > "$arq.tmp" && gzip -t "$arq.tmp"; then
     mv "$arq.tmp" "$arq"; bytes=$(stat -c %s "$arq")
-    if conferencia=$(verificar "$arq" "${cli_antes:-0}" "${ag_antes:-0}"); then
+    if conferencia=$(verificar "$arq" "${cli_antes:-0}" "${ag_antes:-0}" criar); then
+      if [ -n "$MIDIAS" ]; then bytes=$((bytes + $(stat -c %s "${arq%.sql.gz}.studio.tar.gz"))); fi
       restaurado=true; log "ok: $nome ($bytes bytes) · restaurado e conferido: $conferencia"
     else
       erro="Restauração de teste falhou: $conferencia"; log "ERRO: $erro"; conferencia=""
     fi
-    fora "$arq"; case $? in
-      0) foraok=true; log "copia criptografada enviada para fora do servidor" ;;
-      1) erro="${erro:+$erro · }Cópia fora do servidor falhou"; log "ERRO: copia fora do servidor falhou" ;;
-    esac
+    if [ "$restaurado" = true ]; then
+      fora "$arq"; local enviado=$?
+      if [ "$enviado" -eq 0 ] && [ -n "$MIDIAS" ]; then fora "${arq%.sql.gz}.studio.tar.gz"; enviado=$?; fi
+      case $enviado in
+        0) foraok=true; log "copia criptografada enviada para fora do servidor" ;;
+        1) erro="${erro:+$erro · }Cópia fora do servidor falhou"; log "ERRO: copia fora do servidor falhou" ;;
+      esac
+    fi
   else
     rm -f "$arq.tmp"; erro="pg_dump falhou"; log "ERRO: pg_dump falhou"
   fi
   registrar "$tipo" "$nome" "$bytes" "$restaurado" "$conferencia" "$foraok" "$erro"
-  find "$PASTA" -name "barberos-*.sql.gz" -mtime +"$DIAS_LOCAL" -delete
+  if [ -z "$erro" ] && [ "$restaurado" = true ]; then
+    while IFS= read -r -d '' antigo; do
+      rm -f -- "$antigo" "${antigo%.sql.gz}.studio.tar.gz"
+    done < <(find "$PASTA" -type f -name "barberos-*.sql.gz" -mtime +"$DIAS_LOCAL" -print0)
+  fi
+  flock -u 9
   [ -z "$erro" ]
 }
 
@@ -106,7 +133,8 @@ case "${1:-loop}" in
   loop)
     log "rodando: backup todo dia as ${HORA:0:2}:${HORA:2:2}, $DIAS_LOCAL dias no servidor"
     # Servidor desligado na hora do backup (ou primeira subida): faz agora.
-    if ! find "$PASTA" -name "barberos-*.sql.gz" -mtime -1 2>/dev/null | grep -q .; then
+    padrao='barberos-*.sql.gz'; [ -z "$MIDIAS" ] || padrao='barberos-*.studio.tar.gz'
+    if ! find "$PASTA" -name "$padrao" -mtime -1 2>/dev/null | grep -q .; then
       until pg_isready -q -d "$BANCO"; do sleep 5; done
       backup DIARIO
     fi
@@ -120,8 +148,12 @@ case "${1:-loop}" in
     if r=$(verificar "$arq"); then log "ok: $r"; else log "ERRO: $r"; exit 1; fi ;;
   restaurar)
     arq=${2:?informe o arquivo}
-    dropdb --if-exists barberos_restaurado && createdb barberos_restaurado || exit 1
-    gunzip -c "$arq" | psql -d barberos_restaurado -q -v ON_ERROR_STOP=1 >/dev/null || { log "ERRO na restauracao"; exit 1; }
+    createdb barberos_restaurado || { log "banco de destino indisponivel ou ja existe; nada foi apagado"; exit 1; }
+    gunzip -c "$arq" | psql -X -d barberos_restaurado -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 || { log "ERRO na restauracao; banco parcial preservado para inspecao"; exit 1; }
+    if [ -n "$MIDIAS" ]; then
+      python3 "$SCRIPT_MIDIAS" restaurar "$arq" barberos_restaurado "${arq%.sql.gz}.studio.tar.gz" "${arq%.sql.gz}-midias-restauradas" || exit 1
+      log "midias restauradas numa pasta nova ao lado do dump; volume de producao nao foi alterado"
+    fi
     log "restaurado no banco barberos_restaurado (a producao nao foi tocada). Para trocar, siga o README (Restaurar um backup)." ;;
   *) echo "uso: backup.sh loop | agora | verificar ARQUIVO | restaurar ARQUIVO"; exit 2 ;;
 esac

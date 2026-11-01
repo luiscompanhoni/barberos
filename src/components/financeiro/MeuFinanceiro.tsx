@@ -25,7 +25,7 @@ export function MeuFinanceiro() {
     catch (e) { setMsg((e as Error).message); } finally { setOcupado(false); }
   }
   return <div className="space-y-5">
-    <header className="cabecalho-gestao"><div><p className="eyebrow">Seu dinheiro</p><h1 className="titulo-marca text-3xl">Meu financeiro</h1><p className="mt-2 text-sm text-zinc-600">Receitas e despesas pessoais. Apenas você acessa estes lançamentos.</p></div><label className="rotulo">Mês<input className="campo" aria-label="Mês do financeiro pessoal" type="month" value={mes} onChange={e => setMes(e.target.value)} required /></label></header>
+    <header className="cabecalho-gestao"><div><p className="eyebrow">Seu dinheiro · área pessoal</p><h1 className="titulo-marca text-3xl">Financeiro</h1><p className="mt-2 text-sm text-zinc-600">Receitas e despesas pessoais. Apenas você acessa estes lançamentos.</p></div><label className="rotulo">Mês<input className="campo" aria-label="Mês do financeiro pessoal" type="month" value={mes} onChange={e => setMes(e.target.value)} required /></label></header>
     {msg && <p role="status" className="cartao text-sm">{msg}</p>}
     {ultimoAnulado && <p role="status" className="flex items-center gap-3 text-sm">Lançamento anulado.<button className="btn" disabled={ocupado} onClick={() => anular(ultimoAnulado, false)}>Desfazer</button></p>}
     {p && <><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[["Receitas recebidas",p.resumo.receitas],["Despesas pagas",p.resumo.despesas],["Sobrou no mês",p.resumo.saldo],["Saldo projetado",p.resumo.projetado]].map(([n,v]) => <div className="cartao" key={n}><p className="text-xs text-zinc-600">{n}</p><p className="mt-2 text-xl font-bold">{reais(Number(v))}</p></div>)}</div>
