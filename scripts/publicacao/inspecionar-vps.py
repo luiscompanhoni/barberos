@@ -86,6 +86,17 @@ def inspecionar(base, projeto):
     if not containers:
         relatorio["bloqueios"].append("Nenhum container do projeto consultado. Confirmar projeto/caminho/permissões.")
     relatorio["servicos"] = [resumir_container(c) for c in containers]
+    imagens = []
+    for c in containers:
+        servico = (c.get("Config", {}).get("Labels") or {}).get("com.docker.compose.service")
+        if servico not in {"app", "backup"}:
+            continue
+        por_id = executar(["docker", "image", "inspect", c["Image"]])
+        por_tag = executar(["docker", "image", "inspect", c["Config"]["Image"]])
+        imagens.append({"servico": servico, "idContainer": c["Image"], "tagContainer": c["Config"]["Image"],
+                        "porId": [{k: i.get(k) for k in ("Id", "RepoTags", "RepoDigests", "Size")} for i in json.loads(por_id)] if por_id else None,
+                        "porTag": [{k: i.get(k) for k in ("Id", "RepoTags", "RepoDigests", "Size")} for i in json.loads(por_tag)] if por_tag else None})
+    relatorio["imagensPreservacao"] = imagens
     app = next((c for c in containers if (c.get("Config", {}).get("Labels") or {}).get("com.docker.compose.service") == "app" and c.get("State", {}).get("Running")), None)
     if app:
         soma = executar(["docker", "exec", app["Id"], "sha256sum", "/app/prisma/schema.prisma"])
