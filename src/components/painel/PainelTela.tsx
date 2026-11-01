@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAcesso } from "@/components/AcessoContexto";
 import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
-import { Scissors } from "lucide-react";
+import { CalendarDays, Clapperboard, Scissors } from "lucide-react";
 import { Metrica, PainelFinanceiro, type FinanceiroPainel } from "./PainelFinanceiro";
 
 type Painel = {
@@ -62,7 +62,7 @@ function corPico(v: number | null) {
   return "bg-ouro";
 }
 
-export function PainelTela({ nome }: { nome: string }) {
+export function PainelTela({ nome, estudioHabilitado = false }: { nome: string; estudioHabilitado?: boolean }) {
   const { permissoes } = useAcesso();
   const verResultado = permissoes.resultado;
   const [p, setP] = useState<Painel | null>(null);
@@ -86,7 +86,7 @@ export function PainelTela({ nome }: { nome: string }) {
     }
   }
 
-  if (!p) return <p className="text-sm text-zinc-500">{erro || "Carregando painel..."}</p>;
+  if (!p) return <p role="status" className="cartao text-sm text-zinc-500">{erro || "Carregando painel…"}</p>;
   const { dia, mes, pendencias: pe, pico } = p;
   const variacao = mes && mes.anterior.centavos ? (mes.atual.centavos - mes.anterior.centavos) / mes.anterior.centavos : null;
   const hora = new Date().getHours();
@@ -106,11 +106,14 @@ export function PainelTela({ nome }: { nome: string }) {
     <div className="mx-auto max-w-6xl space-y-5">
       <header className="black-dashboard__hero">
         <div className="space-y-2">
-          <p className="eyebrow">Black · visão da operação</p>
+          <p className="eyebrow">Sua barbearia, em um olhar</p>
           <h1 className="titulo-marca text-2xl sm:text-3xl">{hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite"}, {nome.split(" ")[0]}</h1>
           <p className="text-sm text-zinc-600">
             {new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} · {dia.atendimentos} atendimento(s) hoje
           </p>
+          <div className="black-dashboard__actions"><Link className="btn-primario" href="/recepcao"><CalendarDays size={17} aria-hidden="true" />Abrir agenda</Link>
+            {estudioHabilitado && <Link className="btn" href="/estudio"><Clapperboard size={17} aria-hidden="true" />Black Estúdio</Link>}
+          </div>
         </div>
         <span className="black-dashboard__emblema" aria-hidden="true"><Scissors size={27} strokeWidth={1.3} /></span>
       </header>
@@ -259,7 +262,7 @@ export function PainelTela({ nome }: { nome: string }) {
             ))}
           </Bloco>
         )}
-        {totalPend + pe.sumidos.length + pe.faltosos.length === 0 && <p className="text-sm text-zinc-500">Nada pendente agora. 👌</p>}
+        {totalPend + pe.sumidos.length + pe.faltosos.length === 0 && <p className="text-sm text-zinc-500">Tudo em dia. Nenhuma pendência agora.</p>}
       </section>
 
       <section className="grid gap-3 lg:grid-cols-[1fr_1.4fr]">
@@ -312,7 +315,7 @@ export function PainelTela({ nome }: { nome: string }) {
               </table>
             )}
             <p className="text-xs text-zinc-500">
-              Azul = vazio, vermelho = lotado. Use os horários azuis para promoções e para sugerir aos assinantes.
+              Grafite = livre, dourado = ocupado. Use os horários livres para promoções e para sugerir aos assinantes.
             </p>
           </div>
         )}

@@ -2,165 +2,96 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
-import {
-  BarChart3, Bell, BriefcaseBusiness, CalendarDays, ChartLine, CalendarRange, ClipboardCheck, Clock3, CreditCard, Dices, Landmark, LayoutDashboard, LogOut, Megaphone, Menu,
-  MessageSquareText, Package, PanelLeft, Receipt, Settings, ShieldCheck, Smartphone, UserRound, X, type LucideIcon,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Ellipsis, LogOut, X } from "lucide-react";
 import { Marca } from "./Marca";
 import { SinoNotificacoes } from "./notificacoes/SinoNotificacoes";
+import { agruparLinks, atalhosMobile, rotaAtiva, type LinkNavegacao } from "./navegacao/estrutura";
+import { iconeDaRota, iconeDoGrupo } from "./navegacao/icones";
 import { desativarPushLocal } from "@/lib/pwa/push-cliente";
 
 const PAPEIS: Record<string, string> = { DONO: "Dono", GERENTE: "Gerente", LIDER: "Líder de equipe", RECEPCAO: "Recepção", BARBEIRO: "Barbeiro" };
+const iniciais = (nome: string) => nome.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? "").join("");
 
-const ICONES: Record<string, LucideIcon> = {
-  "/notificacoes": Bell,
-  "/painel": LayoutDashboard,
-  "/reunioes": BarChart3,
-  "/meu-dia": CalendarDays,
-  "/desempenho": ClipboardCheck,
-  "/avaliacoes": MessageSquareText,
-  "/recompras": Megaphone,
-  "/recepcao": PanelLeft,
-  "/semana": CalendarRange,
-  "/conversas": MessageSquareText,
-  "/assinaturas": CreditCard,
-  "/planos": BarChart3,
-  "/expediente": Clock3,
-  "/equipe": Settings,
-  "/simulador": Smartphone,
-  "/minha-agenda": CalendarDays,
-  "/comandas": Receipt,
-  "/estoque": Package,
-  "/indicadores": ChartLine,
-  "/jogos": Dices,
-  "/financeiro": Landmark,
-  "/caixa": Receipt,
-  "/checklist": ClipboardCheck,
-  "/rh": BriefcaseBusiness,
-  "/recrutamento": BriefcaseBusiness,
-  "/whatsapp": Smartphone,
-  "/auditoria": ShieldCheck,
-  "/cultura-black": ShieldCheck,
-  "/campanhas": Megaphone,
-  "/campanhas-equipe": Dices,
-  "/meu-financeiro": Landmark,
-};
-
-const iniciais = (nome: string) =>
-  nome.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("");
-
-/** Menu da equipe: barra lateral no computador, barra inferior no celular. */
-export function Navegacao({
-  nome,
-  papel,
-  links,
-  nomeBarbearia,
-  selos = {},
-}: {
-  nome: string;
-  papel: string;
-  nomeBarbearia: string;
-  links: { href: string; rotulo: string }[];
-  /** Contador de pendencias por link (ex.: estornos esperando o dono). */
-  selos?: Record<string, number>;
+export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
+  nome: string; papel: string; links: LinkNavegacao[]; nomeBarbearia: string; selos?: Record<string, number>;
 }) {
   const path = usePathname();
   const router = useRouter();
   const [mais, setMais] = useState(false);
-  const ativo = (href: string) => path.startsWith(href);
+  const [erro, setErro] = useState("");
+  const dialogo = useRef<HTMLDialogElement>(null);
+  const grupos = agruparLinks(links);
+  const atalhos = atalhosMobile(links);
+
+  useEffect(() => {
+    const d = dialogo.current;
+    if (!mais || !d) return;
+    d.showModal();
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const fecharNoDesktop = () => { if (desktop.matches) d.close(); };
+    desktop.addEventListener("change", fecharNoDesktop);
+    return () => { desktop.removeEventListener("change", fecharNoDesktop); if (d.open) d.close(); };
+  }, [mais]);
 
   async function sair() {
-    const resposta = await fetch("/api/auth/sair", { method: "POST" });
-    if (!resposta.ok) return;
-    await desativarPushLocal({ servidor: false }).catch(() => {});
-    router.replace("/entrar");
-    router.refresh();
+    setErro("");
+    try {
+      const resposta = await fetch("/api/auth/sair", { method: "POST" });
+      if (!resposta.ok) throw new Error();
+      await desativarPushLocal({ servidor: false }).catch(() => {});
+      router.replace("/entrar"); router.refresh();
+    } catch { setErro("Não foi possível sair. Tente novamente."); }
   }
 
-  const item = (l: { href: string; rotulo: string }) => {
-    const Icone = ICONES[l.href] ?? (l.href.startsWith("/indicadores") ? ChartLine : UserRound);
-    return (
-      <Link
-        key={l.href}
-        href={l.href}
-        onClick={() => setMais(false)}
-        className="black-nav-item"
-        aria-current={ativo(l.href) ? "page" : undefined}
-      >
-        <Icone size={17} strokeWidth={1.6} />
-        {l.rotulo}
-        {!!selos[l.href] && <span className="ml-auto rounded-full bg-ouro px-1.5 text-[11px] font-semibold text-[#1b1406]" title="Pendências">{selos[l.href]}</span>}
-      </Link>
-    );
+  const item = (l: LinkNavegacao) => {
+    const Icone = iconeDaRota(l.href);
+    return <Link key={l.href} href={l.href} onClick={() => setMais(false)} className="black-nav-item" aria-current={rotaAtiva(path, l.href) ? "page" : undefined}>
+      <Icone size={19} strokeWidth={1.65} aria-hidden="true" /><span>{l.rotulo}</span>
+      {!!selos[l.href] && <span className="black-nav-count" aria-label={`${selos[l.href]} pendências`}>{selos[l.href]}</span>}
+    </Link>;
   };
 
-  const rodapeUsuario = (
-    <div className="black-painel flex items-center gap-3 px-3.5 py-3">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-ouro/40 bg-[linear-gradient(180deg,rgb(211_171_69/22%),rgb(24_23_20/60%))] text-xs font-semibold text-ouro-claro shadow-[inset_0_1px_0_rgb(255_244_195/14%)]">{iniciais(nome)}</div>
-      <Link href="/conta" className="min-w-0 flex-1 hover:text-ouro" title="Minha conta e senha">
-        <p className="truncate text-sm font-semibold">{nome}</p>
-        <p className="text-xs text-zinc-500">{PAPEIS[papel] ?? papel} · minha conta</p>
-      </Link>
-      <button onClick={sair} title="Sair" aria-label="Sair" className="rounded-[10px] p-2 text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-900">
-        <LogOut size={16} />
+  const menu = (mobile = false) => grupos.map(g => {
+    const temAtivo = g.itens.some(l => rotaAtiva(path, l.href));
+    const Icone = iconeDoGrupo(g.titulo);
+    const pendencias = g.itens.reduce((n, l) => n + (selos[l.href] ?? 0), 0);
+    return g.agrupado && !mobile ? <details key={`${g.titulo}:${path}`} className="black-nav-disclosure" open={temAtivo}>
+      <summary className="black-nav-item"><Icone size={19} strokeWidth={1.65} aria-hidden="true" /><span>{g.titulo}</span>
+        {!!pendencias && <span className="black-nav-count">{pendencias}</span>}<ChevronDown size={14} className="black-disclosure-arrow" aria-hidden="true" />
+      </summary><div className="black-nav-children">{g.itens.map(item)}</div>
+    </details> : <section key={g.titulo} className="black-nav-group" aria-label={g.titulo}>
+      <p>{g.titulo}</p><div>{g.itens.map(item)}</div>
+    </section>;
+  });
+
+  const perfil = <div className="black-profile"><span className="black-avatar" aria-hidden="true">{iniciais(nome)}</span>
+    <Link href="/conta" onClick={() => setMais(false)} className="min-w-0 flex-1"><strong className="block truncate">{nome}</strong><span>{PAPEIS[papel] ?? papel} · minha conta</span></Link>
+    <button className="black-icon-button" onClick={sair} aria-label="Sair da conta"><LogOut size={18} aria-hidden="true" /></button>
+  </div>;
+
+  return <>
+    <a href="#conteudo-principal" className="black-skip-link">Pular para o conteúdo</a>
+    <aside className="black-sidebar">
+      <div className="black-sidebar-brand"><Marca nome={nomeBarbearia} /></div>
+      <div className="black-sidebar-caption"><span className="black-status-dot" />Seu espaço na Black</div>
+      <nav aria-label="Menu principal" className="black-sidebar-nav">{menu()}</nav>
+      {perfil}
+    </aside>
+    <header className="black-mobile-header"><Marca nome={nomeBarbearia} /><SinoNotificacoes href="/notificacoes" area="equipe" /></header>
+    <nav className="black-bottom-nav" aria-label="Menu do celular">
+      {atalhos.map(l => { const Icone = iconeDaRota(l.href); return <Link key={l.href} href={l.href} aria-current={rotaAtiva(path, l.href) ? "page" : undefined}>
+        <Icone size={20} strokeWidth={1.65} aria-hidden="true" /><span>{l === atalhos[0] ? "Início" : l.href.includes("agenda") || l.href === "/recepcao" || l.href === "/semana" ? "Agenda" : l.rotulo}</span>
+      </Link>; })}
+      <button onClick={() => setMais(true)} aria-expanded={mais} aria-haspopup="dialog" aria-controls="black-menu-mais">
+        <Ellipsis size={21} aria-hidden="true" /><span>Mais</span>
+        {links.some(l => selos[l.href] && !atalhos.includes(l)) && <span className="black-menu-pending" aria-label="Há pendências em outras áreas" />}
       </button>
-    </div>
-  );
-
-  return (
-    <>
-      {/* Computador */}
-      <aside className="sticky top-0 hidden h-screen w-[236px] shrink-0 flex-col gap-2 p-2 pr-0 lg:flex">
-        <div className="black-painel flex min-h-[60px] items-center justify-between gap-1 px-3"><div className="min-w-0 flex-1 [&>span]:max-w-full [&>span>span:last-child]:truncate"><Marca nome={nomeBarbearia} /></div><SinoNotificacoes href="/notificacoes" area="equipe" /></div>
-        <div className="black-painel flex min-h-0 flex-1 flex-col p-3">
-        <nav aria-label="Menu principal" className="flex-1 space-y-5 overflow-y-auto">
-          {[
-            { titulo: "Dia a dia", rotas: ["/painel", "/meu-dia", "/recepcao", "/caixa", "/comandas", "/conversas", "/semana", "/minha-agenda"] },
-            { titulo: "Gestão", rotas: ["/reunioes", "/financeiro", "/meu-financeiro", "/campanhas-equipe", "/indicadores", "/assinaturas", "/estoque", "/campanhas", "/recompras", "/planos", "/jogos"] },
-            { titulo: "Equipe e ajustes", rotas: ["/notificacoes", "/desempenho", "/avaliacoes", "/checklist", "/rh", "/recrutamento", "/expediente", "/equipe", "/whatsapp", "/auditoria", "/simulador"] },
-          ].map((g) => {
-            const itens = links.filter((l) => g.rotas.includes(l.href) || (g.titulo === "Gestão" && l.href.startsWith("/indicadores/")));
-            return itens.length > 0 && <div key={g.titulo}><p className="mb-1.5 px-3 text-xs text-zinc-400">{g.titulo}</p><div className="space-y-0.5">{itens.map(item)}</div></div>;
-          })}
-        </nav>
-        {links.some((l) => l.href === "/cultura-black") && <div className="mt-3 border-t border-[rgba(255,255,255,0.05)] pt-3">{item(links.find((l) => l.href === "/cultura-black")!)}</div>}
-        </div>
-        {rodapeUsuario}
-      </aside>
-
-      {/* Celular: topo com a marca + barra inferior */}
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-[rgba(255,255,255,0.05)] bg-fundo/80 px-4 py-3 backdrop-blur-[14px] lg:hidden">
-        <Marca nome={nomeBarbearia} />
-        <div className="flex items-center gap-2"><SinoNotificacoes href="/notificacoes" area="equipe" /><button onClick={sair} className="btn">Sair</button></div>
-      </header>
-      <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-around border-t border-[rgba(255,255,255,0.05)] bg-fundo/85 p-2 backdrop-blur-[14px] lg:hidden">
-        {links.slice(0, 4).map((l) => {
-          const Icone = ICONES[l.href] ?? UserRound;
-          return (
-            <Link key={l.href} href={l.href}
-              className={`flex min-w-16 flex-col items-center gap-1 py-1 text-[10px] ${ativo(l.href) ? "text-ouro" : "text-zinc-500"}`}>
-              <Icone size={18} />
-              {l.rotulo}
-            </Link>
-          );
-        })}
-        {links.length > 4 && (
-          <button onClick={() => setMais(!mais)}
-            className={`relative flex min-w-16 flex-col items-center gap-1 py-1 text-[10px] ${mais ? "text-ouro" : "text-zinc-500"}`}>
-            {links.slice(4).some((l) => selos[l.href]) && <span className="absolute right-4 top-0 h-2 w-2 rounded-full bg-amber-500" />}
-            {mais ? <X size={18} /> : <Menu size={18} />}
-            Mais
-          </button>
-        )}
-      </nav>
-      {mais && (
-        <div className="fixed inset-0 z-30 bg-[rgba(5,6,7,0.72)] backdrop-blur-[14px] lg:hidden" onClick={() => setMais(false)}>
-          <div className="entrar-suave black-painel absolute inset-x-3 bottom-20 max-h-[70vh] space-y-0.5 overflow-y-auto p-2" onClick={(e) => e.stopPropagation()}>
-            {links.slice(4).map(item)}
-          </div>
-        </div>
-      )}
-    </>
-  );
+    </nav>
+    <dialog ref={dialogo} id="black-menu-mais" className="black-more-dialog" aria-labelledby="black-menu-titulo" onClose={() => setMais(false)} onClick={e => { if (e.target === e.currentTarget) setMais(false); }}>
+      <div className="black-more-header"><div><p className="eyebrow">Tudo em seu lugar</p><h2 id="black-menu-titulo">Explorar a Black</h2></div><button className="black-icon-button" onClick={() => setMais(false)} aria-label="Fechar menu"><X size={21} aria-hidden="true" /></button></div>
+      <nav aria-label="Todas as áreas">{menu(true)}</nav>{perfil}
+    </dialog>
+    {erro && <p role="alert" className="black-nav-error">{erro}</p>}
+  </>;
 }

@@ -1,29 +1,24 @@
 @import "tailwindcss";
 @import "./black-workspace.css";
+@import "./black-navigation.css";
 
-/*
- * BarberOS Design System (preto frio, silencioso e preciso) com a personalidade Black Barber: o dourado e a cor da
- * marca e entra onde o design system usa o branco brilhante (botao principal, destaque, foco); verde, amarelo e
- * vermelho ficam so para status. As telas usam a paleta padrao do Tailwind; aqui ela e reapontada num lugar so:
- * - white  -> superficie dos cartoes
- * - zinc   -> escala invertida (50 = superficie elevada, 900 = texto forte)
- * - cores de status -> fundos escuros translucidos + textos vivos do design system
- * - violet (selo "Assinante") -> dourado
+/* Black Barber: tokens atualizados com compatibilidade para as classes legadas.
+ * white continua sendo superfície, zinc é invertido; status mantêm seus significados.
  */
 @theme {
-  --color-white: #111215;
+  --color-white: #111315;
   --color-black: #000000;
 
-  --color-zinc-50: #16171b;
-  --color-zinc-100: #1a1b20;
-  --color-zinc-200: #24252b;
-  --color-zinc-300: #34353c;
-  --color-zinc-400: #5d6068;
-  --color-zinc-500: #7c7f87;
-  --color-zinc-600: #9a9ca3;
+  --color-zinc-50: #191c1f;
+  --color-zinc-100: #23262a;
+  --color-zinc-200: #2c2f33;
+  --color-zinc-300: #686d77;
+  --color-zinc-400: #9498a2;
+  --color-zinc-500: #a4a6ae;
+  --color-zinc-600: #b1b3bb;
   --color-zinc-700: #c4c6cb;
   --color-zinc-800: #e4e5e8;
-  --color-zinc-900: #f4f5f7;
+  --color-zinc-900: #f4f3ee;
   --color-zinc-950: #ffffff;
 
   --color-emerald-50: #0f2a16;
@@ -44,30 +39,30 @@
   --color-amber-100: #3a2e12;
   --color-amber-200: #5a4719;
   --color-amber-300: #7a6122;
-  --color-amber-400: #d3ab45;
-  --color-amber-700: #e2c06a;
+  --color-amber-400: #ffd34e;
+  --color-amber-700: #fff1aa;
   --color-amber-800: #ecd08a;
   --color-amber-900: #f3dfa6;
 
   --color-violet-50: rgba(211, 171, 69, 0.12);
   --color-violet-100: rgba(211, 171, 69, 0.18);
   --color-violet-200: rgba(211, 171, 69, 0.35);
-  --color-violet-400: #d3ab45;
-  --color-violet-700: #e2c06a;
-  --color-violet-800: #e2c06a;
+  --color-violet-400: #ffd34e;
+  --color-violet-700: #fff1aa;
+  --color-violet-800: #fff1aa;
   --color-violet-900: #ecd08a;
 
   --color-sky-100: #0f1a2e;
   --color-sky-800: #8fb4ff;
 
   /* Tokens da marca (uso direto: bg-ouro, text-ouro...) */
-  --color-ouro: #d3ab45;
-  --color-ouro-claro: #e2c06a;
-  --color-ouro-escuro: #9a7a28;
-  --color-fundo: #08090b;
+  --color-ouro: #ffd34e;
+  --color-ouro-claro: #fff1aa;
+  --color-ouro-escuro: #c99624;
+  --color-fundo: #090a0b;
 
   --radius-controle: 10px;
-  --radius-cartao: 16px;
+  --radius-cartao: 18px;
 }
 
 @theme inline {
@@ -77,20 +72,22 @@
 
 /* Tokens do design system (uso em CSS: var(--surface-card)...) */
 :root {
-  --surface-app: #08090b;
-  --surface-sidebar: linear-gradient(180deg, #141519 0%, #0c0d10 100%);
-  --surface-card: #111215;
-  --surface-card-raised: #16171b;
-  --surface-inset: #0c0d10;
-  --surface-hover: #1a1b20;
+  --surface-app: #090a0b;
+  --surface-sidebar: linear-gradient(180deg, #141519 0%, #0c0e10 100%);
+  --surface-card: #111315;
+  --surface-card-raised: #191c1f;
+  --surface-inset: #0c0e10;
+  --surface-hover: #23262a;
   --surface-active: #1e1f24;
   --surface-overlay: rgba(5, 6, 7, 0.72);
   --border-subtle: rgba(255, 255, 255, 0.05);
-  --border-default: rgba(255, 255, 255, 0.08);
+  --border-default: #2c2f33;
+  --border-control: #686d77;
+  --brand-metal: linear-gradient(115deg, #c99624 0%, #ffd34e 37%, #fff1aa 55%, #ffd34e 74%, #dda925 100%);
   --border-strong: rgba(255, 255, 255, 0.14);
-  --text-primary: #f4f5f7;
-  --text-secondary: #7c7f87;
-  --text-tertiary: #5d6068;
+  --text-primary: #f4f3ee;
+  --text-secondary: #a4a6ae;
+  --text-tertiary: #9498a2;
   --shadow-card: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 0 0 1px var(--border-subtle);
   --shadow-raised: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border-default);
   /* Brilho de canto do KPI em destaque: no BarberOS ele e dourado (no design system era verde). */
@@ -150,7 +147,7 @@ textarea {
  * cartoes de 16px com aro fino e brilho no topo, sem sombra; hover sobe um degrau, clique encolhe 2%).
  */
 @utility btn {
-  @apply inline-flex min-h-[38px] items-center justify-center gap-2 rounded-[10px] border border-[rgba(255,255,255,0.08)] bg-zinc-50 px-4 py-1.5 text-sm font-medium whitespace-nowrap text-zinc-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition duration-[120ms] hover:border-[rgba(255,255,255,0.14)] hover:bg-zinc-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
+  @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-[10px] border border-[rgba(255,255,255,0.08)] bg-zinc-50 px-4 py-1.5 text-sm font-medium whitespace-nowrap text-zinc-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition duration-[120ms] hover:border-[rgba(255,255,255,0.14)] hover:bg-zinc-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40;
 }
 @utility btn-primario {
   @apply btn border-ouro bg-ouro font-semibold text-[#1b1406] hover:border-ouro-claro hover:bg-ouro-claro;
@@ -159,13 +156,13 @@ textarea {
   @apply btn border-red-600/30 bg-red-50 text-red-700 hover:border-red-600/60 hover:bg-red-100;
 }
 @utility campo {
-  @apply min-h-[42px] w-full rounded-[10px] border border-[rgba(255,255,255,0.08)] bg-[#0c0d10] px-3 py-2 text-sm text-zinc-900 transition-colors duration-[120ms] outline-none placeholder:text-zinc-400 focus:border-ouro/70 focus:ring-2 focus:ring-ouro/20;
+  @apply min-h-[44px] w-full rounded-[10px] border border-[var(--border-control)] bg-[#0c0e10] px-3 py-2 text-sm text-zinc-900 transition-colors duration-[120ms] outline-none placeholder:text-zinc-400 focus:border-ouro/70 focus:ring-2 focus:ring-ouro/20;
 }
 @utility rotulo {
   @apply mb-1.5 block text-xs font-medium text-zinc-500;
 }
 @utility cartao {
-  @apply rounded-2xl border border-[rgba(255,255,255,0.05)] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
+  @apply rounded-[18px] border border-[var(--border-default)] bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)];
 }
 /* Cartao clicavel: sobe um degrau no hover */
 @utility cartao-clicavel {

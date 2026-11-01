@@ -131,18 +131,24 @@ webhooks / rotinas ─────────┘
 
 `deploy/docker-compose.yml` sobe `app` (Dockerfile; aplica migrações e expõe `/api/saude` no healthcheck), `db`
 (Postgres sem porta publicada), `caddy` (https automático via Let's Encrypt, portas 80/443), `backup` e, com
-`COMPOSE_PROFILES="evolution"`, `evolution`. Na pasta do projeto (Git Bash):
+`COMPOSE_PROFILES="evolution"`, `evolution`.
+
+Antes de uma atualização, siga [continuidade e publicação](operacao-producao.md): confirme a instalação real,
+preserve trabalho local e a imagem anterior, e verifique as condições de backup e recuperação do script existente.
+O [fluxo de preparação pelo GitHub](publicacao-sem-terminal.md) testa e empacota commits limpos e permite consulta
+somente de leitura à VPS, quando o acesso estiver configurado. Ele ainda não executa publicação.
+
+O script legado **recusa produção antes de empacotar ou conectar**. O caminho de atualização e recuperação
+precisa ser adaptado à instalação inspecionada; não retirar esse bloqueio para publicar a candidata.
+Para referência, a entrada legada de homologação permanece disponível (Git Bash):
 
 ```bash
-bash scripts/deploy.sh <usuario>@<ip-do-vps>            # produção
 bash scripts/deploy.sh <usuario>@<ip-do-vps> homolog    # homologação
 ```
 
 - Empacota os arquivos do git (sem `.env` local, `node_modules`, `.next`), envia por scp e sobe por ssh.
-- **Produção: faz backup do banco antes de trocar qualquer coisa** (`...-antes-do-deploy.sql.gz`); se falhar, para.
-- 1ª vez: instala o Docker e cria `/opt/barberos/.env` de `deploy/env.producao.exemplo` com `DB_SENHA` e
-  `SESSION_SECRET` aleatórios; gera `EVOLUTION_API_KEY`. Preencha `DONO_TELEFONE`, `ANTHROPIC_API_KEY` etc. e rode de
-  novo. Depois só troca o código: `.env`, backups e `caddy-sites/` ficam.
+- O procedimento antigo de produção podia pular o backup, remover a árvore anterior e limpar imagens.
+  A entrada está bloqueada; não há instalador ou deploy automático de produção habilitado nesta candidata.
 - Erro "Algo deu errado" com código: `cd /opt/barberos && docker compose logs app | grep "codigo=<código>"`.
 - Enquanto `OTP_PROVIDER="console"`, o código de login aparece só em `docker compose logs app`.
 
@@ -171,6 +177,12 @@ Lá não há Evolution nem o backup do compose.
 - Container `backup` (`deploy/backup.sh`): todo dia às 03h (`BACKUP_HORA`; e ao subir, se passou da hora) copia o
   banco, **restaura num banco separado** e confere tabelas, última migração e contagens. Falha aparece como erro.
   Cópias ficam 14 dias (`BACKUP_DIAS_LOCAL`) em `/opt/barberos/backups`.
+- Com Studio, o override monta as mídias no backup somente para leitura. O dump restaurado determina os
+  arquivos que entram no par `.sql.gz` + `.studio.tar.gz`, vinculado por SHA-256. Ambos precisam ser guardados.
+  Referência sem arquivo, tamanho/hash divergente ou espaço insuficiente impede marcar sucesso e impede
+  remover backups antigos. Sem o volume configurado, banco com referências de mídia também é recusado.
+  Os nomes UUID são imutáveis; exclusão concorrente pode fazer a cópia falhar, nunca ser declarada íntegra.
+  A restauração materializa as mídias em diretório novo e confere seus hashes, sem alterar o volume vivo.
 - Painel: Configurações → Backups; atraso de mais de 26 h ou falha aparece em "Precisa de ação" para o dono.
 - **Cópia fora do servidor** (recomendada; sem ela, perder o VPS é perder os backups): bucket S3 privado
   (Backblaze B2 ou Cloudflare R2) com chave só dele; preencha `BACKUP_S3_BUCKET`, `BACKUP_S3_ENDPOINT`,
@@ -181,6 +193,9 @@ Lá não há Evolution nem o backup do compose.
   - testar um arquivo: `dc exec backup backup.sh verificar /backups/barberos-AAAAMMDD-HHMM.sql.gz`
 - **Restaurar** (a produção só muda no passo 2):
   1. `dc exec backup backup.sh restaurar /backups/<arquivo>.sql.gz` cria `barberos_restaurado` sem tocar na produção.
+     Recusa esse banco se já existir. Com Studio, exige o par e cria `<arquivo>-midias-restauradas` ao lado do dump.
+     Antes de qualquer troca, preparar um volume novo a partir dessa pasta e validar a app contra banco e mídia
+     restaurados. Os comandos abaixo são a referência antiga de banco; não bastam para restaurar o Studio.
   2. `dc stop app evolution backup`; depois
      `dc exec db psql -U barberos -d postgres -c 'ALTER DATABASE barberos RENAME TO barberos_antigo' -c 'ALTER DATABASE barberos_restaurado RENAME TO barberos'`
      e `dc start app evolution backup`. O anterior fica como `barberos_antigo` até ser apagado.
@@ -195,7 +210,7 @@ produção pela rede `barberos-proxy`, com usuário/senha (basic auth) e `X-Robo
 força WhatsApp, pagamentos e maquininha simulados e mostra a faixa "HOMOLOGAÇÃO"; o código de login aparece na tela.
 
 1. Crie no DNS o registro A do endereço da homologação (`HOMOLOG_DOMINIO`) para o IP do VPS.
-2. Rode o deploy da produção uma vez (prepara `caddy-sites/`).
+2. Confirme `caddy-sites/` na instalação inspecionada. Não use o script bloqueado de produção para criá-la.
 3. `bash scripts/deploy.sh <usuario>@<ip> homolog`: cria `/opt/barberos-homolog/.env`, sobe e mostra a senha
    (usuário `homolog`, guardada em `/opt/barberos-homolog/.senha-homolog`).
 4. Banco vazio: preencha `DONO_TELEFONE` e rode de novo, ou copie a produção:

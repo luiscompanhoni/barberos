@@ -2,14 +2,21 @@
 
 ## Direção
 
-**BarberOS Design System** (26/10/2026) com a personalidade Black Barber: preto frio e silencioso, cartões densos
-com aro fino, números grandes e leves, fonte Manrope, interface em português (`<html lang="pt-BR">`). Onde o design
-system usa o branco brilhante (botão principal, destaque, foco), o BarberOS usa o **dourado**; verde, amarelo e
-vermelho ficam só para status. Mantidos de propósito: o **dourado metálico do botão principal** (o brilho corre no
-hover), o **aro dourado no hover dos cartões clicáveis** e o **filete + tesoura que acompanham a rolagem**
-(`AcabamentoBlack`, só no computador e sem movimento reduzido). Dois públicos ([PRODUCT.md](../PRODUCT.md)): a equipe no painel (celular e computador) e o
-cliente na área `/c` (pensada para celular). Os jogos de recompensa têm um visual próprio, mais teatral, dentro da
-mesma paleta.
+**Black Barber Design System — direção 01 aprovada em 01/11/2026.** Preto profundo, superfícies grafite,
+ouro luminoso, cartões de 18 px e Manrope. A proposta visual está em
+`/workspace/exports/black-barber-design-v1/DESIGN-SYSTEM.md` no ambiente de preparação; o código do aplicativo
+é a fonte de verdade dos tokens implementados. Marca, seleção e ação principal usam dourado; cores de status
+mantêm seus significados. Botões dourados têm texto escuro e brilho pontual no hover. Movimento reduzido desliga
+as transições da área da equipe. O acabamento com tesoura que seguia a rolagem foi retirado do layout.
+
+O menu agrupa Agenda, Relacionamento, Equipe e Configurações, preservando todos os links autorizados pelo
+servidor. Caixa e Comandas têm ícones distintos; **Black Estúdio** aparece quando o módulo está habilitado.
+Financeiro reúne os contextos **Barbearia** e **Pessoal**; o endereço antigo `/meu-financeiro` encaminha para
+`/financeiro?area=pessoal`. Nenhum dado pessoal foi incorporado ao caixa da empresa.
+
+O protótipo foi traduzido para componentes e dados reais: não há indicadores ou formulários simulados nas telas
+implementadas. A assinatura tipográfica de `Marca` continua provisória; a chama da logo oficial não foi redesenhada.
+A área do cliente e os jogos preservam seus fluxos; a paleta e os controles compartilhados recebem os novos tokens.
 
 ## Sistema existente
 
@@ -17,27 +24,44 @@ Fonte de verdade: `src/app/globals.css` (Tailwind 4, `@import "tailwindcss"` + `
 
 - **Paleta "Black" por reapontamento:** as telas usam as classes padrão do Tailwind (`white`, `zinc`, `emerald`,
   `red`, `amber`, `violet`, `sky`) e o `@theme` troca essas cores pelo tema escuro, num lugar só:
-  - `white` → superfície dos cartões (`#111215`); `black` → preto. Para branco de verdade com transparência use
+  - `white` → superfície dos cartões (`#111315`); `black` → preto. Para branco de verdade com transparência use
     `rgba(255,255,255,…)` (ex.: `border-[rgba(255,255,255,0.08)]`), não `white/…`.
   - `zinc` → escala invertida (50 = superfície, 900/950 = texto forte).
   - cores de status (`emerald`, `red`, `amber`, `sky`) → fundos escuros translúcidos + textos claros.
   - `violet` (selo "Assinante") → dourado.
 - **Tokens da marca:** `ouro`, `ouro-claro`, `ouro-escuro` e `fundo` (uso direto: `bg-ouro`, `text-ouro`...). Fundo
-  da página e `themeColor` do viewport em `#08090b`; tokens do design system em `:root` (`--surface-*`, `--border-*`,
-  `--text-*`, `--glow-ouro`); seleção de texto dourada; `color-scheme: dark` em campos.
+  da página e `themeColor` do viewport em `#090a0b`; tokens do design system em `:root` (`--surface-*`, `--border-*`,
+  `--text-*`, `--glow-ouro`, `--brand-metal`); seleção de texto dourada; `color-scheme: dark` em campos.
 - **Tipografia:** Manrope (`--font-manrope`, pesos 300–800; números em peso 400 com `-0.02em`) e Geist Mono, carregadas por `next/font/google` em
   `src/app/layout.tsx`.
-- **Utilitários (`@utility`) reaproveitados:** `btn` (bloco escuro de 38px, raio 10px), `btn-primario` (dourado), `btn-perigo`, `campo`,
+- **Utilitários (`@utility`) reaproveitados:** `btn` (bloco escuro de 44px, raio 10px), `btn-primario` (dourado), `btn-perigo`, `campo`,
   `campo-linha`, `rotulo`, `cartao`, `cartao-clicavel`, `cartao-destaque`, `selo-ouro`, `entrar-suave`,
   `titulo-marca`, `eyebrow`, `numero-kpi`. Prefira-os a repetir classes. Área da equipe: `black-workspace.css`
   (menu em painéis `black-painel`/`black-nav-item`, KPI `black-metric` com `--destaque` dourado ou `--ruim`).
 - **Jogos:** bloco próprio em `globals.css` (fundo com fumaça, carta do prêmio por raridade, roleta) e CSS Modules em
   `src/components/jogos/caixas/caixas.module.css` e `src/components/jogos/raspadinha/raspadinha.module.css`.
-- **Ícones:** `lucide-react`.
+- **Ícones:** `lucide-react`; mapeamento único em `components/navegacao/icones.ts`. Caixa usa HandCoins; Comandas, ReceiptText; Financeiro, Landmark; Black Estúdio, Clapperboard.
 - **Componentes:** um diretório por domínio em `src/components/<domínio>/` (telas `*Tela.tsx` client-side que falam
   com a API via `src/lib/cliente-api.ts`); comuns na raiz: `Modal`, `Navegacao`, `AbasPainel`, `Marca`,
   `FotoBarbeiro`, `FaixaAmbiente`. Kit compartilhado dos jogos em `src/components/jogos/kit/` (som, partículas,
   modal de resultado, ícones de prêmio, `useJogada`, `useMovimentoReduzido`).
+
+### Navegação e Financeiro
+
+- Estrutura em `components/navegacao/estrutura.ts`, sempre filtrada pelos links recebidos do layout. Destinos
+  desconhecidos entram em Outras áreas; não desaparecem. Grupos não concedem permissões novas.
+- No celular, atalhos para início, agenda, comandas e financeiro, conforme disponibilidade; os demais destinos
+  ficam no menu Mais, agrupados e identificados. O desktop usa seções expansíveis.
+- A página do contexto pessoal não consulta pendências, relatórios ou valores da empresa. Barbeiro e líder são
+  encaminhados ao contexto pessoal antes dessas consultas. O layout mantém os selos de navegação autorizados;
+  as APIs e suas verificações continuam intactas.
+- Abas financeiras usam a URL, com `area` e `aba`; links antigos `?aba=...` continuam válidos. Resumo do mês,
+  resultado, despesas, links, estornos e conciliação foram preservados. A aba Caixa continua encaminhando para
+  o caixa operacional único.
+- As abas de telas abertas guardam também a query e convertem favoritos locais do antigo financeiro pessoal
+  para o novo endereço, sem manter dois destinos repetidos.
+- Estilos da navegação estão em `black-navigation.css`; padrões da equipe em `black-workspace.css`. O
+  reapontamento existente de `white`/`zinc` foi preservado por compatibilidade; não foi adicionado outro tema global.
 
 ## Interação
 
@@ -48,8 +72,7 @@ O que está implementado:
 
 - **Modal** (`src/components/Modal.tsx`): `role="dialog"`, `aria-modal`, `aria-label` com o título, fecha com Esc,
   clique fora ou botão "Fechar" (com `aria-label`). No celular abre como folha de baixo; em `sm+`, centralizado.
-- **Foco:** `campo` usa `focus:border-ouro` + `focus:ring-2`; botões dependem do foco padrão do navegador (há só um
-  uso de `focus-visible` no código).
+- **Foco:** na equipe, links, botões, resumos expansíveis e campos têm contorno dourado de 2 px com afastamento de 4 px. Há atalho para pular ao conteúdo. O menu Mais usa `dialog` nativo, com Escape, foco contido e retorno ao acionador.
 - **Movimento reduzido:**
   - Global: `@media (prefers-reduced-motion: reduce)` em `globals.css` encurta toda animação e transição.
   - Jogos: `useMovimentoReduzido()` (`useSyncExternalStore` sobre `matchMedia`) deixa animações curtas, sem tremor
@@ -77,8 +100,7 @@ O que está implementado:
   estado de formação quando a amostra é insuficiente. A recompensa é igual para qualquer nota válida.
 - **Níveis:** ELITE usa escudo preto/dourado, PLATINA usa metal/prata e LEGEND usa coroa com aura e brilho suave.
   A conquista tem destaque próprio; `prefers-reduced-motion` desativa esses efeitos. A nota dos clientes fica
-  separada do nível acumulado. O acabamento de rolagem consulta essa preferência após a hidratação para manter
-  a primeira renderização consistente entre servidor e navegador.
+  separada do nível acumulado.
 - Guia de ativação e configuração: [evolucao-equipe.md](evolucao-equipe.md).
 
 ## Layout e revisão

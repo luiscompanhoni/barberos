@@ -1,0 +1,52 @@
+# Override preparado; ativar somente depois de medir a VPS e aprovar a versão.
+# Usar junto de deploy/docker-compose.yml, mantendo o mesmo projeto Compose.
+services:
+  app:
+    environment:
+      ESTUDIO_HABILITADO: "true"
+      ESTUDIO_STORAGE_ROOT: /app/media
+      ESTUDIO_WORKER_TOKEN: ${ESTUDIO_WORKER_TOKEN:?configure o segredo do worker privadamente}
+    volumes:
+      - estudio_media:/app/media
+    networks: [default, estudio]
+
+  video-worker:
+    build:
+      context: ../workers/video
+      dockerfile: Dockerfile
+      args:
+        VCS_REF: ${BARBEROS_REVISAO:-}
+    restart: unless-stopped
+    init: true
+    environment:
+      ESTUDIO_APP_URL: http://app:3000
+      ESTUDIO_WORKER_TOKEN: ${ESTUDIO_WORKER_TOKEN:?configure o segredo do worker privadamente}
+    networks: [estudio]
+    depends_on:
+      app:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /worker/jobs:rw,nosuid,size=1g,uid=1000,gid=1000,mode=0700
+      - /tmp:rw,nosuid,size=256m,mode=1777
+      - /home/node:rw,nosuid,size=64m,uid=1000,gid=1000
+    shm_size: 256m
+    mem_limit: 2g
+    cpus: 0.75
+    pids_limit: 256
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+  backup:
+    environment:
+      BACKUP_ESTUDIO_MEDIA: /media-estudio
+    volumes:
+      - estudio_media:/media-estudio:ro
+
+networks:
+  estudio:
+    internal: true
+
+volumes:
+  estudio_media:

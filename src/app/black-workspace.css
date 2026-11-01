@@ -1,162 +1,92 @@
-/*
- * Area interna (equipe) no BarberOS Design System: fundo preto liso, cartoes com aro fino, menu em paineis.
- * Personalidade Black: o dourado metalico no botao principal (o brilho corre no hover), o aro dourado no hover dos
- * cartoes clicaveis e a tesoura que acompanha a rolagem. Sem efeitos no app do cliente.
- */
+/* Black Barber, direção aprovada: superfícies escuras e ouro luminoso. */
 html .black-workspace {
-  --black-metal: linear-gradient(115deg, #95702c 0%, #d5ac51 27%, #fff0b5 46%, #bc8c39 68%, #e2bd68 100%);
-  background-color: var(--surface-app);
-  background-image: radial-gradient(60% 40% at 100% 0%, rgb(211 171 69 / 4.5%), transparent 70%);
+  --black-metal: var(--brand-metal);
+  background: var(--surface-app);
+  color: var(--text-primary);
 }
-html .black-workspace > main { position: relative; }
-/* Barras de rolagem finas e escuras (o padrao do navegador fica claro no tema escuro) */
-html .black-workspace, html .black-workspace * { scrollbar-width: thin; scrollbar-color: #34353c transparent; }
-
-/* Cartoes: superficie lisa, aro de 5% e brilho de 1px no topo (sem sombra projetada) */
+html .black-workspace, html .black-workspace * { scrollbar-width: thin; scrollbar-color: #686d77 transparent; }
+.black-workspace-content { flex: 1; min-width: 0; }
+.black-workspace-main { max-width: 1440px; margin: 0 auto; padding: 32px; outline: none; }
 html .black-workspace :is(.cartao, .cartao-clicavel):not([class*="bg-"]) {
-  background: var(--surface-card);
-  border-color: var(--border-subtle);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%);
+  background: linear-gradient(140deg, #191c1f70, transparent 65%), var(--surface-card);
+  border-color: var(--border-default);
+  border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 3%);
 }
-html .black-workspace .cartao-destaque { border-color: rgb(211 171 69 / 55%); }
-
-/* Botao principal: dourado metalico com relevo (o "glossy" do design system, em ouro) */
+html .black-workspace .cartao-destaque { border-color: rgb(255 211 78 / 35%); }
+html .black-workspace .btn { border-color: var(--border-control); }
 html .black-workspace .btn-primario:not(.acao-caixa-entrada):not(.acao-caixa-retirada) {
-  background: var(--black-metal);
-  background-size: 180% 100%;
-  color: #201707;
-  border-color: #d3ab45;
-  box-shadow: inset 0 1px 0 rgb(255 249 216 / 70%), inset 0 -1px 0 rgb(0 0 0 / 18%), 0 2px 6px rgb(0 0 0 / 40%);
-  transition: background-position 240ms ease, box-shadow 180ms ease, border-color 180ms ease, transform 120ms ease;
-}
-html .black-workspace .btn-primario:not(.acao-caixa-entrada):not(.acao-caixa-retirada):not(:disabled):active { background-position: 90% 50%; }
-html .black-workspace :is(button, a, summary):focus-visible {
-  outline: 2px solid #e2c06a;
-  outline-offset: 3px;
-}
-
-/* Cabecalho do painel ("Bom dia, ..."): painel com brilho dourado no canto */
-html .black-workspace .black-dashboard__hero {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.25rem;
-  padding: clamp(1.25rem, 3vw, 1.75rem);
-  border: 1px solid var(--border-subtle);
-  border-radius: 16px;
-  background: radial-gradient(80% 120% at 100% 0%, rgb(211 171 69 / 13%), transparent 60%), var(--surface-card);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%);
-}
-.black-dashboard__emblema {
-  display: grid;
-  width: 3.25rem;
-  height: 3.25rem;
-  place-items: center;
-  flex-shrink: 0;
-  border: 1px solid rgb(211 171 69 / 40%);
-  border-radius: 12px;
-  color: #e2bd68;
-  background: linear-gradient(180deg, rgb(211 171 69 / 18%), rgb(24 23 20 / 60%));
-  box-shadow: inset 0 1px 0 rgb(255 244 195 / 14%), 0 2px 6px rgb(0 0 0 / 40%);
-}
-
-/* KPI (StatCard do design system): rotulo cinza, numero grande e leve, filete dourado no topo */
-html .black-workspace .black-metric {
   position: relative;
   overflow: hidden;
-  padding: 1.25rem;
-  transition: border-color 200ms ease, background-color 120ms ease;
+  background: var(--brand-metal);
+  color: #171307;
+  border-color: #ffe084;
+  box-shadow: inset 0 1px 0 #fff6, 0 4px 18px #dca72a10;
+  transition: transform 160ms ease, box-shadow 160ms ease;
 }
-.black-metric::before {
-  content: "";
-  position: absolute;
-  pointer-events: none;
-  inset: 0 25% auto;
-  height: 1px;
-  background: var(--black-metal);
-  opacity: .35;
+html .black-workspace .btn-primario::after {
+  content: ""; position: absolute; inset: -50% 0; width: 30%; pointer-events: none;
+  transform: translateX(-160%) rotate(22deg);
+  background: linear-gradient(90deg, transparent, #ffffff70, transparent);
 }
-.black-metric__valor { font-weight: 400; font-variant-numeric: tabular-nums; letter-spacing: -.02em; line-height: 1.1; }
-html .black-workspace .cartao.black-metric--destaque { background: var(--glow-ouro), var(--surface-card); border-color: rgb(211 171 69 / 45%); }
+@keyframes black-sheen { to { transform: translateX(600%) rotate(22deg); } }
+html .black-workspace :is(button, a, summary, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-ouro); outline-offset: 4px;
+}
+html .black-workspace :is(button, a, input, select) { touch-action: manipulation; }
+.black-dashboard__hero {
+  position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 24px; padding: clamp(24px, 3vw, 36px); overflow: hidden;
+  border: 1px solid #b88f3540; border-radius: 24px;
+  background: radial-gradient(ellipse at 95% 30%, #9a70152a, transparent 58%), linear-gradient(115deg, #191a17, #121311);
+}
+.black-dashboard__emblema {
+  position: relative; display: grid; width: 100px; height: 100px; place-items: center; flex-shrink: 0;
+  border: 1px solid #e5be49aa; border-radius: 50%; color: var(--color-ouro-claro);
+  box-shadow: 0 0 40px #f0c34a09, inset 0 0 30px #f0c34a0b;
+}
+.black-dashboard__emblema::after { content: ""; position: absolute; inset: 10px; border: 1px solid #b79c4d40; border-radius: 50%; }
+.black-dashboard__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+html .black-workspace .black-metric { padding: 22px; border-radius: 18px; transition: border-color 160ms ease; }
+.black-metric__valor { font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -.035em; line-height: 1.15; }
+html .black-workspace .cartao.black-metric--destaque {
+  background: radial-gradient(ellipse at 95% 100%, #8c692c36, transparent 75%), var(--surface-card); border-color: #ffd34e45;
+}
 html .black-workspace .cartao.black-metric--ruim { background: var(--glow-vermelho), var(--surface-card); }
-
-/* Rolagem: filete dourado no topo + tesoura que desce pelo trilho e abre/fecha (AcabamentoBlack) */
-.black-scroll { pointer-events: none; position: fixed; inset: 0; z-index: 35; }
-.black-scroll__topo {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  transform-origin: 0 50%;
-  background: var(--black-metal);
-}
-.black-scroll__trilho { display: none; }
-@media (min-width: 1024px) {
-  .black-scroll__trilho {
-    display: block;
-    position: absolute;
-    top: 22vh;
-    right: 6px;
-    height: 55vh;
-    width: 1px;
-    background: linear-gradient(transparent, rgb(211 171 69 / 20%), transparent);
-  }
-  .black-scroll__corte {
-    position: absolute;
-    left: -11px;
-    width: 24px;
-    height: 24px;
-    margin-top: -12px;
-    color: #e2bd68;
-    filter: drop-shadow(0 1px 4px #000);
-  }
-}
-
-/* Menu lateral em paineis (design system: marca, navegacao e usuario em blocos separados) */
-.black-painel {
-  border-radius: 16px;
-  background: var(--surface-sidebar);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 4%), 0 0 0 1px var(--border-subtle);
-}
-.black-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 38px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  color: var(--text-secondary);
-  font-size: 14px;
-  transition: background-color 120ms ease, color 120ms ease;
-}
-.black-nav-item:hover { background: var(--surface-hover); color: var(--text-primary); }
-.black-nav-item[aria-current="page"] {
-  background: var(--surface-active);
-  border-color: var(--border-subtle);
-  color: var(--text-primary);
-  box-shadow: inset 2px 0 0 #d3ab45;
-}
-.black-nav-item[aria-current="page"] svg { color: #e2c06a; }
-
+.black-painel { border-radius: 18px; background: var(--surface-card); border: 1px solid var(--border-default); }
+.black-finance-context { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+.black-finance-context nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--border-default); border-radius: 12px; }
+.black-finance-context a { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 16px; border-radius: 8px; color: var(--text-secondary); font-size: 14px; }
+.black-finance-context a[aria-current="page"] { background: var(--surface-hover); color: var(--color-ouro); }
+.black-finance-context p { display: flex; gap: 8px; align-items: center; color: var(--text-secondary); font-size: 12px; }
+.black-finance-tabs { display: flex; gap: 20px; overflow-x: auto; border-bottom: 1px solid var(--border-default); padding: 4px 3px; }
+.black-finance-tabs a { display: flex; align-items: center; gap: 8px; flex-shrink: 0; min-height: 48px; border-bottom: 2px solid transparent; padding: 10px 0; color: var(--text-secondary); font-size: 14px; }
+.black-finance-tabs a[aria-current="page"] { border-color: var(--color-ouro); color: var(--color-ouro); }
+.black-finance-tabs a:hover, .black-finance-context a:hover { color: var(--text-primary); }
+.black-studio-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.black-studio-summary article { padding: 18px; }
+.black-studio-summary strong { display: block; margin: 10px 0 4px; font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.black-studio-summary p { color: var(--text-secondary); font-size: 12px; }
 @media (hover: hover) and (pointer: fine) {
-  html .black-workspace .btn-primario:not(.acao-caixa-entrada):not(.acao-caixa-retirada):not(:disabled):hover {
-    background-position: 100% 50%;
-    box-shadow: inset 0 1px 0 rgb(255 249 216 / 75%), inset 0 -1px 0 rgb(0 0 0 / 18%), 0 4px 18px rgb(211 171 69 / 25%);
-  }
-  html .black-workspace :is(a.cartao, .cartao-clicavel):hover {
-    border-color: rgb(211 171 69 / 55%);
-    background: radial-gradient(90% 120% at 100% 0%, rgb(211 171 69 / 10%), transparent 60%), var(--surface-hover);
-  }
-  html .black-workspace a.black-metric:hover { border-color: rgb(211 171 69 / 40%); }
-  html .black-workspace a.black-metric:hover::before { opacity: 1; }
+  html .black-workspace .btn-primario:not(:disabled):hover::after { animation: black-sheen 600ms cubic-bezier(.2,.75,.3,1); }
+  html .black-workspace :is(a.cartao, .cartao-clicavel):hover { border-color: #ffd34e60; background: var(--surface-hover); }
+}
+@media (max-width: 1023px) {
+  .black-workspace-main { padding: 24px 18px calc(100px + env(safe-area-inset-bottom)); }
+  .black-dashboard__hero { border-radius: 18px; }
+  .black-dashboard__emblema { width: 68px; height: 68px; }
+}
+@media (max-width: 480px) {
+  .black-dashboard__hero { padding: 22px; }
+  .black-dashboard__hero > div:first-child { flex: 1; min-width: 0; }
+  .black-dashboard__emblema { display: none; }
+  .black-studio-summary { gap: 8px; }
+  .black-studio-summary article { padding: 12px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .black-scroll { display: none; }
-  html .black-workspace .btn-primario:not(.acao-caixa-entrada):not(.acao-caixa-retirada) { transition: none; }
+  html .black-workspace *, html .black-workspace *::before, html .black-workspace *::after { animation: none !important; transition: none !important; }
 }
 @media (forced-colors: active) {
-  .black-scroll { display: none; }
-  html .black-workspace .btn-primario:not(.acao-caixa-entrada):not(.acao-caixa-retirada) { border: 1px solid ButtonText; }
+  html .black-workspace .btn-primario { border: 1px solid ButtonText; }
   .black-nav-item[aria-current="page"] { outline: 1px solid Highlight; }
 }

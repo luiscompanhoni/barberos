@@ -1,5 +1,6 @@
 # BarberOS em producao num VPS (Hostinger, DigitalOcean...): sistema + Postgres + Caddy (https) + backup.
-# Subir: bash scripts/deploy.sh root@IP (faz backup antes, cria a rede e sobe). A mao, na pasta do projeto no servidor:
+# Publicação depende de inventário e recuperação validados: docs/publicacao-sem-terminal.md.
+# O script legado recusa produção. Referência manual, não procedimento de atualização:
 #   docker network create barberos-proxy   (uma vez; o Caddy divide essa rede com a homologacao)
 #   docker compose --env-file .env -f deploy/docker-compose.yml up -d --build
 name: barberos
@@ -25,6 +26,8 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      args:
+        VCS_REF: ${BARBEROS_REVISAO:-}
     restart: unless-stopped
     env_file: ../.env
     environment:

@@ -1,0 +1,85 @@
+name: Publicar atualização na VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      imagem_anterior:
+        description: ID sha256 da imagem app confirmada no inventário anterior
+        required: true
+        type: string
+      chave_relatorio:
+        description: Chave pública RSA SPKI base64 do destinatário do relatório
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: publicacao-producao
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    if: github.ref == 'refs/heads/main'
+    environment: "produção"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Exigir CI aprovado para este commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" --event push --json headSha,status,conclusion > "$RUNNER_TEMP/ci.json"
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          const runs=JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/ci.json'));
+          if (!runs.some(r=>r.headSha===process.env.GITHUB_SHA && r.status==='completed' && r.conclusion==='success')) {
+            console.error('CI deste commit ainda não foi aprovado. Nenhum deploy executado.'); process.exit(1);
+          }
+          JS
+      - name: Conferir operação e preservação
+        run: npm run check:publicacao:servidor
+      - name: Preparar código do commit
+        run: |
+          node scripts/publicacao/preparar.mjs "$RUNNER_TEMP/release"
+          tar -czf "$RUNNER_TEMP/release/entrega.tar.gz" -C "$RUNNER_TEMP/release" codigo.tar.gz versao.json
+      - name: Construir imagens fora da VPS
+        run: |
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-app:$GITHUB_SHA" .
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-backup:$GITHUB_SHA" -f deploy/backup.Dockerfile deploy
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-video-worker:$GITHUB_SHA" workers/video
+      - name: Conferir restauração e render com dados sintéticos
+        run: |
+          docker tag "barberos-backup:$GITHUB_SHA" "barberos-backup-validacao:$GITHUB_SHA"
+          python3 scripts/publicacao/teste-backup-container.py "barberos-backup-validacao:$GITHUB_SHA"
+          docker run --rm --network none --entrypoint node -v "$PWD/workers/video/tests:/worker/tests:ro" "barberos-video-worker:$GITHUB_SHA" --test tests/render.test.mjs
+      - name: Preparar transporte das imagens
+        run: docker save "barberos-app:$GITHUB_SHA" "barberos-backup:$GITHUB_SHA" "barberos-video-worker:$GITHUB_SHA" | gzip -1 > "$RUNNER_TEMP/release/imagens.tar.gz"
+      - name: Publicar com backup e recuperação
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_IMAGEM_ANTERIOR: ${{ inputs.imagem_anterior }}
+          RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
+        run: node scripts/publicacao/publicar-vps.mjs "$RUNNER_TEMP/release" "$RUNNER_TEMP/publicacao.cifrada.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: publicacao-registro-cifrado
+          path: ${{ runner.temp }}/publicacao.cifrada.json
+          retention-days: 1
+          if-no-files-found: ignore
