@@ -1,0 +1,58 @@
+name: Conferir VPS sem publicar
+
+on:
+  workflow_dispatch:
+    inputs:
+      chave_relatorio:
+        description: Chave pública RSA SPKI base64 do destinatário do relatório
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: consultar-vps
+  cancel-in-progress: false
+
+jobs:
+  consultar:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: "produção"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Conferir cifragem do relatório
+        run: |
+          node --test scripts/publicacao/cifrar-relatorio.test.mjs
+          python3 scripts/publicacao/test_codigo_inspecao.py
+      - name: Consultar a VPS sem modificar a instalação
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: node scripts/publicacao/consultar-vps.mjs "$RUNNER_TEMP/vps.json"
+      - name: Proteger o relatório para o destinatário
+        env:
+          RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
+        run: node scripts/publicacao/cifrar-relatorio.mjs "$RUNNER_TEMP/vps.json" "$RUNNER_TEMP/vps.cifrado.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vps-inventario-cifrado
+          path: ${{ runner.temp }}/vps.cifrado.json
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remover arquivos temporários
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vps.json" "$RUNNER_TEMP/vps.cifrado.json"

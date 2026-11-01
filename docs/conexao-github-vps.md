@@ -20,6 +20,15 @@ descartáveis e processo SSH simulado. Somente uma execução bem-sucedida do wo
 real pelo GitHub. A confirmação do Windows não substitui essa execução, e o teste não aprova o deploy:
 inventário, backup/restauração e recuperação da versão precisam ser conferidos antes da publicação.
 
+O acesso real passou em [41345736651](https://github.com/luiscompanhoni/barberos/actions/runs/41345736651),
+após o usuário salvar o secret no ambiente. O teste não alterou a instalação.
+
+O workflow manual **Conferir VPS sem publicar** consulta capacidade, metadados Docker, migrações,
+metadados de backups e hashes do código instalado. Não lê `.env` nem dados de clientes. O relatório
+completo é cifrado com AES-256-GCM e a chave de sessão é protegida por RSA-OAEP-SHA256 para uma chave
+pública fornecida na execução. Somente o destinatário mantém a privada, fora do repositório e do GitHub.
+O artefato cifrado é retido por um dia; o JSON legível é removido do runner e nunca é publicado nos logs.
+
 Revisão sugerida, sem execução automática: três ciclos por envolver credenciais de produção.
 Prompt: “Revise em três ciclos a proteção e limpeza da chave; a identidade do host e erros; as restrições
 do workflow e evidências de autenticação. Não exponha segredos nem altere o servidor.”
