@@ -19,19 +19,32 @@ try {
     Copy-Item -LiteralPath $Fonte -Destination (Join-Path $pasta 'funcoes.ps1')
     Copy-Item -LiteralPath $CompararAnterior -Destination (Join-Path $pasta 'anterior.ps1')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'testar-chave-windows.ps1') -Destination (Join-Path $pasta 'testar.ps1')
-    $credencial = [Management.Automation.PSCredential]::new(($env:COMPUTERNAME + '\' + $nome), $senha)
     $argumentos = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $pasta 'testar.ps1') + '" -ExigirUsuarioComum -Fonte "' + (Join-Path $pasta 'funcoes.ps1') + '" -CompararAnterior "' + (Join-Path $pasta 'anterior.ps1') + '" -PastaTemporaria "' + $pasta + '"'
-    $stdout = Join-Path $pasta 'stdout.log'
-    $stderr = Join-Path $pasta 'stderr.log'
-    $processo = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $argumentos -Credential $credencial -LoadUserProfile -RedirectStandardOutput $stdout -RedirectStandardError $stderr -PassThru
-    if (-not $processo.WaitForExit(180000)) { $processo.Kill(); throw 'Teste sem admin excedeu o prazo' }
-    $processo.Refresh()
-    Get-Content -LiteralPath $stdout
+    $info = [Diagnostics.ProcessStartInfo]::new()
+    $info.FileName = Join-Path $PSHOME 'powershell.exe'
+    $info.Arguments = $argumentos
+    $info.UserName = $nome
+    $info.Domain = $env:COMPUTERNAME
+    $info.Password = $senha
+    $info.LoadUserProfile = $true
+    $info.UseShellExecute = $false
+    $info.WorkingDirectory = $pasta
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    $info.RedirectStandardInput = $true
+    $processo = [Diagnostics.Process]::new()
+    $processo.StartInfo = $info
+    [void]$processo.Start()
+    $processo.StandardInput.Close()
+    $saida = $processo.StandardOutput.ReadToEndAsync()
+    $erro = $processo.StandardError.ReadToEndAsync()
+    if (-not $processo.WaitForExit(180000)) { $processo.Kill(); $processo.WaitForExit(); throw 'Teste sem admin excedeu o prazo' }
+    Write-Host $saida.Result
     if ($processo.ExitCode -ne 0) {
-        Get-Content -LiteralPath $stderr
+        Write-Host $erro.Result
         throw ('Teste sem admin falhou: ' + $processo.ExitCode)
     }
-    if ([IO.File]::ReadAllText($stdout) -notmatch 'CONCLUIDO: 2 clientes SSH') { throw 'Os dois clientes SSH precisam concluir os testes' }
+    if ($saida.Result -notmatch 'CONCLUIDO: 2 clientes SSH') { throw 'Os dois clientes SSH precisam concluir os testes' }
 } finally {
     if ($null -ne $processo) { $processo.Dispose() }
     if ($criado) { Remove-LocalUser -Name $nome }
