@@ -11,21 +11,19 @@ function Exigir-ArquivoNormal([string]$Caminho) {
 function Proteger-Arquivo([string]$Caminho) {
     $usuario = [Security.Principal.WindowsIdentity]::GetCurrent().User
     try {
-        # Altera somente a DACL. Regravar o proprietario exige privilegio desnecessario.
-        $acl = Get-Acl -LiteralPath $Caminho
+        # Le somente o dono e persiste somente a DACL. Nao solicita auditoria/SACL.
+        $dono = [IO.File]::GetAccessControl($Caminho, [Security.AccessControl.AccessControlSections]::Owner)
         $permitidos = @($usuario.Value, 'S-1-5-18', 'S-1-5-32-544')
-        $proprietario = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+        $proprietario = $dono.GetOwner([Security.Principal.SecurityIdentifier]).Value
         if ($permitidos -notcontains $proprietario) { throw 'BB-ACL-DONO: A chave pertence a outro usuario; foi preservada.' }
+        $acl = [Security.AccessControl.FileSecurity]::new()
         $acl.SetAccessRuleProtection($true, $false)
-        foreach ($regra in @($acl.GetAccessRules($true, $false, [Security.Principal.SecurityIdentifier]))) {
-            $acl.RemoveAccessRuleSpecific($regra)
-        }
         foreach ($id in $permitidos) {
             $sid = [Security.Principal.SecurityIdentifier]::new($id)
             $regra = [Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'Allow')
             $acl.AddAccessRule($regra)
         }
-        Set-Acl -LiteralPath $Caminho -AclObject $acl
+        [IO.File]::SetAccessControl($Caminho, $acl)
     } catch {
         # Esta etapa so manipula metadados; nunca le o conteudo da chave privada.
         $motivo = $_.Exception.Message.Replace($Caminho, '[arquivo da chave]') -replace '[\r\n]+', ' '

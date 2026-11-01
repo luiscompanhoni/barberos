@@ -1,6 +1,19 @@
 # Usa chaves descartaveis. Nao conecta a servidor nem le credenciais existentes.
-param([string]$Fonte = (Join-Path $PSScriptRoot 'conectar-github-windows.ps1'))
+param(
+    [string]$Fonte = (Join-Path $PSScriptRoot 'conectar-github-windows.ps1'),
+    [switch]$ExigirUsuarioComum,
+    [string]$CompararAnterior,
+    [string]$PastaTemporaria = ([IO.Path]::GetTempPath())
+)
 $ErrorActionPreference = 'Stop'
+if ($ExigirUsuarioComum) {
+    $identidade = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identidade)
+    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'O teste exige usuario sem administracao' }
+    $privilegios = (& whoami.exe /priv) -join "`n"
+    if ($privilegios -match 'SeSecurityPrivilege') { throw 'O teste exige ausencia de SeSecurityPrivilege' }
+    Write-Host 'CONFIRMADO: usuario comum, sem administracao e sem SeSecurityPrivilege.'
+}
 $tokens = $null
 $erros = $null
 $ast = [Management.Automation.Language.Parser]::ParseFile($Fonte, [ref]$tokens, [ref]$erros)
@@ -20,7 +33,7 @@ function Gerar-Teste([string]$Executavel, [string]$Chave, [string]$Senha = '') {
         Exigir ($p.ExitCode -eq 0) 'Falha ao gerar fixture'
     } finally { $p.Dispose() }
 }
-$raiz = Join-Path ([IO.Path]::GetTempPath()) ('barberos-chave-teste-' + [guid]::NewGuid().ToString('N'))
+$raiz = Join-Path $PastaTemporaria ('barberos-chave-teste-' + [guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($raiz) | Out-Null
 $clientes = 0
 try {
@@ -32,13 +45,19 @@ try {
         $chave = Join-Path $pasta 'chave com espacos [teste]'
         Gerar-Teste $cliente $chave
         $hash = (Get-FileHash -LiteralPath $chave).Hash
-        $acl = Get-Acl -LiteralPath $chave
+        if ($CompararAnterior) {
+            $anterior = [scriptblock]::Create([IO.File]::ReadAllText($CompararAnterior) + "`nProteger-Arquivo `$args[0]")
+            try { & $anterior $chave; Write-Host 'V2: erro de privilegio nao reproduzido nesta fixture.' }
+            catch { Write-Host ('V2: ' + $_.Exception.Message) }
+        }
+        $secoes = [Security.AccessControl.AccessControlSections]::Access -bor [Security.AccessControl.AccessControlSections]::Owner
+        $acl = [IO.File]::GetAccessControl($chave, $secoes)
         $dono = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
         $todos = [Security.Principal.SecurityIdentifier]::new('S-1-1-0')
         $acl.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new($todos, 'Read', 'Allow'))
-        Set-Acl -LiteralPath $chave -AclObject $acl
+        [IO.File]::SetAccessControl($chave, $acl)
         Proteger-Arquivo $chave
-        $depois = Get-Acl -LiteralPath $chave
+        $depois = [IO.File]::GetAccessControl($chave, $secoes)
         Exigir ($depois.GetOwner([Security.Principal.SecurityIdentifier]).Value -eq $dono) 'Proprietario alterado'
         $permitidos = @([Security.Principal.WindowsIdentity]::GetCurrent().User.Value, 'S-1-5-18', 'S-1-5-32-544')
         foreach ($r in $depois.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier])) {

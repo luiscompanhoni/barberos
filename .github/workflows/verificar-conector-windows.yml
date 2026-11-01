@@ -13,6 +13,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Validar leitura, permissoes e preservacao com chaves descartaveis
+      - name: Validar DACL sem administrador e sem SeSecurityPrivilege
         shell: powershell
-        run: .\scripts\publicacao\testar-chave-windows.ps1 -Fonte .\scripts\publicacao\funcoes-chave-conector.ps1
+        run: .\scripts\publicacao\testar-chave-sem-admin.ps1 -Fonte .\scripts\publicacao\funcoes-chave-conector.ps1 -CompararAnterior .\scripts\publicacao\funcoes-chave-v2.ps1
