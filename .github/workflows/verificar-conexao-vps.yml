@@ -1,0 +1,42 @@
+name: Verificar conexão com a VPS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/verificar-conexao-vps.yml
+      - scripts/publicacao/verificar-conexao.mjs
+      - scripts/publicacao/verificar-conexao.test.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verificar-conexao-vps
+  cancel-in-progress: false
+
+jobs:
+  conectar:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: "produção"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Conferir proteção de credenciais e tratamento de erros
+        run: node --test scripts/publicacao/verificar-conexao.test.mjs
+      - name: Validar conexão por chave sem modificar a VPS
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: node scripts/publicacao/verificar-conexao.mjs
