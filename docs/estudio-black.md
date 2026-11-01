@@ -24,7 +24,7 @@ O processador recebe somente os arquivos do trabalho com lease válido. Ele não
 
 Na homologação, o worker roda em rede interna, sem porta pública, com limites de CPU, memória e processos. O aplicativo usa um volume persistente exclusivo para mídias.
 
-Os temporários `/worker/jobs` usam tmpfs de até 1 GiB nos dois Composes do Studio. O conteúdo é descartado ao reiniciar o container, inclusive depois de interrupção abrupta. O volume antigo `estudio_jobs` não é apagado por essa mudança. O tmpfs consome parte do limite de 2 GiB do worker; render no pior caso ainda exige medição antes de ativar produção. Espaço insuficiente faz o trabalho falhar, sem crescer indefinidamente no disco da VPS.
+Os temporários `/worker/jobs` usam tmpfs de até 1,5 GiB nos dois Composes do Studio. `TMPDIR` aponta para essa mesma área e é repassado ao render: o HyperFrames exige pelo menos 1 GiB livre antes de iniciar. O conteúdo é descartado ao reiniciar o container, inclusive depois de interrupção abrupta. O volume antigo `estudio_jobs` não é apagado. O tmpfs consome parte do limite total de 2 GiB do worker; sua capacidade não é memória reservada adicional. Espaço insuficiente faz o trabalho falhar, sem crescer indefinidamente no disco da VPS. O teste de publicação renderiza mídia sintética com esses limites; isso não comprova todos os vídeos no tamanho máximo.
 
 ## Operação
 

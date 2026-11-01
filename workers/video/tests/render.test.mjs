@@ -18,3 +18,9 @@ test("subprocessos não herdam credenciais ou plugins do aplicativo", () => {
   assert.equal(env.HYPERFRAMES_NO_TELEMETRY, "1");
   assert.equal(env.HYPERFRAMES_NO_AUTO_INSTALL, "1");
 });
+test("render usa o espaço temporário dimensionado para o motor de vídeo", () => {
+  const anterior = process.env.TMPDIR;
+  process.env.TMPDIR = "/worker/jobs";
+  try { assert.equal(ambienteRender().TMPDIR, "/worker/jobs"); }
+  finally { if (anterior === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = anterior; }
+});

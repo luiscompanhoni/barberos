@@ -13,6 +13,7 @@ ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium \
     HYPERFRAMES_FFMPEG_PATH=/usr/bin/ffmpeg \
     HYPERFRAMES_FFPROBE_PATH=/usr/bin/ffprobe \
     ESTUDIO_WORKER_TMP=/worker/jobs \
+    TMPDIR=/worker/jobs \
     HYPERFRAMES_NO_TELEMETRY=1 \
     DO_NOT_TRACK=1 \
     HYPERFRAMES_NO_UPDATE_CHECK=1 \

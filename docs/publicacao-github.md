@@ -51,6 +51,13 @@ restauração real, compatibilidade do schema e publicação são verificadas pe
 Um teste sem sessão não comprova a navegação autenticada de todos os papéis. Não há abertura de sessão
 em nome de um funcionário nem envio de mensagens/testes de pagamento na produção.
 
+A primeira execução, [41348137928](https://github.com/luiscompanhoni/barberos/actions/runs/41348137928),
+construiu as imagens e passou no ensaio real de restauração de banco/mídia. O render sintético bloqueou
+a publicação antes de acessar a VPS: o HyperFrames exige 1 GiB livre tanto no temporário quanto no destino,
+e `/tmp` tinha limite de 256 MiB; `/worker/jobs`, de exatamente 1 GiB, já continha o vídeo de entrada.
+A correção usa a mesma área `TMPDIR=/worker/jobs` com limite de 1,5 GiB, mantendo o limite total de memória
+em 2 GiB. A verificação de espaço do motor permanece ativa e o teste real continua obrigatório.
+
 Se a conexão cair, consulte primeiro a instalação e `operacao.json`; não repita automaticamente uma
 execução incerta. Uma release existente é preservada e não é sobrescrita. Não se executa `image prune`.
 

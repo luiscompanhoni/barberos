@@ -7,7 +7,7 @@ export const cli = join(aqui, "node_modules/hyperframes/bin/hyperframes.mjs");
 
 export function ambienteRender() {
   const e = {};
-  for (const key of ["PATH", "Path", "SystemRoot", "WINDIR", "TEMP", "TMP", "USERPROFILE", "HOME", "LANG", "HYPERFRAMES_BROWSER_PATH", "HYPERFRAMES_FFMPEG_PATH", "HYPERFRAMES_FFPROBE_PATH"]) if (process.env[key]) e[key] = process.env[key];
+  for (const key of ["PATH", "Path", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR", "USERPROFILE", "HOME", "LANG", "HYPERFRAMES_BROWSER_PATH", "HYPERFRAMES_FFMPEG_PATH", "HYPERFRAMES_FFPROBE_PATH"]) if (process.env[key]) e[key] = process.env[key];
   return { ...e, HYPERFRAMES_NO_TELEMETRY: "1", DO_NOT_TRACK: "1", HYPERFRAMES_NO_UPDATE_CHECK: "1", HYPERFRAMES_NO_AUTO_INSTALL: "1", CI: "true" };
 }
 function matar(child) {
