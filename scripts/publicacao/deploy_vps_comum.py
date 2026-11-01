@@ -92,11 +92,11 @@ def conferir_https(revisao):
     raise RuntimeError("A rota privada do Estúdio não recusou acesso anônimo.")
 
 
-def backup_verificado(base, imagem, rede, ambiente, volume):
+def backup_verificado(base, imagem, rede, ambiente, volume, tipo="DEPLOY"):
     antes = set((base / "backups").glob("barberos-*.sql.gz"))
     executar(["docker", "run", "--rm", "--network", rede, "--env-file", str(ambiente),
               "-v", str(base / "backups") + ":/backups", "-v", volume + ":/media-estudio:ro",
-              imagem, "agora", "ANTES_DEPLOY"], prazo=600)
+              imagem, "agora", tipo], prazo=600)
     novos = set((base / "backups").glob("barberos-*.sql.gz")) - antes
     if len(novos) != 1:
         raise RuntimeError("Backup da execução não foi identificado inequivocamente.")

@@ -122,7 +122,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         else:
             raise RuntimeError("Worker não confirmou autenticação e presença.")
         etapa("backup_apos_migracao")
-        estado["backupDepois"] = backup_verificado(base, novas["backup"], rede, pasta / "backup.env", volume)
+        estado["backupDepois"] = backup_verificado(base, novas["backup"], rede, pasta / "backup.env", volume, tipo="MANUAL")
         conferir_https(commit)
         estado.update(concluido=True, imagemNova=novo["Image"], composeAtual=[str(p) for p in arquivos], workerAtivo=True)
         etapa("concluido")
