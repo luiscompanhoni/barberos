@@ -37,6 +37,8 @@ process.env.CELCASH_AMBIENTE = "sandbox";
 const instante = new Date("2026-10-23T13:00:00Z");
 
 async function main() {
+  // O banco isolado não recebe o seed geral; prepare a configuração antes das leituras paralelas.
+  await db.configuracao.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   const usuario = await db.usuario.create({ data: { nome: "Dono sintético", telefone: `teste-${lote}`, papel: "DONO" } });
   const s: Sessao = { usuarioId: usuario.id, papel: "DONO", nome: usuario.nome, clienteId: null, barbeiroId: null };
   const plano = await db.plano.create({ data: { nome: `[teste ${lote}]`, precoCentavos: 11800 } });
