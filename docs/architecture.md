@@ -345,7 +345,7 @@ A ponte em src/lib/estudio/roteiros.ts copia somente resultados aprovados de Con
 
 ### Reserva de cache na publicação
 
-Quando falta a reserva de disco exigida para o pacote, a manutenção automática considera somente cache de build dangling com mais de 48 horas e mantém 7 GB de cache. Confere antes/depois as imagens, containers, volumes, configuração e backups. Não usa image/system/volume prune e não reduz a reserva livre exigida pela publicação.
+Quando falta a reserva de disco exigida para o pacote, a manutenção automática considera somente cache de build não utilizado com mais de 48 horas e mantém 7 GB de cache. Confere antes/depois as imagens, containers, volumes, configuração e backups. Não usa image/system/volume prune e não reduz a reserva livre exigida pela publicação.
 
 
 

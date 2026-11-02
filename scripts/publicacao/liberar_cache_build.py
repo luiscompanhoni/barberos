@@ -40,8 +40,8 @@ def liberar(base, projeto, imagem):
         raise RuntimeError("Versão ou saúde mudou; cache preservado.")
     antes = preservar(base)
     livre = shutil.disk_usage(base).free
-    # Sem --all: apenas cache dangling; não usa image/system/volume prune.
-    executar(["docker", "builder", "prune", "--force", "--filter", "until=48h", "--keep-storage", "7GB"])
+    # Apenas cache de build não utilizado há mais de 48h; não usa image/system/volume prune.
+    executar(["docker", "builder", "prune", "--all", "--force", "--filter", "until=48h", "--keep-storage", "7GB"])
     depois = preservar(base)
     for campo in ("imagens", "containers", "volumes"):
         if not antes[campo].issubset(depois[campo]):
@@ -51,7 +51,7 @@ def liberar(base, projeto, imagem):
     return {"livreAntes": livre, "livreDepois": shutil.disk_usage(base).free,
             "imagensPreservadas": True, "containersPreservados": True,
             "volumesPreservados": True, "backupsConfiguracaoPreservados": True,
-            "filtro": "until=48h", "reservaCache": "7GB"}
+            "filtro": "until=48h", "reservaCache": "7GB", "escopoCache": "unused"}
 
 
 if __name__ == "__main__":
