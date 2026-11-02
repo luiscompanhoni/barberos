@@ -2093,9 +2093,36 @@ model CandidaturaRecrutamento {
   formularioSnapshot Json?
   respostas Json?
   avaliacoes AvaliacaoRecrutamento[]
+  entrevistas EntrevistaRecrutamento[]
 
   @@index([vagaId, etapa, criadoEm])
   @@map("recrutamento_candidaturas")
+}
+
+model EntrevistaRecrutamento {
+  id String @id @default(cuid())
+  candidaturaId String
+  candidatura CandidaturaRecrutamento @relation(fields: [candidaturaId], references: [id], onDelete: Cascade)
+  donoId String
+  chave String @unique
+  tokenHash String @unique
+  geracao Int @default(0)
+  estado String @default("CONVIDADO")
+  local String
+  duracaoMin Int @default(45)
+  expiraEm DateTime @db.Timestamptz(3)
+  propostaInicio DateTime? @db.Timestamptz(3)
+  propostaExpiraEm DateTime? @db.Timestamptz(3)
+  inicio DateTime? @db.Timestamptz(3)
+  fim DateTime? @db.Timestamptz(3)
+  confirmadoEm DateTime? @db.Timestamptz(3)
+  canceladoEm DateTime? @db.Timestamptz(3)
+  conversaId String? @unique
+  versao Int @default(0)
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  @@index([donoId, estado, inicio])
+  @@index([candidaturaId, criadoEm])
+  @@map("recrutamento_entrevistas")
 }
 
 model FormularioRecrutamento {

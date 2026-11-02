@@ -336,3 +336,8 @@ A ponte em src/lib/estudio/roteiros.ts copia somente resultados aprovados de Con
 
 ### Recrutamento: definições versionadas e rubricas privadas
 `recrutamento_formularios` guarda definições e aprovação; versões aprovadas são copiadas para evolução, sem editar conteúdo. Vagas podem fixar uma versão aprovada. Candidaturas guardam snapshot e respostas; legado usa colunas opcionais nulas. `recrutamento_avaliacoes` guarda avaliações humanas por etapa e evidência, com controle otimista pela versão da candidatura e auditoria na mesma transação. A projeção pública é uma lista explícita de campos, sem critérios ou pesos. Ver `docs/recrutamento.md`.
+
+
+### Agenda de entrevistas (local)
+
+`src/lib/recrutamento/entrevistas*` centraliza convites, disponibilidade e confirmação. Portal e adaptador `src/lib/bot/entrevistas.ts` reutilizam a mesma transação e auditoria. `recrutamento_entrevistas` mantém reserva separada de agendamentos de serviços. A trava PostgreSQL por dono serializa confirmações; índice parcial protege início duplicado. O transporte WhatsApp fica desativado por padrão. Regras operacionais e recuperação de convites: `docs/recrutamento.md`.

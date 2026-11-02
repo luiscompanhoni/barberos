@@ -1,3 +1,4 @@
+import { contemConviteEntrevista, comandoReservadoEntrevista, processarBotEntrevista, registroSeguroEntrevista } from "./entrevistas";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -35,9 +36,22 @@ export function receberMensagem(e: Entrada, opts: { modelo?: Modelo } = {}) {
 
 async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   const texto = e.texto ?? "[mensagem que não e texto: áudio, foto, figurinha ou documento]";
-  const conversa = await registrarEntrada({ ...e, texto });
+  const conversa = await registrarEntrada({ ...e, texto: registroSeguroEntrevista(texto) });
   if (!conversa) return; // repetida
-  const cfg = await configuracao();
+  const cfgEntrevista = process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true" ? await configuracao() : null;
+  if (cfgEntrevista && !cfgEntrevista.botAtivo) return;
+  // Uma sessão de entrevista existente não cai no modelo geral se o canal for desligado.
+  if (conversa.estado !== "HUMANO" && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO !== "true" && !contemConviteEntrevista(texto) && !comandoReservadoEntrevista(texto)) {
+    if (await db.entrevistaRecrutamento.findUnique({ where: { conversaId: conversa.id }, select: { id: true } })) return;
+  }
+  if (e.texto && conversa.estado !== "HUMANO" && (contemConviteEntrevista(e.texto) || comandoReservadoEntrevista(e.texto) || process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true")) {
+    const entrevista = await processarBotEntrevista({ conversaId: conversa.id, telefone: conversa.telefone }, e.texto);
+    if (entrevista.tratado) {
+      if (entrevista.resposta && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true") await enviarNaConversa(conversa.id, entrevista.resposta, "BOT");
+      return;
+    }
+  }
+  const cfg = cfgEntrevista ?? await configuracao();
   if (!cfg.botAtivo || conversa.estado === "HUMANO") return; // equipe responde pelo painel
 
   if (!e.texto) {

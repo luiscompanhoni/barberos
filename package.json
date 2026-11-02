@@ -44,7 +44,8 @@
     "teste:cancelamento": "tsx --env-file=.env scripts/teste-cancelamento.ts",
     "teste:lgpd": "tsx --env-file=.env scripts/teste-lgpd.ts",
     "teste:evolucao": "node --env-file=.env scripts/teste-evolucao.mjs",
-    "teste:recrutamento:formularios": "tsx scripts/teste-recrutamento-formularios.ts"
+    "teste:recrutamento:formularios": "tsx scripts/teste-recrutamento-formularios.ts",
+    "teste:recrutamento:entrevistas": "tsx scripts/teste-recrutamento-entrevistas.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",

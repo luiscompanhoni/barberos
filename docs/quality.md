@@ -137,3 +137,8 @@ Auditoria de 15/10/2026 (`npm audit --omit=dev`): 5 alertas altos, nenhum críti
 | `source-map-js` (via `postcss`) | DoS com source maps indexados | `npm audit fix` | build apenas; corrigir junto da atualização do Next |
 
 Lint e build aprovados não significam auditoria zerada. Checks são comandos explícitos: sem hooks Git, bloqueios de push ou exigência de branch. Atualize este documento junto dos scripts e regras que mudarem.
+
+
+### Regressões de entrevistas
+
+`npm run teste:recrutamento:entrevistas` exige exclusivamente o banco `barberos_recrutamento_entrevistas_teste` em `127.0.0.1:55439`. O script bloqueia rede e usa fixtures e segredo sintéticos. Cobertura adicional: convite antigo versus convite novo, rollback de confirmação com histórico/auditoria, seleção encerrada, auditoria do bot e rotação do segredo. Testes unitários de rotas verificam autorização, limite de corpo e cabeçalhos inclusive em erros.

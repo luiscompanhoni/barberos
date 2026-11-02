@@ -104,7 +104,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         override = codigo / "deploy/versao.json"
         escrever_privado(override, json.dumps({"services": {
             "app": {"image": novas["app"], "command": ["node", "server.js"], "environment": {
-                "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": ""}},
+                "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false"}},
             "backup": {"image": novas["backup"], "volumes": [str(base / "backups") + ":/backups"]},
             "video-worker": {"image": novas["video-worker"]}}}))
         arquivos = [codigo / "deploy/docker-compose.yml", codigo / "deploy/docker-compose.estudio.producao.yml", override]

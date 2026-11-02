@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Roda todos os testes de fluxo (npm run teste:<area>) contra o banco do DATABASE_URL e falha se algum quebrar
 # (codigo de saida diferente de zero ou alguma linha "FALHOU"). Histórico, agentes, Estúdio e recrutamento usam destinos separados.
-# Uso: npm run teste:todos; DATABASE_URL, DATABASE_URL_HISTORICO, DATABASE_URL_AGENTES, DATABASE_URL_ESTUDIO e DATABASE_URL_RECRUTAMENTO devem estar migrados.
+# Uso: npm run teste:todos; DATABASE_URL, DATABASE_URL_HISTORICO, DATABASE_URL_AGENTES, DATABASE_URL_ESTUDIO, DATABASE_URL_RECRUTAMENTO e DATABASE_URL_ENTREVISTAS devem estar migrados.
 set -uo pipefail
 falharam=()
 for t in $(node -e 'console.log(Object.keys(require("./package.json").scripts).filter((k) => k.startsWith("teste:") && k !== "teste:todos").join(" "))'); do
@@ -13,6 +13,8 @@ for t in $(node -e 'console.log(Object.keys(require("./package.json").scripts).f
     saida=$(DATABASE_URL="${DATABASE_URL_ESTUDIO:-}" npm run -s "$t" 2>&1)
   elif [ "$t" = "teste:recrutamento:formularios" ]; then
     saida=$(DATABASE_URL="${DATABASE_URL_RECRUTAMENTO:-}" npm run -s "$t" 2>&1)
+  elif [ "$t" = "teste:recrutamento:entrevistas" ]; then
+    saida=$(DATABASE_URL="${DATABASE_URL_ENTREVISTAS:-}" npm run -s "$t" 2>&1)
   else
     saida=$(npm run -s "$t" 2>&1)
   fi

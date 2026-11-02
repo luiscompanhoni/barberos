@@ -293,3 +293,8 @@ operação ficam em docs/architecture.md; setup em docs/setup.md.
 
 ### Evolução local do banco de talentos
 Editor de formulários por função, aprovação e cópia de versões, ramificações simples e avaliação humana privada de formulário, entrevista e prática. Candidatos veem perguntas e instruções; notas e critérios são internos. Legado preservado. Implementação local ainda sem publicação; entrevistas não estão conectadas ao bot. Referência: `docs/recrutamento.md`.
+
+
+### Entrevistas — preparado localmente
+
+Recrutamento dispõe de convite manual pelo dono, escolha e confirmação explícita pelo candidato, janela presencial de segunda-feira 14h–16h e duração máxima de 45 minutos. Agenda própria e bot determinístico preparados; transporte desligado e publicação pendente. Consulte `docs/recrutamento.md`.

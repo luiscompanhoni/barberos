@@ -295,3 +295,8 @@ Falta:
 
 ### Recrutamento: formulários profissionais (02/11/2026)
 Implementação local de editor/versionamento e avaliação humana privada concluída; sem publicação. Validar interface no navegador e realizar piloto de perguntas/rubricas. Agendamento de entrevistas e bot seguem pendentes. Condições de contratação e periodicidade da referência de R$ 3.500 continuam a confirmar. Não abrir campanha nem ativar mensagens ou gastos. Ver `docs/recrutamento.md`.
+
+
+### Entrevistas — entrega local
+
+Implementados botão, portal de confirmação e bot determinístico com transporte desligado. Pendentes: quatro ciclos de revisão, conferência visual interativa (servidor local anteriormente bloqueado pela revisão automática), piloto humano, validação de restauração antes de futura migração em produção e futura publicação autorizada. Não ativar WhatsApp, IA paga ou gastos. Calendários externos e outros compromissos do dono ainda não participam da disponibilidade.

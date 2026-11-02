@@ -90,3 +90,22 @@ Novos hashes são canônicos quanto à ordem de chaves e escolhas múltiplas. O 
 Editor e avaliação avisam antes de descartar rascunhos em suas operações. O editor também protege recarga, links e troca de aba. Escolhas múltiplas obrigatórias têm validação nativa; IDs de ajuda são exclusivos por instância. A mudança de etapa do candidato mantém o componente de avaliação, preservando a mensagem de confirmação.
 
 A migração `20261102200000_recrutamento_contexto` adiciona `vagaSnapshot` opcional. Novas candidaturas guardam título, cidade, condições, função e título do formulário no mesmo recebimento. A tela usa o título congelado e mostra as condições originais; registros anteriores sem snapshot são identificados como sem cópia histórica. Nenhuma condição é reconstruída ou preenchida retroativamente.
+
+
+### Entrevistas presenciais — implementação local (02/11/2026)
+
+O botão “Marcar entrevista” prepara um convite, sem reservar horário e sem enviar mensagens. Somente DONO pode criar, renovar e cancelar convites; a gestão pode consultar o acompanhamento. O candidato escolhe e confirma explicitamente pelo portal `/entrevistas` ou pelo adaptador determinístico de WhatsApp. A confirmação registra a etapa ENTREVISTA e histórico na mesma transação, sem criar agenda de serviços, cliente, comanda ou cobrança.
+
+A janela é segunda-feira, 14h–16h, America/Sao_Paulo, com duração de 1 a 45 minutos (padrão 45), opções a cada 15 minutos nas quatro semanas seguintes. Uma proposta dura dez minutos e não bloqueia a agenda. A confirmação revalida conflitos sob trava transacional por dono. Convites não confirmados expiram em sete dias; renovação invalida o link anterior. Cancelamento preserva o histórico.
+
+O link privado usa token no fragmento, hash no banco e HMAC baseado em SESSION_SECRET; não deve ser compartilhado. A visão pública não recebe nome, telefone, notas ou rubricas. A troca de SESSION_SECRET exige renovar os convites antigos. O bot não usa IA. `RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO=false` é o padrão; nenhuma configuração real ou transporte foi ativado. O adaptador só poderá responder após futura ativação autorizada e teste de canal.
+
+A migração aditiva é `20261102210000_recrutamento_entrevistas`. Esta entrega é local, sem publicação. Conflitos são conferidos entre entrevistas do mesmo dono; não há sincronização com calendários externos ou demais compromissos pessoais. Há confirmação por posse do link; isso não verifica identidade civil. O canal WhatsApp exige também o telefone declarado, sem fundir candidaturas.
+
+
+### Revisão de entrevistas em quatro ciclos — 02/11/2026
+
+1. Identidade e visão pública: convites colados como link ou em texto adicional são removidos do registro de mensagens e não chegam ao modelo geral. Comandos reservados também não são encaminhados ao modelo quando o transporte está desligado. O telefone declarado é conferido antes de encerrar uma sessão do bot.
+2. Concorrência e auditoria: criar, renovar e confirmar usam trava por candidatura além da agenda do dono. Renovar um convite antigo não pode reativá-lo se outro convite/entrevista estiver ativo, inclusive de outro dono. A vinculação do bot revalida o token após a trava; vínculo e saída são auditados. Uma sessão de entrevista continua isolada do modelo geral quando o canal é desligado. O interruptor geral botAtivo também é respeitado.
+3. Permissões e interface: a API mantém autorização por sessão/papel revalidado; a visão pública não expõe notas ou dados pessoais. Erros da confirmação também levam no-store/no-referrer. A interface oferece nova tentativa de consulta, informa expiração e tem foco de teclado explícito. Seleções encerradas deixam de oferecer opções, confirmação e renovação. Cancelamento após início não é oferecido.
+4. Integração e recuperação: a migração existente é aditiva e foi preservada; não há alteração dos formulários, respostas ou notas legadas. O roteiro de recuperação local compara contagem e checksum de todas as tabelas após pg_dump/pg_restore em outro banco, sem sobrescrever o original. SESSION_SECRET é configuração externa ao dump; sua rotação invalida convites antigos, que exigem renovação. Validação e limites finais constam no relatório de revisão.

@@ -66,7 +66,7 @@ def conferir_migracoes(aplicadas, pasta):
 
 def exigir_migracoes_da_publicacao(pendentes):
     # Somente as migrações revisadas; executar a publicação ainda exige pedido explícito.
-    if set(pendentes) - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros", "20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto"}:
+    if set(pendentes) - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros", "20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto", "20261102210000_recrutamento_entrevistas"}:
         raise RuntimeError("Migração pendente fora do escopo aprovado desta publicação.")
 
 
@@ -74,7 +74,9 @@ def conferir_central_desligada(app):
     env = ambiente_container(app)
     if env.get("AGENTES_HABILITADOS") != "true" or env.get("AGENTES_EXECUCAO_ATIVA") != "false" or env.get("META_ADS_TOKEN") != "":
         raise RuntimeError("A Central não confirmou interface habilitada com execução e conexão Meta desligadas.")
-    return {"habilitada": True, "execucaoAtiva": False, "metaTokenConfigurado": False}
+    if env.get("RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO") != "false":
+        raise RuntimeError("Envios de entrevistas não confirmaram estado desligado.")
+    return {"habilitada": True, "execucaoAtiva": False, "metaTokenConfigurado": False, "enviosEntrevistasAtivos": False}
 
 
 def aguardar_saude(projeto, prazo=180):

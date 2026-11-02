@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api } from "@/lib/cliente-api";
 import { AVISO_PRIVACIDADE, ETAPAS, ROTULOS } from "@/lib/recrutamento/regras";
 import { FormulariosTela, type FormularioGestao } from "./FormulariosTela";
+import { MarcarEntrevista } from "./MarcarEntrevista";
 import { AvaliacaoCandidato } from "./AvaliacaoCandidato";
 type Vaga = { id: string; titulo: string; cidade: string; descricao: string; privacidade: string; ativa: boolean; versao: number; formularioId: string | null; link: string; _count: { candidaturas: number } };
 type Candidatura = {
@@ -91,6 +92,7 @@ export function RecrutamentoTela() {
         <p className="text-xs text-zinc-500">Recebido: {new Date(c.criadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}. Futuras oportunidades: {c.futurasOportunidades ? "autorizadas" : "não autorizadas"}.</p>
         {Object.keys(c.origem).length > 0 && <p className="text-xs break-words text-zinc-500">Origem declarada: {Object.entries(c.origem).map(([k, v]) => `${k}: ${v}`).join(" · ")}</p>}
         <form key={c.versao} className="space-y-2 border-t border-zinc-500/20 pt-3" onSubmit={(e) => etapa(e, c)}><label className="block text-sm">Etapa<select className="campo" name="etapa" defaultValue={c.etapa}>{ETAPAS.filter((x) => x !== "BANCO" || c.futurasOportunidades).map((x) => <option key={x} value={x}>{ROTULOS[x]}</option>)}</select></label><label className="block text-sm">Registro da análise profissional<textarea className="campo" name="motivo" minLength={2} maxLength={1500} required rows={2} placeholder="Evidências do trabalho, entrevista ou próximo passo." /></label><div className="flex flex-wrap gap-2"><button className="btn" disabled={ocupado}>Salvar acompanhamento</button><button type="button" className="btn-perigo" disabled={ocupado} onClick={() => excluir(c)}>Excluir dados</button></div></form>
+        <MarcarEntrevista candidaturaId={c.id} versao={c.versao} atualizou={() => setRevisao(x => x + 1)} />
         <AvaliacaoCandidato aoAlterar={alterarRascunho} id={c.id} atualizou={() => setRevisao(x => x + 1)} />
         {c.historico.length > 0 && <details><summary className="cursor-pointer text-sm">Histórico recente</summary><ol className="mt-2 space-y-2 text-xs">{c.historico.map((h) => <li className="whitespace-pre-wrap" key={h.id}>{ROTULOS[h.etapa]} · {new Date(h.criadoEm).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}: {h.motivo}</li>)}</ol></details>}
       </article>)}</div>
