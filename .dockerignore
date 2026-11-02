@@ -1,6 +1,11 @@
 node_modules
 **/node_modules
-workers
+# O aplicativo usa apenas o catálogo e a regra de cortes compartilhados com o worker.
+workers/*
+!workers/video
+workers/video/*
+!workers/video/templates.json
+!workers/video/tempos.mjs
 .next
 .git
 .env
