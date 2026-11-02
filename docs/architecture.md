@@ -341,3 +341,9 @@ A ponte em src/lib/estudio/roteiros.ts copia somente resultados aprovados de Con
 ### Agenda de entrevistas (local)
 
 `src/lib/recrutamento/entrevistas*` centraliza convites, disponibilidade e confirmação. Portal e adaptador `src/lib/bot/entrevistas.ts` reutilizam a mesma transação e auditoria. `recrutamento_entrevistas` mantém reserva separada de agendamentos de serviços. A trava PostgreSQL por dono serializa confirmações; índice parcial protege início duplicado. O transporte WhatsApp fica desativado por padrão. Regras operacionais e recuperação de convites: `docs/recrutamento.md`.
+
+
+### Reserva de cache na publicação
+
+Quando falta a reserva de disco exigida para o pacote, a manutenção automática considera somente cache de build dangling com mais de 48 horas e mantém 8 GB de cache. Confere antes/depois as imagens, containers, volumes, configuração e backups. Não usa image/system/volume prune e não reduz a reserva livre exigida pela publicação.
+

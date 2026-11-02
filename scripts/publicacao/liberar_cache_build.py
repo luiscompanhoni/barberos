@@ -41,7 +41,7 @@ def liberar(base, projeto, imagem):
     antes = preservar(base)
     livre = shutil.disk_usage(base).free
     # Sem --all: apenas cache dangling; não usa image/system/volume prune.
-    executar(["docker", "builder", "prune", "--force", "--filter", "until=48h", "--keep-storage", "10GB"])
+    executar(["docker", "builder", "prune", "--force", "--filter", "until=48h", "--keep-storage", "8GB"])
     depois = preservar(base)
     for campo in ("imagens", "containers", "volumes"):
         if not antes[campo].issubset(depois[campo]):
@@ -51,7 +51,7 @@ def liberar(base, projeto, imagem):
     return {"livreAntes": livre, "livreDepois": shutil.disk_usage(base).free,
             "imagensPreservadas": True, "containersPreservados": True,
             "volumesPreservados": True, "backupsConfiguracaoPreservados": True,
-            "filtro": "until=48h", "reservaCache": "10GB"}
+            "filtro": "until=48h", "reservaCache": "8GB"}
 
 
 if __name__ == "__main__":
@@ -73,3 +73,4 @@ if __name__ == "__main__":
     with open(trava, "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
         print(json.dumps(liberar(base, args.projeto, args.imagem)))
+
