@@ -289,3 +289,7 @@ esta etapa usa HyperFrames local, sem geração paga de mídia, anúncio ou envi
 
 Atualize este documento quando objetivo, escopo, restrições ou critérios de aceitação mudarem. Decisões técnicas e
 operação ficam em docs/architecture.md; setup em docs/setup.md.
+
+
+### Evolução local do banco de talentos
+Editor de formulários por função, aprovação e cópia de versões, ramificações simples e avaliação humana privada de formulário, entrevista e prática. Candidatos veem perguntas e instruções; notas e critérios são internos. Legado preservado. Implementação local ainda sem publicação; entrevistas não estão conectadas ao bot. Referência: `docs/recrutamento.md`.

@@ -66,7 +66,7 @@ def conferir_migracoes(aplicadas, pasta):
 
 def exigir_migracoes_da_publicacao(pendentes):
     # Somente as migrações revisadas; executar a publicação ainda exige pedido explícito.
-    if set(pendentes) - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros"}:
+    if set(pendentes) - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros", "20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto"}:
         raise RuntimeError("Migração pendente fora do escopo aprovado desta publicação.")
 
 

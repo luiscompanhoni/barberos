@@ -32,6 +32,14 @@ class DeployTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
                 exigir_migracoes_da_publicacao(["20261102030000_central_agentes", extra])
 
+    def test_publicacao_aceita_as_tres_migracoes_de_recrutamento_revisadas(self):
+        revisadas = ["20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto"]
+        exigir_migracoes_da_publicacao(revisadas)
+        for m in revisadas:
+            exigir_migracoes_da_publicacao([m])
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao(revisadas + ["20261102210000_nao_revisada"])
+
     def test_conferencia_recusa_execucao_paga_token_meta_ou_interface_ausente(self):
         seguro = {"AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": ""}
         def app(env):

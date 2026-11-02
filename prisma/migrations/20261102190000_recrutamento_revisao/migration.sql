@@ -1,0 +1,1 @@
+ALTER TABLE "recrutamento_vagas" ADD COLUMN "versao" INTEGER NOT NULL DEFAULT 0;

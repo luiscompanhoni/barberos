@@ -8,6 +8,8 @@ import { integracoesAgentes } from "./integracoes";
 import { configurarMeta, consultarInsights } from "./meta";
 import { dataLocal, somarDias } from "@/lib/agenda/tempo";
 
+import { CONHECIMENTO_BLACK } from "./conhecimento-black";
+
 type Fonte = { nome: string; consultadoEm: string; dados: unknown };
 export type ContextoAgente = { fontes: Fonte[]; integracoes: ReturnType<typeof integracoesAgentes>; limites: string[]; anterior: unknown };
 
@@ -16,6 +18,7 @@ export async function contextoAgente(agenteId: string, usuarioId: string, anteri
   const a = obterAgente(agenteId), agora = new Date();
   const cfg = await configuracao();
   const fontes: Fonte[] = [{ nome: "Configuração da barbearia", consultadoEm: agora.toISOString(), dados: { nome: cfg.nomeBarbearia, fuso: cfg.fuso, endereco: cfg.endereco } }];
+  fontes.push({ nome: "Base Black aprovada — " + CONHECIMENTO_BLACK.id, consultadoEm: agora.toISOString(), dados: CONHECIMENTO_BLACK });
   const loaders: Record<string, () => Promise<unknown>> = {
     negocio: () => db.servico.findMany({ where: { ativo: true }, select: { id: true, nome: true, duracaoMin: true, precoCentavos: true }, take: 100, orderBy: { nome: "asc" } }),
     agenda: async () => { const c = await capacidadeDaAgenda(+agora); return { hoje: c.hoje, horizontes: c.horizontes, servico: c.servico, observacao: "Disponibilidade é uma fotografia; reservar exige revalidar no serviço de agenda." }; },

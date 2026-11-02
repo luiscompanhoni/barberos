@@ -1,30 +1,41 @@
-import { createHash } from "node:crypto";
+import { hashesCandidatura } from "./hash-candidatura";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { VERSAO_FORMULARIO, zCandidatura, zEtapa, zVaga } from "./regras";
+import { exigirGestaoRecrutamento } from "./formularios";
+import { conferirFormulario } from "./vinculo-formulario";
+import { validarRespostas, zDefinicao } from "./formularios-regras";
 export const camposPublicosVaga = { id: true, titulo: true, cidade: true, descricao: true, privacidade: true } as const;
 export async function criarVaga(usuarioId: string, dados: z.infer<typeof zVaga>) {
   return db.$transaction(async (tx) => {
+    await exigirGestaoRecrutamento(tx, usuarioId);
+    await conferirFormulario(tx, dados.formularioId);
     const v = await tx.vagaRecrutamento.create({ data: { ...dados, criadoPorId: usuarioId } });
     await auditar(tx, usuarioId, "recrutamento.vaga.criada", "VagaRecrutamento", v.id, { ativa: v.ativa }); return v;
   });
 }
 export async function receberCandidatura(vagaId: string, b: z.infer<typeof zCandidatura>) {
-  const conteudoHash = createHash("sha256").update(JSON.stringify({ vagaId, ...b })).digest("hex");
+  const { conteudoHash, legadoHash } = hashesCandidatura(vagaId, b);
   const repetida = async () => {
     const c = await db.candidaturaRecrutamento.findUnique({ where: { envioId: b.envioId }, select: { conteudoHash: true } });
     if (!c) return false;
-    if (c.conteudoHash !== conteudoHash) throw new ErroNegocio("Este envio já foi utilizado. Reabra o formulário para uma nova candidatura.", 409);
+    if (c.conteudoHash !== conteudoHash && c.conteudoHash !== legadoHash) throw new ErroNegocio("Este envio já foi utilizado. Reabra o formulário para uma nova candidatura.", 409);
     return true;
   };
   if (await repetida()) return;
   try {
     await db.$transaction(async (tx) => {
-      const vaga = await tx.vagaRecrutamento.findFirst({ where: { id: vagaId, ativa: true } });
+      const vaga = await tx.vagaRecrutamento.findFirst({ where: { id: vagaId, ativa: true }, include: { formulario: true } });
       if (!vaga) throw naoEncontrado("Vaga aberta");
+      const formulario = vaga.formulario;
+      if ((vaga.formularioId ?? undefined) !== b.formularioId) throw new ErroNegocio("O formulário mudou. Reabra a página antes de enviar.", 409);
+      if (formulario && formulario.estado !== "APROVADO") throw new ErroNegocio("Formulário indisponível.", 409);
+      const definicao = formulario ? zDefinicao.parse(formulario.definicao) : null;
+      const respostas = definicao ? validarRespostas(definicao, b.respostas ?? {}) : undefined;
+      if (!definicao && (b.respostas || !b.servicos.length)) throw new ErroNegocio("Revise os serviços do formulário original.");
       // Mesmo WhatsApp na mesma vaga: avisa em vez de duplicar (e sem descartar em silencio quem quer corrigir).
       const ja = await tx.candidaturaRecrutamento.findFirst({ where: { vagaId, candidato: { telefone: b.telefone! } }, select: { id: true } });
       if (ja) throw new ErroNegocio("Já recebemos uma candidatura deste WhatsApp para esta vaga. Para corrigir algum dado, fale com a barbearia.", 409, "candidatura_repetida");
@@ -32,9 +43,10 @@ export async function receberCandidatura(vagaId: string, b: z.infer<typeof zCand
       const c = await tx.candidaturaRecrutamento.create({ data: {
         envioId: b.envioId, conteudoHash, vagaId, candidatoId: candidato.id, experienciaMeses: b.experienciaMeses, servicos: b.servicos,
         disponibilidade: b.disponibilidade, portfolio: b.portfolio, instagram: b.instagram, futurasOportunidades: b.futurasOportunidades,
-        formularioVersao: VERSAO_FORMULARIO, avisoPrivacidade: vaga.privacidade, origem: b.origem,
+        vagaSnapshot: { titulo: vaga.titulo, cidade: vaga.cidade, descricao: vaga.descricao, funcao: formulario?.funcao ?? "BARBEIRO", formularioTitulo: formulario?.titulo ?? "Modelo original", formularioId: formulario?.id ?? null },
+        formularioVersao: formulario?.id ?? VERSAO_FORMULARIO, formularioSnapshot: definicao ?? undefined, respostas, avisoPrivacidade: vaga.privacidade, origem: b.origem,
       } });
-      await auditar(tx, null, "recrutamento.candidatura.recebida", "CandidaturaRecrutamento", c.id, { vagaId, formularioVersao: VERSAO_FORMULARIO });
+      await auditar(tx, null, "recrutamento.candidatura.recebida", "CandidaturaRecrutamento", c.id, { vagaId, formularioVersao: formulario?.id ?? VERSAO_FORMULARIO });
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002" && await repetida()) return;
@@ -44,6 +56,7 @@ export async function receberCandidatura(vagaId: string, b: z.infer<typeof zCand
 }
 export async function mudarEtapa(id: string, usuarioId: string, b: z.infer<typeof zEtapa>) {
   return db.$transaction(async (tx) => {
+    await exigirGestaoRecrutamento(tx, usuarioId);
     const c = await tx.candidaturaRecrutamento.findUnique({ where: { id } });
     if (!c) throw naoEncontrado("Candidatura");
     if (b.etapa === "BANCO" && !c.futurasOportunidades) throw new ErroNegocio("A pessoa não autorizou futuras oportunidades.");
@@ -57,6 +70,7 @@ export async function mudarEtapa(id: string, usuarioId: string, b: z.infer<typeo
 /** Apaga a candidatura (pedido da pessoa ou decisao da gestao) e o candidato, se nao tiver outra candidatura. */
 export async function excluirCandidatura(id: string, usuarioId: string | null) {
   await db.$transaction(async (tx) => {
+    if (usuarioId) await exigirGestaoRecrutamento(tx, usuarioId);
     const c = await tx.candidaturaRecrutamento.findUnique({ where: { id }, select: { candidatoId: true, vagaId: true } });
     if (!c) throw naoEncontrado("Candidatura");
     await tx.candidaturaRecrutamento.delete({ where: { id } });

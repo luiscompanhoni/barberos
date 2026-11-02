@@ -56,3 +56,37 @@ Definir rubrica objetiva e validar critérios com Ygor antes de criar ranking. I
 Em 24/10/2026, a imagem `barberos-recrutamento:20261024` foi construída no VPS, validada num PostgreSQL separado e colocada no compose da homologação. O teste de integração passou nas 20 verificações e `prisma migrate diff` não detectou diferenças no banco limpo. A homologação retornou `running healthy`, `AMBIENTE=homologacao`, zero vagas/candidaturas (nenhum cadastro fictício foi inserido nela) e HTTP 401 na API privada sem sessão. Os containers de teste foram parados, sem apagar dados.
 
 A abertura da rota no navegador de conferência foi bloqueada por `ERR_INVALID_AUTH_CREDENTIALS`; não houve validação visual autenticada nem tentativa de contornar essa autenticação. O acesso do usuário continua pela homologação, menu Equipe e ajustes → Recrutamento. Produção permaneceu no container anterior.
+
+
+## Formulários profissionais e avaliação interna — 02/11/2026
+
+Implementação local, ainda sem publicação. A aba **Formulários e critérios** permite criar modelos por função (barbeiro, recepção e auxiliar), editar perguntas e seções, ordenar, configurar escolha única/múltipla, texto e link, definir perguntas obrigatórias e condições baseadas em uma escolha única anterior. Limite técnico: 100 perguntas e 30 competências por versão; não há regra de cinco perguntas. Os modelos iniciais têm 14 perguntas profissionais, além dos campos comuns de candidatura já existentes. A gestão deve revisar as rubricas antes de aprovar.
+
+A gestão define competências, perguntas que fornecem evidência, quatro âncoras observáveis (0–3), pesos que somam 100% e competências críticas. O candidato não recebe critérios, pesos, rubricas, nota ou ranking na resposta pública ou nos props da página. Respostas abertas exigem avaliação humana; autodeclaração não comprova execução. Ausência de evidência permanece pendente, distinta de nível zero.
+
+Cada versão tem um ID próprio. Salvar mantém rascunho; aprovar torna o conteúdo imutável; duplicar cria novo rascunho com origem identificada. A aprovação não abre inscrições. A vaga fechada pode escolher uma versão aprovada. Arquivar exige encerrar inscrições que usem a versão; para recuperar uma versão arquivada, duplicar, revisar e aprovar a cópia. Não existe exclusão de versões pelo editor.
+
+A candidatura congela definição privada, respostas, ID da versão e aviso. Alterar a vaga não reescreve candidaturas anteriores. Registros legados permanecem sem snapshot e sem pontuação retroativa; continuam no acompanhamento existente. Recepção e auxiliares não precisam selecionar serviços de barbeiro nos novos formulários.
+
+A avaliação privada tem registros independentes para FORMULARIO, ENTREVISTA e PRATICA, com níveis, evidências, autor e horário. Nota = 10 × soma(peso × nível/3) / 100; somente após todos os critérios terem nível e evidência. O histórico é acrescentado, não sobrescrito. A avaliação usa a versão de concorrência da candidatura, não altera sua etapa e não decide contratação. Competências críticas abaixo de autonomia ficam destacadas mesmo com média alta. O painel mostra até 50 avaliações recentes; as anteriores continuam persistidas.
+
+A migração `20261102180000_recrutamento_formularios` é aditiva: duas tabelas e três colunas opcionais. Não reclassifica candidatos, não modifica financeiro e não executa efeitos externos. Serviços de criação/edição/avaliação revalidam usuário ativo DONO/GERENTE; as rotas também exigem sessão. A auditoria não replica respostas ou justificativas profissionais. O limite do corpo público passa a 400.000 bytes para comportar formulários variáveis, mantendo limite de campos, rate limit, isca e idempotência existentes.
+
+Comando de integração: `npm run teste:recrutamento:formularios`, exclusivamente com `DATABASE_URL` apontando para `barberos_recrutamento_formularios_teste` em `127.0.0.1:55439`. O script bloqueia rede externa e usa apenas fixtures. O banco deve estar migrado e ser descartável. Os dumps e a restauração desta entrega são locais; não representam backup de produção.
+
+A base aprovada `src/lib/agentes/conhecimento-black.ts` entra como fonte explícita em `contextoAgente`. Contém condições declaradas, pendências e limites, sem candidatos ou resultados fictícios. Não chama modelo pago, não modifica flags de execução e não aprende automaticamente: novos aprendizados requerem evidência e nova versão revisada. A cópia para consulta do dono fica em `outputs/base-conhecimento-black` no workspace da tarefa.
+
+Continuam pendentes: conferência visual no navegador (inicialização local bloqueada pela revisão automática), piloto com avaliadores, agendamento próprio de entrevistas/bot e eventual publicação com backup e recuperação validados em produção. A implementação não usa agenda de serviços para entrevistas.
+
+
+### Revisão em quatro ciclos — 02/11/2026
+
+Os modelos novos de barbeiro separam a experiência declarada nos cinco serviços em escolhas descritivas. Recepção/auxiliar continuam com 14 perguntas profissionais; barbeiro passa a 18. As rubricas iniciais agora descrevem evidências de cada competência. Isso só altera o ponto de partida de novos rascunhos: versões persistidas e candidaturas permanecem intactas e exigem cópia/revisão para evoluir.
+
+A migração aditiva `20261102190000_recrutamento_revisao` inclui versão otimista na vaga. Toda edição/abertura/encerramento exige a versão atual, evitando conferir um formulário e abrir outro em corrida. Clientes antigos recebem erro de validação ao editar sem versão; devem recarregar a interface nova. Nenhum vínculo existente é removido por omissão de formularioId em uma edição. A auditoria de recebimento usa o identificador real da versão aplicada.
+
+Novos hashes são canônicos quanto à ordem de chaves e escolhas múltiplas. O reenvio original de um registro criado antes da revisão continua reconhecido pelo hash legado; não se regrava o histórico. Mesmo telefone declarado na mesma vaga continua bloqueado como candidatura repetida, sem fundir pessoas entre vagas. Isso não verifica identidade.
+
+Editor e avaliação avisam antes de descartar rascunhos em suas operações. O editor também protege recarga, links e troca de aba. Escolhas múltiplas obrigatórias têm validação nativa; IDs de ajuda são exclusivos por instância. A mudança de etapa do candidato mantém o componente de avaliação, preservando a mensagem de confirmação.
+
+A migração `20261102200000_recrutamento_contexto` adiciona `vagaSnapshot` opcional. Novas candidaturas guardam título, cidade, condições, função e título do formulário no mesmo recebimento. A tela usa o título congelado e mostra as condições originais; registros anteriores sem snapshot são identificados como sem cópia histórica. Nenhuma condição é reconstruída ou preenchida retroativamente.

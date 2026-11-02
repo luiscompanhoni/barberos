@@ -12,7 +12,7 @@ export const GET = rota(async (req: Request) => {
   const [total, candidaturas] = await db.$transaction([
     db.candidaturaRecrutamento.count({ where }),
     db.candidaturaRecrutamento.findMany({ where, orderBy: [{ criadoEm: "desc" }, { id: "desc" }], take: 30, skip: (p.pagina - 1) * 30,
-      select: { id: true, candidato: true, vaga: { select: { titulo: true } }, etapa: true, versao: true, criadoEm: true, experienciaMeses: true, servicos: true, disponibilidade: true, portfolio: true, instagram: true, futurasOportunidades: true, origem: true, historico: { orderBy: { criadoEm: "desc" }, take: 10 } },
+      select: { vagaSnapshot: true, id: true, candidato: true, vaga: { select: { titulo: true } }, etapa: true, versao: true, criadoEm: true, experienciaMeses: true, servicos: true, disponibilidade: true, portfolio: true, instagram: true, futurasOportunidades: true, origem: true, historico: { orderBy: { criadoEm: "desc" }, take: 10 } },
     }),
   ]);
   return NextResponse.json({ total, candidaturas, pagina: p.pagina }, { headers: { "Cache-Control": "no-store" } });

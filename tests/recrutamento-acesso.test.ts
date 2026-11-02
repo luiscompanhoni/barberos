@@ -8,6 +8,8 @@ import { GET as vagas } from "@/app/api/recrutamento/vagas/route";
 import { GET as candidatos } from "@/app/api/recrutamento/candidaturas/route";
 import { PATCH } from "@/app/api/recrutamento/candidaturas/[id]/route";
 import { POST } from "@/app/api/recrutamento/publico/[vagaId]/route";
+import { GET as formularios, POST as criarFormulario, PATCH as editarFormulario } from "@/app/api/recrutamento/formularios/route";
+import { GET as avaliacao, POST as avaliar } from "@/app/api/recrutamento/candidaturas/[id]/avaliacao/route";
 import { ErroNegocio } from "@/lib/erros";
 import { _zerarLimites } from "@/lib/limite";
 import { ehPaginaDoSite } from "@/lib/dominios";
@@ -16,6 +18,13 @@ describe("acesso ao recrutamento", () => {
   it.each([401, 403])("bloqueia leitura sem permissão %s", async (status) => {
     m.exigir.mockRejectedValue(new ErroNegocio("Sem acesso", status));
     expect((await vagas()).status).toBe(status); expect((await candidatos(new Request("http://localhost/api/recrutamento/candidaturas"))).status).toBe(status);
+    const req = new Request("http://localhost/api/recrutamento/formularios", { method: "POST", body: "{}" });
+    const ctx = { params: Promise.resolve({ id: "c" }) };
+    expect((await formularios()).status).toBe(status);
+    expect((await criarFormulario(req.clone())).status).toBe(status);
+    expect((await editarFormulario(req.clone())).status).toBe(status);
+    expect((await avaliacao(req.clone(), ctx)).status).toBe(status);
+    expect((await avaliar(req.clone(), ctx)).status).toBe(status);
     expect(m.exigir).toHaveBeenCalledWith(["DONO", "GERENTE"]); expect(m.vagas).not.toHaveBeenCalled(); expect(m.lista).not.toHaveBeenCalled();
   });
   it("bloqueia alteração sem permissão", async () => {
@@ -27,7 +36,7 @@ describe("acesso ao recrutamento", () => {
 describe("API pública", () => {
   const ctx = { params: Promise.resolve({ vagaId: "vaga" }) };
   const req = (body: string) => new Request("http://localhost/api/recrutamento/publico/vaga", { method: "POST", body });
-  it("limita bytes reais mesmo sem Content-Length", async () => { expect((await POST(req("x".repeat(20001)), ctx)).status).toBe(413); expect(m.receber).not.toHaveBeenCalled(); });
+  it("limita bytes reais mesmo sem Content-Length", async () => { expect((await POST(req("x".repeat(400001)), ctx)).status).toBe(413); expect(m.receber).not.toHaveBeenCalled(); });
   it("recusa JSON inválido", async () => { expect((await POST(req("{erro"), ctx)).status).toBe(400); expect(m.receber).not.toHaveBeenCalled(); });
   it("responde sem dados privados", async () => {
     const r = await POST(req(JSON.stringify({ envioId: "37f1774b-6347-481c-b685-b0b0cf4f61ab", nome: "Teste profissional", telefone: "11999998888", cidade: "Rio do Sul", experienciaMeses: 12, servicos: ["Barba"], disponibilidade: "Segunda a sexta", cienciaPrivacidade: true })), ctx);

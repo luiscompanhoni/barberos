@@ -2040,6 +2040,7 @@ model RegraConciliacao {
 
 // Recrutamento fica separado dos cadastros operacionais.
 model VagaRecrutamento {
+  versao Int @default(0)
   id           String                    @id @default(cuid())
   titulo       String
   cidade       String
@@ -2049,6 +2050,8 @@ model VagaRecrutamento {
   criadoPorId  String
   criadoEm     DateTime                  @default(now()) @db.Timestamptz(3)
   candidaturas CandidaturaRecrutamento[]
+  formularioId String?
+  formulario FormularioRecrutamento? @relation(fields: [formularioId], references: [id], onDelete: Restrict)
 
   @@map("recrutamento_vagas")
 }
@@ -2086,9 +2089,43 @@ model CandidaturaRecrutamento {
   versao               Int                     @default(0)
   criadoEm             DateTime                @default(now()) @db.Timestamptz(3)
   historico            HistoricoRecrutamento[]
+  vagaSnapshot Json?
+  formularioSnapshot Json?
+  respostas Json?
+  avaliacoes AvaliacaoRecrutamento[]
 
   @@index([vagaId, etapa, criadoEm])
   @@map("recrutamento_candidaturas")
+}
+
+model FormularioRecrutamento {
+  id String @id @default(cuid())
+  titulo String
+  funcao String
+  estado String @default("RASCUNHO")
+  revisao Int @default(0)
+  origemId String?
+  definicao Json
+  criadoPorId String
+  aprovadoPorId String?
+  aprovadoEm DateTime? @db.Timestamptz(3)
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  vagas VagaRecrutamento[]
+  @@map("recrutamento_formularios")
+}
+
+model AvaliacaoRecrutamento {
+  id String @id @default(cuid())
+  candidaturaId String
+  candidatura CandidaturaRecrutamento @relation(fields: [candidaturaId], references: [id], onDelete: Cascade)
+  etapa String
+  criterios Json
+  nota Float?
+  cobertura Int
+  usuarioId String
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  @@index([candidaturaId, criadoEm])
+  @@map("recrutamento_avaliacoes")
 }
 
 model HistoricoRecrutamento {

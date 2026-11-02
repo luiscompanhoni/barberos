@@ -21,7 +21,7 @@ jobs:
           POSTGRES_USER: barberos
           POSTGRES_PASSWORD: barberos
           POSTGRES_DB: barberos
-        ports: ["5432:5432"]
+        ports: ["5432:5432", "55439:5432"]
         options: >-
           --health-cmd "pg_isready -U barberos"
           --health-interval 5s
@@ -83,5 +83,12 @@ jobs:
           DATABASE_URL_AGENTES: postgresql://barberos:barberos@localhost:5432/barberos_agentes_teste
           DATABASE_URL_ESTUDIO: postgresql://barberos:barberos@localhost:5432/barberos_estudio_templates_teste
         run: npm run teste:todos
+      - name: Recrutamento em banco separado descartável
+        env:
+          DATABASE_URL: postgresql://barberos:barberos@127.0.0.1:55439/barberos_recrutamento_formularios_teste
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_recrutamento_formularios_teste
+          npx prisma migrate deploy
+          npm run teste:recrutamento:formularios
       - name: Build
         run: npm run build

@@ -291,3 +291,7 @@ Falta:
   - Campanha pode dar uma jogada de presente em qualquer jogo. O endereço antigo da roleta continua funcionando.
 - **Serviço adicional na comanda** (fora da lista): sobrancelha junto do corte, por exemplo. Conta na comissão, no
   plano e nos relatórios, sem ocupar horário na agenda.
+
+
+### Recrutamento: formulários profissionais (02/11/2026)
+Implementação local de editor/versionamento e avaliação humana privada concluída; sem publicação. Validar interface no navegador e realizar piloto de perguntas/rubricas. Agendamento de entrevistas e bot seguem pendentes. Condições de contratação e periodicidade da referência de R$ 3.500 continuam a confirmar. Não abrir campanha nem ativar mensagens ou gastos. Ver `docs/recrutamento.md`.

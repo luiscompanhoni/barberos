@@ -332,3 +332,7 @@ Atualize este mapa ao alterar diretórios, dependências relevantes, contratos, 
 ## Templates e roteiros do Black Estúdio
 
 A ponte em src/lib/estudio/roteiros.ts copia somente resultados aprovados de Conteúdo, com permissão, revisão, hash e auditoria na transação. O catálogo fechado é compartilhado entre aplicação e worker. Migração aditiva, compatibilidade de workers e recuperação estão em [estudio-black.md](estudio-black.md).
+
+
+### Recrutamento: definições versionadas e rubricas privadas
+`recrutamento_formularios` guarda definições e aprovação; versões aprovadas são copiadas para evolução, sem editar conteúdo. Vagas podem fixar uma versão aprovada. Candidaturas guardam snapshot e respostas; legado usa colunas opcionais nulas. `recrutamento_avaliacoes` guarda avaliações humanas por etapa e evidência, com controle otimista pela versão da candidatura e auditoria na mesma transação. A projeção pública é uma lista explícita de campos, sem critérios ou pesos. Ver `docs/recrutamento.md`.

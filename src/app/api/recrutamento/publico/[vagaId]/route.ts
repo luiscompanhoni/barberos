@@ -14,7 +14,7 @@ export const POST = rota(async (req: Request, ctx: { params: Promise<{ vagaId: s
   while (true) {
     const { done, value } = await reader.read(); if (done) break;
     tamanho += value.length;
-    if (tamanho > 20_000) { await reader.cancel(); throw new ErroNegocio("Formulário muito grande.", 413); }
+    if (tamanho > 400_000) { await reader.cancel(); throw new ErroNegocio("Formulário muito grande.", 413); }
     partes.push(value);
   }
   let json: unknown;

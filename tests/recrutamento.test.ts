@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => {
-  const tx = { vagaRecrutamento: { findFirst: vi.fn() }, candidatoRecrutamento: { create: vi.fn() }, candidaturaRecrutamento: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() }, historicoRecrutamento: { create: vi.fn() } };
+  const tx = { usuario: { findFirst: vi.fn() }, vagaRecrutamento: { findFirst: vi.fn() }, candidatoRecrutamento: { create: vi.fn() }, candidaturaRecrutamento: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() }, historicoRecrutamento: { create: vi.fn() } };
   return { tx, db: { candidaturaRecrutamento: { findUnique: vi.fn() }, $transaction: vi.fn() }, auditar: vi.fn() };
 });
 vi.mock("@/lib/db", () => ({ db: m.db }));
@@ -10,7 +10,7 @@ import { zCandidatura, zVaga, podeRecrutar } from "@/lib/recrutamento/regras";
 const formulario = { envioId: "37f1774b-6347-481c-b685-b0b0cf4f61ab", nome: "Teste profissional", telefone: "11999998888", cidade: "São Paulo", experienciaMeses: 0, servicos: ["Barba"], disponibilidade: "Segunda a sexta", cienciaPrivacidade: true };
 const entrada = () => zCandidatura.parse(formulario);
 beforeEach(() => {
-  vi.resetAllMocks(); m.db.$transaction.mockImplementation((fn) => fn(m.tx));
+  vi.resetAllMocks(); m.tx.usuario.findFirst.mockResolvedValue({ id: "gestor" }); m.db.$transaction.mockImplementation((fn) => fn(m.tx));
   m.db.candidaturaRecrutamento.findUnique.mockResolvedValue(null);
   m.tx.vagaRecrutamento.findFirst.mockResolvedValue({ id: "vaga", privacidade: "Aviso versão desta vaga" });
   m.tx.candidatoRecrutamento.create.mockResolvedValue({ id: "candidato" });
@@ -36,6 +36,11 @@ describe("regras de recrutamento", () => {
   it("permite gestão", () => { expect(podeRecrutar("DONO")).toBe(true); expect(podeRecrutar("GERENTE")).toBe(true); });
 });
 describe("gravação de recrutamento", () => {
+  it("nega alteração de etapa quando o autor perdeu acesso", async () => {
+    m.tx.usuario.findFirst.mockResolvedValue(null);
+    await expect(mudarEtapa("c", "gestor", { etapa: "TRIAGEM", versao: 0, motivo: "Análise" })).rejects.toMatchObject({ status: 403 });
+    expect(m.tx.candidaturaRecrutamento.updateMany).not.toHaveBeenCalled();
+  });
   it("preserva UTMs e versão do aviso sem dados pessoais no log genérico", async () => {
     await receberCandidatura("vaga", { ...entrada(), origem: { utm_source: "instagram" } });
     const d = m.tx.candidaturaRecrutamento.create.mock.calls[0][0].data;

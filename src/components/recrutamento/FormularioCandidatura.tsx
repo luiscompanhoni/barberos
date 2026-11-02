@@ -1,8 +1,11 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { SERVICOS } from "@/lib/recrutamento/regras";
+import { PerguntasCandidato } from "./PerguntasCandidato";
+import type { FormularioPublico, Respostas } from "@/lib/recrutamento/formularios-regras";
 type Vaga = { id: string; titulo: string; cidade: string; descricao: string; privacidade: string };
-export function FormularioCandidatura({ vaga }: { vaga: Vaga }) {
+export function FormularioCandidatura({ vaga, formulario = null }: { vaga: Vaga; formulario?: FormularioPublico | null }) {
+  const [respostas, setRespostas] = useState<Respostas>({});
   const [erro, setErro] = useState(""); const [enviando, setEnviando] = useState(false);
   const [recebido, setRecebido] = useState(false); const [envioId, setEnvioId] = useState<string | null>(null);
   async function enviar(e: FormEvent<HTMLFormElement>) {
@@ -12,6 +15,7 @@ export function FormularioCandidatura({ vaga }: { vaga: Vaga }) {
     const origem = Object.fromEntries(["utm_source", "utm_medium", "utm_campaign", "utm_content"].flatMap((k) => busca.has(k) ? [[k, busca.get(k)!.slice(0, 150)]] : []));
     try {
       const r = await fetch(`/api/recrutamento/publico/${vaga.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        ...(formulario ? { formularioId: formulario.id, respostas } : {}),
         envioId: id, nome: f.get("nome"), telefone: f.get("telefone"), cidade: f.get("cidade"), experienciaMeses: Number(f.get("experienciaMeses")),
         servicos: f.getAll("servicos"), disponibilidade: f.get("disponibilidade"), portfolio: f.get("portfolio"), instagram: f.get("instagram"),
         cienciaPrivacidade: f.get("cienciaPrivacidade") === "on", futurasOportunidades: f.get("futurasOportunidades") === "on", origem, contato_extra: String(f.get("contato_extra") ?? ""),
@@ -33,11 +37,12 @@ export function FormularioCandidatura({ vaga }: { vaga: Vaga }) {
         <label>Cidade<input name="cidade" className="campo" required minLength={2} maxLength={100} autoComplete="address-level2" /></label>
         <label>Experiência na profissão (meses)<input name="experienciaMeses" className="campo" type="number" required min={0} max={720} step={1} /></label>
       </div>
-      <fieldset><legend className="mb-2">Quais serviços você realiza?</legend><div className="grid gap-3 sm:grid-cols-2">{SERVICOS.map((s) => <label key={s} className="flex min-h-11 items-center gap-2"><input type="checkbox" name="servicos" value={s} />{s}</label>)}</div></fieldset>
+      {!formulario && <fieldset><legend className="mb-2">Quais serviços você realiza?</legend><div className="grid gap-3 sm:grid-cols-2">{SERVICOS.map((s) => <label key={s} className="flex min-h-11 items-center gap-2"><input type="checkbox" name="servicos" value={s} />{s}</label>)}</div></fieldset>}
       <label className="block">Dias, horários disponíveis e quando pode começar<textarea name="disponibilidade" className="campo" required minLength={2} maxLength={1000} rows={3} /></label>
       <label className="block">Link do portfólio (opcional)<input name="portfolio" className="campo" type="url" maxLength={500} placeholder="https://..." /></label>
       <label className="block">Link do Instagram profissional (opcional)<input name="instagram" className="campo" type="url" maxLength={500} placeholder="https://www.instagram.com/..." /></label>
       <p className="text-sm text-zinc-500">Links servem como amostras do seu trabalho. Seguidores e aparência não são critérios de seleção.</p>
+      {formulario && <PerguntasCandidato perguntas={formulario.perguntas} respostas={respostas} alterar={setRespostas} />}
       <section className="rounded-xl border border-zinc-500/20 p-4 text-sm whitespace-pre-wrap">{vaga.privacidade}</section>
       <label className="flex gap-3 items-start"><input type="checkbox" name="cienciaPrivacidade" required className="mt-1" /><span>Li o aviso sobre o uso dos meus dados nesta seleção.</span></label>
       <label className="flex gap-3 items-start"><input type="checkbox" name="futurasOportunidades" className="mt-1" /><span>Também autorizo que meu cadastro seja considerado para futuras oportunidades (opcional).</span></label>
