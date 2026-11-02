@@ -23,10 +23,12 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
-    def test_publicacao_aceita_somente_migracao_agentes_revisada(self):
+    def test_publicacao_aceita_somente_migracoes_agentes_e_templates_revisadas(self):
         exigir_migracoes_da_publicacao([])
         exigir_migracoes_da_publicacao(["20261102030000_central_agentes"])
-        for extra in ("20261101230000_conciliacao_historica", "20261025000000_estudio_black", "20270101000000_nao_revisada"):
+        exigir_migracoes_da_publicacao(["20261102040000_estudio_templates_roteiros"])
+        exigir_migracoes_da_publicacao(["20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros"])
+        for extra in ("20261101230000_conciliacao_historica", "20261025000000_estudio_black", "20261102000000_estudio_templates_roteiros", "20270101000000_nao_revisada"):
             with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
                 exigir_migracoes_da_publicacao(["20261102030000_central_agentes", extra])
 

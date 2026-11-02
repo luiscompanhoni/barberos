@@ -1,17 +1,19 @@
 import { z } from "zod";
+import { zPreset, zTitulos, type Preset } from "./templates";
+import { temposValidos } from "../../../workers/video/tempos.mjs";
 
 export const LIMITES = { clipes: 20, arquivo: 100 * 1024 * 1024, projeto: 500 * 1024 * 1024, usuario: 2 * 1024 * 1024 * 1024, global: 10 * 1024 * 1024 * 1024, saida: 150 * 1024 * 1024, segundos: 120, projetos: 10, versoes: 10 } as const;
 export const ATIVOS = ["FILA", "PROCESSANDO"] as const;
 export const ROTULOS: Record<string, string> = { FILA: "Na fila", PROCESSANDO: "Montando vídeo", REVISAO: "Pronto para revisar", APROVADO: "Aprovado", AJUSTES: "Alterações solicitadas", FALHOU: "Falha na montagem", CANCELADO: "Cancelado" };
-export const zProjeto = z.object({ nome: z.string().trim().min(2).max(80) });
+export const zProjeto = z.object({ nome: z.string().trim().min(2).max(80), preset: zPreset.optional() }).strict();
 export const zRevisao = z.number().int().min(0);
 export const zClipe = z.object({ nome: z.string().trim().min(1).max(150), bytes: z.number().int().min(32).max(LIMITES.arquivo), mime: z.enum(["video/mp4", "video/quicktime", "video/webm"]), duracao: z.number().finite().min(0.1).max(1800), revisao: zRevisao });
-export const zEdicao = z.object({ revisao: zRevisao, nome: zProjeto.shape.nome, clipes: z.array(z.object({ id: z.string().min(1).max(40), inicio: z.number().finite().min(0), fim: z.number().finite().min(0.1), texto: z.string().trim().max(100) })).min(1).max(LIMITES.clipes) });
+export const zEdicao = z.object({ revisao: zRevisao, nome: zProjeto.shape.nome, preset: zPreset.optional(), titulo: zTitulos.titulo.optional(), chamada: zTitulos.chamada.optional(), clipes: z.array(z.object({ id: z.string().min(1).max(40), inicio: z.number().finite().min(0), fim: z.number().finite().min(0.1), texto: z.string().trim().max(100) }).strict()).max(LIMITES.clipes) }).strict();
 export type Edicao = z.infer<typeof zEdicao>;
-export type Snapshot = { preset: "black-vertical-v1"; clipes: { id: string; inicio: number; fim: number; texto: string; mime: string }[] };
+export type Snapshot = { preset: Preset; titulo?: string; chamada?: string; origem?: { execucaoId: string; resultadoHash: string; revisao: number }; clipes: { id: string; inicio: number; fim: number; texto: string; mime: string }[] };
 
 export function validarCortes(clipes: { inicio: number; fim: number; duracao: number }[]) {
-  return clipes.every(c => c.inicio >= 0 && c.fim - c.inicio >= 0.1 && c.fim <= c.duracao + 0.05) && clipes.reduce((s, c) => s + c.fim - c.inicio, 0) <= LIMITES.segundos;
+  return temposValidos(clipes) && clipes.every(c => Number.isFinite(c.duracao) && c.fim <= c.duracao + 0.05);
 }
 
 export function assinaturaValida(b: Uint8Array, mime: string) {

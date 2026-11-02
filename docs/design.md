@@ -129,3 +129,7 @@ que tarefas derivadas já criadas precisam de cancelamento separado. Respostas 4
 
 Mudanças visuais e de interação atualizam `src/app/globals.css`/componentes e esta orientação quando houver alteração
 de regra.
+
+## Templates do Black Estúdio
+
+Seleção visual entre Recrutamento, Serviços e Equipe, com título e chamada final editáveis. O roteiro aprovado aparece como referência, separado da prévia de vídeo. Estados de render são reais e o download final aparece após a aprovação humana. A troca de template exige salvar e gerar nova versão.

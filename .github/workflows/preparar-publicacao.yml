@@ -65,7 +65,7 @@ jobs:
         run: |
           npm run check
           npm run check:publicacao:servidor
-          node --test workers/video/tests/render.test.mjs
+          node --test workers/video/tests/*.test.mjs
       - name: Migrações e fluxos no banco descartável
         run: |
           npx prisma migrate deploy

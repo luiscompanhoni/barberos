@@ -283,5 +283,9 @@ A venda do BarberOS fica fora desta fase. Ativação começa desligada; este có
 
 ## Manutenção
 
+O [Black Estúdio](docs/estudio-black.md) monta vídeos privados com templates Black em 1080 × 1920,
+importação manual dos roteiros de Conteúdo aprovados e aprovação humana do MP4. Preserva versões anteriores;
+esta etapa usa HyperFrames local, sem geração paga de mídia, anúncio ou envio automático.
+
 Atualize este documento quando objetivo, escopo, restrições ou critérios de aceitação mudarem. Decisões técnicas e
 operação ficam em docs/architecture.md; setup em docs/setup.md.

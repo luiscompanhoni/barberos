@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends chromium ffmpeg
 WORKDIR /worker
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund && npm cache clean --force
-COPY index.mjs render.mjs ./
+COPY index.mjs render.mjs templates.mjs templates.json tempos.mjs ./
 RUN mkdir -p /worker/jobs && chown -R node:node /worker
 USER node
 ENV HYPERFRAMES_BROWSER_PATH=/usr/bin/chromium \

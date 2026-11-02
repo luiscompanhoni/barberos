@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { ExecucaoAgente, PainelAgentes } from "@/lib/agentes/tipos";
 import { apiAgentes, dataAgente, ESTADOS } from "./cliente";
 
@@ -50,6 +51,7 @@ function Trabalho({ ex, nomes, ocupado, executar }: { ex: ExecucaoAgente; nomes:
         <button className="btn-primario" disabled={ocupado || !revisado || !ex.resultadoHash} onClick={() => void acao("aprovar")}>Aprovar resultado e encaminhar</button>
       </div> : null}
       <div className="flex flex-wrap gap-2">
+        {ex.agenteId === "conteudo" && ex.estado === "CONCLUIDO" && ex.resultadoHash ? <Link className="btn" href={`/estudio?roteiro=${encodeURIComponent(ex.id)}`}>Abrir roteiro no Black Estúdio</Link> : null}
         {["FALHOU", "BLOQUEADO"].includes(ex.estado) ? <button className="btn" disabled={ocupado} onClick={() => void acao("repetir")}>Tentar novamente</button> : null}
         {!concluido && !confirmarCancelamento ? <button className="btn" disabled={ocupado} onClick={() => setConfirmarCancelamento(true)}>Cancelar trabalho</button> : null}
         {!concluido && confirmarCancelamento ? <><span className="self-center text-sm">Cancelar este trabalho? Encaminhamentos já criados continuam na central e precisam ser cancelados separadamente.</span><button className="btn-perigo" disabled={ocupado} onClick={() => void acao("cancelar")}>Confirmar cancelamento</button><button className="btn" disabled={ocupado} onClick={() => setConfirmarCancelamento(false)}>Voltar</button></> : null}

@@ -9,6 +9,8 @@ for t in $(node -e 'console.log(Object.keys(require("./package.json").scripts).f
     saida=$(DATABASE_URL="${DATABASE_URL_HISTORICO:-}" npm run -s "$t" 2>&1)
   elif [ "$t" = "teste:agentes" ]; then
     saida=$(DATABASE_URL="${DATABASE_URL_AGENTES:-}" npm run -s "$t" 2>&1)
+  elif [ "$t" = "teste:estudio:templates" ]; then
+    saida=$(DATABASE_URL="${DATABASE_URL_ESTUDIO:-}" npm run -s "$t" 2>&1)
   else
     saida=$(npm run -s "$t" 2>&1)
   fi

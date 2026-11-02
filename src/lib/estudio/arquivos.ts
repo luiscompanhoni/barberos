@@ -8,11 +8,12 @@ import { assinaturaValida, faixa } from "./regras";
 
 export function pasta() {
   if (process.env.NODE_ENV === "production" && !process.env.ESTUDIO_STORAGE_ROOT) throw new ErroNegocio("Armazenamento do Estúdio não configurado.", 503);
-  return resolve(process.env.ESTUDIO_STORAGE_ROOT || ".data/estudio");
+  // Mídias são dados do volume em execução, não arquivos a incluir no bundle do servidor.
+  return resolve(/* turbopackIgnore: true */ process.env.ESTUDIO_STORAGE_ROOT || ".data/estudio");
 }
 export function caminho(chave: string) {
   if (!/^[a-f0-9-]{36}\.(mp4|webm|mov|part)$/.test(chave)) throw new Error("Chave de mídia inválida");
-  return join(pasta(), chave);
+  return join(/* turbopackIgnore: true */ pasta(), chave);
 }
 export const apagar = (chave: string) => rm(caminho(chave), { force: true });
 export async function receber(req: Request, esperado: number | null, maximo: number, mime: string) {
@@ -55,7 +56,7 @@ export async function receber(req: Request, esperado: number | null, maximo: num
 
 export async function transmitir(req: Request, chave: string, mime: string, download = false) {
   const arquivo = caminho(chave);
-  const tamanho = await stat(arquivo).then(s => s.size).catch(() => { throw new ErroNegocio("Arquivo indisponível.", 404); });
+  const tamanho = await stat(/* turbopackIgnore: true */ arquivo).then(s => s.size).catch(() => { throw new ErroNegocio("Arquivo indisponível.", 404); });
   const range = faixa(req.headers.get("range"), tamanho);
   const headers = new Headers({ "Content-Type": mime, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", "Accept-Ranges": "bytes", "Content-Disposition": (download ? "attachment" : "inline") + '; filename="black-video.' + (mime === "video/webm" ? "webm" : mime === "video/quicktime" ? "mov" : "mp4") + '"' });
   if (range === false) { headers.set("Content-Range", "bytes */" + tamanho); return new Response(null, { status: 416, headers }); }
@@ -63,6 +64,6 @@ export async function transmitir(req: Request, chave: string, mime: string, down
   const fim = range?.fim ?? tamanho - 1;
   headers.set("Content-Length", String(fim - inicio + 1));
   if (range) headers.set("Content-Range", "bytes " + inicio + "-" + fim + "/" + tamanho);
-  const stream = createReadStream(arquivo, { start: inicio, end: fim });
+  const stream = createReadStream(/* turbopackIgnore: true */ arquivo, { start: inicio, end: fim });
   return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, { status: range ? 206 : 200, headers });
 }

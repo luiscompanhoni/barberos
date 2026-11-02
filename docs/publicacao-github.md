@@ -20,9 +20,9 @@ exclusiva para cifrar o relatório. Não é necessário manipular a chave SSH no
    `releases/<sha>`, dentro da instalação; não substitui o código antigo, `.env`, Caddy ou outros sites.
    A recepção confere hashes, rejeita links e caminhos fora da pasta e não sobrescreve release existente.
 3. Uma trava no servidor impede duas publicações simultâneas. O script exige a imagem antiga esperada,
-   banco/app saudáveis, memória/disco mínimos e migrações conhecidas. A migração nova permitida nesta
-   entrega é `20261102030000_central_agentes`; qualquer outra migration pendente bloqueia
-   a publicação. As migrações do Estúdio e do editor histórico devem já estar aplicadas. Futuras migrations precisam de revisão explícita.
+   banco/app saudáveis, memória/disco mínimos e migrações conhecidas. As migrações permitidas nesta
+   entrega são `20261102030000_central_agentes` e `20261102040000_estudio_templates_roteiros`; qualquer outra migration pendente bloqueia
+   a publicação. As migrações do Estúdio original e do editor histórico devem já estar aplicadas. Futuras migrations precisam de revisão explícita. O ensaio local dos templates não autoriza publicar.
 4. A imagem antiga do app recebe tag de preservação obrigatória. A imagem anterior do backup também é
    preservada quando ainda existe no Docker; a instalação legada pode manter um container de backup cuja
    imagem foi removida. Essa ausência fica registrada e não libera a troca sem verificar o backup novo.

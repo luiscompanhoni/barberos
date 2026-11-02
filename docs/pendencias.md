@@ -15,7 +15,10 @@ rastreável e o primeiro grupo de clientes pronto para entrar. Jogos, IA e finan
 ### A0. Abertos desta semana
 
 - [ ] Central de agentes da Black: quatro ciclos de revisão local concluídos; publicação continua pendente, exige autorização, conferência da versão instalada e backup/restauração de produção antes da migração. O ensaio local usou apenas dados sintéticos. Falta conferir interface e HTTP ao vivo. [Revisão e evidências](revisao-central-agentes-2026-11-01.md), [guia e limites](agentes-black.md).
-- [ ] Escolher provedor de imagens/vídeos e conectar arquivos/versões ao Black Estúdio; hoje Conteúdo prepara roteiro e direção criativa. 👤
+- [x] Evolução local do Black Estúdio com HyperFrames: templates 1080 × 1920 e importação manual de roteiros aprovados da Central. Aprovação do vídeo independente. Ver [escopo e operação](estudio-black.md).
+- [x] Quatro ciclos de revisão local do Estúdio: oito achados corrigidos, regressões, migração limpa e atualização, backup/restauração sintética e renders reais. Conferir evidências e limites em [qualidade](quality.md).
+- [ ] Homologar visualmente o editor ao vivo e render 1080p nos limites do container; publicar somente com pedido e backup de banco/mídias com restauração validada. 👤
+- [ ] Geração de imagens, voz e vídeos por IA continua sem provedor ativo; qualquer integração paga exige custos e autorização definidos. HyperFrames monta os clipes enviados, sem geração paga.
 - [ ] Configurar e validar token Meta de leitura no servidor. Sessão no navegador não conecta o backend. Definir metas, atribuição, orçamento e aprovação antes de implementar publicação/ajustes de anúncios. 👤
 - [ ] Conectar e-mail, publicação social, pesquisa web e outros efeitos externos conforme prioridade. Nenhum desses efeitos é executado pela central atual.
 

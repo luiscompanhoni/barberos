@@ -25,7 +25,7 @@ Os fluxos operacionais preexistentes continuam com suas próprias regras.
 | Modelo de texto existente | Reutilizado; execução da central começa desligada. |
 | Meta Ads | Leitura implementada e testada com respostas sintéticas; exige token, versão e conta no servidor. Sessão no navegador não é autorização de API. |
 | Imagens e vídeos por IA | Fornecedor ainda não escolhido. O perfil Conteúdo prepara roteiro/direção criativa. Não gera o arquivo de mídia. |
-| Black Estúdio | Contexto consulta metadados dos projetos do responsável. Não cria automaticamente projetos nem vincula a aprovação do texto à aprovação de um arquivo. |
+| Black Estúdio | Contexto consulta metadados dos projetos do responsável. Roteiros de Conteúdo aprovados podem ser importados manualmente com revisão, hash e origem. A aprovação do vídeo continua separada; ver [Estúdio](estudio-black.md). |
 | E-mail, redes sociais e pesquisa web | Sem conectores de execução nesta central. |
 | Programação | Prepara especificações; sem acesso ao repositório, execução de código ou deploy. |
 | Otimização de anúncios | Funções determinísticas de avaliação e plano pausado estão implementadas/testadas; ainda não conectadas à interface nem ao executor. Exigem metas e política de orçamento definidas. |

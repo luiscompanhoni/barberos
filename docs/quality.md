@@ -103,6 +103,25 @@ Não houve publicação, anúncios, envios ou chamadas reais de IA nesta revisã
 
 ## Revisão após implementação ou correção
 
+O Estúdio acrescenta `npm run teste:estudio:templates` em `barberos_estudio_templates_teste` local e descartável,
+além de `node --test workers/video/tests/*.test.mjs`. Render real dos quatro presets:
+`node workers/video/tests/smoke-templates.mjs`. Preparação, limites e recuperação estão no [guia do Estúdio](estudio-black.md).
+
+Revisão do Estúdio em 02/11/2026: quatro ciclos sequenciais (origem/duplicidade; transações/fila/auditoria;
+permissões/interface/preservação; integração/migração/recuperação). Corrigidos oito achados: atalho de roteiro
+antigo, precisão dos cortes decimais, revogação de papel, confirmação por versão, preservação do rascunho,
+ordem da migração, lista de migrações permitidas na futura publicação e rastreamento indevido das mídias no bundle. A migração ainda não publicada foi
+renomeada para `20261102040000_estudio_templates_roteiros`; não combinar com o arquivo antigo `20261102000000`.
+Regressões: 642 testes unitários, 25 verificações do fluxo em banco descartável, dez testes do worker,
+cinco testes da operação de publicação e quatro renders reais a 30 fps (H.264/AAC, 1,3 s, incluindo corte de 0,1 s).
+Banco limpo recebeu 48 migrações; atualização 47 → 48 preservou 102 tabelas de dados. O dump final foi
+restaurado e comparado em 103 tabelas, incluindo o histórico das migrações. Uma mídia sintética foi recuperada
+byte a byte pelo restaurador do projeto, com recusa de par inválido, travessia e destino existente.
+O empacotamento sintético foi feito no Windows; Docker/WSL e o ensaio Linux completo do backup não estavam
+disponíveis. Interface/HTTP ao vivo e limites de memória/CPU do container continuam pendentes. Nenhuma publicação
+ou ação de anúncio, envio, IA paga ou gasto foi executada.
+`teste:todos` exige também `DATABASE_URL_ESTUDIO`, apontando exclusivamente para esse banco migrado.
+
 Ao concluir um ciclo de implementação ou correção, sugira de 3 a 8 ciclos posteriores de code review, com quantidade proporcional ao risco, focos complementares e prompt de continuação preenchido. Essa faixa é convenção do projeto; revisões adicionais dependem de pedido do usuário.
 
 Cada ciclo verifica o estado atual e o código conectado, registra achados com severidade, local e evidência e reavalia correções autorizadas com os checks afetados. Correções da mesma rodada não reiniciam a contagem. Termine com verificação integrada e riscos residuais, sem criar ciclos artificiais ou afirmar que uma quantidade de revisões prova ausência de bugs.

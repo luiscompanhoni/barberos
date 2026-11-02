@@ -1,4 +1,4 @@
-# Estúdio Black — primeira entrega
+# Black Estúdio — templates e roteiros
 
 O Estúdio Black funciona dentro do BarberOS na rota `/estudio`. A entrega não altera caixa, agenda, checklist ou recrutamento.
 
@@ -8,10 +8,14 @@ O Estúdio Black funciona dentro do BarberOS na rota `/estudio`. A entrega não 
 - Até 20 originais por projeto, 100 MB por arquivo e 500 MB por projeto.
 - Upload em stream para armazenamento privado, fora de `public/`.
 - Ordem, cortes e texto manual por trecho.
-- Preset Black Vertical: 720 × 1280, 30 fps, até 120 segundos, áudio original.
+- Novos projetos: templates Black Recrutamento, Serviços e Equipe em 1080 × 1920, 30 fps, até 120 segundos e áudio original. Título e chamada final (últimos 3 segundos) são editáveis. Textos ficam afastados das bordas; confira o corte vertical na prévia.
+- Projetos anteriores conservam Black Vertical v1 (720 × 1280). A mudança de template é explícita, incrementa a revisão e exige nova renderização.
+- Importação manual de roteiros aprovados do agente Conteúdo, exclusiva do dono solicitante, com referência imutável e auditoria. Não chama IA nem cria clipes fictícios.
+- Projetos importados continuam restritos ao dono: mudar seu papel bloqueia consulta, mídia, fila e conclusão do trabalho sem apagar a origem. Projetos manuais continuam acessíveis à equipe proprietária.
+- Atualizações periódicas preservam edições não salvas. Uma alteração concorrente mantém o rascunho visível e impede gravar sobre a nova revisão; carregar a versão atual exige descarte explícito. A confirmação de imagem, texto e áudio vale somente para o identificador do vídeo conferido.
 - Fila persistente no PostgreSQL, com lease, heartbeat, cancelamento e recuperação de interrupção.
 - Versões com snapshot imutável, arquivo e SHA-256.
-- Reprodução privada com HTTP Range, revisão, aprovação e download.
+- Reprodução privada com HTTP Range; o download final exige aprovação humana, data e SHA-256. A prévia permanece disponível para revisão. Versões antigas aprovadas continuam exportáveis.
 - Estado real da fila, sem porcentagem fictícia.
 
 Limites adicionais: 10 projetos por usuário, 10 versões por projeto, 2 GB por usuário e 10 GB globais.
@@ -20,7 +24,9 @@ Limites adicionais: 10 projetos por usuário, 10 versões por projeto, 2 GB por 
 
 O render usa HyperFrames 0.8.198, fixado apenas em `workers/video`. O FFmpeg normaliza e valida os clipes; o HyperFrames aplica o preset e exporta o MP4. Nenhum plugin é instalado no aplicativo principal.
 
-O processador recebe somente os arquivos do trabalho com lease válido. Ele não recebe `DATABASE_URL`, segredo de sessão, dados financeiros, WhatsApp ou chaves de IA. O template é fixo e o texto do usuário é escapado. Telemetria, instalação e atualização automáticas ficam desativadas.
+O processador recebe somente os arquivos do trabalho com lease válido. Ele não recebe `DATABASE_URL`, segredo de sessão, dados financeiros, WhatsApp ou chaves de IA. Os templates são fechados e versionados em `workers/video/templates.json`; o aplicativo e o worker usam esse catálogo. O roteiro completo fica no projeto, e o snapshot do render leva só sua referência. Textos são escapados, sem aceitar HTML, JavaScript ou URLs de templates externos. Telemetria, instalação e atualização automáticas ficam desativadas.
+
+Os presets v2 usam qualidade `standard` do HyperFrames 0.8.198. O v1 mantém `draft` e sua composição original. O worker anuncia `black-vertical-v2/hyperframes-0.8.198`; a fila não oferece v2 a workers antigos e a API exige heartbeat compatível antes de enfileirar 1080p.
 
 Na homologação, o worker roda em rede interna, sem porta pública, com limites de CPU, memória e processos. O aplicativo usa um volume persistente exclusivo para mídias.
 
@@ -43,11 +49,26 @@ O backup usa o banco restaurado do dump para selecionar as mídias imutáveis, c
 
 - `npm test`
 - `node --test workers/video/tests/*.test.mjs`
+- `npm run teste:estudio:templates`: banco exclusivo `barberos_estudio_templates_teste` em loopback, rede bloqueada e dados sintéticos. Valida permissões, origem, hash, idempotência, concorrência, snapshot, aprovação, exportação, cancelamento e legado.
+- `node workers/video/tests/smoke-templates.mjs`: render real dos quatro presets com dois clipes sintéticos, corte e áudio. Exige `ESTUDIO_WORKER_TMP` e os três executáveis `HYPERFRAMES_*_PATH`. `ESTUDIO_SMOKE_PRESERVAR=true` conserva MP4/quadros para inspeção local. O workflow de publicação usa esse teste dentro dos limites do container antes de disponibilizar uma versão.
 - `scripts/teste-estudio.ts` usa apenas banco `estudio_test` e servidor local, cria usuários e vídeos sintéticos, e testa acesso, concorrência, upload, fila, lease, cancelamento, render e aprovação.
 
 ## Escopo futuro
 
 Transcrição, edição sugerida por IA, aprovação pelo WhatsApp e publicação no Instagram não estão simuladas nesta entrega. Cada integração será adicionada com fornecedor, custo, consentimento e confirmação definidos.
+
+## Fluxo com a Central
+
+1. O dono aprova um resultado do agente Conteúdo e abre o atalho para o Estúdio, inclusive para roteiros anteriores aos 50 mais recentes. A seleção direta revalida proprietário e aprovação. Também pode escolher entre seus 50 roteiros aprovados mais recentes no Estúdio.
+2. A importação confere solicitante, estado, aprovação, revisão e SHA-256 do conteúdo. Uma restrição única por usuário e execução evita duplicidade. Importar de novo abre o projeto existente sem sobrescrever a montagem.
+3. O projeto guarda tarefa, resumo, entregáveis, alertas, aprovador, data, revisão, hash e responsável pela importação. São referência para escolher os vídeos e adaptar textos; não se transforma prosa livre em código de renderização.
+4. O usuário escolhe template, envia os originais, ajusta cenas, título e chamada, gera e assiste à prévia. Aprova o arquivo para baixar o MP4. Aprovação de roteiro e aprovação de vídeo são independentes; nenhuma delas autoriza anúncio, envio ou gasto.
+
+## Migração e recuperação
+
+A migração `20261102040000_estudio_templates_roteiros` roda depois de `20261102030000_central_agentes` e adiciona campos ao projeto e vínculo opcional à execução, sem reescrever versões, mídias ou aprovações. O default do banco permanece v1 para conservar projetos existentes; somente a criação pela nova aplicação seleciona v2. Banco e worker devem ser atualizados juntos. Uma aplicação nova com worker antigo permite preparação, mas bloqueia render 1080p.
+
+Antes de qualquer futura publicação, validar backup de banco **e mídias**, restauração e smoke no container com os limites atuais. O ensaio de banco local não substitui essa recuperação operacional. Em rollback, pausar render e restaurar o par completo validado; não remover colunas ou reinterpretar snapshots v2 como v1. Não houve migração nem publicação em produção nesta evolução.
 
 ## Integração visual — 01/11/2026
 

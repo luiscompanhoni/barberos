@@ -3,16 +3,17 @@ import { db } from "@/lib/db";
 import { naoEncontrado, rota } from "@/lib/erros";
 import { equipe, json, resposta } from "@/lib/estudio/http";
 import { zRevisao } from "@/lib/estudio/regras";
-import { avaliar, projeto } from "@/lib/estudio/servico";
+import { avaliar, exportar, projeto } from "@/lib/estudio/servico";
 import { transmitir } from "@/lib/estudio/arquivos";
 export const runtime = "nodejs";
 type Contexto = { params: Promise<{ id: string; versaoId: string }> };
 export const GET = rota(async (req: Request, ctx: Contexto) => {
   const s = await equipe(req); const { id, versaoId } = await ctx.params;
+  if (new URL(req.url).searchParams.get("download") === "1") return transmitir(req, await exportar(s.usuarioId, id, versaoId), "video/mp4", true);
   const p = await projeto(db, s.usuarioId, id);
   const v = p.versoes.find(v => v.id === versaoId);
   if (!v?.arquivo) throw naoEncontrado("Versão");
-  return transmitir(req, v.arquivo, "video/mp4", new URL(req.url).searchParams.get("download") === "1");
+  return transmitir(req, v.arquivo, "video/mp4", false);
 });
 export const POST = rota(async (req: Request, ctx: Contexto) => {
   const s = await equipe(req); const { id, versaoId } = await ctx.params;

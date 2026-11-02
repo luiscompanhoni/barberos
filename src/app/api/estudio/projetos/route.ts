@@ -6,5 +6,6 @@ export const runtime = "nodejs";
 export const GET = rota(async (req: Request) => resposta(await listar((await equipe(req)).usuarioId)));
 export const POST = rota(async (req: Request) => {
   const s = await equipe(req);
-  return resposta({ id: await criar(s.usuarioId, (await json(req, zProjeto)).nome) }, 201);
+  const e = await json(req, zProjeto);
+  return resposta({ id: await criar(s.usuarioId, e.nome, e.preset) }, 201);
 });

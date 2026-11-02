@@ -35,7 +35,7 @@ await preparar();
 console.log("Estúdio: processador pronto; um trabalho por vez.");
 while (!parar.signal.aborted) {
   try {
-    const { trabalho } = await acao({ acao: "claim", versao: "black-vertical-v1/hyperframes-0.8.198" });
+    const { trabalho } = await acao({ acao: "claim", versao: "black-vertical-v2/hyperframes-0.8.198" });
     if (!trabalho) { await new Promise(r => { const t = setTimeout(r, 5000); parar.signal.addEventListener("abort", () => { clearTimeout(t); r(); }, { once: true, signal: AbortSignal.timeout(5100) }); }); continue; }
     if (!/^[a-z0-9]{1,40}$/i.test(trabalho.id) || !/^[a-f0-9-]{36}$/.test(trabalho.lease)) throw new Error("Trabalho inválido.");
     const dir = await mkdtemp(join(scratch, "black-render-"));

@@ -113,3 +113,7 @@ Leia [AGENTS.md](../AGENTS.md). [CLAUDE.md](../CLAUDE.md) importa as mesmas inst
   (`src/lib/dominios.ts`); mantenha os dois em http no local.
 - Pagamento simulado: a fatura vira uma tela de teste com o botão "Pagar"; no detalhe da assinatura há botões para
   simular pagamento, atraso e próximo mês. Em produção, pagamento simulado só é confirmado pela equipe.
+
+## Ensaiar o Black Estúdio
+
+Consulte [estudio-black.md](estudio-black.md) para o banco local exclusivo dos templates, executáveis do render e teste dos quatro presets. O CI recebe DATABASE_URL_ESTUDIO. Prepare projetos sem ativar IA; o render exige heartbeat compatível com 1080p e a exportação final exige aprovação humana.

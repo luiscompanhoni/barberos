@@ -65,8 +65,8 @@ def conferir_migracoes(aplicadas, pasta):
 
 
 def exigir_migracoes_da_publicacao(pendentes):
-    # A base instalada já inclui o editor; esta entrega permite somente a Central revisada.
-    if set(pendentes) - {"20261102030000_central_agentes"}:
+    # Somente as migrações revisadas; executar a publicação ainda exige pedido explícito.
+    if set(pendentes) - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros"}:
         raise RuntimeError("Migração pendente fora do escopo aprovado desta publicação.")
 
 

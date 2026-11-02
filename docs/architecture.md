@@ -328,3 +328,7 @@ Migração aditiva `20261102030000_central_agentes`. Ativação, limites e recup
 ## Manutenção
 
 Atualize este mapa ao alterar diretórios, dependências relevantes, contratos, rotinas ou o processo de deploy.
+
+## Templates e roteiros do Black Estúdio
+
+A ponte em src/lib/estudio/roteiros.ts copia somente resultados aprovados de Conteúdo, com permissão, revisão, hash e auditoria na transação. O catálogo fechado é compartilhado entre aplicação e worker. Migração aditiva, compatibilidade de workers e recuperação estão em [estudio-black.md](estudio-black.md).

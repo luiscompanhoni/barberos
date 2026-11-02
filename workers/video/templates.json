@@ -1,0 +1,6 @@
+{
+  "black-vertical-v1": { "nome": "Black Vertical clássico", "descricao": "Formato original dos projetos anteriores.", "largura": 720, "altura": 1280, "titulo": "", "chamada": "" },
+  "black-recrutamento-v2": { "nome": "Faça parte da Black", "descricao": "Recrutamento · título em destaque e chamada para conhecer a equipe.", "largura": 1080, "altura": 1920, "titulo": "FAÇA PARTE DA BLACK", "chamada": "CONHEÇA NOSSA EQUIPE" },
+  "black-servicos-v2": { "nome": "Seu estilo. Sua assinatura.", "descricao": "Serviços · foco no corte, acabamento e transformação.", "largura": 1080, "altura": 1920, "titulo": "SEU ESTILO. SUA ASSINATURA.", "chamada": "VIVA A EXPERIÊNCIA BLACK" },
+  "black-equipe-v2": { "nome": "Quem faz a Black", "descricao": "Equipe · bastidores, pessoas e rotina da barbearia.", "largura": 1080, "altura": 1920, "titulo": "QUEM FAZ A BLACK", "chamada": "CONHEÇA NOSSA HISTÓRIA" }
+}

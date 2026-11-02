@@ -46,7 +46,7 @@ async function main() {
   check((await request("")).status === 401, "sem sessão não entra");
   check((await request("", cliente)).status === 403, "cliente não acessa Estúdio");
   check((await request("", a, "POST", { nome: "Origem maliciosa" }, { origin: "https://evil.example" })).status === 403, "CSRF bloqueado");
-  const p = await data(await request("", a, "POST", { nome: "Demonstração · Estúdio Black" }));
+  const p = await data(await request("", a, "POST", { nome: "Demonstração · Estúdio Black", preset: "black-vertical-v1" }));
   const get = async () => data(await request("/" + p.id, a));
   check((await request("/" + p.id, b)).status === 404, "outro barbeiro não lê projeto");
   check((await data(await request("", b))).projetos.length === 0, "lista isolada por usuário");
@@ -109,8 +109,9 @@ async function main() {
       assert.notEqual(v.estado, "FALHOU", v.erro);
       assert.ok(Date.now() < prazo, "Tempo limite da renderização");
     }
-    const output = await request("/" + p.id + "/versoes/" + render.id + "?download=1", a);
-    check(output.ok && output.headers.get("content-disposition")?.includes("attachment"), "download da exportação real disponível");
+    check((await request("/" + p.id + "/versoes/" + render.id + "?download=1", a)).status === 409, "download final aguarda aprovação humana");
+    const output = await request("/" + p.id + "/versoes/" + render.id, a);
+    check(output.ok, "prévia da exportação real disponível para revisão");
     const video = Buffer.from(await output.arrayBuffer());
     await writeFile(".test-estudio/resultado.mp4", video);
     check(video.subarray(4, 8).toString() === "ftyp" && video.length > 1000, "exportação contém MP4 real");
@@ -119,6 +120,8 @@ async function main() {
     check(approvals.map(r => r.status).sort().join() === "200,409", "aprovação atômica da versão renderizada");
     const record = await db.estudioVersao.findUniqueOrThrow({ where: { id: render.id } });
     check(record.estado === "APROVADO" && !!record.aprovadaEm && !!record.sha256, "aprovação guarda data e hash do arquivo");
+    const aprovado = await request("/" + p.id + "/versoes/" + render.id + "?download=1", a);
+    check(aprovado.ok && aprovado.headers.get("content-disposition")?.includes("attachment"), "aprovação libera download final");
     await mkdir("docs/estudio-evidencias", { recursive: true });
     for (const [i, t] of [0.7, 2.2].entries()) await command(ffmpeg, ["-hide_banner", "-loglevel", "error", "-y", "-ss", String(t), "-i", ".test-estudio/resultado.mp4", "-frames:v", "1", "docs/estudio-evidencias/quadro-" + (i + 1) + ".png"]);
     await writeFile(".test-estudio/acesso-demo.json", JSON.stringify({ login: "estudio-local-0", projetoId: p.id }));
