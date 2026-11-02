@@ -77,18 +77,18 @@ jobs:
         run: |
           docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_estudio_templates_teste
           npx prisma migrate deploy
-      - name: Testes de fluxo (histórico, agentes e Estúdio em bancos separados)
-        env:
-          DATABASE_URL_HISTORICO: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste
-          DATABASE_URL_AGENTES: postgresql://barberos:barberos@localhost:5432/barberos_agentes_teste
-          DATABASE_URL_ESTUDIO: postgresql://barberos:barberos@localhost:5432/barberos_estudio_templates_teste
-        run: npm run teste:todos
-      - name: Recrutamento em banco separado descartável
+      - name: Preparar banco separado do recrutamento
         env:
           DATABASE_URL: postgresql://barberos:barberos@127.0.0.1:55439/barberos_recrutamento_formularios_teste
         run: |
           docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_recrutamento_formularios_teste
           npx prisma migrate deploy
-          npm run teste:recrutamento:formularios
+      - name: Testes de fluxo (histórico, agentes e Estúdio em bancos separados)
+        env:
+          DATABASE_URL_HISTORICO: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste
+          DATABASE_URL_AGENTES: postgresql://barberos:barberos@localhost:5432/barberos_agentes_teste
+          DATABASE_URL_ESTUDIO: postgresql://barberos:barberos@localhost:5432/barberos_estudio_templates_teste
+          DATABASE_URL_RECRUTAMENTO: postgresql://barberos:barberos@127.0.0.1:55439/barberos_recrutamento_formularios_teste
+        run: npm run teste:todos
       - name: Build
         run: npm run build
