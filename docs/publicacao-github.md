@@ -79,7 +79,7 @@ Se a conexão cair, consulte primeiro a instalação e `operacao.json`; não rep
 execução incerta. Uma release existente é preservada e não é sobrescrita. Não se executa `image prune`.
 
 Se faltar a reserva de disco antes do transporte, o fluxo pode liberar uma vez cache de construção
-descartável sem uso há sete dias (`builder prune`, sem `--all`, mantendo 10 GB de cache).
+descartável sem uso há mais de 48 horas (`builder prune`, sem `--all`, mantendo 10 GB de cache).
 Essa operação usa a trava de publicação, exige a imagem atual saudável e confere a preservação de
 todas as imagens/tags, containers, volumes e hashes dos backups/configurações. A reserva de disco
 é verificada novamente; não há redução dos limites, exclusão de backups ou remoção de imagens antigas.
