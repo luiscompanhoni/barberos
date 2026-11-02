@@ -1,3 +1,4 @@
+import { PilotoEntrevistas } from "@/components/whatsapp/PilotoEntrevistas";
 import { redirect } from "next/navigation";
 import { ConexaoWhatsApp } from "@/components/whatsapp/ConexaoWhatsApp";
 import { sessaoAtual } from "@/lib/auth/sessao";
@@ -15,6 +16,7 @@ export default async function WhatsApp() {
         <h1 className="titulo-marca text-2xl">WhatsApp</h1>
       </div>
       <ConexaoWhatsApp />
+      <PilotoEntrevistas />
     </div>
   );
 }

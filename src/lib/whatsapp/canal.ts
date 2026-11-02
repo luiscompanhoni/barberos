@@ -6,6 +6,7 @@
  *   tela /simulador (para testar sem conta na Meta). Na homologacao e sempre ele.
  */
 
+import { reservarEnvioPiloto } from "./piloto";
 import { ehHomologacao } from "@/lib/ambiente";
 import { enviarTextoEvolution } from "./evolution";
 
@@ -55,7 +56,8 @@ async function postarCloud(corpo: Record<string, unknown>): Promise<ResultadoEnv
  * `digitandoMs`: pausa antes de entregar (resposta do bot em bolhas). Na Evolution aparece
  * "digitando..."; na API oficial so espera; no simulador nao espera (testes rapidos).
  */
-export async function enviarTexto(para: string, texto: string, digitandoMs = 0): Promise<ResultadoEnvio> {
+export async function enviarTexto(para: string, texto: string, digitandoMs = 0, origem = "PADRAO"): Promise<ResultadoEnvio> {
+  await reservarEnvioPiloto(para, origem);
   const p = provedorWhatsApp();
   if (p === "simulador") return { wamid: null };
   if (p === "evolution") return enviarTextoEvolution(para, texto, digitandoMs);
@@ -64,6 +66,7 @@ export async function enviarTexto(para: string, texto: string, digitandoMs = 0):
 }
 
 export async function enviarTemplate(para: string, t: TemplateWhatsApp): Promise<ResultadoEnvio> {
+  await reservarEnvioPiloto(para, "TEMPLATE");
   const p = provedorWhatsApp();
   if (p === "simulador") return { wamid: null };
   if (p === "evolution") throw new Error("Modelos de mensagem só existem na API oficial.");

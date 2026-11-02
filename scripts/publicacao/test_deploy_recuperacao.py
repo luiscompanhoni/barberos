@@ -81,7 +81,7 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertEqual(registro["backupAnteriorPreservado"], not backup_sem_imagem)
                 override = json.loads((codigo / "deploy/versao.json").read_text())
                 self.assertEqual(override["services"]["app"]["environment"], {
-                    "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false"})
+                    "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO": "true"})
                 self.assertFalse(registro["centralAgentes"]["execucaoAtiva"])
 
     def test_falha_backup_bloqueia_migracao_e_troca(self):

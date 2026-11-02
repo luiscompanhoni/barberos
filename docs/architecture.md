@@ -347,3 +347,14 @@ A ponte em src/lib/estudio/roteiros.ts copia somente resultados aprovados de Con
 
 Quando falta a reserva de disco exigida para o pacote, a manutenção automática considera somente cache de build dangling com mais de 48 horas e mantém 8 GB de cache. Confere antes/depois as imagens, containers, volumes, configuração e backups. Não usa image/system/volume prune e não reduz a reserva livre exigida pela publicação.
 
+
+
+### Piloto privado de entrevistas no WhatsApp
+
+Implementação local, sem publicação ou teste no WhatsApp real. O recurso `WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO` começa desligado. Liberar a interface não inicia o piloto: DONO cadastra um único telefone por até 60 minutos; 40 tentativas de transporte, inclusive falhas, contadas em transação com trava e auditoria. O bot geral é pausado ao iniciar e não é religado ao encerrar. Restaura-se o estado anterior da conversa somente se continuar em BOT. Nenhum telefone pessoal está no código.
+
+O convite inicial exige entrevista vigente do mesmo dono e candidato com telefone idêntico ao autorizado. Uma chave por entrevista/geração impede repetição automática, inclusive após resultado incerto do provedor. O candidato responde INICIAR ENTREVISTA, sem token em texto. O fluxo é determinístico, sem modelo ou ferramentas gerais. Escolher não reserva: continua exigida confirmação explícita. Templates, mensagens comuns e outros destinatários são recusados antes do provedor; rotinas e campanhas retornam sem processamento durante o piloto ativo. Grupos, LID, dispositivos e domínios desconhecidos são recusados.
+
+Expiração ou esgotamento bloqueiam novos envios, mantendo a proteção até o dono encerrar. Envios já iniciados podem concluir. Encerrar restaura a conversa alvo e mantém o bot geral pausado; o modo piloto conserva o bloqueio de todos os envios, rotinas e chamadas ao modelo mesmo sem cadastro inicial ou após encerramento. A liberação geral exige outra alteração explicitamente autorizada; não existe retomada automática. O piloto não contrata serviços pagos.
+
+A migração aditiva `20261102220000_entrevistas_piloto_whatsapp` não cria registro ativo. Antes de publicar: revisão, integração isolada, autorização explícita de publicação, conferência da versão instalada e backup restaurado em banco separado. O publicador admite somente as duas migrações aditivas deste piloto e as migrações previamente revisadas; a execução continua exigindo autorização explícita. O override disponibiliza a interface do piloto, mas não cria configuração ativa ou telefone. Após o teste real, cancelar a entrevista fictícia e encerrar o piloto, preservando auditoria.

@@ -3,6 +3,7 @@
  * lembretes, aviso depois da falta, agradecimento pos-atendimento e reativacao de sumidos.
  * Cada envio grava antes uma linha unica (tipo + chave): nada sai duas vezes.
  */
+import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
 import { apagarCandidaturasVencidas } from "@/lib/recrutamento/servico";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
@@ -28,6 +29,8 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   const so = opts.clienteIds ? { clienteId: { in: opts.clienteIds } } : {};
   const comercial = horarioComercial(agora, cfg.fuso);
   const cont = { lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0 };
+
+  if (recursoPiloto()) return cont; // Piloto não dispara campanhas nem rotinas de contato.
 
   // O canal do aplicativo tem preferências próprias; uma falha não interrompe os canais existentes.
   try {

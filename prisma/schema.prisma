@@ -2593,3 +2593,19 @@ model AgenteRotina {
   @@index([ativa, proximaEm])
   @@map("agente_rotinas")
 }
+
+
+model PilotoEntrevistaWhatsApp {
+  id Int @id @default(1)
+  ativo Boolean @default(false)
+  telefone String?
+  expiraEm DateTime? @db.Timestamptz(3)
+  usuarioId String?
+  conversaId String?
+  estadoAnterior String?
+  conviteChave String?
+  enviados Int @default(0)
+  versao Int @default(0)
+  atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
+  @@map("recrutamento_whatsapp_piloto")
+}

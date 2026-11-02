@@ -1,4 +1,5 @@
 /** Somente fixtures locais: nenhum transporte, modelo de IA ou produção. */
+import { testarPiloto } from "./teste-entrevistas-piloto";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
@@ -124,6 +125,9 @@ async function main() {
   const logs = await db.auditoria.findMany({ where: { entidadeId: e1.id } }); assert.ok(!JSON.stringify(logs).includes(t1)); ok("auditoria preserva segredo e histórico das ações");
   assert.deepEqual(await contar(), antes); ok("nenhum cliente, atendimento, comanda ou cobrança é criado");
   process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO = "false";
+  const c6 = await candidatura();
+  const e6 = await criarConviteEntrevista(dono.id, c6.id, { ...entrada, chave: randomUUID() });
+  await testarPiloto(dono.id, gerente.id, ok, {telefone:c6.candidato.telefone,entrevistaId:e6.id,token:tokenEntrevista(e6),geracao:e6.geracao,anteriorId:e1.id});
   console.log(`${checks} verificações de entrevistas concluídas, sem rede ou IA.`);
 }
 main().catch(e => { console.error(e); process.exitCode = 1; }).finally(() => db.$disconnect());

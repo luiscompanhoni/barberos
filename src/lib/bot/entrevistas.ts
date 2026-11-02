@@ -1,4 +1,6 @@
 /** Fluxo determinístico. Não importa modelo de IA nem transportes de envio. */
+import { estadoPiloto } from "@/lib/whatsapp/piloto";
+import { permitePiloto } from "@/lib/whatsapp/piloto-regras";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
 import { zAcaoEntrevista } from "@/lib/recrutamento/entrevistas-regras";
@@ -34,14 +36,24 @@ export function mensagemEntrevista(v: Vista) {
   return `Entrevistas presenciais às segundas, 14h–16h, duração ${v.duracaoMin} minutos. Local: ${v.local}. Escolha uma opção enviando o comando completo:\n${v.horarios.map(i => `ESCOLHER ${formato.format(new Date(i)).replace(",", "")} ${v.versao}`).join("\n")}\nA reserva só será feita após sua confirmação. Para sair deste atendimento: SAIR ENTREVISTA.`;
 }
 export async function processarBotEntrevista(ctx: { conversaId: string; telefone: string }, texto: string, agora?: number): Promise<{ tratado: boolean; resposta: string | null }> {
+  const piloto = await estadoPiloto();
+  const autorizadoPiloto = piloto?.ativo && permitePiloto(piloto, ctx.telefone, "ENTREVISTA_PILOTO", agora);
+  if (piloto?.ativo && !autorizadoPiloto) return { tratado: true, resposta: null };
+  if (autorizadoPiloto && /^INICIAR ENTREVISTA$/i.test(texto.trim()) && piloto.conviteChave) {
+    const [id, geracao] = piloto.conviteChave.split(":");
+    const convite = await db.entrevistaRecrutamento.findUnique({ where: { id } });
+    if (!convite || String(convite.geracao) !== geracao || convite.donoId !== piloto.usuarioId) return { tratado: true, resposta: "Convite de teste indisponível. Peça ao dono para conferir o piloto." };
+    texto = `ENTREVISTA ${tokenEntrevista(convite)}`;
+  }
   const inicio = inicioBotEntrevista(texto);
   // Desligado por padrão: nem consulta banco, envia ou chama IA.
-  if (process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO !== "true") return { tratado: contemConviteEntrevista(texto) || comandoReservadoEntrevista(texto), resposta: null };
+  if (!autorizadoPiloto && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO !== "true") return { tratado: contemConviteEntrevista(texto) || comandoReservadoEntrevista(texto), resposta: null };
   try {
     return await db.$transaction(async tx => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'entrevista-conversa:'} || ${ctx.conversaId}, 0))`;
       let e = inicio ? await porTokenEntrevista(tx, inicio[1], agora ?? Date.now()) : await tx.entrevistaRecrutamento.findUnique({ where: { conversaId: ctx.conversaId } });
       if (!e) return { tratado: contemConviteEntrevista(texto) || comandoReservadoEntrevista(texto), resposta: null };
+      if (autorizadoPiloto && (e.donoId !== piloto.usuarioId || `${e.id}:${e.geracao}` !== piloto.conviteChave)) return { tratado: true, resposta: "Use INICIAR ENTREVISTA para abrir somente o convite deste teste." };
       await travarAgenda(tx, e.donoId);
       const c = await tx.candidaturaRecrutamento.findUniqueOrThrow({ where: { id: e.candidaturaId }, select: { candidato: { select: { telefone: true } } } });
       if (c.candidato.telefone !== normalizarTelefone(ctx.telefone)) throw new ErroNegocio("Não foi possível usar este convite nesta conversa. Contate a Black.", 403);

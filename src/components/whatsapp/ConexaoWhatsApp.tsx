@@ -130,7 +130,7 @@ export function ConexaoWhatsApp() {
       {!info.temChaveBot && info.modo !== "simulador" && (
         <p className="flex gap-2 text-xs text-amber-700">
           <TriangleAlert className="shrink-0" size={14} />
-          Falta a chave da Anthropic (ANTHROPIC_API_KEY): as mensagens chegam em Conversas, mas o bot não responde sozinho.
+          Falta a chave da Anthropic (ANTHROPIC_API_KEY): as mensagens chegam em Conversas, mas o bot geral com IA não responde sozinho. O piloto restrito de entrevistas funciona sem IA.
         </p>
       )}
     </>

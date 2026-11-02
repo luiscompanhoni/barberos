@@ -1,4 +1,6 @@
 import { contemConviteEntrevista, comandoReservadoEntrevista, processarBotEntrevista, registroSeguroEntrevista } from "./entrevistas";
+import { estadoPiloto } from "@/lib/whatsapp/piloto";
+import { permitePiloto, recursoPiloto } from "@/lib/whatsapp/piloto-regras";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -38,6 +40,13 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   const texto = e.texto ?? "[mensagem que não e texto: áudio, foto, figurinha ou documento]";
   const conversa = await registrarEntrada({ ...e, texto: registroSeguroEntrevista(texto) });
   if (!conversa) return; // repetida
+  const piloto = await estadoPiloto();
+  if (piloto || recursoPiloto()) {
+    if (!piloto?.ativo || !permitePiloto(piloto, conversa.telefone, "ENTREVISTA_PILOTO") || conversa.estado === "HUMANO") return;
+    const r = await processarBotEntrevista({ conversaId: conversa.id, telefone: conversa.telefone }, texto);
+    if (r.resposta) await enviarNaConversa(conversa.id, r.resposta, "BOT", { entrevistaPiloto: true });
+    return; // Não existe fallback para modelo ou ferramentas operacionais no piloto.
+  }
   const cfgEntrevista = process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true" ? await configuracao() : null;
   if (cfgEntrevista && !cfgEntrevista.botAtivo) return;
   // Uma sessão de entrevista existente não cai no modelo geral se o canal for desligado.
@@ -91,7 +100,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
         janelaDias: cfg.janelaAgendamentoDias, cliente: cliente?.nome.trim() ? cliente : null, nomePerfil: conversa.nomePerfil, plano,
         avisos: await avisosRecentes(conversa.id, agora),
       }),
-      texto: e.texto,
+      texto: registroSeguroEntrevista(e.texto),
       ctx: { conversaId: conversa.id, telefone: conversa.telefone, nomePerfil: conversa.nomePerfil },
       modelo: opts.modelo,
     });
@@ -141,7 +150,7 @@ async function avisosRecentes(conversaId: string, agora: number) {
       continue;
     }
     if (m.autor === "CLIENTE") break;
-    if (m.autor === "SISTEMA") avisos.push(m.texto);
+    if (m.autor === "SISTEMA") avisos.push(registroSeguroEntrevista(m.texto));
   }
   return avisos.slice(0, 3).reverse();
 }

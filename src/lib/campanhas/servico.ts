@@ -1,3 +1,4 @@
+import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
 /**
  * Campanhas no WhatsApp por segmento da base: o dono (ou gerente) libera lotes do tamanho que a agenda aguenta e a
  * rotina das automacoes manda aos poucos, no horario comercial, sem passar do limite diario da campanha.
@@ -163,6 +164,7 @@ export async function listarCampanhas(agora = Date.now()) {
 
 /** Rotina (horario comercial): manda a fila das campanhas ativas, respeitando o limite diario de cada uma. */
 export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
+  if (recursoPiloto()) return 0;
   const cfg = await configuracao();
   const inicioHoje = new Date(instanteLocal(dataLocal(agora, cfg.fuso), 0, cfg.fuso));
   let total = 0;

@@ -300,3 +300,6 @@ Implementação local de editor/versionamento e avaliação humana privada concl
 ### Entrevistas — entrega local
 
 Implementados botão, portal de confirmação e bot determinístico com transporte desligado. Pendentes: quatro ciclos de revisão, conferência visual interativa (servidor local anteriormente bloqueado pela revisão automática), piloto humano, validação de restauração antes de futura migração em produção e futura publicação autorizada. Não ativar WhatsApp, IA paga ou gastos. Calendários externos e outros compromissos do dono ainda não participam da disponibilidade.
+
+
+- Piloto WhatsApp de entrevistas: implementação local com 36 verificações de integração no PostgreSQL descartável. Pendentes: suite completa de publicação em Linux, revisão de publicação e autorização explícita de deploy. Nenhum envio real. O encerramento mantém todos os envios, rotinas e IA bloqueados; não existe liberação geral automática.

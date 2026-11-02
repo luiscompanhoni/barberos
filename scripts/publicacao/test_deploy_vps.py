@@ -42,11 +42,11 @@ class DeployTest(unittest.TestCase):
             exigir_migracoes_da_publicacao(revisadas + ["20261102210000_nao_revisada"])
 
     def test_conferencia_recusa_execucao_paga_token_meta_ou_interface_ausente(self):
-        seguro = {"AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false"}
+        seguro = {"AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO": "true"}
         def app(env):
             return {"Config": {"Env": [k + "=" + v for k, v in env.items()]}}
         self.assertFalse(conferir_central_desligada(app(seguro))["execucaoAtiva"])
-        for chave, valor in (("AGENTES_HABILITADOS", "false"), ("AGENTES_EXECUCAO_ATIVA", "true"), ("META_ADS_TOKEN", "fixture"), ("RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO", "true")):
+        for chave, valor in (("AGENTES_HABILITADOS", "false"), ("AGENTES_EXECUCAO_ATIVA", "true"), ("META_ADS_TOKEN", "fixture"), ("RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO", "true"), ("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "false")):
             with self.assertRaises(RuntimeError):
                 conferir_central_desligada(app({**seguro, chave: valor}))
 

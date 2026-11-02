@@ -42,12 +42,12 @@ export async function registrarEntrada(p: { telefone: string; waId?: string; nom
 }
 
 /** Envia texto livre numa conversa (dentro da janela de 24h) e registra. */
-export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { digitandoMs?: number } = {}) {
+export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { digitandoMs?: number; entrevistaPiloto?: boolean } = {}) {
   const conversa = await db.conversa.findUniqueOrThrow({ where: { id: conversaId } });
   let erro: string | null = null;
   let wamid: string | null = null;
   try {
-    wamid = (await enviarTexto(conversa.waId ?? conversa.telefone, texto, opts.digitandoMs)).wamid;
+    wamid = (await enviarTexto(opts.entrevistaPiloto ? conversa.telefone : conversa.waId ?? conversa.telefone, texto, opts.digitandoMs, opts.entrevistaPiloto ? "ENTREVISTA_PILOTO" : "PADRAO")).wamid;
   } catch (e) {
     erro = (e as Error).message;
     console.error(`[whatsapp] falha ao enviar para ${conversa.telefone}:`, erro);
