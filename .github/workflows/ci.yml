@@ -57,14 +57,15 @@ jobs:
           npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Dados de exemplo
         run: npm run db:seed
-      - name: Testes de fluxo
-        run: npm run teste:todos
-      - name: Histórico financeiro em banco separado
+      - name: Preparar banco separado do histórico financeiro
         env:
           DATABASE_URL: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste
         run: |
           docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_historico_teste
           npx prisma migrate deploy
-          npm run teste:historico
+      - name: Testes de fluxo (inclui histórico em banco separado)
+        env:
+          DATABASE_URL_HISTORICO: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste
+        run: npm run teste:todos
       - name: Build
         run: npm run build

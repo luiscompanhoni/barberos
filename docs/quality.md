@@ -40,6 +40,8 @@ Durante o trabalho, rode o teste escopado (`npx vitest run tests/<arquivo>.test.
 Substitui a consulta Celcash por respostas fictícias e recusa outros destinos ou métodos de rede.
 Os metadados de backup são fixtures; não comprovam um backup real. Deixa os dados sintéticos no banco
 descartável para inspeção, pois a auditoria é imutável. O CI executa esse fluxo em banco separado.
+Em `teste:todos`, informe esse destino em `DATABASE_URL_HISTORICO`; o runner troca `DATABASE_URL`
+somente para `teste:historico`. Ausência ou destino inválido falham, sem recorrer ao banco comum.
 Os testes unitários cobrem identidade, datas, duplicidade, escopo de leitura, schema e acesso à rota.
 O fluxo inclui repetição com payload alterado, disputa com pedido normal de estorno, trava da importação
 de extrato, preservação de nota concorrente, rollback por falha de auditoria, total líquido do estorno,

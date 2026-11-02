@@ -75,7 +75,7 @@ Instalação e configuração definitiva: [app-notificacoes.md](app-notificacoes
 | `npm run typecheck` | `tsc --noEmit` (no CI, depois de `npx prisma generate` e `npx next typegen`) | não |
 | `npm test` | testes unitários Vitest (`tests/**/*.test.ts`) | não |
 | `npm run teste:<área>` | fluxo completo contra o banco do `.env`, com gateways falsos (sem chamadas reais) | sim |
-| `npm run teste:todos` | roda todos os `teste:*` e falha se algum quebrar (`scripts/testes-integracao.sh`) | sim |
+| `npm run teste:todos` | roda todos os `teste:*`; exige também `DATABASE_URL_HISTORICO` para o banco local migrado `barberos_historico_teste` (`scripts/testes-integracao.sh`) | sim |
 | `npm run build` | build de produção | não |
 
 Áreas de `teste:<área>`: `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`,
