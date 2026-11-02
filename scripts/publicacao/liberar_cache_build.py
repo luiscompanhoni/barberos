@@ -41,7 +41,7 @@ def liberar(base, projeto, imagem):
     antes = preservar(base)
     livre = shutil.disk_usage(base).free
     # Apenas cache de build não utilizado há mais de 48h; não usa image/system/volume prune.
-    executar(["docker", "builder", "prune", "--all", "--force", "--filter", "until=48h", "--keep-storage", "7GB"])
+    executar(["docker", "builder", "prune", "--all", "--force", "--filter", "until=48h", "--keep-storage", "6GB"])
     depois = preservar(base)
     for campo in ("imagens", "containers", "volumes"):
         if not antes[campo].issubset(depois[campo]):
@@ -51,7 +51,7 @@ def liberar(base, projeto, imagem):
     return {"livreAntes": livre, "livreDepois": shutil.disk_usage(base).free,
             "imagensPreservadas": True, "containersPreservados": True,
             "volumesPreservados": True, "backupsConfiguracaoPreservados": True,
-            "filtro": "until=48h", "reservaCache": "7GB", "escopoCache": "unused"}
+            "filtro": "until=48h", "reservaCache": "6GB", "escopoCache": "unused"}
 
 
 if __name__ == "__main__":
