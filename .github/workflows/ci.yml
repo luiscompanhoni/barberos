@@ -52,6 +52,8 @@ jobs:
         run: |
           npm test
           node --test workers/video/tests/*.test.mjs
+      - name: Publicação e recuperação (sem publicar)
+        run: npm run check:publicacao:servidor
       - name: Migrações num banco limpo
         run: |
           npx prisma migrate deploy
@@ -99,3 +101,4 @@ jobs:
         run: npm run teste:todos
       - name: Build
         run: npm run build
+
