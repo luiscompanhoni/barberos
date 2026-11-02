@@ -39,7 +39,7 @@ class CacheBuildTest(unittest.TestCase):
         self.assertTrue(r["backupsConfiguracaoPreservados"])
         self.assertEqual(r["livreDepois"], 20)
         mutacoes = [c for c in self.comandos if "prune" in c]
-        self.assertEqual(mutacoes, [["docker", "builder", "prune", "--force", "--filter", "until=48h", "--keep-storage", "8GB"]])
+        self.assertEqual(mutacoes, [["docker", "builder", "prune", "--force", "--filter", "until=48h", "--keep-storage", "7GB"]])
 
     def test_imagem_ou_saude_diferente_impede_limpeza(self):
         for alteracao in ({"Image": "outra"}, {"State": {"Health": {"Status": "unhealthy"}}}):
