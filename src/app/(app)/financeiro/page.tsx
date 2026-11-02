@@ -8,7 +8,7 @@ import { contarPendentes } from "@/lib/estornos/servico";
 
 export const dynamic = "force-dynamic";
 
-const ABAS: Aba[] = ["caixa", "despesas", "links", "estornos", "conciliacao", "resumo", "resultado"];
+const ABAS: Aba[] = ["caixa", "despesas", "links", "estornos", "conciliacao", "resumo", "resultado", "historico"];
 
 /** Caixa, despesas, links, estornos e conciliacao (dono, gerente e recepcao); resumo e resultado do mes com a permissao "lucro". */
 export default async function Financeiro({ searchParams }: PageProps<"/financeiro">) {
@@ -22,8 +22,8 @@ export default async function Financeiro({ searchParams }: PageProps<"/financeir
   const verLucro = await pode(s, "lucro");
   return (
     <FinanceiroContexto pessoal={false} podeEmpresa>
-      <FinanceiroTela key={typeof aba === "string" ? aba : "inicio"} verLucro={verLucro} gestao={GESTAO.includes(s.papel)} estornosPendentes={await contarPendentes()}
-        abaInicial={ABAS.find((a) => a === aba && (!["resumo", "resultado"].includes(a) || verLucro)) ?? (verLucro ? "resultado" : "despesas")} />
+      <FinanceiroTela key={typeof aba === "string" ? aba : "inicio"} verLucro={verLucro} gestao={GESTAO.includes(s.papel)} dono={s.papel === "DONO"} estornosPendentes={await contarPendentes()}
+        abaInicial={ABAS.find((a) => a === aba && (a !== "historico" || s.papel === "DONO") && (!["resumo", "resultado"].includes(a) || verLucro)) ?? (verLucro ? "resultado" : "despesas")} />
     </FinanceiroContexto>
   );
 }

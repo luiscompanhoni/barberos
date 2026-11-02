@@ -647,6 +647,7 @@ model Cobranca {
   tokenPublico  String?         @unique
   criadaEm      DateTime        @default(now()) @db.Timestamptz(3)
   atualizadaEm  DateTime        @updatedAt @db.Timestamptz(3)
+  vinculosExternos VinculoCobrancaExterna[]
 
   @@index([assinaturaId, vencimento])
   @@map("cobrancas")
@@ -1794,6 +1795,7 @@ model PedidoEstorno {
   decididoEm            DateTime?     @db.Timestamptz(3)
   executadoEm           DateTime?     @db.Timestamptz(3)
   atualizadoEm          DateTime      @updatedAt @db.Timestamptz(3)
+  vinculoExterno        VinculoCobrancaExterna?
 
   @@index([status, criadoEm])
   @@index([tipo, referenciaId])
@@ -1984,11 +1986,39 @@ model MovimentoExterno {
   observacao        String?
   bruto             Json?
   criadoEm          DateTime             @default(now()) @db.Timestamptz(3)
+  recebimentoVinculado VinculoCobrancaExterna? @relation("RecebimentoHistorico")
+  estornoVinculado     VinculoCobrancaExterna? @relation("EstornoHistorico")
 
   @@unique([fonte, idExterno])
+  @@index([fonte, transacaoId])
   @@index([fonte, data])
   @@index([tipo, data])
   @@map("movimentos_externos")
+}
+
+/// Origem comprovada de uma cobranca. Vincular nao substitui o gatewayId nem dispara cobranca.
+model VinculoCobrancaExterna {
+  id                    String @id @default(cuid())
+  fonte                 FonteExterna
+  transacaoId           String
+  contratoId            String?
+  cobrancaId            String
+  cobranca              Cobranca @relation(fields: [cobrancaId], references: [id], onDelete: Restrict)
+  recebimentoId         String @unique
+  recebimento           MovimentoExterno @relation("RecebimentoHistorico", fields: [recebimentoId], references: [id], onDelete: Restrict)
+  estornoMovimentoId     String? @unique
+  estornoMovimento       MovimentoExterno? @relation("EstornoHistorico", fields: [estornoMovimentoId], references: [id], onDelete: Restrict)
+  pedidoEstornoId        String? @unique
+  pedidoEstorno          PedidoEstorno? @relation(fields: [pedidoEstornoId], references: [id], onDelete: Restrict)
+  criadoPorId           String
+  referenciaBackup      String
+  evidencia             Json
+  criadoEm              DateTime @default(now()) @db.Timestamptz(3)
+  atualizadoEm          DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([fonte, transacaoId])
+  @@unique([fonte, cobrancaId])
+  @@map("vinculos_cobrancas_externas")
 }
 
 /// Regra de classificacao da conciliacao: quem tem esse texto no nome (destino/origem) vira esse tipo/categoria.

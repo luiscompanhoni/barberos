@@ -21,7 +21,8 @@ exclusiva para cifrar o relatório. Não é necessário manipular a chave SSH no
    A recepção confere hashes, rejeita links e caminhos fora da pasta e não sobrescreve release existente.
 3. Uma trava no servidor impede duas publicações simultâneas. O script exige a imagem antiga esperada,
    banco/app saudáveis, memória/disco mínimos e migrações conhecidas. A migração nova permitida nesta
-   entrega é `20261025000000_estudio_black`; futuras migrations precisam de revisão explícita do código.
+   entrega do editor é `20261101230000_conciliacao_historica`; qualquer outra migration pendente bloqueia
+   a publicação. A migração do Estúdio deve já estar aplicada. Futuras migrations precisam de revisão explícita.
 4. A imagem antiga do app recebe tag de preservação obrigatória. A imagem anterior do backup também é
    preservada quando ainda existe no Docker; a instalação legada pode manter um container de backup cuja
    imagem foi removida. Essa ausência fica registrada e não libera a troca sem verificar o backup novo.

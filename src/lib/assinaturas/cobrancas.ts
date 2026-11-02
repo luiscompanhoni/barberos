@@ -11,6 +11,7 @@ import { publicar } from "@/lib/eventos";
 import { gatewayPorId, type CobrancaGateway } from "@/lib/pagamentos/gateway";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
 import { somarMes } from "./regras";
+import { conferirVinculoSincronizado } from "@/lib/conciliacao/historico/sincronizacao";
 
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = (iso: string) => iso.split("-").reverse().join("/");
@@ -34,7 +35,6 @@ export async function sincronizarCobranca(cob: CobrancaGateway) {
     : cob.assinaturaGatewayId
       ? await db.assinatura.findUnique({ where: { gatewayId: cob.assinaturaGatewayId }, include: incluir })
       : null;
-  if (!assinatura) return null;
 
   // Detalhes de Pix/boleto so sobrescrevem quando o gateway informou.
   const detalhes = Object.fromEntries(
@@ -44,7 +44,15 @@ export async function sincronizarCobranca(cob: CobrancaGateway) {
     }).filter(([, v]) => v !== undefined && v !== null),
   );
   const token = novoTokenPublico();
-  const salva = await db.cobranca.upsert({
+  const salva = await db.$transaction(async (tx) => {
+    const transacaoId = cob.id.match(/^celtx_(\d+)$/)?.[1];
+    if (transacaoId) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`conciliacao:celcash:${transacaoId}`}))`;
+      // Historico conferido tem sua origem preservada; nao recria o mesmo pagamento sob outro gatewayId.
+      if (await conferirVinculoSincronizado(tx, transacaoId, cob)) return null;
+    }
+    if (!assinatura) return null;
+    return tx.cobranca.upsert({
     where: { gatewayId: cob.id },
     create: {
       gatewayId: cob.id, assinaturaId: assinatura.id, valorCentavos: cob.valorCentavos,
@@ -58,11 +66,13 @@ export async function sincronizarCobranca(cob: CobrancaGateway) {
       valorCentavos: cob.valorCentavos, status: cob.status, pagaEm: cob.pagaEm ? new Date(cob.pagaEm) : null,
       ...(cob.link ? { link: cob.link } : {}), ...detalhes,
     },
+    });
   });
+  if (!salva || !assinatura) return null;
 
   if (assinatura.status === "CANCELADA") return { de: "CANCELADA" as const, para: "CANCELADA" as const };
 
-  const cobrancas = await db.cobranca.findMany({ where: { assinaturaId: assinatura.id }, orderBy: { vencimento: "asc" } });
+  const cobrancas = await db.cobranca.findMany({ where: { assinaturaId: assinatura.id, vinculosExternos: { none: {} } }, orderBy: { vencimento: "asc" } });
   const pagas = cobrancas.filter((c) => c.status === "PAGA");
   const emAberto = cobrancas.filter((c) => c.status === "ATRASADA" || c.status === "ESTORNADA");
   let status: StatusAssinatura = assinatura.status;
@@ -138,7 +148,7 @@ export async function sincronizarAssinatura(assinaturaId: string) {
 /** Cobranca em aberto mais antiga (para mandar o link). */
 export async function cobrancaEmAberto(assinaturaId: string) {
   return db.cobranca.findFirst({
-    where: { assinaturaId, status: { in: ["PENDENTE", "ATRASADA", "ESTORNADA"] } },
+    where: { assinaturaId, status: { in: ["PENDENTE", "ATRASADA", "ESTORNADA"] }, vinculosExternos: { none: {} } },
     orderBy: { vencimento: "asc" },
   });
 }

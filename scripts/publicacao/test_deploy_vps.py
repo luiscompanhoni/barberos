@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from deploy_vps_comum import conferir_migracoes, conferir_pacote
+from deploy_vps_comum import conferir_migracoes, conferir_pacote, exigir_migracoes_da_publicacao
 from receber_release import receber
 
 
@@ -23,6 +23,13 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_publicacao_aceita_somente_migracao_historica_revisada(self):
+        exigir_migracoes_da_publicacao([])
+        exigir_migracoes_da_publicacao(["20261101230000_conciliacao_historica"])
+        for extra in ("20261025000000_estudio_black", "20270101000000_nao_revisada"):
+            with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+                exigir_migracoes_da_publicacao(["20261101230000_conciliacao_historica", extra])
+
     def test_crlf_equivalente_sem_mudar_checksum_nem_aceitar_sql_diferente(self):
         with tempfile.TemporaryDirectory() as d:
             pasta = Path(d)

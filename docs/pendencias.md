@@ -90,9 +90,15 @@ Feito (14/10):
   - retiradas fora do lucro;
   - divergências de cartão, Pix e mensalidades.
 - **Mensalidades da Celcash:** importador do que o CashBarber não trouxe, pareando com o que já veio de lá.
+- **Editor de histórico:** implementado localmente, exclusivo do dono, com prévia, backup e origem auditada.
+  Vincula cobranças existentes, inclui ausentes e registra estorno integral já realizado. Não reativa planos.
 - **Acesso:** despesas e lucro só com a permissão "lucro", que fica desligada por padrão.
 
 Falta:
+- [ ] Publicar o editor e a migração `20261101230000_conciliacao_historica` após conferir a versão instalada,
+      backup e recuperação. Aplicar correções somente depois de conferir os registros de produção.
+- [ ] Revisar os resultados do importador antigo antes de qualquer nova aplicação em lote: a janela de
+      pareamento de 45 dias pode ocultar ciclos distintos; datas de cancelamento dos históricos eram calculadas.
 - [ ] Saídas do CashBarber (despesas, contas a pagar, sangria/suprimento) não são importadas. Ver se ainda fazem
       falta depois do extrato da Stone.
 - [ ] Rodar a sincronização da Celcash e subir o extrato da Stone em produção, todo o histórico, e conferir mês a

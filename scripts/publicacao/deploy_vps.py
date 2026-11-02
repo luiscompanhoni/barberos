@@ -12,7 +12,7 @@ from pathlib import Path
 
 from deploy_vps_comum import (aguardar_saude, ambiente_container, arquivo_ambiente, backup_verificado,
     conferir_https, conferir_migracoes, conferir_pacote, consultar_banco, container, ensaiar_schema,
-    escrever_privado, executar, migracoes)
+    escrever_privado, executar, exigir_migracoes_da_publicacao, migracoes)
 
 
 def interrompido(_sinal, _frame):
@@ -60,8 +60,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         if info["Config"].get("Labels", {}).get("org.opencontainers.image.revision") != commit:
             raise RuntimeError("Imagem não corresponde ao commit aprovado.")
     pendentes = conferir_migracoes(migracoes(banco["Id"]), codigo / "prisma/migrations")
-    if set(pendentes) - {"20261025000000_estudio_black"}:
-        raise RuntimeError("Migração pendente fora do escopo aprovado desta publicação.")
+    exigir_migracoes_da_publicacao(pendentes)
     configs_antigos = app["Config"]["Labels"]["com.docker.compose.project.config_files"].split(",")
     for p in configs_antigos:
         if not Path(p).is_relative_to(base) or not Path(p).is_file() or Path(p).is_symlink():

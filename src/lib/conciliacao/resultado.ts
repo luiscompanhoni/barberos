@@ -35,11 +35,12 @@ function saidas(movs: Mov[]) {
 
 export async function resultadoDoMes(mes: string) {
   const janela = await janelaMes(mes);
-  const [r, movs, ultimos, tx] = await Promise.all([
+  const [r, movs, ultimos, tx, historicosDivergentes] = await Promise.all([
     resumoMes(mes),
     db.movimentoExterno.findMany({ where: { data: { gte: janela.gte, lt: janela.lt } }, select: { fonte: true, tipo: true, forma: true, valorCentavos: true, categoria: true } }),
     db.movimentoExterno.groupBy({ by: ["fonte"], _max: { data: true } }),
     taxas(),
+    db.vinculoCobrancaExterna.findMany({ where: { evidencia: { path: ["divergenciaGateway", "pendente"], equals: true } }, select: { transacaoId: true }, orderBy: { transacaoId: "asc" }, take: 50 }),
   ]);
   const celcashMovs = movs.filter((m) => m.fonte === "CELCASH") as Mov[];
   const stoneMovs = movs.filter((m) => m.fonte === "STONE") as Mov[];
@@ -58,6 +59,7 @@ export async function resultadoDoMes(mes: string) {
   const lucro = r.receitas.total - custoTaxas - despesas;
 
   const alertas: string[] = [];
+  if (historicosDivergentes.length) alertas.push(`A Celcash mudou após a conciliação. Confira em Corrigir histórico as transações: ${historicosDivergentes.map((v) => v.transacaoId).join(", ")}${historicosDivergentes.length === 50 ? " (primeiras 50)" : ""}. Os registros foram preservados.`);
   if (celcashMovs.length && divergente(mensalidades, celcash.recebido)) {
     alertas.push(`Mensalidades registradas (${reais(mensalidades)}) diferentes do que caiu na Celcash (${reais(celcash.recebido)}): diferença de ${reais(celcash.recebido - mensalidades)}.`);
   }
@@ -107,8 +109,16 @@ export async function classificarMovimento(s: Sessao, id: string, d: { tipo: Tip
   if (!m) throw naoEncontrado("Movimento");
   if (d.tipo === "PAGAMENTO" && m.valorCentavos > 0) throw new ErroNegocio("Entrada não pode ser pagamento.");
   await db.$transaction(async (tx) => {
-    await tx.movimentoExterno.update({ where: { id }, data: { tipo: d.tipo, categoria: d.tipo === "PAGAMENTO" ? d.categoria : null, observacao: d.observacao ?? m.observacao, classificadoPorId: s.usuarioId } });
-    await auditar(tx, s.usuarioId, "conciliacao_classificar", "movimento_externo", id, { antes: { tipo: m.tipo, categoria: m.categoria }, depois: { tipo: d.tipo, categoria: d.categoria }, descricao: m.descricao });
+    await tx.$queryRaw`SELECT id FROM movimentos_externos WHERE id = ${id} FOR UPDATE`;
+    const atual = await tx.movimentoExterno.findUniqueOrThrow({ where: { id } });
+    if (d.tipo !== atual.tipo && await tx.vinculoCobrancaExterna.findFirst({ where: { OR: [{ recebimentoId: id }, { estornoMovimentoId: id }] }, select: { id: true } })) {
+      throw new ErroNegocio("O tipo deste movimento comprova uma correção histórica e não pode ser alterado.", 409);
+    }
+    if (d.tipo === "PAGAMENTO" && atual.valorCentavos > 0) throw new ErroNegocio("Entrada não pode ser pagamento.");
+    const categoria = d.tipo === "PAGAMENTO" ? d.categoria : null;
+    const observacao = d.observacao ?? atual.observacao;
+    await tx.movimentoExterno.update({ where: { id }, data: { tipo: d.tipo, categoria, observacao, classificadoPorId: s.usuarioId } });
+    await auditar(tx, s.usuarioId, "conciliacao_classificar", "movimento_externo", id, { antes: { tipo: atual.tipo, categoria: atual.categoria, observacao: atual.observacao }, depois: { tipo: d.tipo, categoria, observacao }, descricao: atual.descricao });
   });
   if (d.lembrar && m.observacao) return { aplicadas: await salvarRegra(s, { padrao: m.observacao, tipo: d.tipo, categoria: d.tipo === "PAGAMENTO" ? d.categoria : null }) };
   return { aplicadas: 0 };

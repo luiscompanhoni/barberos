@@ -146,6 +146,10 @@ A atualização de equipe acrescenta **Reuniões** (`/reunioes`), **Meu dia** (`
   guardado uma vez. **Regras por nome** (`RegraConciliacao`) classificam saídas pelo texto do nome da contraparte,
   para Celcash e Stone; classificação feita à mão não é sobrescrita. Tela "Resultado do mês": faturamento
   registrado × o que caiu, taxas, saídas por categoria, retiradas e lucro, com divergências marcadas.
+- **Correção de histórico Celcash** (Financeiro → Corrigir histórico, somente dono): consulta uma transação,
+  vincula a cobrança existente, inclui recebimento ausente ou registra devolução já realizada. Exige extrato
+  correspondente, conferência de identidade, prévia e backup restaurado recente. Preserva valores/datas
+  existentes e o estado da assinatura; registra origem e auditoria. Não envia cobranças nem devoluções.
 - **Estornos**: a recepção pede (comanda, horário pago antes, link ou mensalidade, inteiro ou parcial); o pedido
   fica pendente, o dono é avisado no WhatsApp, vê um contador no menu Financeiro e aprova, recusa ou estorna direto. Devolve pelo meio certo (Pagar.me, Stone Connect, dinheiro como
   sangria, ou "por fora"). Se o meio recusar, fica como falhou e nada muda.

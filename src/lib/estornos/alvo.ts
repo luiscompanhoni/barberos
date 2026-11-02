@@ -73,13 +73,14 @@ export async function carregarAlvo(tipo: TipoEstorno, id: string, tx: Leitor = d
       bloqueio: l.status === "PAGO" ? null : l.status === "ESTORNADO" ? "Esse link já foi estornado." : "Esse link não foi pago.",
     };
   }
-  const c = await tx.cobranca.findUnique({ where: { id }, include: { assinatura: { include: { cliente: { select: { nome: true } }, plano: { select: { nome: true } } } } } });
+  const c = await tx.cobranca.findUnique({ where: { id }, include: { vinculosExternos: { select: { id: true } }, assinatura: { include: { cliente: { select: { nome: true } }, plano: { select: { nome: true } } } } } });
   if (!c) throw naoEncontrado("Mensalidade");
   return {
     tipo, referenciaId: c.id, valorOriginal: c.valorCentavos, gatewayId: c.gatewayId, meio: meioDoEstorno({ tipo, gatewayId: c.gatewayId }), forma: "ONLINE",
     descricao: `Mensalidade ${c.assinatura.plano.nome} · venc. ${c.vencimento.toISOString().slice(0, 10).split("-").reverse().join("/")}`,
     clienteNome: c.assinatura.cliente.nome, comandaId: null, pagamentoComandaId: null, liquidoComanda: null,
-    bloqueio: c.status === "PAGA" ? null : c.status === "ESTORNADA" ? "Essa mensalidade já foi estornada." : "Essa mensalidade não está paga.",
+    bloqueio: c.vinculosExternos.length ? "Cobrança histórica conciliada: confira eventual devolução em Corrigir histórico, sem enviar novo estorno."
+      : c.status === "PAGA" ? null : c.status === "ESTORNADA" ? "Essa mensalidade já foi estornada." : "Essa mensalidade não está paga.",
   };
 }
 

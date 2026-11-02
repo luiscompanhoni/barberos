@@ -44,7 +44,7 @@ export async function situacaoDoCliente(clienteId: string) {
     pausadaEm: a.pausadaEm, pausadaAte: a.pausadaAte?.toISOString().slice(0, 10) ?? null, hoje: dataLocal(Date.now(), cfg.fuso),
   });
   const vencida = await db.cobranca.findFirst({
-    where: { assinaturaId: a.id, status: { in: ["ATRASADA", "ESTORNADA"] } },
+    where: { assinaturaId: a.id, status: { in: ["ATRASADA", "ESTORNADA"] }, vinculosExternos: { none: {} } },
     orderBy: { vencimento: "asc" },
   });
   return {

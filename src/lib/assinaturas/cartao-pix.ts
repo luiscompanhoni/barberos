@@ -179,7 +179,7 @@ export async function checkoutDaAssinatura(tokenPublico: string, conferir = true
       await sincronizarAssinatura(a.id).catch((e) => console.error("[assinaturas] conferir cartão", a.id, e));
       if ((await db.assinatura.findUniqueOrThrow({ where: { id: a.id } })).status !== "PENDENTE") return { status: "PAGO", forma: "CARTAO", pix: null, link: null };
     }
-    const ultima = a.gatewayId ? await db.cobranca.findFirst({ where: { assinaturaId: a.id }, orderBy: { criadaEm: "desc" } }) : null;
+    const ultima = a.gatewayId ? await db.cobranca.findFirst({ where: { assinaturaId: a.id, vinculosExternos: { none: {} } }, orderBy: { criadaEm: "desc" } }) : null;
     const processando = a.formaPagamento === "CARTAO" && !!a.gatewayId && ultima?.status !== "ATRASADA";
     return { status: "PENDENTE", forma: processando ? "CARTAO" : null, pix: null, link: null, processando };
   }

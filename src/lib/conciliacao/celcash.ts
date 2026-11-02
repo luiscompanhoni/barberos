@@ -75,8 +75,17 @@ export async function sincronizarPeriodo(de: string, ate: string, contasProprias
       bruto: m as unknown as Prisma.InputJsonValue,
     };
   });
-  const r = await db.movimentoExterno.createMany({ data: dados, skipDuplicates: true });
+  const r = await guardarMovimentosCelcash(dados);
   return r.count;
+}
+
+/** Mesma trava da correção histórica: não insere outra prova enquanto a prévia é aplicada. */
+export async function guardarMovimentosCelcash(dados: Prisma.MovimentoExternoCreateManyInput[]) {
+  return db.$transaction(async (tx) => {
+    const ids = [...new Set(dados.map((m) => m.transacaoId).filter((id): id is string => !!id))].sort();
+    for (const id of ids) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`conciliacao:celcash:${id}`}))`;
+    return tx.movimentoExterno.createMany({ data: dados, skipDuplicates: true });
+  }, { timeout: 30_000 });
 }
 
 /** Meses "AAAA-MM" de `de` ate `ate` (inclusivos). */

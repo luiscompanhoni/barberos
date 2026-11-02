@@ -10,6 +10,7 @@
 | `npm test` | testes unitários Vitest (`tests/*.test.ts`): regras puras, sem banco |
 | `npm run teste:<área>` | testes de fluxo contra o banco do `.env`, com gateways falsos (ex.: `teste:comandas`, `teste:jogos`) |
 | `npm run teste:todos` | todos os testes de fluxo (`scripts/testes-integracao.sh`, Git Bash) |
+| `npm run teste:historico` | correções, estorno histórico, auditoria, bloqueios e concorrência num PostgreSQL local descartável |
 | `npm run build` | build de produção do Next |
 | `npm run check` | lint, lint:rules, tipos, testes unitários e build, em sequência |
 
@@ -31,6 +32,18 @@ Durante o trabalho, rode o teste escopado (`npx vitest run tests/<arquivo>.test.
 - `npm run teste:evolucao`: cria/migra bancos locais `barberos_test_*` e executa oito fluxos: acessos, agenda, reuniões, avaliações, recompra, desempenho, notificações e geração de avisos. Exige PostgreSQL local com permissão de criar bancos; força provedores simulados e não usa dados da barbearia. Também roda em `teste:todos`. O fluxo de notificações substitui o transporte antes de testar respostas do provedor; nenhum caso usa push real.
 - Não existe suíte E2E de navegador versionada. Telas são verificadas manualmente no dev server (`.claude/launch.json`, nome `barberos`).
 - Teste comportamento, fronteiras e regressões; não escreva testes que só repetem a implementação.
+
+### Correção histórica Celcash
+
+`teste:historico` exige `DATABASE_URL` apontando para localhost/127.0.0.1 e banco
+`barberos_historico_teste`, previamente criado e migrado. Não usa o banco comum de desenvolvimento.
+Substitui a consulta Celcash por respostas fictícias e recusa outros destinos ou métodos de rede.
+Os metadados de backup são fixtures; não comprovam um backup real. Deixa os dados sintéticos no banco
+descartável para inspeção, pois a auditoria é imutável. O CI executa esse fluxo em banco separado.
+Os testes unitários cobrem identidade, datas, duplicidade, escopo de leitura, schema e acesso à rota.
+O fluxo inclui repetição com payload alterado, disputa com pedido normal de estorno, trava da importação
+de extrato, preservação de nota concorrente, rollback por falha de auditoria, total líquido do estorno,
+benefícios atuais e alerta para mudança posterior na fonte. Não comprova acesso nem valores de produção.
 
 ### Validação da evolução da equipe — 28/10/2026
 

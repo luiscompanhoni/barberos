@@ -9,19 +9,21 @@ import { EstornosTela } from "./EstornosTela";
 import { LinksPagamentoTela } from "./LinksPagamentoTela";
 import { ResultadoTela } from "./ResultadoTela";
 import { ResumoTela } from "./ResumoTela";
+import { HistoricoTela } from "./HistoricoTela";
 
-export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | "resumo" | "resultado";
+export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | "resumo" | "resultado" | "historico";
 const ABAS: { k: Aba; r: string; lucro?: boolean }[] = [
   { k: "caixa", r: "Caixa" }, { k: "despesas", r: "Despesas" }, { k: "links", r: "Links de pagamento" }, { k: "estornos", r: "Estornos" },
   { k: "conciliacao", r: "Conciliação" }, { k: "resumo", r: "Resumo do mês", lucro: true },
   { k: "resultado", r: "Resultado (Celcash e Stone)", lucro: true },
+  { k: "historico", r: "Corrigir histórico" },
 ];
 
 /** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (com a permissao "lucro") o resumo e o resultado do mes. */
-export function FinanceiroTela({ verLucro, gestao, abaInicial = "caixa", estornosPendentes = 0 }: { verLucro: boolean; gestao: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
+export function FinanceiroTela({ verLucro, gestao, dono = false, abaInicial = "caixa", estornosPendentes = 0 }: { verLucro: boolean; gestao: boolean; dono?: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
   const aba = abaInicial;
   const [pendentes, setPendentes] = useState(estornosPendentes);
-  const abas = ABAS.filter((a) => a.k !== "caixa" && (!a.lucro || verLucro));
+  const abas = ABAS.filter((a) => a.k !== "caixa" && (!a.lucro || verLucro) && (a.k !== "historico" || dono));
   return (
     <div className="space-y-4">
       <header className="cabecalho-gestao">
@@ -42,7 +44,7 @@ export function FinanceiroTela({ verLucro, gestao, abaInicial = "caixa", estorno
       </nav>
       {aba === "caixa" ? <CaixaTela /> : aba === "despesas" ? <DespesasTela /> : aba === "links" ? <LinksPagamentoTela />
         : aba === "estornos" ? <EstornosTela onMudou={() => fetch("/api/estornos").then((r) => r.json()).then((x) => setPendentes(x.pendentes?.filter((p: { status: string }) => p.status === "PENDENTE").length ?? 0)).catch(() => {})} />
-          : aba === "conciliacao" ? <ConciliacaoTela gestao={gestao} /> : aba === "resultado" ? <ResultadoTela /> : <ResumoTela />}
+          : aba === "historico" && dono ? <HistoricoTela /> : aba === "conciliacao" ? <ConciliacaoTela gestao={gestao} /> : aba === "resultado" ? <ResultadoTela /> : <ResumoTela />}
     </div>
   );
 }

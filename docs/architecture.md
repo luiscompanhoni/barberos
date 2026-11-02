@@ -123,6 +123,25 @@ webhooks / rotinas ─────────┘
 - **Regras de conciliação por nome** (`RegraConciliacao.padrao`, sem acento, caixa alta) valem para Celcash e Stone;
   classificação manual não é sobrescrita pela sincronização.
 - **Estoque e saldo por movimento**, nunca alterados direto.
+- **Histórico financeiro conferido** (`src/lib/conciliacao/historico`): a API exclusiva do dono consulta a
+  transação Celcash com `transactions.read`, compara o crédito importado e produz uma revisão SHA-256.
+  Aplicar exige a mesma revisão e o último `BackupRegistro` restaurado, sem erro e criado há até duas horas.
+  `VinculoCobrancaExterna` associa origem/transação, cobrança e movimento, com restrições únicas e exclusão
+  restrita. A origem anterior da cobrança é preservada. Identidade exige CPF igual ou nome e telefone iguais;
+  divergências precisam de confirmação expressa do dono e motivo. Contrato e titular da assinatura devem vir
+  da fonte; cobrança avulsa e contratos conflitantes são recusados. CPF repetido entre cadastros bloqueia a
+  correção. Cash Barber exige um único candidato com valor, vencimento e dia do crédito iguais.
+  Travas por transação, cliente, assinaturas, cobranças e movimentos serializam correções; a trava de estorno
+  é compartilhada com o fluxo normal; a importação do extrato usa a trava da transação. Leituras após a espera
+  usam ReadCommitted para enxergar novos pedidos, inclusive falhos ainda passíveis de nova tentativa.
+  A sincronização não recria nem sobrescreve uma transação que já recebeu vínculo histórico; mudanças futuras
+  de status/valor na fonte ficam auditadas e geram alerta em Resultado, a resolver com nova conferência pelo
+  editor. A classificação não altera o tipo de um movimento vinculado.
+  Estorno histórico integral cria apenas o pedido local EXECUTADO na data comprovada; não chama a devolução
+  nem muda benefícios ou estado da assinatura. Cobranças conciliadas ficam fora da dívida e do cálculo de
+  ciclos atuais e não permitem iniciar uma nova devolução pelo fluxo normal. O financeiro continua contando
+  o recebimento e a devolução nas respectivas datas. Estornos parciais, cobranças já estornadas sem vínculo
+  com a devolução e divergências sem prova ficam pendentes. A migração é aditiva e atômica.
 - **Auditoria imutável no banco**, não só na aplicação.
 
 ## Operação

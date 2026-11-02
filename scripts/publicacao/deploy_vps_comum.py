@@ -64,6 +64,12 @@ def conferir_migracoes(aplicadas, pasta):
     return sorted(set(arquivos) - nomes)
 
 
+def exigir_migracoes_da_publicacao(pendentes):
+    # Esta entrega publica somente o editor; nenhuma outra evolução de schema é autorizada.
+    if set(pendentes) - {"20261101230000_conciliacao_historica"}:
+        raise RuntimeError("Migração pendente fora do escopo aprovado desta publicação.")
+
+
 def aguardar_saude(projeto, prazo=180):
     limite = time.monotonic() + prazo
     confirmacoes = 0

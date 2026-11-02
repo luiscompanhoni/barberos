@@ -59,5 +59,12 @@ jobs:
         run: npm run db:seed
       - name: Testes de fluxo
         run: npm run teste:todos
+      - name: Histórico financeiro em banco separado
+        env:
+          DATABASE_URL: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_historico_teste
+          npx prisma migrate deploy
+          npm run teste:historico
       - name: Build
         run: npm run build
