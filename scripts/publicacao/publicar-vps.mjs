@@ -39,7 +39,8 @@ try {
   const release = `${p.base}/releases/${commit}`;
   consultarRegistro = () => executarPython("import pathlib,sys; p=pathlib.Path(sys.argv[1]); print(p.read_text() if p.is_file() else '{}')", [release + "/operacao.json"]);
   resultado.etapa = "conferencia_capacidade";
-  executarPython("import shutil,sys; livre=shutil.disk_usage(sys.argv[1]).free; assert livre > int(sys.argv[2])*4+3*1024**3, 'Reserva de disco insuficiente'", [p.base, String(statSync(join(pasta, "imagens.tar.gz")).size)]);
+  resultado.capacidade = JSON.parse(executarPython("import json,shutil,sys; print(json.dumps({'livre':shutil.disk_usage(sys.argv[1]).free,'necessario':int(sys.argv[2])*4+3*1024**3,'arquivoImagens':int(sys.argv[2])}))", [p.base, String(statSync(join(pasta, "imagens.tar.gz")).size)]).toString());
+  if (resultado.capacidade.livre <= resultado.capacidade.necessario) throw new Error("Reserva de disco insuficiente.");
   resultado.etapa = "receber_codigo";
   const entrega = readFileSync(join(pasta, "entrega.tar.gz"));
   const receber = readFileSync(new URL("./receber_release.py", import.meta.url), "utf8");

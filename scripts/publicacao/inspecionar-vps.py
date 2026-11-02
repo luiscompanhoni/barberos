@@ -77,6 +77,9 @@ def inspecionar(base, projeto):
     relatorio["arquivosCodigo"] = arquivos_codigo(base)
     relatorio["docker"] = executar(["docker", "--version"])
     relatorio["compose"] = executar(["docker", "compose", "version", "--short"])
+    # Somente metadados de ocupação, sem abrir arquivos de clientes ou configuração.
+    relatorio["ocupacaoDocker"] = executar(["docker", "system", "df", "-v"])
+    relatorio["ocupacaoInstalacao"] = executar(["du", "-x", "-B1", "--max-depth=1", str(base)])
     ids = executar(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + projeto])
     containers = []
     if ids and ids.split():
