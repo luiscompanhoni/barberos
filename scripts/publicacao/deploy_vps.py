@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from deploy_vps_comum import (aguardar_saude, ambiente_container, arquivo_ambiente, backup_verificado,
-    conferir_https, conferir_migracoes, conferir_pacote, consultar_banco, container, ensaiar_schema,
+    conferir_https, conferir_migracoes, conferir_pacote, conferir_central_desligada, consultar_banco, container, ensaiar_schema,
     escrever_privado, executar, exigir_migracoes_da_publicacao, migracoes)
 
 
@@ -103,7 +103,8 @@ def publicar(base, projeto, commit, imagem_esperada):
         (codigo / ".env").symlink_to(base / ".env")
         override = codigo / "deploy/versao.json"
         escrever_privado(override, json.dumps({"services": {
-            "app": {"image": novas["app"], "command": ["node", "server.js"]},
+            "app": {"image": novas["app"], "command": ["node", "server.js"], "environment": {
+                "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": ""}},
             "backup": {"image": novas["backup"], "volumes": [str(base / "backups") + ":/backups"]},
             "video-worker": {"image": novas["video-worker"]}}}))
         arquivos = [codigo / "deploy/docker-compose.yml", codigo / "deploy/docker-compose.estudio.producao.yml", override]
@@ -119,6 +120,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         ativacao_iniciada = True
         executar([*compose, "up", "-d", "--no-build", "--no-deps", "app", "backup"], prazo=180)
         novo = aguardar_saude(projeto)
+        estado["centralAgentes"] = conferir_central_desligada(novo)
         conferir_https(commit)
         etapa("ativacao_worker")
         executar([*compose, "up", "-d", "--no-build", "--no-deps", "video-worker"], prazo=180)

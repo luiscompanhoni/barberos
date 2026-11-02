@@ -72,6 +72,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
     links.push({ href: "/avaliacoes", rotulo: "Avaliações dos clientes" });
   }
   if (s.papel === "DONO") links.push({ href: "/recompras", rotulo: "Recompra e custos" });
+  if (s.papel === "DONO" && process.env.AGENTES_HABILITADOS === "true") links.push({ href: "/agentes", rotulo: "Agentes da Black" });
   if (estudioHabilitado()) links.push({ href: "/estudio", rotulo: "Black Estúdio" });
   links.push({ href: "/cultura-black", rotulo: "Cultura Black" });
   links.push({ href: "/notificacoes", rotulo: "App e notificações" });

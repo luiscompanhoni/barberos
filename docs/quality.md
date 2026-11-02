@@ -70,6 +70,37 @@ Esses resultados validam a implementação local; não comprovam publicação, c
 - Chromium/Playwright verificou centrais cliente/equipe, metadados, gesto de instalação emulado, simulação de aviso, leitura, preferências, instruções de iPhone, isolamento entre contas, bloqueio de origem externa, cookie HttpOnly, revogação por logout e troca de conta. Offline usou apenas o fallback público. Layouts de computador/celular sem transbordamento horizontal nem erro JavaScript nos cenários executados.
 - O navegador recebeu inscrições sintéticas para testar a API; não houve registro em provedor externo nem envio real. Instalação física, permissão do sistema operacional e entrega com o aplicativo fechado ainda exigem validação após publicação. Os roteiros de navegador permanecem fora da suíte versionada.
 
+## Central de agentes — implementação local de 01/11/2026
+
+`teste:agentes` usa somente `barberos_agentes_teste` local e bloqueia rede externa. O CI cria/migra esse banco separado;
+`teste:todos` exige `DATABASE_URL_AGENTES`. Ver [guia da central](agentes-black.md#validação-e-recuperação) para coberturas e limites.
+Testes de catálogo, schemas, modelo, Meta e desempenho ficam em `tests/agentes-*.test.ts`.
+Integração inclui hash canônico após persistência JSONB, reenvio da aprovação e cancelamento com consumo auditado.
+Validação com fixtures não comprova tokens, mídia, anúncios ou publicações reais.
+
+Na entrega inicial local: `npm run check` passou (616 testes, 70 arquivos e build); `teste:agentes` passou em 12 verificações.
+As 47 migrações foram aplicadas no banco descartável e `prisma migrate diff` não detectou diferenças.
+Os 22 perfis consultaram contexto real no banco sintético, sem rede. `git diff --check` passou.
+A conferência visual e HTTP ao vivo ficou pendente: a revisão automática bloqueou o início do servidor local,
+tanto em segundo plano quanto vinculado à sessão, sem informar motivo detalhado. Não há captura visual validada desta entrega.
+
+### Quatro ciclos de revisão da central — 01/11/2026
+
+11 achados corrigidos (1 P1 e 10 P2), com local, evidência e conferência em
+[revisao-central-agentes-2026-11-01.md](revisao-central-agentes-2026-11-01.md).
+O `npm run check` final passou: lint, regras locais, tipos, 625 testes em 72 arquivos e build.
+O `npm run teste:agentes` final passou em 21 verificações no PostgreSQL local descartável, com modelo falso e rede bloqueada.
+Além de concorrência e permissão, cobre fila cheia, rollback de aprovação/filhos/auditoria, repetição com rotina e briefing,
+consumo de resposta rejeitada, reserva vencida e preservação integral de registros financeiros sintéticos não vazios.
+Testes de rota chamam handlers diretamente; não equivalem à conferência HTTP ao vivo ou visual.
+
+Backup anterior à migração foi restaurado em banco separado. A migração 46 → 47 preservou integralmente clientes,
+comandas, pagamentos, estornos, transferências, despesas e auditoria, tanto no banco de origem sintético quanto na restauração.
+Um segundo backup recuperou a fila, resultados, revisões, rotinas e auditoria, sem executar trabalhos restaurados.
+`prisma migrate diff` não detectou diferenças; `git diff --check` passou. YAML e sobreposições de homologação foram conferidos.
+Docker não está disponível para iniciar o compose. Visual/HTTP ao vivo, integrações reais e produção continuam pendentes.
+Não houve publicação, anúncios, envios ou chamadas reais de IA nesta revisão.
+
 ## Revisão após implementação ou correção
 
 Ao concluir um ciclo de implementação ou correção, sugira de 3 a 8 ciclos posteriores de code review, com quantidade proporcional ao risco, focos complementares e prompt de continuação preenchido. Essa faixa é convenção do projeto; revisões adicionais dependem de pedido do usuário.

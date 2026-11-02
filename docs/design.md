@@ -117,6 +117,14 @@ O que está implementado:
 - **Offline:** página pública curta, sem dados da conta, com tentativa de reconexão. O service worker não armazena telas privadas nem respostas de API. Guia: [app-notificacoes.md](app-notificacoes.md).
 - Não documentado: guia de estados vazios/erro/carregamento por tela, auditoria formal de contraste ou de leitor de tela.
 
+## Central de agentes
+
+`/agentes` usa os componentes visuais existentes, com fluxo de seis etapas, fila de trabalhos, catálogo de 22 perfis,
+rotinas e situação das conexões. Aprovação exige revisão explícita do resultado; integrações pendentes aparecem como pendentes.
+Pausa e cancelamento permanecem acessíveis durante o processamento. A lista atualiza apenas com a aba visível e protege respostas fora de ordem.
+Trabalhos em aberto aparecem antes do histórico recente, limitado ao total de 100 registros. A confirmação de cancelamento explica
+que tarefas derivadas já criadas precisam de cancelamento separado. Respostas 401/403 limpam o conteúdo privado e invalidam leituras anteriores.
+
 ## Manutenção
 
 Mudanças visuais e de interação atualizam `src/app/globals.css`/componentes e esta orientação quando houver alteração

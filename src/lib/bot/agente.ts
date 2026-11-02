@@ -5,7 +5,7 @@ type Msg = Anthropic.Beta.BetaMessageParam;
 type Params = Anthropic.Beta.MessageCreateParamsNonStreaming;
 
 /** Interface minima do modelo (permite testar o loop com um modelo falso). */
-export type Modelo = { criar(params: Params): Promise<Anthropic.Beta.BetaMessage> };
+export type Modelo = { criar(params: Params, opcoes?: { signal?: AbortSignal; maxRetries?: number }): Promise<Anthropic.Beta.BetaMessage> };
 
 export const MODELO_PADRAO = process.env.BOT_MODELO ?? "claude-opus-5-5";
 const MAX_VOLTAS = 8;
@@ -24,9 +24,9 @@ function extrasDoModelo(modelo: string): Partial<Params> {
 
 let clienteAnthropic: Anthropic | null = null;
 export const modeloAnthropic: Modelo = {
-  criar: (params) => {
+  criar: (params, opcoes) => {
     clienteAnthropic ??= new Anthropic();
-    return clienteAnthropic.beta.messages.create(params);
+    return clienteAnthropic.beta.messages.create(params, opcoes);
   },
 };
 

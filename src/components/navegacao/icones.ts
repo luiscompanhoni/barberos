@@ -1,11 +1,11 @@
 import {
-  Bell, BriefcaseBusiness, CalendarDays, CalendarRange, ChartLine, Clapperboard, ClipboardCheck, Clock3,
+  Bell, Bot, BriefcaseBusiness, CalendarDays, CalendarRange, ChartLine, Clapperboard, ClipboardCheck, Clock3,
   CreditCard, Dices, Gift, HandCoins, HeartHandshake, Landmark, LayoutDashboard, ListChecks, Megaphone,
   MessageCircle, Package, Presentation, ReceiptText, RotateCcw, Settings2, ShieldCheck, Smartphone,
   Star, UserRound, UserRoundPlus, UsersRound, type LucideIcon,
 } from "lucide-react";
 const ICONES: Record<string, LucideIcon> = {
-  "/painel": LayoutDashboard, "/recepcao": CalendarDays, "/meu-dia": ClipboardCheck,
+  "/painel": LayoutDashboard, "/agentes": Bot, "/recepcao": CalendarDays, "/meu-dia": ClipboardCheck,
   "/minha-agenda": CalendarDays, "/semana": CalendarRange, "/comandas": ReceiptText,
   "/caixa": HandCoins, "/conversas": MessageCircle, "/financeiro": Landmark,
   "/estudio": Clapperboard, "/estoque": Package, "/assinaturas": CreditCard,

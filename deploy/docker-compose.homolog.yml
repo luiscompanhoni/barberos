@@ -27,6 +27,9 @@ services:
       DATABASE_URL: postgresql://barberos:${DB_SENHA}@db:5432/barberos
       NODE_ENV: production
       AMBIENTE: homologacao
+      # A cópia do .env não pode iniciar chamadas pagas nem consultar a conta Meta real.
+      AGENTES_EXECUCAO_ATIVA: "false"
+      META_ADS_TOKEN: ""
       ESTUDIO_HABILITADO: "true"
       ESTUDIO_STORAGE_ROOT: /app/media
       ESTUDIO_WORKER_TOKEN: ${ESTUDIO_WORKER_TOKEN:?defina ESTUDIO_WORKER_TOKEN no .env}

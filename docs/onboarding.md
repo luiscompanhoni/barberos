@@ -75,7 +75,7 @@ Instalação e configuração definitiva: [app-notificacoes.md](app-notificacoes
 | `npm run typecheck` | `tsc --noEmit` (no CI, depois de `npx prisma generate` e `npx next typegen`) | não |
 | `npm test` | testes unitários Vitest (`tests/**/*.test.ts`) | não |
 | `npm run teste:<área>` | fluxo completo contra o banco do `.env`, com gateways falsos (sem chamadas reais) | sim |
-| `npm run teste:todos` | roda todos os `teste:*`; exige também `DATABASE_URL_HISTORICO` para o banco local migrado `barberos_historico_teste` (`scripts/testes-integracao.sh`) | sim |
+| `npm run teste:todos` | roda todos os `teste:*`; exige também `DATABASE_URL_HISTORICO` e `DATABASE_URL_AGENTES` para os bancos locais migrados de cada fluxo (`scripts/testes-integracao.sh`) | sim |
 | `npm run build` | build de produção | não |
 
 Áreas de `teste:<área>`: `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`,
@@ -88,6 +88,14 @@ O CI (`.github/workflows/ci.yml`) roda em cada push na `main` e em cada PR: `npm
 em [quality.md](quality.md).
 
 ## Agentes
+
+Para a central da barbearia, consulte [agentes-black.md](agentes-black.md). `AGENTES_HABILITADOS` mostra a interface;
+`AGENTES_EXECUCAO_ATIVA` autoriza processamento com o modelo existente. Ambas começam `false`.
+O teste `npm run teste:agentes` exige o banco local descartável `barberos_agentes_teste`; no runner geral configure
+`DATABASE_URL_AGENTES`, além de `DATABASE_URL_HISTORICO`. Meta requer as três variáveis `META_ADS_*` do `.env.example`.
+Nenhuma sessão de navegador é reutilizada como credencial de servidor.
+O compose de homologação sobrepõe `AGENTES_EXECUCAO_ATIVA=false` e `META_ADS_TOKEN` vazio para evitar herdar
+execução paga ou leitura da conta real de um `.env` copiado. O teste de agentes injeta modelo falso e bloqueia rede externa.
 
 Leia [AGENTS.md](../AGENTS.md). [CLAUDE.md](../CLAUDE.md) importa as mesmas instruções. Consulte
 [setup.md](setup.md) para skills locais, integrações e escopos configurados.

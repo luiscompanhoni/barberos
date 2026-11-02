@@ -65,9 +65,16 @@ def conferir_migracoes(aplicadas, pasta):
 
 
 def exigir_migracoes_da_publicacao(pendentes):
-    # Esta entrega publica somente o editor; nenhuma outra evolução de schema é autorizada.
-    if set(pendentes) - {"20261101230000_conciliacao_historica"}:
+    # A base instalada já inclui o editor; esta entrega permite somente a Central revisada.
+    if set(pendentes) - {"20261102030000_central_agentes"}:
         raise RuntimeError("Migração pendente fora do escopo aprovado desta publicação.")
+
+
+def conferir_central_desligada(app):
+    env = ambiente_container(app)
+    if env.get("AGENTES_HABILITADOS") != "true" or env.get("AGENTES_EXECUCAO_ATIVA") != "false" or env.get("META_ADS_TOKEN") != "":
+        raise RuntimeError("A Central não confirmou interface habilitada com execução e conexão Meta desligadas.")
+    return {"habilitada": True, "execucaoAtiva": False, "metaTokenConfigurado": False}
 
 
 def aguardar_saude(projeto, prazo=180):
@@ -90,12 +97,14 @@ def conferir_https(revisao):
         dados = json.load(r)
     if dados.get("ok") is not True or dados.get("revisao") != revisao:
         raise RuntimeError("HTTPS não confirmou a revisão publicada.")
-    try:
-        urllib.request.urlopen("https://painel.appblackbarber.com/api/estudio/projetos", timeout=15)
-    except urllib.error.HTTPError as e:
-        if e.code in (401, 403):
-            return
-    raise RuntimeError("A rota privada do Estúdio não recusou acesso anônimo.")
+    for caminho in ("/api/estudio/projetos", "/api/agentes"):
+        try:
+            with urllib.request.urlopen("https://painel.appblackbarber.com" + caminho, timeout=15):
+                pass
+        except urllib.error.HTTPError as e:
+            if e.code in (401, 403):
+                continue
+        raise RuntimeError("Uma rota privada não recusou acesso anônimo.")
 
 
 def backup_verificado(base, imagem, rede, ambiente, volume, tipo="DEPLOY"):

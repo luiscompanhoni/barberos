@@ -312,6 +312,19 @@ Uso e ativação: [guia da equipe](evolucao-equipe.md). As regras de recompra, m
 
 Ativação, instalação e teste em aparelho: [app-notificacoes.md](app-notificacoes.md). A implementação local não publica a versão nem ativa envio em produção.
 
+## Central de agentes da barbearia
+
+`src/lib/agentes/` contém catálogo, contexto agregado, executor, fila, rotinas e adaptador Meta de leitura.
+`/api/agentes/**` exige dono ativo e valida origem nas mutações. `AgenteConfiguracao`, `AgenteExecucao` e `AgenteRotina`
+guardam revisão, idempotência, reserva temporária, origem e resultado. O temporizador apenas acorda o executor; o banco guarda o estado.
+Chamadas ao modelo ficam fora das transações. Encaminhamentos automáticos são limitados a Dados → Estratégia → Conteúdo;
+as demais etapas dependem de revisão. Nenhuma ferramenta externa é exposta ao modelo.
+Reutiliza o cliente Anthropic existente, com timeout e retries desativados somente nas chamadas da central.
+Repetições preservam origem e rotina; consumo conhecido também é auditado quando o resultado é rejeitado.
+Fila cheia não interrompe o trabalhador. Aprovações liberam a vaga do pai e criam os filhos atomicamente.
+O painel lê trabalhos abertos e histórico com isolamento RepeatableRead para evitar duplicatas durante mudanças de estado.
+Migração aditiva `20261102030000_central_agentes`. Ativação, limites e recuperação: [agentes-black.md](agentes-black.md).
+
 ## Manutenção
 
 Atualize este mapa ao alterar diretórios, dependências relevantes, contratos, rotinas ou o processo de deploy.

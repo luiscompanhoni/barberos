@@ -17,6 +17,7 @@ export const onRequestError: Instrumentation.onRequestError = async (err, reques
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+  (await import("@/lib/agentes/rotina-servidor")).agendarCentralAgentes();
   // Rotina de pagamentos (Pix mensal e cobrancas vencidas) roda tambem em desenvolvimento.
   (await import("@/lib/assinaturas/rotina")).agendarRotina();
   // Lembretes, pos-falta, pos-atendimento e reativacao (a cada 5 min).

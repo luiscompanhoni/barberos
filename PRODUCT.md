@@ -274,6 +274,13 @@ Cada área tem um teste de fluxo de ponta a ponta contra o banco de desenvolvime
 Definida em [docs/pendencias.md](docs/pendencias.md), seção "Fase A: lançamento" (migração CashBarber validada,
 conciliação completa CashBarber + Celcash + Stone, testes de cartão e decisão sobre o WhatsApp).
 
+## Central de agentes da Black
+
+`/agentes` reúne 22 especialidades para os processos da barbearia, com tarefas, rotinas, fontes, resultados e revisão do dono.
+O fluxo Dados → Estratégia → Conteúdo admite duas etapas automáticas de preparação; Conteúdo → Tráfego exige revisão.
+A execução produz análises e rascunhos internos. Mídia por IA, publicação, gastos e conectores externos ainda dependem das integrações descritas no [guia da central](docs/agentes-black.md).
+A venda do BarberOS fica fora desta fase. Ativação começa desligada; este código não publica nem altera finanças.
+
 ## Manutenção
 
 Atualize este documento quando objetivo, escopo, restrições ou critérios de aceitação mudarem. Decisões técnicas e

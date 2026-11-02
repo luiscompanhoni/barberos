@@ -1,7 +1,7 @@
 export type LinkNavegacao = { href: string; rotulo: string };
 export type GrupoNavegacao = { titulo: string; itens: LinkNavegacao[]; agrupado: boolean };
 const GRUPOS = [
-  { titulo: "Visão geral", rotas: ["/painel", "/indicadores"], agrupado: false },
+  { titulo: "Visão geral", rotas: ["/painel", "/indicadores", "/agentes"], agrupado: false },
   { titulo: "Agenda", rotas: ["/recepcao", "/meu-dia", "/minha-agenda", "/semana"], agrupado: true },
   { titulo: "Operação", rotas: ["/comandas", "/caixa", "/conversas", "/financeiro"], agrupado: false },
   { titulo: "Relacionamento", rotas: ["/assinaturas", "/planos", "/campanhas", "/recompras", "/jogos"], agrupado: true },

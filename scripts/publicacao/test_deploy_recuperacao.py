@@ -44,6 +44,7 @@ class RecuperacaoTest(unittest.TestCase):
             simular("conferir_migracoes", return_value=[])
             simular("consultar_banco", return_value="1")
             simular("aguardar_saude", return_value=antigo)
+            simular("conferir_central_desligada", return_value={"habilitada": True, "execucaoAtiva": False, "metaTokenConfigurado": False})
             ensaio = simular("ensaiar_schema")
             backup = simular("backup_verificado", return_value={"arquivo": "/backup/fixture.sql.gz", "restaurado": True})
             https = simular("conferir_https")
@@ -78,6 +79,10 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertTrue(registro["concluido"])
                 self.assertTrue((base / "versao-ativa.json").is_file())
                 self.assertEqual(registro["backupAnteriorPreservado"], not backup_sem_imagem)
+                override = json.loads((codigo / "deploy/versao.json").read_text())
+                self.assertEqual(override["services"]["app"]["environment"], {
+                    "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": ""})
+                self.assertFalse(registro["centralAgentes"]["execucaoAtiva"])
 
     def test_falha_backup_bloqueia_migracao_e_troca(self):
         self.executar_cenario("backup")

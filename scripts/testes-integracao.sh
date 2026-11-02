@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Roda todos os testes de fluxo (npm run teste:<area>) contra o banco do DATABASE_URL e falha se algum quebrar
-# (codigo de saida diferente de zero ou alguma linha "FALHOU"). Histórico usa DATABASE_URL_HISTORICO.
-# Uso: npm run teste:todos (local e no CI); ambos os bancos devem estar previamente migrados.
+# (codigo de saida diferente de zero ou alguma linha "FALHOU"). Histórico e agentes usam destinos separados.
+# Uso: npm run teste:todos; DATABASE_URL, DATABASE_URL_HISTORICO e DATABASE_URL_AGENTES devem estar migrados.
 set -uo pipefail
 falharam=()
 for t in $(node -e 'console.log(Object.keys(require("./package.json").scripts).filter((k) => k.startsWith("teste:") && k !== "teste:todos").join(" "))'); do
   if [ "$t" = "teste:historico" ]; then
     saida=$(DATABASE_URL="${DATABASE_URL_HISTORICO:-}" npm run -s "$t" 2>&1)
+  elif [ "$t" = "teste:agentes" ]; then
+    saida=$(DATABASE_URL="${DATABASE_URL_AGENTES:-}" npm run -s "$t" 2>&1)
   else
     saida=$(npm run -s "$t" 2>&1)
   fi

@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from deploy_vps_comum import conferir_migracoes, conferir_pacote, exigir_migracoes_da_publicacao
+from deploy_vps_comum import conferir_migracoes, conferir_pacote, conferir_central_desligada, exigir_migracoes_da_publicacao
 from receber_release import receber
 
 
@@ -23,12 +23,21 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
-    def test_publicacao_aceita_somente_migracao_historica_revisada(self):
+    def test_publicacao_aceita_somente_migracao_agentes_revisada(self):
         exigir_migracoes_da_publicacao([])
-        exigir_migracoes_da_publicacao(["20261101230000_conciliacao_historica"])
-        for extra in ("20261025000000_estudio_black", "20270101000000_nao_revisada"):
+        exigir_migracoes_da_publicacao(["20261102030000_central_agentes"])
+        for extra in ("20261101230000_conciliacao_historica", "20261025000000_estudio_black", "20270101000000_nao_revisada"):
             with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
-                exigir_migracoes_da_publicacao(["20261101230000_conciliacao_historica", extra])
+                exigir_migracoes_da_publicacao(["20261102030000_central_agentes", extra])
+
+    def test_conferencia_recusa_execucao_paga_token_meta_ou_interface_ausente(self):
+        seguro = {"AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": ""}
+        def app(env):
+            return {"Config": {"Env": [k + "=" + v for k, v in env.items()]}}
+        self.assertFalse(conferir_central_desligada(app(seguro))["execucaoAtiva"])
+        for chave, valor in (("AGENTES_HABILITADOS", "false"), ("AGENTES_EXECUCAO_ATIVA", "true"), ("META_ADS_TOKEN", "fixture")):
+            with self.assertRaisesRegex(RuntimeError, "não confirmou"):
+                conferir_central_desligada(app({**seguro, chave: valor}))
 
     def test_crlf_equivalente_sem_mudar_checksum_nem_aceitar_sql_diferente(self):
         with tempfile.TemporaryDirectory() as d:

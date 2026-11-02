@@ -50,6 +50,9 @@ enum OrigemAgendamento {
 }
 
 model Usuario {
+  execucoesAgentes        AgenteExecucao[] @relation("SolicitanteAgente")
+  aprovacoesAgentes       AgenteExecucao[] @relation("AprovadorAgente")
+  rotinasAgentes          AgenteRotina[]
   projetosEstudio         EstudioProjeto[]
   notificacaoPreferencia NotificacaoPreferencia?
   notificacoes           Notificacao[]
@@ -2444,4 +2447,77 @@ model EstudioWorker {
   versao       String
 
   @@map("estudio_workers")
+}
+
+enum EstadoAgenteExecucao {
+  PENDENTE
+  EXECUTANDO
+  AGUARDA_APROVACAO
+  CONCLUIDO
+  BLOQUEADO
+  FALHOU
+  CANCELADO
+}
+
+model AgenteConfiguracao {
+  id           Int @id @default(1)
+  pausada      Boolean @default(false)
+  limiteDiario Int @default(20)
+  revisao      Int @default(0)
+  @@map("agente_configuracao")
+}
+
+model AgenteExecucao {
+  id             String @id @default(cuid())
+  agenteId       String
+  tarefa         String @db.VarChar(6000)
+  chave          String @unique @db.VarChar(200)
+  entradaHash    String
+  estado         EstadoAgenteExecucao @default(PENDENTE)
+  revisao        Int @default(0)
+  solicitanteId  String
+  solicitante    Usuario @relation("SolicitanteAgente", fields: [solicitanteId], references: [id], onDelete: Restrict)
+  aprovadoPorId  String?
+  aprovadoPor    Usuario? @relation("AprovadorAgente", fields: [aprovadoPorId], references: [id], onDelete: Restrict)
+  aprovadoEm     DateTime? @db.Timestamptz(3)
+  origemId       String?
+  origem         AgenteExecucao? @relation("EncaminhamentoAgente", fields: [origemId], references: [id], onDelete: Restrict)
+  derivados      AgenteExecucao[] @relation("EncaminhamentoAgente")
+  profundidade   Int @default(0)
+  rotinaId       String?
+  rotina         AgenteRotina? @relation(fields: [rotinaId], references: [id], onDelete: Restrict)
+  contexto       Json?
+  resultado      Json?
+  resultadoHash  String?
+  erro           String?
+  lease          String?
+  leaseAte       DateTime? @db.Timestamptz(3)
+  iniciadoEm     DateTime? @db.Timestamptz(3)
+  finalizadoEm   DateTime? @db.Timestamptz(3)
+  criadoEm       DateTime @default(now()) @db.Timestamptz(3)
+  modelo         String?
+  tokensEntrada  Int @default(0)
+  tokensSaida    Int @default(0)
+  @@index([estado, criadoEm])
+  @@index([solicitanteId, criadoEm])
+  @@map("agente_execucoes")
+}
+
+model AgenteRotina {
+  id           String @id @default(cuid())
+  chave        String @unique @db.VarChar(200)
+  entradaHash  String
+  nome         String @db.VarChar(120)
+  agenteId     String
+  tarefa       String @db.VarChar(6000)
+  cadaMinutos  Int
+  ativa        Boolean @default(false)
+  revisao      Int @default(0)
+  proximaEm    DateTime @db.Timestamptz(3)
+  criadoEm     DateTime @default(now()) @db.Timestamptz(3)
+  usuarioId    String
+  usuario      Usuario @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  execucoes    AgenteExecucao[]
+  @@index([ativa, proximaEm])
+  @@map("agente_rotinas")
 }

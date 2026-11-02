@@ -21,8 +21,8 @@ exclusiva para cifrar o relatório. Não é necessário manipular a chave SSH no
    A recepção confere hashes, rejeita links e caminhos fora da pasta e não sobrescreve release existente.
 3. Uma trava no servidor impede duas publicações simultâneas. O script exige a imagem antiga esperada,
    banco/app saudáveis, memória/disco mínimos e migrações conhecidas. A migração nova permitida nesta
-   entrega do editor é `20261101230000_conciliacao_historica`; qualquer outra migration pendente bloqueia
-   a publicação. A migração do Estúdio deve já estar aplicada. Futuras migrations precisam de revisão explícita.
+   entrega é `20261102030000_central_agentes`; qualquer outra migration pendente bloqueia
+   a publicação. As migrações do Estúdio e do editor histórico devem já estar aplicadas. Futuras migrations precisam de revisão explícita.
 4. A imagem antiga do app recebe tag de preservação obrigatória. A imagem anterior do backup também é
    preservada quando ainda existe no Docker; a instalação legada pode manter um container de backup cuja
    imagem foi removida. Essa ausência fica registrada e não libera a troca sem verificar o backup novo.
@@ -34,9 +34,13 @@ exclusiva para cifrar o relatório. Não é necessário manipular a chave SSH no
 6. Um segredo do worker é criado somente no servidor se ainda não existir, em arquivo separado e
    protegido. A configuração original é preservada. As migrations são aplicadas explicitamente, antes
    da troca; o comando do app passa a ser `node server.js` para não repetir migrations na recuperação.
-7. A troca afeta app e backup; db, Caddy, homologação e Evolution permanecem em execução. O worker só
+7. O override da release habilita a interface da Central (`AGENTES_HABILITADOS=true`), força
+   `AGENTES_EXECUCAO_ATIVA=false` e `META_ADS_TOKEN` vazio, mesmo se o `.env` contiver outros valores.
+   A configuração original e a credencial do bot preexistente são preservadas. O ambiente do container
+   novo é conferido sem exportar segredos. A Central não possui transporte de anúncios, mensagens ou pagamentos.
+   A troca afeta app e backup; db, Caddy, homologação e Evolution permanecem em execução. O worker só
    inicia após saúde estável e confirmação da revisão por HTTPS. A API do Studio deve recusar acesso
-   anônimo; o worker deve autenticar e registrar presença. Um novo backup verifica o estado pós-migração.
+   anônimo, assim como `/api/agentes`; o worker deve autenticar e registrar presença. Um novo backup verifica o estado pós-migração.
 8. Em falha depois da troca, o script para o worker e tenta recuperar a imagem anterior do app com o
    schema já ensaiado. Mantém as novas tabelas e mídias, e o backup novo continua cobrindo as mídias.
    Nunca restaura o banco automaticamente, evitando perda de gravações posteriores. O registro privado

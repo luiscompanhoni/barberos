@@ -63,9 +63,16 @@ jobs:
         run: |
           docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_historico_teste
           npx prisma migrate deploy
-      - name: Testes de fluxo (inclui histórico em banco separado)
+      - name: Preparar banco separado dos agentes
+        env:
+          DATABASE_URL: postgresql://barberos:barberos@localhost:5432/barberos_agentes_teste
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_agentes_teste
+          npx prisma migrate deploy
+      - name: Testes de fluxo (inclui histórico e agentes em bancos separados)
         env:
           DATABASE_URL_HISTORICO: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste
+          DATABASE_URL_AGENTES: postgresql://barberos:barberos@localhost:5432/barberos_agentes_teste
         run: npm run teste:todos
       - name: Build
         run: npm run build
