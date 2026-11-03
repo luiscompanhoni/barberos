@@ -7,6 +7,7 @@
  */
 
 import { reservarEnvioPiloto } from "./piloto";
+import { telefonePiloto } from "./piloto-regras";
 import { ehHomologacao } from "@/lib/ambiente";
 import { enviarTextoEvolution } from "./evolution";
 
@@ -58,6 +59,10 @@ async function postarCloud(corpo: Record<string, unknown>): Promise<ResultadoEnv
  */
 export async function enviarTexto(para: string, texto: string, digitandoMs = 0, origem = "PADRAO"): Promise<ResultadoEnvio> {
   await reservarEnvioPiloto(para, origem);
+  return entregarTexto(para, texto, digitandoMs);
+}
+
+async function entregarTexto(para: string, texto: string, digitandoMs = 0): Promise<ResultadoEnvio> {
   const p = provedorWhatsApp();
   if (p === "simulador") return { wamid: null };
   if (p === "evolution") return enviarTextoEvolution(para, texto, digitandoMs);
@@ -67,6 +72,23 @@ export async function enviarTexto(para: string, texto: string, digitandoMs = 0, 
 
 export async function enviarTemplate(para: string, t: TemplateWhatsApp): Promise<ResultadoEnvio> {
   await reservarEnvioPiloto(para, "TEMPLATE");
+  return entregarTemplate(para, t);
+}
+
+/** Conteúdo fixo: não aceita texto, template ou finalidade fornecidos pelo cliente. */
+export async function enviarCodigoAcesso(para: string, codigo: string): Promise<ResultadoEnvio> {
+  const telefone = telefonePiloto(para);
+  if (!telefone || !/^\d{6}$/.test(codigo)) throw new Error("Código ou destinatário de autenticação inválido.");
+  // Autenticação solicitada no login tem limites próprios em auth/otp; não reativa o bot.
+  if (provedorWhatsApp() !== "cloud") {
+    return entregarTexto(telefone, `Seu código de acesso é *${codigo}*.\nVale por 5 minutos. Não passe para ninguém.`);
+  }
+  const nome = process.env.WHATSAPP_TEMPLATE_CODIGO;
+  if (!nome) throw new Error("WHATSAPP_TEMPLATE_CODIGO não configurado.");
+  return entregarTemplate(telefone, { nome, parametros: [codigo], botaoCodigo: codigo });
+}
+
+async function entregarTemplate(para: string, t: TemplateWhatsApp): Promise<ResultadoEnvio> {
   const p = provedorWhatsApp();
   if (p === "simulador") return { wamid: null };
   if (p === "evolution") throw new Error("Modelos de mensagem só existem na API oficial.");
