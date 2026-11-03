@@ -38,10 +38,15 @@ def liberar(base, projeto, imagem):
     app = json.loads(executar(["docker", "inspect", ids[0]]))[0]
     if app["Image"] != imagem or app["State"].get("Health", {}).get("Status") != "healthy":
         raise RuntimeError("Versão ou saúde mudou; cache preservado.")
+    ajuda = executar(["docker", "buildx", "prune", "--help"])
+    if not all(opcao in ajuda for opcao in ("--max-used-space", "--min-free-space")):
+        raise RuntimeError("Buildx sem opções de espaço necessárias; nenhuma limpeza executada.")
     antes = preservar(base)
     livre = shutil.disk_usage(base).free
-    # Apenas cache de build não utilizado há mais de 48h; não usa image/system/volume prune.
-    executar(["docker", "builder", "prune", "--all", "--force", "--filter", "until=48h", "--keep-storage", "6GB"])
+    # Buildx: apenas cache privado regular, fora de uso há 48h; não remove imagens.
+    executar(["docker", "buildx", "prune", "--force", "--filter", "until=48h",
+              "--filter", "inuse=false", "--filter", "shared=false", "--filter", "type=regular",
+              "--max-used-space", "6GB", "--min-free-space", "8GB"])
     depois = preservar(base)
     for campo in ("imagens", "containers", "volumes"):
         if not antes[campo].issubset(depois[campo]):
@@ -51,7 +56,7 @@ def liberar(base, projeto, imagem):
     return {"livreAntes": livre, "livreDepois": shutil.disk_usage(base).free,
             "imagensPreservadas": True, "containersPreservados": True,
             "volumesPreservados": True, "backupsConfiguracaoPreservados": True,
-            "filtro": "until=48h", "reservaCache": "6GB", "escopoCache": "unused"}
+            "filtro": "until=48h", "reservaCache": "6GB", "escopoCache": "unused-private-regular", "livreAlvo": "8GB", "builder": "buildx"}
 
 
 if __name__ == "__main__":

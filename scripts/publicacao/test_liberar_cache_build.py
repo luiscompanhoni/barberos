@@ -20,6 +20,8 @@ class CacheBuildTest(unittest.TestCase):
 
     def executar(self, args):
         self.comandos.append(args)
+        if args == ["docker", "buildx", "prune", "--help"]:
+            return "--max-used-space --min-free-space"
         if args[:2] == ["docker", "ps"]:
             return "container-atual\n"
         if args[:2] == ["docker", "inspect"]:
@@ -37,10 +39,22 @@ class CacheBuildTest(unittest.TestCase):
         depois["imagens"].add("outra imagem criada simultaneamente")
         r = self.chamar(depois)
         self.assertTrue(r["backupsConfiguracaoPreservados"])
-        self.assertEqual(r["escopoCache"], "unused")
+        self.assertEqual(r["escopoCache"], "unused-private-regular")
         self.assertEqual(r["livreDepois"], 20)
-        mutacoes = [c for c in self.comandos if "prune" in c]
-        self.assertEqual(mutacoes, [["docker", "builder", "prune", "--all", "--force", "--filter", "until=48h", "--keep-storage", "6GB"]])
+        mutacoes = [c for c in self.comandos if "prune" in c and "--help" not in c]
+        self.assertEqual(mutacoes, [["docker", "buildx", "prune", "--force", "--filter", "until=48h", "--filter", "inuse=false", "--filter", "shared=false", "--filter", "type=regular", "--max-used-space", "6GB", "--min-free-space", "8GB"]])
+
+    def test_buildx_incompativel_nao_executa_limpeza(self):
+        normal = self.executar
+        def antigo(args):
+            if args == ["docker", "buildx", "prune", "--help"]:
+                self.comandos.append(args)
+                return "--filter --force"
+            return normal(args)
+        self.executar = antigo
+        with self.assertRaisesRegex(RuntimeError, "nenhuma limpeza"):
+            self.chamar(copy.deepcopy(self.retrato))
+        self.assertFalse(any("prune" in c and "--help" not in c for c in self.comandos))
 
     def test_imagem_ou_saude_diferente_impede_limpeza(self):
         for alteracao in ({"Image": "outra"}, {"State": {"Health": {"Status": "unhealthy"}}}):
