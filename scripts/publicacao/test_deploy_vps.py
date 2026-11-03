@@ -41,6 +41,15 @@ class DeployTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
             exigir_migracoes_da_publicacao(revisadas + ["20261102210000_nao_revisada"])
 
+    def test_publicacao_aceita_transicao_revisada_sem_liberar_outras_migracoes(self):
+        revisada = "20261103143000_agenda_externa_transicao"
+        exigir_migracoes_da_publicacao([revisada])
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao([revisada, "20261103143100_nao_revisada"])
+        pasta = Path(__file__).resolve().parents[2] / "prisma/migrations" / revisada
+        sql = "\n".join(l for l in (pasta / "migration.sql").read_text(encoding="utf8").splitlines() if not l.startswith("--")).strip()
+        self.assertEqual(sql, 'ALTER TABLE "configuracao" ADD COLUMN "agendaExternaAtiva" BOOLEAN NOT NULL DEFAULT false;')
+
     def test_conferencia_recusa_execucao_paga_token_meta_ou_interface_ausente(self):
         seguro = {"AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO": "true"}
         def app(env):
