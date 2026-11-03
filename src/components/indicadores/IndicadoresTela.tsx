@@ -5,8 +5,9 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, ArrowRight, CheckCircle2, Lightbulb } from "lucide-react";
 import { api } from "@/lib/cliente-api";
 import { SecoesClientes } from "./SecoesClientes";
+import { GraficoRoscaCrm } from "@/components/visual/GraficosCrm";
 import { DIAS_CURTOS, SeletorPeriodo, type Dados } from "./tipos";
-import { Barras, Colunas, din, Kpi, num, pct, Secao } from "./ui";
+import { Colunas, din, Kpi, num, pct, Secao } from "./ui";
 
 const variacao = (a: number, b: number) => (b ? (a - b) / b : null);
 
@@ -93,13 +94,13 @@ function Resumo({ d }: { d: Dados }) {
       </div>
       <div className="cartao">
         <p className="mb-3 text-sm font-semibold">De onde veio o dinheiro</p>
-        <Barras formato={din} itens={[
+        <GraficoRoscaCrm rotulo="Distribuição do faturamento por origem" formatar={din} itens={[
           { rotulo: "Serviços avulsos", valor: r.servicos },
           { rotulo: "Assinaturas (mensalidades pagas)", valor: r.assinaturas },
           { rotulo: "Bar", valor: r.bar },
           { rotulo: "Loja (produtos)", valor: r.loja },
           { rotulo: "Outros itens de comanda", valor: r.outros },
-        ].filter((x) => x.valor > 0)} />
+        ]} />
       </div>
     </Secao>
   );

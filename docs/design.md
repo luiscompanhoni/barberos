@@ -2,6 +2,19 @@
 
 ## Direção
 
+**Atualização visual CRM de 02/11/2026.** A área autenticada da equipe recebe vidro escuro,
+fundo difuso azul/coral/oliva, destaque verde-lima, menu compacto expansível e abas com seleção
+animada. O escopo está em `.crm-workspace`, preservando os fluxos da área do cliente. A referência
+observada foi o vídeo “Sales CRM dashboard” de `_code_and_chill_`, publicação `DfIKeN-P4ox` no Instagram:
+somente Overview, Pipeline, Customers e Growth aparecem; as outras páginas não foram demonstradas.
+Foram adaptados o tratamento visual e o movimento aos módulos reais, sem dados ou marcas do exemplo.
+
+O painel usa o histórico de ocupação já autorizado e os itens de comandas fechadas. Financeiro e
+Indicadores usam as séries existentes em linha/área, rosca e barras; lacunas permanecem indisponíveis,
+sem valores inventados. O funil de campanhas mantém suas etapas reais. Movimento reduzido desliga
+animações, gráficos mantêm leitura textual e os controles aceitam teclado. A navegação agrupada,
+TopoWorkspace, Central de Agentes e contexto financeiro pessoal permanecem disponíveis.
+
 **Black Barber Design System — direção 01 aprovada em 01/11/2026.** Preto profundo, superfícies grafite,
 ouro luminoso, cartões de 18 px e Manrope. A proposta visual está em
 `/workspace/exports/black-barber-design-v1/DESIGN-SYSTEM.md` no ambiente de preparação; o código do aplicativo

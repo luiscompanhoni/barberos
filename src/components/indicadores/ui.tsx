@@ -2,6 +2,9 @@
 
 import { ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
 import { reais } from "@/lib/cliente-api";
+import { CORES_CRM } from "@/components/visual/GraficosCrm";
+import { valorDisponivel } from "@/components/visual/graficos-crm-regras";
+import styles from "@/components/visual/graficos-crm.module.css";
 
 export const pct = (v: number | null | undefined, casas = 0) => (v === null || v === undefined ? "—" : `${(v * 100).toFixed(casas).replace(".", ",")}%`);
 export const din = (c: number | null | undefined) => (c === null || c === undefined ? "—" : reais(c));
@@ -18,7 +21,7 @@ export function Kpi({ rotulo, valor, detalhe, variacao, inverso, ajuda, destaque
         {rotulo}
         {ajuda && <span title={ajuda} className="cursor-help"><Info size={12} /></span>}
       </p>
-      <p className="mt-1 text-2xl font-black">{valor}</p>
+      <p className="mt-2 text-3xl font-normal tracking-tight">{valor}</p>
       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
         {variacao !== null && variacao !== undefined && (
           <span className={`flex items-center font-semibold ${bom ? "text-emerald-700" : "text-red-600"}`}>
@@ -53,18 +56,18 @@ export function Barras({ itens, formato = (v) => String(v), vazio = "Sem dados n
   formato?: (v: number) => string;
   vazio?: string;
 }) {
-  const max = Math.max(0, ...itens.map((i) => i.valor));
+  const max = Math.max(0, ...itens.map((i) => valorDisponivel(i.valor) ? Math.abs(i.valor) : 0));
   if (!itens.length || max === 0) return <p className="py-3 text-sm text-zinc-500">{vazio}</p>;
   return (
     <ul className="space-y-2">
-      {itens.map((i) => (
+      {itens.map((i, k) => (
         <li key={i.rotulo} className="text-sm">
           <div className="flex justify-between gap-2">
             <span className="truncate">{i.rotulo}</span>
-            <span className="shrink-0 font-semibold">{formato(i.valor)}{i.nota && <span className="ml-1 text-xs font-normal text-zinc-500">{i.nota}</span>}</span>
+            <span className="shrink-0 font-medium">{valorDisponivel(i.valor) ? formato(i.valor) : "—"}{i.nota && <span className="ml-1 text-xs font-normal text-zinc-500">{i.nota}</span>}</span>
           </div>
           <div className="mt-1 h-1.5 rounded-full bg-zinc-200">
-            <div className="h-1.5 rounded-full" style={{ width: `${(i.valor / max) * 100}%`, background: i.cor ?? "#d3ab45" }} />
+            <div className={`h-1.5 rounded-full ${styles.barra}`} style={{ width: `${valorDisponivel(i.valor) && i.valor >= 0 ? (i.valor / max) * 100 : 0}%`, background: i.cor ?? CORES_CRM[k % CORES_CRM.length], animationDelay: `${Math.min(k, 8) * 45}ms` }} />
           </div>
         </li>
       ))}
@@ -78,14 +81,16 @@ export function Colunas({ itens, taxa, formato = (v) => String(v) }: {
   taxa?: boolean;
   formato?: (v: number) => string;
 }) {
-  const max = taxa ? 1 : Math.max(1, ...itens.map((i) => i.valor ?? 0));
+  const max = taxa ? 1 : Math.max(1, ...itens.map((i) => valorDisponivel(i.valor) ? i.valor : 0));
   const poucos = itens.length <= 16;
   return (
     <div>
       <div className="flex h-32 items-end gap-[2px]">
         {itens.map((i, k) => (
-          <div key={k} className="group relative flex h-full flex-1 items-end" title={`${i.dica ?? i.rotulo}: ${i.valor === null ? "fechado" : formato(i.valor)}`}>
-            <div className={`w-full rounded-t ${i.valor === null ? "bg-zinc-100" : "bg-ouro/80 group-hover:bg-ouro"}`} style={{ height: `${i.valor === null ? 4 : Math.max(2, (i.valor / max) * 100)}%` }} />
+          <div key={k} tabIndex={0} role="img" aria-label={`${i.dica ?? i.rotulo}: ${i.valor === null ? "fechado" : valorDisponivel(i.valor) ? formato(i.valor) : "indisponível"}`} className="group relative flex h-full flex-1 items-end outline-offset-4 focus-visible:outline-2 focus-visible:outline-ouro" title={`${i.dica ?? i.rotulo}: ${i.valor === null ? "fechado" : valorDisponivel(i.valor) ? formato(i.valor) : "indisponível"}`}>
+            <span aria-hidden="true" className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-2 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[10px] text-zinc-900 shadow-lg group-hover:block group-focus:block group-active:block">{i.dica ?? i.rotulo}: {i.valor === null ? "fechado" : valorDisponivel(i.valor) ? formato(i.valor) : "indisponível"}</span>
+            <div className={`w-full rounded-t-md ${styles.coluna}`} style={{ height: `${valorDisponivel(i.valor) ? Math.max(0, Math.min(100, i.valor / max * 100)) : 0}%`, background: CORES_CRM[0], animationDelay: `${Math.min(k, 12) * 35}ms` }} />
+            {!valorDisponivel(i.valor) && <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[10px] text-zinc-500">—</span>}
           </div>
         ))}
       </div>

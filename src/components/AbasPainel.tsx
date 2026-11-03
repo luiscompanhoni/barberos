@@ -59,6 +59,7 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
   const restaurandoRef = useRef(false);
   const abasRef = useRef(abas);
   const barraRef = useRef<HTMLDivElement>(null);
+  const indicadorRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => { ativaRef.current = base; }, [base]);
@@ -147,6 +148,23 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
     barraRef.current?.querySelector<HTMLElement>("[data-ativa=true]")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [base, abas.length]);
 
+  // Cápsula elástica acompanha a geometria das abas sem remontar conteúdo.
+  useLayoutEffect(() => {
+    const barra = barraRef.current, indicador = indicadorRef.current;
+    if (!barra || !indicador) return;
+    const mover = () => {
+      const ativa = barra.querySelector<HTMLElement>("[data-ativa=true]");
+      if (!ativa) return;
+      indicador.style.width = `${ativa.offsetWidth}px`;
+      indicador.style.transform = `translateX(${ativa.offsetLeft}px)`;
+      barra.dataset.indicadorPronto = "true";
+    };
+    mover();
+    const resize = new ResizeObserver(mover);
+    resize.observe(barra);
+    return () => resize.disconnect();
+  }, [base, abas.length, carregado]);
+
   const irPara = useCallback((caminho: string) => router.push(caminho, { scroll: false }), [router]);
 
   const abrir = (l: Link) => {
@@ -167,24 +185,25 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
   const lista = carregado ? abas : [{ base, caminho: pathname, rolagem: 0, uso: 0 }];
 
   return (
-    <div className="relative -mt-1 mb-3 flex h-9 items-end gap-1 border-b border-zinc-200 sm:mb-4">
+    <div className="crm-tabs relative -mt-1 mb-3 flex h-9 items-end gap-1 border-b border-zinc-200 sm:mb-4">
       <div ref={barraRef} role="navigation" aria-label="Telas abertas"
-        className="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        className="crm-tabs-list flex min-w-0 flex-1 items-end gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div ref={indicadorRef} className="crm-tabs-indicator" aria-hidden="true" />
         {lista.map((a) => {
           const ativa = a.base === base;
           return (
             <div key={a.base} data-ativa={ativa}
-              className={`group flex h-8 max-w-[180px] shrink-0 items-center rounded-t-lg border border-b-0 text-xs transition ${
+              className={`crm-tab group flex h-8 max-w-[180px] shrink-0 items-center rounded-t-lg border border-b-0 text-xs transition ${
                 ativa ? "border-zinc-200 bg-white font-semibold text-zinc-900" : "border-transparent text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
               }`}>
               <NextLink href={a.caminho} scroll={false} aria-current={ativa ? "page" : undefined} title={rotuloDe(links, a.base)}
-                className={`flex h-full min-w-0 items-center gap-1.5 pl-3 ${lista.length > 1 ? "pr-1" : "pr-3"}`}>
+                className={`crm-tab-label flex h-full min-w-0 items-center gap-1.5 pl-3 ${lista.length > 1 ? "pr-1" : "pr-3"}`}>
                 {ativa && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-ouro" />}
                 <span className="truncate">{rotuloDe(links, a.base)}</span>
               </NextLink>
               {lista.length > 1 && (
                 <button onClick={() => fechar(a)} aria-label={`Fechar ${rotuloDe(links, a.base)}`}
-                  className={`mr-1 grid h-5 w-5 shrink-0 place-items-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-900 ${ativa ? "" : "sm:opacity-0 sm:group-hover:opacity-100"}`}>
+                  className={`crm-tab-close mr-1 grid h-5 w-5 shrink-0 place-items-center rounded text-zinc-400 hover:bg-zinc-200 hover:text-zinc-900 ${ativa ? "" : "sm:opacity-0 sm:group-hover:opacity-100"}`}>
                   <X size={12} />
                 </button>
               )}
@@ -194,11 +213,11 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
       </div>
       <div ref={menuRef} className="relative shrink-0 self-center">
         <button onClick={() => setMenu(!menu)} aria-label="Abrir outra tela" aria-expanded={menu} title="Abrir outra tela"
-          className={`grid h-7 w-7 place-items-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 ${menu ? "bg-zinc-100 text-zinc-900" : ""}`}>
+          className={`crm-tabs-add grid h-7 w-7 place-items-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 ${menu ? "bg-zinc-100 text-zinc-900" : ""}`}>
           <Plus size={15} />
         </button>
         {menu && (
-          <div className="entrar-suave absolute top-9 right-0 z-40 max-h-[60vh] w-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-xl">
+          <div className="crm-tabs-menu entrar-suave absolute top-9 right-0 z-40 max-h-[60vh] w-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1.5 shadow-xl">
             {links.map((l) => {
               const aberta = abas.some((a) => a.base === l.href);
               return (

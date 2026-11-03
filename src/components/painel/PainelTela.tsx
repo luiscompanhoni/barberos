@@ -7,6 +7,7 @@ import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
 import { CalendarDays, Clapperboard, Scissors } from "lucide-react";
 import { Metrica, PainelFinanceiro, type FinanceiroPainel } from "./PainelFinanceiro";
+import { VisaoCrm } from "./VisaoCrm";
 
 type Painel = {
   financeiro: FinanceiroPainel | null;
@@ -103,7 +104,7 @@ export function PainelTela({ nome, estudioHabilitado = false }: { nome: string; 
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5">
+    <div className="crm-dashboard mx-auto max-w-6xl space-y-5">
       <header className="black-dashboard__hero">
         <div className="space-y-2">
           <p className="eyebrow">Sua barbearia, em um olhar</p>
@@ -119,23 +120,25 @@ export function PainelTela({ nome, estudioHabilitado = false }: { nome: string; 
       </header>
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
-      {permissoes.lucro && <PainelFinanceiro financeiro={p.financeiro} />}
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Metrica rotulo="Ocupação hoje" valor={pct(dia.ocupacao)} detalhe={`${Math.floor(dia.livresMin / 60)}h${String(dia.livresMin % 60).padStart(2, "0")} livres na agenda`}
           barra={dia.ocupacao} link={verResultado ? "/indicadores?periodo=7d#ocupacao" : undefined} />
-        <Metrica rotulo="Previsto hoje" valor={reais(dia.previstoCentavos)} detalhe={`${reais(dia.realizadoCentavos)} já concluído · ${dia.concluidos}/${dia.atendimentos}`} />
+        <Metrica rotulo="Previsto hoje" valor={reais(dia.previstoCentavos)} numero={dia.previstoCentavos} formatar={reais} detalhe={`${reais(dia.realizadoCentavos)} já concluído · ${dia.concluidos}/${dia.atendimentos}`} />
         {mes ? (
           <>
-            <Metrica rotulo="Serviços concluídos no mês" valor={reais(mes.atual.centavos)}
+            <Metrica rotulo="Serviços concluídos no mês" valor={reais(mes.atual.centavos)} numero={mes.atual.centavos} formatar={reais}
               detalhe={variacao === null ? "Preços da agenda; não inclui mensalidades nem produtos" : `${variacao >= 0 ? "▲" : "▼"} ${Math.abs(Math.round(variacao * 100))}% vs mesmo período do mês passado`}
               tom={variacao === null ? undefined : variacao >= 0 ? "bom" : "ruim"} />
-            <Metrica rotulo="Clientes novos no mês" valor={String(mes.clientesNovos)} detalhe={`${mes.faltas} falta(s) no mês`} tom={mes.faltas > 5 ? "ruim" : undefined} />
+            <Metrica rotulo="Clientes novos no mês" valor={String(mes.clientesNovos)} numero={mes.clientesNovos} detalhe={`${mes.faltas} falta(s) no mês`} tom={mes.faltas > 5 ? "ruim" : undefined} />
           </>
         ) : (
           <Metrica rotulo="Faltas hoje" valor={String(dia.faltas)} detalhe="marcadas como faltou" />
         )}
       </section>
+
+      <VisaoCrm pico={pico} verResultado={verResultado} vendas={p.vendas} dia={dia} />
+      {permissoes.lucro && <PainelFinanceiro financeiro={p.financeiro} />}
 
       <Link href="/comandas" className="grid gap-3 sm:grid-cols-3">
         <Metrica rotulo="Balcão hoje" valor={reais(p.vendas.totalCentavos)} detalhe={`${p.vendas.comandas} comanda(s) fechada(s) · ${p.vendas.abertas} aberta(s)`} />

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./black-workspace.css";
 @import "./black-navigation.css";
+@import "./crm-workspace.css";
 
 /* Black Barber: tokens atualizados com compatibilidade para as classes legadas.
  * white continua sendo superfície, zinc é invertido; status mantêm seus significados.

@@ -6,8 +6,8 @@
 @keyframes aparecer { from { opacity: .3; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .ativo { animation: none; } }
 @media print {
-  :global(body) * { visibility: hidden; }
-  .apresentacao, .apresentacao * { visibility: visible; }
+  :global(body):has(.apresentacao) * { visibility: hidden; }
+  :global(body) .apresentacao, :global(body) .apresentacao * { visibility: visible; }
   .apresentacao { position: absolute; inset: 0; overflow: visible; display: block; background: white; color: black; padding: 1cm; }
   .controles { display: none; }
   .slide { display: block; break-after: page; padding: 0; min-height: 18cm; }

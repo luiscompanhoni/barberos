@@ -5,6 +5,7 @@ import { TrendingDown, TrendingUp } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { ROTULO_CATEGORIA } from "@/lib/financeiro/regras";
 import { mesAtual } from "./DespesasTela";
+import { GraficoLinhaCrm } from "@/components/visual/GraficosCrm";
 
 type Dia = { dia: string; receita: number; despesa: number };
 type Resumo = {
@@ -20,9 +21,8 @@ type Resumo = {
   variacao: { receitas: number | null; despesas: number | null; resultado: number | null };
 };
 
-// Cores fixas (tema escuro): receita em ouro, despesa em azul. Validadas para daltonismo.
-const COR_RECEITA = "#b08828";
-const COR_DESPESA = "#5b8def";
+const COR_RECEITA = "#eca58e";
+const COR_DESPESA = "#91c4e4";
 const FORMA: Record<string, string> = { DINHEIRO: "Dinheiro", PIX: "Pix", DEBITO: "Débito", CREDITO: "Crédito" };
 
 function Variacao({ v, inverso }: { v: number | null; inverso?: boolean }) {
@@ -35,52 +35,12 @@ function Variacao({ v, inverso }: { v: number | null; inverso?: boolean }) {
   );
 }
 
-/** Barras agrupadas receita x despesa por dia (SVG puro), com dica ao passar o mouse. */
+/** Série real em centavos; valores negativos e dias sem movimento continuam visíveis. */
 function Grafico({ serie }: { serie: Dia[] }) {
-  const [foco, setFoco] = useState<number | null>(null);
-  const W = 720, H = 220, M = { t: 10, r: 8, b: 22, l: 8 };
-  const max = Math.max(1, ...serie.flatMap((d) => [d.receita, d.despesa]));
-  const passo = (W - M.l - M.r) / serie.length;
-  const barra = Math.max(2, Math.min(9, passo / 2 - 2));
-  const y = (v: number) => M.t + (H - M.t - M.b) * (1 - v / max);
-  const base = H - M.b;
-  // Barra com topo arredondado (4px) apoiada na base.
-  const caminho = (x: number, v: number) => {
-    const topo = y(v), r = Math.min(4, barra / 2, base - topo);
-    return `M${x},${base}V${topo + r}Q${x},${topo} ${x + r},${topo}H${x + barra - r}Q${x + barra},${topo} ${x + barra},${topo + r}V${base}Z`;
-  };
-  const f = foco !== null ? serie[foco] : null;
-  return (
-    <div className="relative">
-      <div className="mb-2 flex gap-4 text-xs text-zinc-600">
-        <span className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: COR_RECEITA }} /> Receita</span>
-        <span className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: COR_DESPESA }} /> Despesa</span>
-      </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label="Receita e despesa por dia do mês" onMouseLeave={() => setFoco(null)}>
-        {[0.5, 1].map((p) => <line key={p} x1={M.l} x2={W - M.r} y1={y(max * p)} y2={y(max * p)} stroke="currentColor" strokeOpacity={0.08} />)}
-        <line x1={M.l} x2={W - M.r} y1={base} y2={base} stroke="currentColor" strokeOpacity={0.25} />
-        {serie.map((d, i) => {
-          const x0 = M.l + i * passo + passo / 2;
-          return (
-            <g key={d.dia} onMouseEnter={() => setFoco(i)}>
-              <rect x={M.l + i * passo} y={M.t} width={passo} height={H - M.t - M.b} fill={foco === i ? "currentColor" : "transparent"} fillOpacity={0.05} />
-              {d.receita > 0 && <path d={caminho(x0 - barra - 1, d.receita)} fill={COR_RECEITA} />}
-              {d.despesa > 0 && <path d={caminho(x0 + 1, d.despesa)} fill={COR_DESPESA} />}
-              {(i === 0 || (i + 1) % 5 === 0) && <text x={x0} y={H - 6} textAnchor="middle" fontSize={10} fill="currentColor" fillOpacity={0.55}>{i + 1}</text>}
-            </g>
-          );
-        })}
-      </svg>
-      {f && (
-        <div className="pointer-events-none absolute right-2 top-6 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs shadow">
-          <p className="font-semibold">{f.dia.split("-").reverse().join("/")}</p>
-          <p>Receita {reais(f.receita)}</p>
-          <p>Despesa {reais(f.despesa)}</p>
-          <p className="text-zinc-500">Saldo {reais(f.receita - f.despesa)}</p>
-        </div>
-      )}
-    </div>
-  );
+  return <GraficoLinhaCrm rotulo="Receita e despesa por dia do mês" rotulos={serie.map(d => d.dia.split("-").reverse().join("/"))} formatar={reais} series={[
+    { nome: "Receita", cor: COR_RECEITA, valores: serie.map(d => d.receita) },
+    { nome: "Despesa", cor: COR_DESPESA, valores: serie.map(d => d.despesa) },
+  ]} />;
 }
 
 /** Resumo do mes para o dono: receitas, despesas, resultado e comparacao com o mes anterior. */

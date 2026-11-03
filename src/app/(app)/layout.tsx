@@ -4,6 +4,7 @@ import { AcessoProvider } from "@/components/AcessoContexto";
 import { permissoesDoUsuario } from "@/lib/auth/permissoes";
 import { GESTAO, sessaoAtual } from "@/lib/auth/sessao";
 import { Navegacao } from "@/components/Navegacao";
+import { TransicaoCrm } from "@/components/visual/TransicaoCrm";
 import { AbasPainel } from "@/components/AbasPainel";
 import { provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { configuracao } from "@/lib/agenda/carregar";
@@ -81,14 +82,14 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
   const selos: Record<string, number> = permissoes.estorno ? { "/financeiro": await contarPendentes() } : {};
 
   return (
-    <div className="gestao-shell black-workspace flex min-h-full flex-1 flex-col lg:flex-row">
+    <div className="gestao-shell black-workspace crm-workspace flex min-h-full flex-1 flex-col lg:flex-row">
       <RegistroApp area="equipe" />
       <Navegacao nome={s.nome} papel={s.papel} links={links} selos={selos} nomeBarbearia={(await configuracao()).nomeBarbearia} />
       <div className="black-workspace-content">
         <TopoWorkspace links={links} nome={s.nome} />
       <main id="conteudo-principal" tabIndex={-1} className="black-workspace-main">
         <AbasPainel links={links} chave={s.usuarioId} />
-        <AcessoProvider valor={{ papel: s.papel, permissoes }}>{children}</AcessoProvider>
+        <AcessoProvider valor={{ papel: s.papel, permissoes }}><TransicaoCrm>{children}</TransicaoCrm></AcessoProvider>
       </main>
       </div>
     </div>

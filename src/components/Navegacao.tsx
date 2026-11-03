@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Ellipsis, LogOut, X } from "lucide-react";
+import { ChevronDown, Ellipsis, LogOut, PanelLeft, X } from "lucide-react";
 import { Marca } from "./Marca";
 import { SinoNotificacoes } from "./notificacoes/SinoNotificacoes";
 import { agruparLinks, atalhosMobile, rotaAtiva, type LinkNavegacao } from "./navegacao/estrutura";
@@ -19,6 +19,7 @@ export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
   const path = usePathname();
   const router = useRouter();
   const [mais, setMais] = useState(false);
+  const [compacto, setCompacto] = useState(true);
   const [erro, setErro] = useState("");
   const dialogo = useRef<HTMLDialogElement>(null);
   const grupos = agruparLinks(links);
@@ -46,8 +47,8 @@ export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
 
   const item = (l: LinkNavegacao) => {
     const Icone = iconeDaRota(l.href);
-    return <Link key={l.href} href={l.href} onClick={() => setMais(false)} className="black-nav-item" aria-current={rotaAtiva(path, l.href) ? "page" : undefined}>
-      <Icone size={19} strokeWidth={1.65} aria-hidden="true" /><span>{l.rotulo}</span>
+    return <Link key={l.href} href={l.href} onClick={() => setMais(false)} className="black-nav-item" aria-label={l.rotulo} title={l.rotulo} aria-current={rotaAtiva(path, l.href) ? "page" : undefined}>
+      <Icone size={19} strokeWidth={1.65} aria-hidden="true" /><span className="crm-nav-label">{l.rotulo}</span>
       {!!selos[l.href] && <span className="black-nav-count" aria-label={`${selos[l.href]} pendências`}>{selos[l.href]}</span>}
     </Link>;
   };
@@ -57,7 +58,7 @@ export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
     const Icone = iconeDoGrupo(g.titulo);
     const pendencias = g.itens.reduce((n, l) => n + (selos[l.href] ?? 0), 0);
     return g.agrupado && !mobile ? <details key={`${g.titulo}:${path}`} className="black-nav-disclosure" open={temAtivo}>
-      <summary className="black-nav-item"><Icone size={19} strokeWidth={1.65} aria-hidden="true" /><span>{g.titulo}</span>
+      <summary className="black-nav-item" aria-label={g.titulo} title={g.titulo}><Icone size={19} strokeWidth={1.65} aria-hidden="true" /><span className="crm-nav-label">{g.titulo}</span>
         {!!pendencias && <span className="black-nav-count">{pendencias}</span>}<ChevronDown size={14} className="black-disclosure-arrow" aria-hidden="true" />
       </summary><div className="black-nav-children">{g.itens.map(item)}</div>
     </details> : <section key={g.titulo} className="black-nav-group" aria-label={g.titulo}>
@@ -65,17 +66,22 @@ export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
     </section>;
   });
 
-  const perfil = <div className="black-profile"><span className="black-avatar" aria-hidden="true">{iniciais(nome)}</span>
-    <Link href="/conta" onClick={() => setMais(false)} className="min-w-0 flex-1"><strong className="block truncate">{nome}</strong><span>{PAPEIS[papel] ?? papel} · minha conta</span></Link>
+  const perfil = <div className="black-profile crm-user black-painel">
+    <Link href="/conta" onClick={() => setMais(false)} className="crm-user-profile flex min-w-0 flex-1 items-center gap-3" title="Minha conta e senha" aria-label={`${nome}, ${PAPEIS[papel] ?? papel}. Minha conta e senha`}>
+      <span className="black-avatar" aria-hidden="true">{iniciais(nome)}</span>
+      <span className="crm-user-text min-w-0"><strong className="block truncate">{nome}</strong><span>{PAPEIS[papel] ?? papel} · minha conta</span></span>
+    </Link>
     <button className="black-icon-button" onClick={sair} aria-label="Sair da conta"><LogOut size={18} aria-hidden="true" /></button>
   </div>;
 
   return <>
     <a href="#conteudo-principal" className="black-skip-link">Pular para o conteúdo</a>
-    <aside className="black-sidebar">
-      <div className="black-sidebar-brand"><Marca nome={nomeBarbearia} /></div>
-      <div className="black-sidebar-caption"><span className="black-status-dot" />Seu espaço na Black</div>
-      <nav aria-label="Menu principal" className="black-sidebar-nav">{menu()}</nav>
+    <aside className="black-sidebar crm-sidebar" data-compacto={compacto}>
+      <div className="black-sidebar-brand crm-brand black-painel" title={nomeBarbearia}><Marca nome={nomeBarbearia} /></div>
+      <div className="crm-nav-panel black-painel">
+        <button className="crm-nav-toggle black-nav-item" aria-expanded={!compacto} aria-controls="crm-menu-principal" aria-label={compacto ? "Expandir menu" : "Recolher menu"} title={compacto ? "Expandir menu" : "Recolher menu"} onClick={() => setCompacto(c => !c)}><PanelLeft size={18} aria-hidden="true" /><span className="crm-nav-label">Recolher menu</span></button>
+        <nav id="crm-menu-principal" aria-label="Menu principal" className="black-sidebar-nav">{menu()}</nav>
+      </div>
       {perfil}
     </aside>
     <header className="black-mobile-header"><Marca nome={nomeBarbearia} /><SinoNotificacoes href="/notificacoes" area="equipe" /></header>
