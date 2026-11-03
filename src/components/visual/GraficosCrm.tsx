@@ -4,7 +4,7 @@ import { useId, useState, type CSSProperties } from "react";
 import { dominioCrm, segmentosCrm, resumoRoscaCrm, parcelasRoscaCrm, valorDisponivel, type ValorCrm } from "./graficos-crm-regras";
 import styles from "./graficos-crm.module.css";
 
-export const CORES_CRM = ["#c6f566", "#eca58e", "#91c4e4", "#85d8af", "#d2a3d7", "#d9d6c4"];
+export const CORES_CRM = ["var(--color-ouro, #c6f566)", "#eca58e", "#91c4e4", "#85d8af", "#d2a3d7", "#d9d6c4"];
 const numero = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
 type Serie = { nome: string; cor?: string; valores: ValorCrm[] };
 type Item = { rotulo: string; valor: ValorCrm; cor?: string };

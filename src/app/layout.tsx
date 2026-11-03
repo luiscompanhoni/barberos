@@ -8,14 +8,14 @@ const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"], weight
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "BarberOS",
+  title: "Black Barber",
   description: "Agenda, atendimento e assinaturas da barbearia",
   manifest: "/manifest-cliente.webmanifest",
   appleWebApp: { capable: true, title: "Black Barber", statusBarStyle: "black" },
-  icons: { icon: "/pwa/icon.svg?v=barberos-01", apple: "/pwa/apple-touch-icon.png?v=barberos-01" },
+  icons: { icon: "/brand/black/icon-192.png", apple: "/brand/black/apple-touch-icon.png" },
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#101316" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#090a0b" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

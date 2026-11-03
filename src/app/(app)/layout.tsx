@@ -12,13 +12,24 @@ import { contarPendentes } from "@/lib/estornos/servico";
 import { TopoWorkspace } from "@/components/navegacao/TopoWorkspace";
 import { RegistroApp } from "@/components/notificacoes/RegistroApp";
 
-export const metadata = { manifest: "/manifest-equipe.webmanifest" };
+export async function generateMetadata() {
+  const s = await sessaoAtual();
+  const black = s?.papel === "BARBEIRO" || s?.papel === "LIDER";
+  return {
+    title: black ? "Black Barber · Equipe" : "BarberOS",
+    appleWebApp: { capable: true, title: black ? "Black Equipe" : "BarberOS", statusBarStyle: "black" as const },
+    manifest: black ? "/manifest-equipe.webmanifest" : "/manifest-gestao.webmanifest",
+    icons: black ? { icon: "/brand/black/icon-192.png", apple: "/brand/black/apple-touch-icon.png" }
+      : { icon: "/pwa/icon.svg?v=barberos-01", apple: "/pwa/apple-touch-icon.png?v=barberos-01" },
+  };
+}
 
 export default async function LayoutApp({ children }: LayoutProps<"/">) {
   const s = await sessaoAtual();
   if (!s) redirect("/entrar");
   if (s.papel === "CLIENTE") redirect("/c");
   const permissoes = await permissoesDoUsuario(s);
+  const appBlack = s.papel === "BARBEIRO" || s.papel === "LIDER";
 
   const links =
     s.papel === "BARBEIRO" || s.papel === "LIDER"
@@ -82,14 +93,14 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
   const selos: Record<string, number> = permissoes.estorno ? { "/financeiro": await contarPendentes() } : {};
 
   return (
-    <div className="gestao-shell black-workspace crm-workspace flex min-h-full flex-1 flex-col lg:flex-row">
+    <div className={`gestao-shell black-workspace ${appBlack ? "black-app" : "crm-workspace"} flex min-h-full flex-1 flex-col lg:flex-row`}>
       <RegistroApp area="equipe" />
       <Navegacao nome={s.nome} papel={s.papel} links={links} selos={selos} nomeBarbearia={(await configuracao()).nomeBarbearia} />
       <div className="black-workspace-content">
         <TopoWorkspace links={links} nome={s.nome} />
       <main id="conteudo-principal" tabIndex={-1} className="black-workspace-main">
         <AbasPainel links={links} chave={s.usuarioId} />
-        <AcessoProvider valor={{ papel: s.papel, permissoes }}><TransicaoCrm>{children}</TransicaoCrm></AcessoProvider>
+        <AcessoProvider valor={{ papel: s.papel, permissoes }}>{appBlack ? children : <TransicaoCrm>{children}</TransicaoCrm>}</AcessoProvider>
       </main>
       </div>
     </div>

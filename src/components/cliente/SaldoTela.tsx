@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Check, Clock3, Copy, Gift, Percent, Share2, UserPlus, Wallet } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
-import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Item = {
   id: string; origem: string; descricao: string; valorCentavos: number;
@@ -45,7 +44,7 @@ export function SaldoTela() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs text-zinc-500">Disponível para usar</p>
-            <p className="mt-1 text-4xl font-medium tabular-nums text-ouro"><ContadorCrm valor={d.saldoCentavos} formatar={reais} /></p>
+            <p className="mt-1 text-4xl font-black text-ouro">{reais(d.saldoCentavos)}</p>
           </div>
           <Wallet className="text-ouro" size={26} />
         </div>
@@ -80,7 +79,7 @@ export function SaldoTela() {
         )}
       </div>
 
-      <div className="crm-client-filters" role="group" aria-label="Movimentos do saldo">
+      <div className="flex gap-2" role="group" aria-label="Movimentos do saldo">
         {(["extrato", "indicacoes"] as const).map((a) => (
           <button key={a} aria-pressed={aba === a} onClick={() => setAba(a)} className={`rounded-full px-4 py-1.5 text-sm font-semibold ${aba === a ? "bg-ouro text-fundo" : "bg-zinc-100 text-zinc-600"}`}>
             {a === "extrato" ? "Extrato" : `Indicações${ind ? ` (${ind.indicados})` : ""}`}

@@ -1,0 +1,17 @@
+/* Os apps da Black conservam as superfícies pretas, o ouro e a estrutura anterior. */
+.black-app { color-scheme: dark; color: var(--text-primary); background: var(--surface-app); }
+.black-logo { display: inline-flex; flex: 0 0 auto; vertical-align: middle; }
+.black-logo img { display: block; width: 72px; height: 72px; object-fit: contain; }
+.black-logo--large img { width: 144px; height: 144px; }
+.black-app .black-sidebar-brand { display: flex; justify-content: center; }
+.black-app .black-sidebar-brand .black-logo img { width: 128px; height: 128px; }
+.black-app .black-mobile-header .black-logo img { width: 64px; height: 64px; }
+.black-app .black-profile a > .black-avatar { display: grid; margin-top: 0; }
+.black-app .black-profile a > .crm-user-text { margin-top: 0; }
+.black-client-area { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
+.black-client-nav { padding-bottom: env(safe-area-inset-bottom); }
+.black-app :is(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--color-ouro); outline-offset: 4px;
+}
+.black-app input:is([type="checkbox"], [type="radio"]) { accent-color: var(--color-ouro); }
+.black-app ::selection { background: rgb(255 211 78 / 28%); }

@@ -4,6 +4,7 @@
 @import "./crm-workspace.css";
 @import "./crm-components.css";
 @import "./crm-public.css";
+@import "./black-app.css";
 
 /* Black Barber: tokens atualizados com compatibilidade para as classes legadas.
  * white continua sendo superfície, zinc é invertido; status mantêm seus significados.

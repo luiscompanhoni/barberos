@@ -35,7 +35,7 @@ export default async function AssinarPlano(props: PageProps<"/c/assinar/[token]"
 
   return (
     <main className="flex flex-1 items-center justify-center px-5 py-12">
-      <section className="crm-public-card entrar-suave w-full max-w-md p-6">
+      <section className="entrar-suave w-full max-w-md">
         <div className="flex justify-center"><Marca nome={cfg.nomeBarbearia} /></div>
         {a.status === "ATRASADA" && troca && (
           <p className="mt-8 rounded-xl bg-red-50 p-3 text-center text-sm text-red-800">O cartão não passou na última mensalidade. Cadastre outro cartão.</p>

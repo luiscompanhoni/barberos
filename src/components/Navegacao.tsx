@@ -17,6 +17,8 @@ export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
   nome: string; papel: string; links: LinkNavegacao[]; nomeBarbearia: string; selos?: Record<string, number>;
 }) {
   const path = usePathname();
+  const black = papel === "BARBEIRO" || papel === "LIDER";
+  const identidade = black ? "black" : "barberos";
   const router = useRouter();
   const [mais, setMais] = useState(false);
   const [compacto, setCompacto] = useState(true);
@@ -76,15 +78,20 @@ export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
 
   return <>
     <a href="#conteudo-principal" className="black-skip-link">Pular para o conteúdo</a>
-    <aside className="black-sidebar crm-sidebar" data-compacto={compacto}>
-      <div className="black-sidebar-brand crm-brand black-painel" title={nomeBarbearia}><Marca nome={nomeBarbearia} /></div>
+    {black ? <aside className="black-sidebar">
+      <div className="black-sidebar-brand"><Marca nome={nomeBarbearia} /></div>
+      <div className="black-sidebar-caption"><span className="black-status-dot" />Seu espaço na Black</div>
+      <nav aria-label="Menu principal" className="black-sidebar-nav">{menu()}</nav>
+      {perfil}
+    </aside> : <aside className="black-sidebar crm-sidebar" data-compacto={compacto}>
+      <div className="black-sidebar-brand crm-brand black-painel" title={nomeBarbearia}><Marca nome={nomeBarbearia} identidade={identidade} /></div>
       <div className="crm-nav-panel black-painel">
         <button className="crm-nav-toggle black-nav-item" aria-expanded={!compacto} aria-controls="crm-menu-principal" aria-label={compacto ? "Expandir menu" : "Recolher menu"} title={compacto ? "Expandir menu" : "Recolher menu"} onClick={() => setCompacto(c => !c)}><PanelLeft size={18} aria-hidden="true" /><span className="crm-nav-label">Recolher menu</span></button>
         <nav id="crm-menu-principal" aria-label="Menu principal" className="black-sidebar-nav">{menu()}</nav>
       </div>
       {perfil}
-    </aside>
-    <header className="black-mobile-header"><Marca nome={nomeBarbearia} /><SinoNotificacoes href="/notificacoes" area="equipe" /></header>
+    </aside>}
+    <header className="black-mobile-header"><Marca nome={nomeBarbearia} identidade={identidade} /><SinoNotificacoes href="/notificacoes" area="equipe" /></header>
     <nav className="black-bottom-nav" aria-label="Menu do celular">
       {atalhos.map(l => { const Icone = iconeDaRota(l.href); return <Link key={l.href} href={l.href} aria-current={rotaAtiva(path, l.href) ? "page" : undefined}>
         <Icone size={20} strokeWidth={1.65} aria-hidden="true" /><span>{l === atalhos[0] ? "Início" : l.href.includes("agenda") || l.href === "/recepcao" || l.href === "/semana" ? "Agenda" : l.rotulo}</span>

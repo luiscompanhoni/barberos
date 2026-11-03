@@ -22,6 +22,10 @@ describe("manifests por público", () => {
     expect(equipe.id).toBe("/painel"); expect(equipe.start_url).toBe("/painel"); expect(equipe.name).toBe("Black Barber Equipe");
     expect(cliente.display).toBe("standalone");
     expect(cliente.icons?.map(i => i.sizes)).toEqual(["192x192", "512x512"]);
-    expect(cliente.icons?.every(i => i.src.startsWith("/pwa/"))).toBe(true);
+    expect(cliente.icons?.every(i => i.src.startsWith("/brand/black/"))).toBe(true);
+    expect(equipe.icons).toEqual(cliente.icons);
+    const gestao = manifestoApp("gestao");
+    expect(gestao.name).toBe("BarberOS");
+    expect(gestao.icons?.every(i => i.src.startsWith("/pwa/"))).toBe(true);
   });
 });

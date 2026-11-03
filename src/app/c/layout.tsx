@@ -1,6 +1,4 @@
-import { TransicaoCrm } from "@/components/visual/TransicaoCrm";
-
-/** Mantém a mesma superfície visual em login, área privada e links de pagamento. */
+/** Identidade própria da Black em login, área privada e links do cliente. */
 export default function LayoutClientePublico({ children }: { children: React.ReactNode }) {
-  return <div className="crm-surface crm-client flex min-h-full flex-1 flex-col"><TransicaoCrm>{children}</TransicaoCrm></div>;
+  return <div className="black-app flex min-h-full flex-1 flex-col">{children}</div>;
 }

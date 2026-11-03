@@ -163,6 +163,12 @@ que tarefas derivadas já criadas precisam de cancelamento separado. Respostas 4
 
 ## Manutenção
 
+### Identidade dos aplicativos Black
+
+Os aplicativos do cliente e do barbeiro são da **Black Barber**. Usam preto, branco e dourado, as superfícies e a navegação anteriores ao CRM, e a logo original enviada pelo proprietário em 03/11/2026: círculo dourado e palavra BLACK com símbolo branco. A arte fica em `public/brand/black/logo-original.png`, extraída sem redesenho da imagem fornecida. Os ícones de instalação são reduções dessa mesma arte. Não substituir pela chama verde, wordmark ou monograma do BarberOS.
+
+`Marca` apresenta Black por padrão nos fluxos públicos e de cliente; `Navegacao` escolhe BarberOS explicitamente para gestão. Perfis BARBEIRO/LIDER usam `black-app`; DONO/GERENTE/RECEPCAO mantêm `crm-workspace`. A separação é somente visual e não muda os links autorizados, permissões, sessão, agenda, valores ou envio de códigos. O título, os ícones e o manifesto seguem a identidade do público, inclusive no login. Melhorias de acessibilidade permanecem. O painel de gestão mantém o visual e os arquivos de marca BarberOS.
+
 Mudanças visuais e de interação atualizam `src/app/globals.css`/componentes e esta orientação quando houver alteração
 de regra.
 

@@ -127,8 +127,8 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel }
   );
 
   return (
-    <main className="crm-surface crm-login flex flex-1 items-center justify-center px-5 py-16">
-      <div className="crm-public-card entrar-suave w-full max-w-md">
+    <main className="black-app black-login flex flex-1 items-center justify-center px-5 py-16">
+      <div className="entrar-suave w-full max-w-md">
         <Marca nome={titulo} tamanho="lg" />
         <div className="mt-12">
           <p className="eyebrow">{subtitulo}</p>
