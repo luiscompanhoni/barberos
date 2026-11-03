@@ -3,6 +3,7 @@ import { exigirCliente } from "@/lib/auth/sessao";
 import { configuracao } from "@/lib/agenda/carregar";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
+import { contatoParaConfirmacao } from "@/lib/agenda/transicao";
 
 /** Servicos e barbeiros para o cliente escolher (so o que esta ativo). */
 export const GET = rota(async () => {
@@ -20,6 +21,8 @@ export const GET = rota(async () => {
   ]);
   return NextResponse.json({
     nomeBarbearia: cfg.nomeBarbearia,
+    confirmacaoEquipe: cfg.agendaExternaAtiva,
+    atendimentoUrl: contatoParaConfirmacao(process.env.WHATSAPP_NUMERO_PUBLICO),
     janelaDias: cfg.janelaAgendamentoDias,
     prazoCancelamentoMin: cfg.prazoCancelamentoMin,
     servicos: servicos.map((s) => ({ ...s, barbeiros: s.barbeiros.map((b) => b.barbeiro) })),

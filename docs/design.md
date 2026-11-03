@@ -8,6 +8,15 @@ secundária. O ícone compacto, favicon e os ícones instaláveis usam a mesma c
 
 ## Direção
 
+**Black — Ouro sereno, opção 01 aprovada em 03/11/2026.** Cliente e barbeiro/líder usam
+`.black-sereno`: preto quente, superfícies discretas e ouro `#F9CB30`. A abertura do cliente
+e das páginas iniciais do barbeiro usa a fachada real tratada em WebP (157 KB), com luz
+ambiental e oito partículas CSS; movimento reduzido desliga a animação. Não altera dados
+nem remonta formulários. A gestão mantém o visual CRM e a marca BarberOS.
+`Marca` usa `public/brand/black/logo-horizontal.svg`, reconstruída em contornos a partir da
+referência enviada; proporções e encaixe não recortam a arte. O selo vetorial origina os
+ícones Black. `logo-original.png` fica como referência, sem uso na marca da interface.
+
 **Atualização visual CRM de 02/11/2026.** A área autenticada da equipe recebe vidro escuro,
 fundo difuso azul/coral/oliva, destaque verde-lima, menu compacto expansível e abas com seleção
 animada. A revisão completa alcança as 65 páginas: `.crm-workspace` na equipe e `.crm-surface`

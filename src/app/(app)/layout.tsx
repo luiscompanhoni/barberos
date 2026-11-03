@@ -11,6 +11,7 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { contarPendentes } from "@/lib/estornos/servico";
 import { TopoWorkspace } from "@/components/navegacao/TopoWorkspace";
 import { RegistroApp } from "@/components/notificacoes/RegistroApp";
+import { AberturaBlack } from "@/components/visual/AberturaBlack";
 
 export async function generateMetadata() {
   const s = await sessaoAtual();
@@ -91,15 +92,18 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
 
   // Selo de pendencias no menu: pedidos de estorno esperando quem aprova.
   const selos: Record<string, number> = permissoes.estorno ? { "/financeiro": await contarPendentes() } : {};
+  const cfg = await configuracao();
 
   return (
-    <div className={`gestao-shell black-workspace ${appBlack ? "black-app" : "crm-workspace"} flex min-h-full flex-1 flex-col lg:flex-row`}>
+    <div className={`gestao-shell black-workspace ${appBlack ? "black-app black-sereno" : "crm-workspace"} flex min-h-full flex-1 flex-col lg:flex-row`}>
       <RegistroApp area="equipe" />
-      <Navegacao nome={s.nome} papel={s.papel} links={links} selos={selos} nomeBarbearia={(await configuracao()).nomeBarbearia} />
+      <Navegacao nome={s.nome} papel={s.papel} links={links} selos={selos} nomeBarbearia={cfg.nomeBarbearia} />
       <div className="black-workspace-content">
         <TopoWorkspace links={links} nome={s.nome} />
       <main id="conteudo-principal" tabIndex={-1} className="black-workspace-main">
         <AbasPainel links={links} chave={s.usuarioId} />
+        {appBlack && <AberturaBlack area="barbeiro" />}
+        {cfg.agendaExternaAtiva && <p className="cartao-destaque mb-5 text-sm" role="status">Agenda em transição: confira e confirme os horários no Cash Barber antes de responder ao cliente. A agenda do BarberOS ainda não é sincronizada automaticamente.</p>}
         <AcessoProvider valor={{ papel: s.papel, permissoes }}>{appBlack ? children : <TransicaoCrm>{children}</TransicaoCrm>}</AcessoProvider>
       </main>
       </div>

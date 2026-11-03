@@ -192,6 +192,8 @@ model Configuracao {
   granularidadeMin       Int     @default(15)
   antecedenciaMinimaMin  Int     @default(60)
   janelaAgendamentoDias  Int     @default(30)
+  /// Convivência com agenda externa: bot/site encaminham a confirmação à equipe.
+  agendaExternaAtiva     Boolean @default(false)
   intervaloEntreClientes Int     @default(0)
   /// Cliente so cancela/remarca sozinho ate X minutos antes.
   prazoCancelamentoMin   Int     @default(120)

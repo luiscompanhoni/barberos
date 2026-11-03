@@ -180,6 +180,13 @@ export async function executarFerramenta(nome: string, entrada: unknown, ctx: Co
   try {
     return await executar(nome, entrada, ctx);
   } catch (e) {
+    if (e instanceof ErroNegocio && e.codigo === "confirmacao_equipe") {
+      await db.$transaction(async tx => {
+        await tx.conversa.update({ where: { id: ctx.conversaId }, data: { estado: "HUMANO" } });
+        await tx.mensagem.create({ data: { conversaId: ctx.conversaId, autor: "NOTA", texto: "Agenda em transição: conferir e confirmar o horário no Cash Barber antes de responder ao cliente." } });
+      });
+      return { texto: `${e.message} A conversa foi encaminhada à equipe. Não confirme reserva, remarcação ou cancelamento.`, passouParaHumano: true };
+    }
     if (e instanceof ErroNegocio) return { texto: e.message, erro: true };
     if (e instanceof z.ZodError) return { texto: `Parametros inválidos: ${e.issues.map((i) => i.path.join(".")).join(", ")}`, erro: true };
     console.error(`[bot] ferramenta ${nome} falhou:`, e);

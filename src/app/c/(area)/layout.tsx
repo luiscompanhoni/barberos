@@ -11,6 +11,7 @@ import { db } from "@/lib/db";
 import { VERSAO_TERMOS } from "@/lib/lgpd/textos";
 import { RegistroApp } from "@/components/notificacoes/RegistroApp";
 import { SinoNotificacoes } from "@/components/notificacoes/SinoNotificacoes";
+import { AberturaBlack } from "@/components/visual/AberturaBlack";
 
 export default async function LayoutCliente({ children }: { children: React.ReactNode }) {
   const s = await sessaoAtual();
@@ -30,7 +31,7 @@ export default async function LayoutCliente({ children }: { children: React.Reac
     <div className="black-client-area flex min-h-full flex-1 flex-col pb-20">
       <a href="#conteudo-cliente" className="black-skip-link">Pular para o conteúdo</a>
       <RegistroApp area="cliente" />
-      <header className="sticky top-0 z-30 border-b border-zinc-200 bg-fundo/90 backdrop-blur-md">
+      <header className="black-client-header sticky top-0 z-30 border-b border-zinc-200 bg-fundo/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-3">
           <Link href="/c"><Marca nome={cfg.nomeBarbearia} /></Link>
           <div className="flex items-center gap-2"><SinoNotificacoes href="/c/notificacoes" area="cliente" /><BotaoSair /></div>
@@ -38,6 +39,7 @@ export default async function LayoutCliente({ children }: { children: React.Reac
       </header>
       <main id="conteudo-cliente" tabIndex={-1} className="mx-auto w-full max-w-2xl flex-1 px-5 py-6">
         {termos && termos.termosVersao !== VERSAO_TERMOS && <AvisoTermos />}
+        <AberturaBlack area="cliente" />
         {children}
       </main>
       <NavCliente jogos={jogos > 0} avaliacoes={avaliacao?.ativo ?? false} />

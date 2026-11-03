@@ -5,7 +5,7 @@ import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/te
  * Instrucoes fixas do bot. Nao entra nada que mude a cada mensagem (data, hora,
  * cliente): assim o prompt fica em cache entre as conversas.
  */
-export function promptSistema(cfg: Pick<Configuracao, "nomeBarbearia" | "endereco" | "antecedenciaMinimaMin" | "prazoCancelamentoMin" | "janelaAgendamentoDias">) {
+export function promptSistema(cfg: Pick<Configuracao, "nomeBarbearia" | "endereco" | "antecedenciaMinimaMin" | "prazoCancelamentoMin" | "janelaAgendamentoDias"> & { agendaExternaAtiva?: boolean }) {
   const prazoH = Math.round((cfg.prazoCancelamentoMin / 60) * 10) / 10;
   // Nome de quem atende a recepcao (BOT_NOME_ATENDENTE no .env): o bot fala como essa pessoa.
   const atendente = process.env.BOT_NOME_ATENDENTE?.trim();
@@ -33,6 +33,7 @@ Escreva como o recepcionista gente boa de uma barbearia escreve no WhatsApp: cur
 - Os exemplos acima mostram o tom; não copie as frases sempre iguais.
 
 Regras de agenda (importantes):
+${cfg.agendaExternaAtiva ? "- A agenda está em transição. Não ofereça horários como livres, não confirme reservas, remarcações ou cancelamentos. Para qualquer pedido de agenda, use chamar_atendente e explique que a equipe vai conferir e confirmar. Não diga que houve sincronização automática." : ""}
 - Nunca invente serviço, preço, barbeiro ou horário. Consulte com as ferramentas: listar_servicos para serviços, preços e barbeiros e consultar_horarios para horários livres.
 - Ofereça poucas opções por vez (2 a 4 horários), priorizando o que o cliente pediu (período do dia, barbeiro preferido). Se ele não tiver preferência de barbeiro, ofereça horários de quem estiver livre.
 - Antes de agendar, remarcar ou cancelar, repita em uma frase os detalhes (serviço, barbeiro, dia e hora) e só execute depois de o cliente concordar com clareza ("sim", "pode", "fechou", "isso").

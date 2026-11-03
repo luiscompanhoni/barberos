@@ -5,6 +5,7 @@ import { Modal } from "@/components/Modal";
 import { api } from "@/lib/cliente-api";
 
 type Dados = {
+  agendaExternaAtiva: boolean;
   cadeiras: { id: string; nome: string; ativa: boolean }[];
   barbeiros: { id: string; nome: string; cadeiraId: string | null }[];
   servicos: { id: string; nome: string; duracaoMin: number; minimoDuracaoMin: number; barbeiros: { barbeiroId: string; duracaoMin: number | null; minimoDuracaoMin: number | null }[] }[];
@@ -30,10 +31,17 @@ export function ConfiguracaoAgenda(p: { onFechar: () => void }) {
   }
   const servico = dados?.servicos.find(s => s.id === servicoId);
   const regra = servico?.barbeiros.find(b => b.barbeiroId === barbeiroId);
-  return <Modal titulo="Cadeiras e limites de duração" onFechar={p.onFechar}>
+  return <Modal titulo="Agenda, cadeiras e duração" onFechar={p.onFechar}>
     <div className="space-y-5">
       <p className="text-sm text-zinc-500">Os limites valem para os novos ajustes. Reduzir a duração de uma reserva não muda seu preço.</p>
       {!dados ? <p>Carregando…</p> : <>
+        <section className="cartao-destaque space-y-3" aria-label="Transição de agenda">
+          <h3 className="font-semibold">Convivência com o Cash Barber</h3>
+          <p className="text-sm text-zinc-500">Enquanto a agenda principal estiver no Cash Barber, a equipe confirma os horários por lá. Este modo impede confirmações automáticas no bot e no aplicativo; não sincroniza dados.</p>
+          <p className="text-sm">{dados.agendaExternaAtiva ? "Ativo: confirmação pela equipe." : "Desativado: o BarberOS confirma os próprios horários."}</p>
+          <button className="btn" disabled={ocupado} onClick={() => void salvar({ tipo: "fonte", agendaExternaAtiva: !dados.agendaExternaAtiva })}>{dados.agendaExternaAtiva ? "Encerrar transição e usar agenda BarberOS" : "Ativar confirmação pela equipe"}</button>
+          <p className="text-xs text-zinc-500">Encerre a transição depois de trazer os horários futuros e parar de receber marcações na agenda anterior.</p>
+        </section>
         <section className="space-y-2" aria-label="Cadeiras">
           <h3 className="font-semibold">Cadeiras físicas</h3>
           {dados.cadeiras.map(c => <CadeiraLinha key={`${c.id}-${c.nome}`} cadeira={c} ocupado={ocupado} salvar={cadeira} />)}

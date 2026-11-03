@@ -12,6 +12,7 @@ export const GET = rota(async () => {
 export const PATCH = rota(async (req: Request) => {
   const s = await exigirSessao(["DONO"]);
   const b = await corpo(req, z.discriminatedUnion("tipo", [
+    z.object({ tipo: z.literal("fonte"), agendaExternaAtiva: z.boolean() }),
     z.object({ tipo: z.literal("cadeira"), barbeiroId: zId, cadeiraId: zId.nullable() }),
     z.object({ tipo: z.literal("minimo"), servicoId: zId, barbeiroId: zId.optional(), minutos: z.number().int().min(5).max(480).nullable() }),
   ]));

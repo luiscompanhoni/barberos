@@ -14,6 +14,7 @@ import { normalizarTelefone } from "@/lib/telefone";
 import { carregarDia, configuracao, servicoDoBarbeiro, STATUS_ATIVOS } from "./carregar";
 import { contido, sobrepoe, type Intervalo } from "./disponibilidade";
 import { dataLocal, minParaHhmm, minutosLocal, recusaOutroDia, recusaRetroativo } from "./tempo";
+import { checarTransicaoNaReserva } from "./transicao";
 
 const MIN = 60_000;
 
@@ -121,6 +122,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
 
   try {
     const ag = await db.$transaction(async (tx) => {
+      if (!equipe) await checarTransicaoNaReserva(tx);
       await validarEncaixe(tx, input.barbeiroId, int, { fuso: cfg.fuso, intervaloEntreClientes: cfg.intervaloEntreClientes });
       await validarCadeira(tx, cadeiraId, int, undefined, cfg.intervaloEntreClientes);
       const clienteId = await resolverCliente(tx, input.cliente);

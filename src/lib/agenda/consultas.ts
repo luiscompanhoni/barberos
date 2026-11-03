@@ -5,6 +5,7 @@ import { ocupacaoCadeira } from "./cadeiras";
 import { erroDuracao } from "./encaixes-regras";
 import { ErroNegocio } from "@/lib/erros";
 import { somarDias } from "./tempo";
+import { checarConfirmacaoAutomatica } from "./transicao";
 
 /** Tudo que a tela de agenda precisa para desenhar um dia (ou varios, na semana). */
 export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroBarbeiroId?: string) {
@@ -98,6 +99,7 @@ export async function horariosDisponiveis(p: {
   cadeiraId?: string | null;
 }) {
   const cfg = await configuracao();
+  if (p.paraCliente) checarConfirmacaoAutomatica(cfg);
   const barbeiros = await db.barbeiro.findMany({
     where: { ativo: true, ...(p.barbeiroId ? { id: p.barbeiroId } : {}), servicos: { some: { servicoId: p.servicoId } } },
     orderBy: [{ ordem: "asc" }, { nome: "asc" }],

@@ -8,12 +8,13 @@ import { api, reais } from "@/lib/cliente-api";
 import type { PremioCliente } from "@/lib/jogos/tipos";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { SemVaga } from "./SemVaga";
+import { ConfirmacaoEquipe } from "./ConfirmacaoEquipe";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 
 const FUSO = "America/Sao_Paulo";
 type Barbeiro = { id: string; nome: string; cor: string; fotoVersao: number };
 type Servico = { id: string; nome: string; duracaoMin: number; precoCentavos: number; barbeiros: Barbeiro[] };
-type Catalogo = { nomeBarbearia: string; janelaDias: number; servicos: Servico[] };
+type Catalogo = { nomeBarbearia: string; janelaDias: number; servicos: Servico[]; confirmacaoEquipe?: boolean; atendimentoUrl?: string | null };
 type Disp = { barbeiroId: string; nome: string; duracaoMin: number; precoCentavos: number; horarios: string[] };
 /** Horario escolhido: com "qualquer barbeiro", fica com o primeiro livre naquele horario. */
 type Opcao = { inicio: string; barbeiroId: string; barbeiroNome: string; precoCentavos: number };
@@ -109,6 +110,7 @@ export function AgendarTela() {
   }
 
   if (!catalogo) return <p className="text-sm text-zinc-500">{erro || "Carregando..."}</p>;
+  if (catalogo.confirmacaoEquipe) return <ConfirmacaoEquipe atendimentoUrl={catalogo.atendimentoUrl ?? null} />;
   const dias = Array.from({ length: catalogo.janelaDias + 1 }, (_, i) => somarDias(hoje, i));
   const barbeiroEscolhido = barbeiroId === QUALQUER ? null : servico?.barbeiros.find((b) => b.id === barbeiroId);
   const voltarPasso = () => {

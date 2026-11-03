@@ -15,6 +15,7 @@ import { configuracao, servicoDoBarbeiro } from "./carregar";
 import { conflitoHorario, criarAgendamento, travarBarbeiro, validarEncaixe } from "./agendamentos";
 import { validarCadeira } from "./cadeiras";
 import { dataLocal } from "./tempo";
+import { checarTransicaoNaReserva } from "./transicao";
 
 const MIN = 60_000;
 const ATIVOS_FUTUROS = ["MARCADO", "CONFIRMADO"] as const;
@@ -138,6 +139,7 @@ async function doCliente(clienteId: string, agendamentoId: string) {
 export async function cancelarPeloCliente(clienteId: string, agendamentoId: string) {
   const { ag, cfg } = await doCliente(clienteId, agendamentoId);
   await db.$transaction(async (tx) => {
+    await checarTransicaoNaReserva(tx);
     await tx.agendamento.update({ where: { id: ag.id }, data: { status: "CANCELADO" } });
     await auditar(tx, null, "cancelar_pelo_cliente", "agendamento", ag.id);
   });
@@ -159,6 +161,7 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
 
   try {
     const novo = await db.$transaction(async (tx) => {
+      await checarTransicaoNaReserva(tx);
       // Trava origem e destino sempre na mesma ordem (evita deadlock entre remarcacoes cruzadas).
       for (const id of [...new Set([ag.barbeiroId, destino])].sort()) await travarBarbeiro(tx, id);
       await validarEncaixe(tx, destino, { inicio, fim }, {

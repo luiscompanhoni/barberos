@@ -1,11 +1,11 @@
 /* Os apps da Black conservam as superfícies pretas, o ouro e a estrutura anterior. */
 .black-app { color-scheme: dark; color: var(--text-primary); background: var(--surface-app); }
 .black-logo { display: inline-flex; flex: 0 0 auto; vertical-align: middle; }
-.black-logo img { display: block; width: 72px; height: 72px; object-fit: contain; }
-.black-logo--large img { width: 144px; height: 144px; }
+.black-logo img { display: block; width: 120px; height: auto; object-fit: contain; }
+.black-logo--large img { width: 190px; height: auto; }
 .black-app .black-sidebar-brand { display: flex; justify-content: center; }
-.black-app .black-sidebar-brand .black-logo img { width: 128px; height: 128px; }
-.black-app .black-mobile-header .black-logo img { width: 64px; height: 64px; }
+.black-app .black-sidebar-brand .black-logo img { width: 156px; height: auto; }
+.black-app .black-mobile-header .black-logo img { width: 112px; height: auto; }
 .black-app .black-profile a > .black-avatar { display: grid; margin-top: 0; }
 .black-app .black-profile a > .crm-user-text { margin-top: 0; }
 .black-client-area { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
@@ -15,3 +15,74 @@
 }
 .black-app input:is([type="checkbox"], [type="radio"]) { accent-color: var(--color-ouro); }
 .black-app ::selection { background: rgb(255 211 78 / 28%); }
+
+/* Ouro sereno: escopo exclusivo dos aplicativos Black, sem atingir a gestão. */
+html .black-app.black-sereno {
+  --color-ouro: #f9cb30;
+  --color-ouro-claro: #ffe58e;
+  --color-ouro-escuro: #c09a22;
+  --surface-app: #10100f;
+  --surface-card: rgb(25 25 22 / 94%);
+  --surface-card-raised: #24241f;
+  --surface-sidebar: #131512;
+  --surface-hover: rgb(249 203 48 / 7%);
+  --surface-active: rgb(249 203 48 / 13%);
+  --border-default: rgb(185 156 77 / 25%);
+  --border-subtle: rgb(185 156 77 / 18%);
+  --border-control: rgb(185 156 77 / 32%);
+  --text-primary: #f7f3e8;
+  --text-secondary: #b2ada0;
+  --brand-metal: #f9cb30;
+  --glow-ouro: radial-gradient(ellipse at 80% 10%, rgb(249 203 48 / 9%), transparent 74%);
+  color: var(--text-primary);
+  background: radial-gradient(ellipse at 85% 0, rgb(249 203 48 / 4%), transparent 45%), var(--surface-app);
+}
+.black-sereno .black-client-header { background: rgb(16 16 15 / 92%); border-color: var(--border-subtle); }
+.black-sereno .black-sidebar { background: var(--surface-sidebar); }
+.black-sereno .black-sidebar-brand { padding-bottom: 18px; }
+.black-sereno .black-sidebar-caption { margin-bottom: 14px; }
+.black-sereno .black-workspace-topbar { height: 58px; border-color: var(--border-subtle); }
+.black-sereno .black-workspace-main { padding-top: 22px; }
+.black-sereno .titulo-marca { font-weight: 500; letter-spacing: -.035em; }
+html .black-sereno :is(.cartao, .cartao-clicavel):not([class*="bg-"]) {
+  background: var(--surface-card); border-color: var(--border-default); border-radius: 18px;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 3%);
+}
+.black-sereno .cartao-destaque { background: var(--glow-ouro), var(--surface-card); }
+.black-sereno :is(.text-zinc-500, .text-zinc-600) { color: var(--text-secondary); }
+.black-sereno .btn-primario { background: var(--brand-metal); color: #18170d; border-color: transparent; }
+.black-sereno .black-nav-item[aria-current="page"] { color: var(--color-ouro); background: var(--surface-active); box-shadow: none; }
+.black-sereno .black-client-nav { background: rgb(16 16 15 / 94%); border-color: var(--border-subtle); }
+.black-welcome { position: relative; isolation: isolate; overflow: hidden; min-height: 280px; margin-bottom: 24px; border: 1px solid var(--border-subtle); border-radius: 24px; background: #111411; }
+.black-welcome-photo { z-index: -3; object-fit: cover; object-position: center 55%; }
+.black-welcome::before { content: ""; position: absolute; z-index: -2; inset: 0; background: linear-gradient(90deg, rgb(5 8 7 / 76%), rgb(5 8 7 / 25%)), linear-gradient(0deg, #10100ff2, transparent 85%); }
+.black-welcome::after { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 65% 0, rgb(249 203 48 / 12%), transparent 60%); }
+.black-welcome-content { position: relative; display: flex; min-height: inherit; flex-direction: column; align-items: flex-start; justify-content: center; gap: 24px; padding: clamp(24px, 4vw, 40px); }
+.black-welcome-eyebrow { color: #f1dda0; font-size: 10px; font-weight: 600; letter-spacing: .15em; text-transform: uppercase; }
+.black-welcome h2 { color: #fff; font-size: clamp(26px, 3vw, 36px); font-weight: 600; line-height: 1.15; letter-spacing: -.035em; text-wrap: balance; }
+.black-welcome h2 + p { margin-top: 10px; color: #e8e2d6; font-size: 14px; }
+.black-welcome .black-welcome-action { display: inline-flex; align-items: center; justify-content: center; gap: 20px; width: auto; min-height: 46px; padding-inline: 20px; box-shadow: none; }
+.black-welcome--client { min-height: 340px; }
+.black-welcome--client .black-welcome-content { align-items: center; text-align: center; gap: 28px; padding: 28px 24px; }
+.black-welcome--client .black-welcome-photo { object-position: center 59%; }
+.black-welcome--client::before { background: linear-gradient(0deg, rgb(5 8 7 / 94%), rgb(5 8 7 / 15%) 75%), rgb(5 8 7 / 24%); }
+.black-welcome-atmosphere { position: absolute; z-index: -1; inset: 0; overflow: hidden; pointer-events: none; }
+.black-welcome-atmosphere > span { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #ffe6a0; opacity: .4; box-shadow: 0 0 7px rgb(249 203 48 / 35%); animation: black-sereno-drift 12s ease-in-out infinite alternate; }
+.black-welcome-atmosphere > :nth-child(1) { left: 14%; top: 25%; }
+.black-welcome-atmosphere > :nth-child(2) { left: 28%; top: 61%; animation-delay: -4s; }
+.black-welcome-atmosphere > :nth-child(3) { left: 42%; top: 18%; animation-delay: -8s; }
+.black-welcome-atmosphere > :nth-child(4) { left: 63%; top: 49%; animation-delay: -2s; }
+.black-welcome-atmosphere > :nth-child(5) { left: 82%; top: 23%; animation-delay: -6s; }
+.black-welcome-atmosphere > :nth-child(6) { left: 91%; top: 73%; animation-delay: -10s; }
+.black-welcome-atmosphere > :nth-child(7) { left: 51%; top: 78%; animation-delay: -5s; }
+.black-welcome-atmosphere > :nth-child(8) { left: 75%; top: 84%; animation-delay: -9s; }
+@keyframes black-sereno-drift { from { transform: translate3d(0, 8px, 0); opacity: .18; } to { transform: translate3d(8px, -18px, 0); opacity: .55; } }
+@media (max-width: 640px) {
+  .black-welcome { border-radius: 20px; }
+  .black-welcome--client { margin-inline: -4px; }
+  .black-welcome--client .black-welcome-action { width: 100%; }
+  .black-sereno .black-workspace-main { padding-top: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .black-welcome-atmosphere > span { animation: none; }
+}

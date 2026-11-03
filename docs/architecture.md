@@ -269,6 +269,22 @@ depois para a produção.
 
 ### Importação do CashBarber
 
+Convivência sem API de agenda: o dono pode ativar **confirmação pela equipe** em
+Agenda → configurações. `Configuracao.agendaExternaAtiva` começa desligada. Ligada,
+as consultas de disponibilidade do bot/cliente não oferecem horários locais como livres;
+criação, remarcação e cancelamento do autoatendimento são recusados no servidor. O bot
+registra uma nota e encaminha à equipe. Uma trava compartilhada da fonte, relida dentro
+da transação, serializa as confirmações em andamento com a ativação pelo dono.
+A equipe confirma no Cash Barber; isto não é um webhook nem sincronização. Só encerrar
+esse modo depois da conferência dos horários futuros e da definição de uma única agenda.
+O Google Agenda ficou como última alternativa, por orientação do usuário em 03/11/2026;
+não há coletor ou credencial Google ativo nesta implementação.
+
+O CSV `relatorio03` não informa serviço, duração nem ID externo do agendamento. O
+importador legado estima a duração e não deve servir como prova de disponibilidade
+real em uma operação simultânea. A migração integral exige conciliar origem/destino,
+preservar arquivos originais fora do repositório e explicitar os campos ausentes.
+
 Scripts em `scripts/`, rodados com `DATABASE_URL=... npx tsx scripts/<script>.ts`. Os CSVs têm dados pessoais: não
 copie para dentro do projeto. Todos rodam de novo sem duplicar; os que aceitam `--aplicar` só mostram o que fariam.
 

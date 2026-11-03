@@ -31,6 +31,15 @@ rastreável e o primeiro grupo de clientes pronto para entrar. Jogos, IA e finan
 - [ ] Confirmar `PAGAMENTOS_PROVIDER` no servidor: vazio = modo simulado (nada é cobrado de verdade). 👤
 
 ### 1. Migração CashBarber → BarberOS (prioridade máxima) 🟡
+Atualização de 03/11/2026: usuário aprovou começar pela agenda e depois seguir com a
+migração completa e vários serviços. Confirmou ausência de API aberta de agendamentos;
+Google Agenda ficou como última alternativa por não cobrir todos os profissionais.
+Modo de confirmação pela equipe implementado, opt-in do dono, com bloqueio no servidor
+e encaminhamento do bot. Não significa integração automática. Auditoria inicial somente
+leitura comparou o CSV de novembro ao banco em produção; os arquivos e relatórios de
+clientes ficam fora do Git. Falta obter cobertura completa e duração/serviço dos horários
+futuros, reconciliar os dados e aplicar a carga aprovada com backup/restauração.
+
 Já existe: scripts de importação de cadastro (serviços, barbeiros, planos, produtos), clientes (telefone, CPF,
 e-mail, nascimento; telefone repetido vira um cadastro só), assinantes, histórico (agendamentos com barbeiro,
 comandas e pagamentos, horários futuros) e mensalidades pagas. Rodar de novo não duplica. Telefone é único no
