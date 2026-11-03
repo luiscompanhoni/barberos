@@ -11,9 +11,9 @@ import time
 from pathlib import Path
 
 TAGS = ["barberos-video-worker:" + s for s in (
-    "55ee09e462437a5fe6951232b89c5be53845f760",
-    "44ef999960b1739431c3333c4746556e02d11082",
-    "df76e4fa0f1484cd2b2e4997c4babf38269baac7",
+    "7a7d3e9cfd834ba933e54eadcb63f653b8a236f6",
+    "d2d7af8e56976b81d123c2f08b9c55f3d6dee970",
+    "ea5b5222b488f2aa45f9884e15624f501b7e9250",
 )]
 
 def cmd(args):
