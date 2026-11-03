@@ -1,0 +1,50 @@
+name: Arquivar workers históricos com restauração validada
+
+on:
+  workflow_dispatch:
+    inputs:
+      imagem_anterior:
+        description: ID sha256 da imagem app saudável confirmada no inventário
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publicacao-producao
+  cancel-in-progress: false
+
+jobs:
+  arquivar:
+    if: github.ref == 'refs/heads/main'
+    environment: "produção"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Conferir bloqueios e preservação
+        run: python3 scripts/publicacao/test_arquivar_workers.py
+      - name: Arquivar, restaurar no executor e descarregar somente as imagens antigas
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_IMAGEM_ANTERIOR: ${{ inputs.imagem_anterior }}
+        run: node scripts/publicacao/arquivar-workers-vps.mjs "$RUNNER_TEMP/arquivamento.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: workers-arquivamento-comprovante
+          path: ${{ runner.temp }}/arquivamento.json
+          retention-days: 3
+          if-no-files-found: error
