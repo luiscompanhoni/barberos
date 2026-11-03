@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { reais } from "@/lib/cliente-api";
 import type { GrupoReuniao, SnapshotReuniao } from "@/lib/reunioes/tipos";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
 
 export function NumerosReuniao({ snapshot: s }: { snapshot: SnapshotReuniao }) {
   const a = s.atual;
@@ -24,6 +25,7 @@ export function TabelaGrupos({ titulo, grupos }: { titulo: string; grupos: Grupo
 
 export function RelatorioReuniao({ snapshot: s }: { snapshot: SnapshotReuniao }) {
   return <div className="space-y-4"><NumerosReuniao snapshot={s} />
+    {s.barbeiros.length > 0 && <section className="cartao space-y-3"><h3 className="font-semibold">Vendas líquidas por barbeiro</h3><GraficoBarrasCrm rotulo="Vendas líquidas por barbeiro no retrato salvo da reunião" formatar={reais} itens={s.barbeiros.slice(0, 12).map(b => ({ rotulo: b.nome, valor: b.vendasCentavos }))} />{s.barbeiros.length > 12 && <p className="text-xs text-zinc-500">Primeiros 12 profissionais do relatório; todos permanecem na tabela abaixo.</p>}</section>}
     {s.diaria.length > 0 && <section className="cartao"><h3 className="font-semibold">Preparação da reunião diária</h3>{s.diaria.map((d) => <div key={d.barbeiroId} className="mt-3 border-b border-zinc-100 pb-3 text-sm"><b>{d.nome}</b><p>{d.clientes} clientes · {d.avulsos} avulsos · {d.assinantes} pelo plano · receita prevista {reais(d.receitaPrevistaCentavos)}{d.comissaoAvulsaCentavos === null ? "" : ` · comissão avulsa ${reais(d.comissaoAvulsaCentavos)}`}</p><p className="text-xs text-zinc-500">{d.cenarios.length} alternativa(s) de serviços para encaixe. Assinaturas calculadas separadamente.</p></div>)}</section>}
     <p className="text-sm text-zinc-500">Acumulado de {s.mes.inicio} a {s.mes.fim}: <b>{reais(s.mes.faturamentoCentavos)}</b> · {s.mes.atendimentos} atendimentos. Intervalo anterior: {reais(s.anterior.faturamentoCentavos)}.</p>
     <TabelaGrupos titulo="Barbeiros" grupos={s.barbeiros} /><TabelaGrupos titulo="Cadeiras" grupos={s.cadeiras} /><TabelaGrupos titulo="Serviços e produtos" grupos={s.servicos} />

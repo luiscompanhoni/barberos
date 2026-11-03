@@ -6,6 +6,8 @@ import { api, reais } from "@/lib/cliente-api";
 import { ROTULO_CATEGORIA } from "@/lib/financeiro/regras";
 import { mesAtual } from "./DespesasTela";
 import { GraficoLinhaCrm } from "@/components/visual/GraficosCrm";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Dia = { dia: string; receita: number; despesa: number };
 type Resumo = {
@@ -60,16 +62,16 @@ export function ResumoTela() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-2">
-        <div><label className="rotulo">Mês</label><input type="month" className="campo" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} /></div>
+      <div className="crm-filterbar flex flex-wrap items-end gap-2">
+        <div><label className="rotulo">Mês</label><input aria-label="Mês do resumo financeiro" type="month" className="campo" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} /></div>
       </div>
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <div className="cartao"><p className="text-xs text-zinc-500">Receitas</p><p className="text-xl font-black">{reais(r.receitas.total)}</p><Variacao v={r.variacao.receitas} /></div>
-        <div className="cartao"><p className="text-xs text-zinc-500">Despesas pagas</p><p className="text-xl font-black">{reais(r.despesas.total)}</p><Variacao v={r.variacao.despesas} inverso /></div>
-        <div className="cartao-destaque">
+        <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Receitas</p><p className="text-xl font-normal"><ContadorCrm valor={r.receitas.total} formatar={reais} /></p><Variacao v={r.variacao.receitas} /></div>
+        <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Despesas pagas</p><p className="text-xl font-normal"><ContadorCrm valor={r.despesas.total} formatar={reais} /></p><Variacao v={r.variacao.despesas} inverso /></div>
+        <div className="crm-kpi cartao-destaque">
           <p className="text-xs text-zinc-500">Resultado</p>
-          <p className={`text-2xl font-black ${r.resultado >= 0 ? "text-ouro" : "text-red-600"}`}>{reais(r.resultado)}</p>
+          <p className={`text-2xl font-normal ${r.resultado >= 0 ? "text-ouro" : "text-red-600"}`}><ContadorCrm valor={r.resultado} formatar={reais} /></p>
           <Variacao v={r.variacao.resultado} />
           <p className="text-[11px] text-zinc-500">Mês anterior: {reais(r.anterior.resultado)}</p>
         </div>
@@ -120,15 +122,7 @@ export function ResumoTela() {
         <section className="cartao space-y-2">
           <h2 className="font-semibold">Despesas pagas por categoria</h2>
           {cats.length === 0 ? <p className="text-sm text-zinc-500">Nenhuma despesa paga no mês.</p> : (
-            <ul className="divide-y divide-zinc-200 text-sm">
-              {cats.map(([c, v]) => (
-                <li key={c} className="py-1.5">
-                  <div className="flex justify-between"><span>{ROTULO_CATEGORIA[c] ?? c}</span><b>{reais(v)}</b></div>
-                  <div className="mt-1 h-1.5 rounded-full bg-zinc-100"><div className="h-1.5 rounded-full" style={{ width: `${(v / r.despesas.total) * 100}%`, background: COR_DESPESA }} /></div>
-                </li>
-              ))}
-              <li className="flex justify-between py-1.5 font-black"><span>Total</span><span>{reais(r.despesas.total)}</span></li>
-            </ul>
+            <><GraficoBarrasCrm rotulo="Despesas pagas por categoria" formatar={reais} itens={cats.map(([c, valor]) => ({ rotulo: ROTULO_CATEGORIA[c] ?? c, valor, cor: COR_DESPESA }))} /><p className="flex justify-between border-t border-zinc-200 pt-3 text-sm font-semibold"><span>Total</span><span>{reais(r.despesas.total)}</span></p></>
           )}
         </section>
       </div>

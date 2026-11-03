@@ -63,9 +63,9 @@ export function AcessosTela() {
       )}
 
       {!lista ? <p className="text-sm text-zinc-500">Carregando...</p> : (
-        <ul className="divide-y divide-zinc-200 text-sm">
+        <ul className="crm-people text-sm">
           {lista.map((a) => (
-            <li key={a.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 ${a.ativo ? "" : "opacity-50"}`}>
+            <li key={a.id} className={`crm-person-card crm-list-row flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 ${a.ativo ? "" : "opacity-50"}`}>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold">
                   {a.nome}{" "}

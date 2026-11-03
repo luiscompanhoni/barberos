@@ -10,5 +10,5 @@ export default async function Pagina({ params }: { params: Promise<{ vagaId: str
   if (!vaga) notFound();
   if (vaga.formulario && vaga.formulario.estado !== "APROVADO") notFound();
   const { formulario, ...dados } = vaga;
-  return <main className="mx-auto max-w-2xl px-4 py-8"><FormularioCandidatura vaga={dados} formulario={formulario ? publico(formulario) : null} /></main>;
+  return <main className="mx-auto w-full max-w-2xl px-4 py-8"><FormularioCandidatura vaga={dados} formulario={formulario ? publico(formulario) : null} /></main>;
 }

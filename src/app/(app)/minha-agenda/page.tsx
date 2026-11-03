@@ -9,6 +9,9 @@ export default async function MinhaAgenda({ searchParams }: { searchParams: Prom
   if (!s.barbeiroId) redirect(`/recepcao?${queryEntradaAgenda(entradaAgenda(query, s))}`);
   const entrada = entradaAgenda(query, s, true);
   return (
-    <AgendaTela key={JSON.stringify(entrada)} {...entrada} modoInicial="dia" permitirTrocarModo barbeiroFixo={s.barbeiroId} papel={s.papel} meuBarbeiroId={s.barbeiroId} />
+    <div className="space-y-5">
+      <header className="crm-page-header"><p className="eyebrow">Seu atendimento</p><h1 className="titulo-marca text-3xl">Minha agenda</h1></header>
+      <AgendaTela key={JSON.stringify(entrada)} {...entrada} modoInicial="dia" permitirTrocarModo barbeiroFixo={s.barbeiroId} papel={s.papel} meuBarbeiroId={s.barbeiroId} />
+    </div>
   );
 }

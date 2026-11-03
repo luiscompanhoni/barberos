@@ -1,0 +1,5 @@
+.fluxo > li { --tom: #91c4e4; border-color: color-mix(in srgb, var(--tom) 22%, transparent); background: linear-gradient(145deg, color-mix(in srgb, var(--tom) 13%, transparent), #11171866); border-radius: 16px; box-shadow: inset 0 1px 0 #ffffff0a; }
+.fluxo > li:nth-child(2), .fluxo > li:nth-child(5) { --tom: #c6f566; }
+.fluxo > li:nth-child(3), .fluxo > li:nth-child(6) { --tom: #eca58e; }
+.fluxo > li:nth-child(4) { --tom: #b4c3bd; }
+.fluxo > li > div > span { color: var(--tom); }

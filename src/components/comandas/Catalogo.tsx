@@ -51,15 +51,15 @@ export function Catalogo({ onProduto, onServico, barbeiroPadrao, onAvulso, podeA
 
   return (
     <div className="cartao space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="crm-subtabs flex flex-wrap items-center gap-2" aria-label="Catálogo da comanda">
         {!busca && (["BAR", "LOJA", ...(onServico ? ["SERVICO" as const] : [])] as const).map((c) => (
-          <button key={c} onClick={() => setAba(c)} className={aba === c ? "btn-primario" : "btn"}>
+          <button key={c} aria-pressed={aba === c} onClick={() => setAba(c)} className={aba === c ? "btn-primario" : "btn"}>
             {c === "BAR" ? <Beer size={14} /> : c === "LOJA" ? <Package size={14} /> : <Scissors size={14} />} {c === "BAR" ? "Bar" : c === "LOJA" ? "Loja" : "Serviços"}
           </button>
         ))}
         <div className="relative ml-auto w-full max-w-48">
           <Search size={14} className="absolute top-2.5 left-3 text-zinc-500" />
-          <input className="campo pl-8" placeholder="Buscar ou código" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <input className="campo pl-8" aria-label="Buscar no catálogo da comanda" placeholder="Buscar ou código" value={busca} onChange={(e) => setBusca(e.target.value)} />
         </div>
       </div>
 
@@ -72,10 +72,10 @@ export function Catalogo({ onProduto, onServico, barbeiroPadrao, onAvulso, podeA
           {produtos.length === 0 ? "Nenhum produto cadastrado ainda. Cadastre em Estoque." : "Nada encontrado."}
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <div className="crm-collection grid grid-cols-2 gap-2 sm:grid-cols-3">
           {lista.map((p) => (
             <button key={p.id} disabled={desabilitado} onClick={() => onProduto(p.id)}
-              className="group flex min-h-20 flex-col justify-between rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left transition hover:border-ouro active:scale-[0.98] disabled:opacity-50">
+              className="crm-operation-card group flex min-h-20 flex-col justify-between rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left transition hover:border-ouro active:scale-[0.98] disabled:opacity-50">
               <span className="line-clamp-2 text-sm font-semibold">{p.nome}</span>
               <span className="mt-2 flex items-end justify-between gap-1">
                 <span className="text-sm font-bold text-ouro">{reais(p.precoCentavos)}</span>

@@ -5,13 +5,13 @@ import { MANDAMENTOS, OBJETIVO_CULTURA, ROTINAS, VERSAO_CULTURA_BLACK } from "@/
 export function CulturaBlackTela({ hrefChecklist }: { hrefChecklist: string | null }) {
   return (
     <div className="mx-auto max-w-5xl space-y-8 pb-8">
-      <header className="space-y-2">
+      <header className="crm-page-header space-y-2">
         <p className="eyebrow">Equipe · versão {VERSAO_CULTURA_BLACK}</p>
         <h1 className="titulo-marca text-3xl sm:text-4xl">Cultura Black</h1>
         <p className="max-w-2xl text-sm leading-6 text-zinc-600">Um padrão claro para cuidar do cliente, do time e do lugar onde a gente cresce.</p>
       </header>
 
-      <section className="relative overflow-hidden rounded-3xl border border-ouro/35 bg-[radial-gradient(ellipse_at_top_right,rgba(211,171,69,0.14),transparent_55%)] p-5 sm:p-8" aria-labelledby="objetivo-black">
+      <section className="crm-card crm-culture-hero relative overflow-hidden rounded-3xl border border-ouro/35 p-5 sm:p-8" aria-labelledby="objetivo-black">
         <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-ouro/30 bg-ouro/10 text-ouro"><Sparkles size={20} aria-hidden="true" /></div>
         <p className="eyebrow">Nosso objetivo</p>
         <h2 id="objetivo-black" className="mt-2 max-w-3xl text-2xl font-bold leading-tight text-zinc-900 sm:text-3xl">{OBJETIVO_CULTURA.titulo}</h2>
@@ -30,7 +30,7 @@ export function CulturaBlackTela({ hrefChecklist }: { hrefChecklist: string | nu
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           {MANDAMENTOS.map((m) => (
-            <details key={m.numero} className="group rounded-2xl border border-zinc-200 bg-white open:border-ouro/50 open:bg-zinc-50">
+            <details key={m.numero} className="crm-card group rounded-2xl border border-zinc-200 bg-white open:border-ouro/50 open:bg-zinc-50">
               <summary className="flex min-h-20 cursor-pointer list-none items-start gap-3 p-4 [&::-webkit-details-marker]:hidden">
                 <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ouro/10 text-sm font-black text-ouro">{m.numero}</span>
                 <span className="min-w-0 flex-1">
@@ -59,7 +59,7 @@ export function CulturaBlackTela({ hrefChecklist }: { hrefChecklist: string | nu
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           {ROTINAS.map((rotina) => (
-            <article key={rotina.id} className="flex flex-col rounded-2xl border border-zinc-200 bg-white p-4 sm:p-5">
+            <article key={rotina.id} className="crm-person-card flex flex-col rounded-2xl border border-zinc-200 bg-white p-4 sm:p-5">
               <p className="text-xs font-bold uppercase tracking-wider text-ouro">{rotina.quando}</p>
               <h3 className="mt-1 text-lg font-bold text-zinc-900">{rotina.titulo}</h3>
               <ul className="mt-4 flex-1 space-y-3 text-sm leading-6 text-zinc-700">

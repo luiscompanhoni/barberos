@@ -5,6 +5,7 @@ import { History, PackagePlus, Pencil, Plus, Search } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { HistoricoModal, MovimentoModal, ProdutoModal, type TipoLancamento } from "./EstoqueModais";
 import { CATEGORIAS, type Produto } from "./tipos";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
 
 type Relatorio = {
   valorEmEstoqueCentavos: number;
@@ -45,7 +46,7 @@ export function EstoqueTela({ podeCadastrar }: { podeCadastrar: boolean }) {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="crm-page-header flex flex-wrap items-center gap-3">
         <div>
           <p className="eyebrow">Bar e loja</p>
           <h1 className="titulo-marca text-2xl">Estoque</h1>
@@ -61,23 +62,21 @@ export function EstoqueTela({ podeCadastrar }: { podeCadastrar: boolean }) {
           <div className="cartao">
             <p className="text-xs text-zinc-500">Mais vendidos no mês</p>
             {rel.maisVendidos.length === 0 ? <p className="mt-2 text-sm text-zinc-500">Nada vendido ainda.</p> : (
-              <ol className="mt-2 space-y-0.5 text-sm">
-                {rel.maisVendidos.slice(0, 3).map((m) => <li key={m.produtoId} className="flex justify-between gap-2"><span className="truncate">{m.nome}</span><b>{m.quantidade}</b></li>)}
-              </ol>
+              <div className="mt-3"><GraficoBarrasCrm rotulo="Quantidade vendida dos três produtos mais vendidos no mês" itens={rel.maisVendidos.slice(0, 3).map(m => ({ rotulo: m.nome, valor: m.quantidade }))} /></div>
             )}
           </div>
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="crm-subtabs flex flex-wrap items-center gap-2" aria-label="Categorias do estoque">
         {(["TODOS", "BAR", "LOJA", "USO_INTERNO", "ACABANDO"] as Filtro[]).map((f) => (
-          <button key={f} onClick={() => setFiltro(f)} className={`rounded-full px-3 py-1 text-sm ${filtro === f ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}>
+          <button key={f} aria-pressed={filtro === f} onClick={() => setFiltro(f)} className={`rounded-full px-3 py-1 text-sm ${filtro === f ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}>
             {f === "TODOS" ? "Todos" : f === "ACABANDO" ? "Acabando" : CATEGORIAS[f]}
           </button>
         ))}
         <div className="relative ml-auto w-full sm:w-60">
           <Search size={14} className="absolute top-2.5 left-3 text-zinc-500" />
-          <input className="campo pl-8" placeholder="Buscar produto ou código" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <input className="campo pl-8" aria-label="Buscar produto ou código" placeholder="Buscar produto ou código" value={busca} onChange={(e) => setBusca(e.target.value)} />
         </div>
       </div>
 
@@ -161,9 +160,9 @@ export function EstoqueTela({ podeCadastrar }: { podeCadastrar: boolean }) {
 function Cartao({ rotulo, valor, nota, alerta, onClick }: { rotulo: string; valor: string; nota?: string; alerta?: boolean; onClick?: () => void }) {
   const Tag = onClick ? "button" : "div";
   return (
-    <Tag onClick={onClick} className={`cartao text-left ${onClick ? "transition hover:border-zinc-400" : ""} ${alerta ? "border-amber-300" : ""}`}>
+    <Tag onClick={onClick} className={`cartao crm-kpi text-left ${onClick ? "transition hover:border-zinc-400" : ""} ${alerta ? "border-amber-300" : ""}`}>
       <p className="text-xs text-zinc-500">{rotulo}</p>
-      <p className={`mt-1 text-2xl font-black ${alerta ? "text-amber-700" : ""}`}>{valor}</p>
+      <p className={`mt-1 text-2xl font-normal tabular-nums ${alerta ? "text-amber-700" : ""}`}>{valor}</p>
       {nota && <p className="mt-0.5 text-xs text-zinc-500">{nota}</p>}
     </Tag>
   );

@@ -4,6 +4,9 @@ import { Fragment, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { api } from "@/lib/cliente-api";
 import type { Capacidade } from "@/lib/campanhas/capacidade";
+import { GraficoRoscaCrm } from "@/components/visual/GraficosCrm";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
+import styles from "./capacidade-crm.module.css";
 
 const horas = (min: number) => `${(min / 60).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} h`;
 const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%`);
@@ -24,20 +27,26 @@ export function CapacidadePainel({ onCarregar }: { onCarregar?: (c: Capacidade) 
     <section className="cartao space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="font-semibold">Capacidade da agenda</h2>
-        <div className="ml-auto flex gap-1">
-          {[3, 7, 14].map((n) => <button key={n} className={dias === n ? "btn-primario py-1 text-xs" : "btn py-1 text-xs"} onClick={() => setDias(n)}>{n} dias</button>)}
+        <div className="crm-subtabs ml-auto flex gap-1" aria-label="Horizonte da capacidade">
+          {[3, 7, 14].map((n) => <button key={n} aria-pressed={dias === n} className={dias === n ? "btn-primario py-1 text-xs" : "btn py-1 text-xs"} onClick={() => setDias(n)}>{n} dias</button>)}
         </div>
       </div>
       {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       {!c || !h ? !erro && <p className="text-sm text-zinc-500">Calculando…</p> : (
         <>
-          <div className="cartao-destaque">
+          <div className={styles.resumo}>
+          <div className="cartao-destaque crm-kpi">
             <p className="text-sm">Capacidade disponível para aproximadamente</p>
-            <p className="text-3xl font-black text-ouro">{h.vagas} novos agendamentos</p>
+            <p className="text-3xl font-normal text-ouro"><ContadorCrm valor={h.vagas} /> novos agendamentos</p>
             <p className="text-xs text-zinc-500">
               Nos próximos {dias} dias: {horas(h.livresMin)} livres de {horas(h.capacidadeMin)} de agenda aberta ({pct(h.ocupacao)} ocupada).
               Vaga = {c.servico.nome} ({c.servico.duracaoMin} min{c.intervaloMin ? ` + ${c.intervaloMin} min de intervalo` : ""}), o serviço que mais sai.
             </p>
+          </div>
+          {h.capacidadeMin > 0 && <div className={styles.grafico}><GraficoRoscaCrm rotulo={`Horas livres e reservadas da agenda nos próximos ${dias} dias`} formatar={horas} itens={[
+            { rotulo: "Horas livres", valor: h.livresMin, cor: "#c6f566" },
+            { rotulo: "Horas reservadas", valor: h.capacidadeMin - h.livresMin, cor: "#eca58e" },
+          ]} /></div>}
           </div>
           <table className="w-full text-sm">
             <thead>

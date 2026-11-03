@@ -27,9 +27,9 @@ export const ORIGENS: Record<string, string> = {
 
 export function SeletorPeriodo({ valor, onChange }: { valor: string; onChange: (v: string) => void }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="crm-subtabs flex flex-wrap gap-1.5" aria-label="Período dos indicadores">
       {PERIODOS.map(([k, r]) => (
-        <button key={k} onClick={() => onChange(k)}
+        <button key={k} onClick={() => onChange(k)} aria-pressed={valor === k}
           className={`rounded-full px-3 py-1 text-xs font-semibold transition ${valor === k ? "bg-ouro text-fundo" : "bg-zinc-100 text-zinc-600 hover:text-zinc-900"}`}>
           {r}
         </button>

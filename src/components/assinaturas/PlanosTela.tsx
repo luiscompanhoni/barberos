@@ -37,12 +37,12 @@ export function PlanosTela() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <div className="flex items-center gap-2">
-        <h1 className="text-lg font-semibold">Planos de assinatura</h1>
+      <div className="crm-page-header flex flex-wrap items-center gap-2">
+        <h1 className="titulo-marca text-3xl">Planos de assinatura</h1>
         <button className="btn-primario ml-auto" onClick={() => setEditando("novo")}>+ Novo plano</button>
       </div>
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="crm-collection grid gap-3 md:grid-cols-2">
         {planos.map((p) => (
           <button key={p.id} className={`cartao space-y-2 text-left hover:border-zinc-400 ${p.ativo ? "" : "opacity-60"}`} onClick={() => setEditando(p)}>
             <div className="flex items-baseline gap-2">

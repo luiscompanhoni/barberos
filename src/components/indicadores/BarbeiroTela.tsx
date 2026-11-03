@@ -7,6 +7,7 @@ import { ArrowLeft } from "lucide-react";
 import { api } from "@/lib/cliente-api";
 import { DIAS_CURTOS, SeletorPeriodo, type DadosBarbeiro } from "./tipos";
 import { Barras, Colunas, din, Kpi, num, pct, Secao } from "./ui";
+import { GraficoLinhaCrm } from "@/components/visual/GraficosCrm";
 
 const vs = (a: number | null, b: number | null) => (a !== null && b ? (a - b) / b : null);
 
@@ -30,7 +31,7 @@ export function BarbeiroTela({ id, periodoInicial, voltar }: { id: string; perio
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
-      <div className="flex flex-wrap items-end gap-3">
+      <header className="crm-page-header flex flex-wrap items-end gap-3">
         {voltar && <Link href={`${voltar}?periodo=${periodo}#ocupacao`} className="btn h-9 w-9 p-0" aria-label="Voltar"><ArrowLeft size={16} /></Link>}
         <div>
           <p className="eyebrow">Barbeiro</p>
@@ -40,15 +41,15 @@ export function BarbeiroTela({ id, periodoInicial, voltar }: { id: string; perio
           </h1>
         </div>
         <div className="ml-auto"><SeletorPeriodo valor={periodo} onChange={trocar} /></div>
-      </div>
+      </header>
       {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       {d && (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Kpi destaque rotulo="Ocupação" valor={pct(d.ocupacao.taxa)} variacao={vs(d.ocupacao.taxa, d.ocupacaoEquipe.taxa)}
+            <Kpi destaque rotulo="Ocupação" valor={pct(d.ocupacao.taxa)} numero={d.ocupacao.taxa} formatar={pct} variacao={vs(d.ocupacao.taxa, d.ocupacaoEquipe.taxa)}
               detalhe={`equipe ${pct(d.ocupacaoEquipe.taxa)}`} ajuda="A seta compara com a média da equipe no mesmo período." />
-            <Kpi rotulo="Atendimentos" valor={num(d.atendimentos)} variacao={vs(d.atendimentos, d.mediaEquipeAtendimentos)} detalhe={`média da equipe ${d.mediaEquipeAtendimentos}`} />
-            <Kpi rotulo="Serviços avulsos" valor={din(d.receitaServicosCentavos)} detalhe={`ticket ${din(d.ticketAvulsoCentavos)}`} />
+            <Kpi rotulo="Atendimentos" valor={num(d.atendimentos)} numero={d.atendimentos} formatar={num} variacao={vs(d.atendimentos, d.mediaEquipeAtendimentos)} detalhe={`média da equipe ${d.mediaEquipeAtendimentos}`} />
+            <Kpi rotulo="Serviços avulsos" valor={din(d.receitaServicosCentavos)} numero={d.receitaServicosCentavos} formatar={din} detalhe={`ticket ${din(d.ticketAvulsoCentavos)}`} />
             <Kpi rotulo="Pelo plano" valor={num(d.peloPlano)} detalhe={`${pct(d.atendimentos ? d.peloPlano / d.atendimentos : null)} dos atendimentos`} />
             <Kpi rotulo="Clientes atendidos" valor={num(d.clientesUnicos)} detalhe={`${d.clientesNovos} novos com ele`} />
             <Kpi rotulo="Clientes fiéis" valor={pct(d.fidelidade.taxa)} detalhe={`${d.fidelidade.voltaram} de ${d.fidelidade.clientes} voltaram com ele`}
@@ -65,7 +66,7 @@ export function BarbeiroTela({ id, periodoInicial, voltar }: { id: string; perio
               </div>
               <div className="cartao">
                 <p className="mb-3 text-sm font-semibold">Dia a dia</p>
-                <Colunas taxa formato={(v) => pct(v)} itens={d.porDia.map((x) => ({ rotulo: x.data.slice(8), dica: x.data.split("-").reverse().join("/"), valor: x.taxa }))} />
+                <GraficoLinhaCrm rotulo="Ocupação diária do profissional" rotulos={d.porDia.map(x => x.data.split("-").reverse().join("/"))} formatar={pct} series={[{ nome: "Ocupação", cor: "#eca58e", valores: d.porDia.map(x => x.taxa) }]} />
               </div>
             </div>
           </Secao>

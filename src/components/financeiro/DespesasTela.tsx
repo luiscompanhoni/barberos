@@ -5,6 +5,7 @@ import { CircleCheck, Pencil, Plus, Repeat, RotateCcw, Trash2, TriangleAlert } f
 import { useAcesso } from "@/components/AcessoContexto";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
 import { CATEGORIAS_DESPESA, FORMAS_DESPESA, ROTULO_CATEGORIA, ROTULO_FORMA_DESPESA } from "@/lib/financeiro/regras";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Despesa = {
   id: string; descricao: string; categoria: string; valorCentavos: number; vencimento: string; status: "PENDENTE" | "PAGA"; pagoEm: string | null;
@@ -78,16 +79,16 @@ export function DespesasTela() {
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
 
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <div className="cartao"><p className="text-xs text-zinc-500">A pagar (em aberto)</p><p className="text-xl font-black">{reais(l.totais.aPagar)}</p></div>
-        <div className={l.totais.vencidas ? "cartao border-red-300" : "cartao"}>
+        <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">A pagar (em aberto)</p><p className="text-xl font-normal"><ContadorCrm valor={l.totais.aPagar} formatar={reais} /></p></div>
+        <div className={l.totais.vencidas ? "crm-kpi cartao border-red-300" : "crm-kpi cartao"}>
           <p className="flex items-center gap-1 text-xs text-zinc-500">{l.totais.vencidas > 0 && <TriangleAlert size={13} className="text-red-600" />} Vencidas</p>
-          <p className={`text-xl font-black ${l.totais.vencidas ? "text-red-600" : ""}`}>{reais(l.totais.vencidas)} <span className="text-xs font-normal text-zinc-500">({l.totais.qtdVencidas})</span></p>
+          <p className={`text-xl font-normal ${l.totais.vencidas ? "text-red-600" : ""}`}><ContadorCrm valor={l.totais.vencidas} formatar={reais} /> <span className="text-xs font-normal text-zinc-500">({l.totais.qtdVencidas})</span></p>
         </div>
-        <div className="cartao"><p className="text-xs text-zinc-500">Pagas no mês</p><p className="text-xl font-black text-ouro">{reais(l.totais.pagasNoMes)}</p></div>
+        <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Pagas no mês</p><p className="text-xl font-normal text-ouro"><ContadorCrm valor={l.totais.pagasNoMes} formatar={reais} /></p></div>
       </div>
 
       <section className="cartao space-y-3">
-        <div className="flex flex-wrap items-end gap-2">
+        <div className="crm-filterbar flex flex-wrap items-end gap-2">
           <div>
             <label className="rotulo" htmlFor={`${camposId}-campo-1`}>Mês (pagas)</label>
             <input id={`${camposId}-campo-1`} type="month" className="campo" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} />
@@ -101,9 +102,9 @@ export function DespesasTela() {
           </div>
           <button className="btn-primario ml-auto" onClick={() => setForm({ descricao: "", categoria: "OUTROS", valor: "", vencimento: l.hoje, fornecedor: "", observacao: "", recorrente: false })}><Plus size={15} /> Nova despesa</button>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="crm-subtabs flex flex-wrap gap-1.5" aria-label="Situação das despesas">
           {FILTROS.map((f) => (
-            <button key={f.k} className={`rounded-full border px-3 py-1 text-xs ${filtro === f.k ? "border-ouro bg-ouro/15 font-semibold text-ouro" : "border-zinc-200 text-zinc-600"}`} onClick={() => setFiltro(f.k)}>
+            <button key={f.k} aria-pressed={filtro === f.k} className={`rounded-full border px-3 py-1 text-xs ${filtro === f.k ? "border-ouro bg-ouro/15 font-semibold text-ouro" : "border-zinc-200 text-zinc-600"}`} onClick={() => setFiltro(f.k)}>
               {f.r}{f.k === "vencidas" && l.totais.qtdVencidas ? ` (${l.totais.qtdVencidas})` : ""}
             </button>
           ))}
@@ -184,7 +185,7 @@ export function DespesasTela() {
             <tbody className="divide-y divide-zinc-200">
               {cats.map(([c, v]) => (
                 <tr key={c} className="cursor-pointer hover:bg-zinc-50" onClick={() => { setCategoria(c); setFiltro("todas"); }}>
-                  <td className="py-1.5">{ROTULO_CATEGORIA[c] ?? c}</td><td className="text-right">{reais(v.aberto)}</td><td className="text-right font-semibold">{reais(v.pago)}</td>
+                  <td className="py-1.5"><button type="button" className="text-left text-ouro underline-offset-4 hover:underline" aria-label={`Filtrar despesas de ${ROTULO_CATEGORIA[c] ?? c}`}>{ROTULO_CATEGORIA[c] ?? c}</button></td><td className="text-right">{reais(v.aberto)}</td><td className="text-right font-semibold">{reais(v.pago)}</td>
                 </tr>
               ))}
             </tbody>

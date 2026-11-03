@@ -46,9 +46,9 @@ export function ConciliacaoTela({ gestao }: { gestao: boolean }) {
 
   return (
     <div className="space-y-4">
-      <section className="cartao flex flex-wrap items-end gap-3">
-        <div><label className="rotulo">De</label><input type="date" className="campo" value={periodo.de} onChange={(e) => setPeriodo({ ...periodo, de: e.target.value })} /></div>
-        <div><label className="rotulo">Até</label><input type="date" className="campo" value={periodo.ate} onChange={(e) => setPeriodo({ ...periodo, ate: e.target.value })} /></div>
+      <section className="crm-filterbar cartao flex flex-wrap items-end gap-3">
+        <div><label className="rotulo">De</label><input aria-label="Data inicial da conciliação" type="date" className="campo" value={periodo.de} onChange={(e) => setPeriodo({ ...periodo, de: e.target.value })} /></div>
+        <div><label className="rotulo">Até</label><input aria-label="Data final da conciliação" type="date" className="campo" value={periodo.ate} onChange={(e) => setPeriodo({ ...periodo, ate: e.target.value })} /></div>
         {d && (
           <div className="ml-auto flex flex-wrap gap-4 text-sm">
             <span>Bruto <b>{reais(d.totais.bruto)}</b></span>

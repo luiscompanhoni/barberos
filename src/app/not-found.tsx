@@ -13,10 +13,10 @@ export default async function NaoEncontrado() {
   const whatsapp = process.env.WHATSAPP_NUMERO_PUBLICO?.replace(/\D/g, "") || null;
 
   return (
-    <main className="flex flex-1 items-center justify-center px-5 py-12">
-      <section className="entrar-suave w-full max-w-md text-center">
+    <main className="crm-surface flex flex-1 items-center justify-center px-5 py-12">
+      <section className="crm-public-card entrar-suave w-full max-w-md p-6 text-center">
         <div className="flex justify-center"><Marca nome={nome} /></div>
-        <p className="mt-12 text-5xl font-black text-ouro">404</p>
+        <p className="mt-12 text-5xl font-normal text-ouro">404</p>
         <h1 className="mt-3 text-xl font-bold">Página não encontrada</h1>
         <p className="mt-3 text-sm text-zinc-600">
           Esse link não existe ou não vale mais. Se ele veio numa mensagem da barbearia, peça um novo pelo WhatsApp.

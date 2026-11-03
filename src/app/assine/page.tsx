@@ -56,7 +56,7 @@ export default async function Assine() {
   ];
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-fundo">
+    <div className="crm-vitrine min-h-screen overflow-x-hidden bg-fundo">
       {/* Topo fixo translucido */}
       <header className="fixed inset-x-0 top-0 z-40 border-b border-zinc-200/60 bg-fundo/90 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 lg:px-8">
@@ -67,7 +67,7 @@ export default async function Assine() {
             ))}
             <Link href="/c" className="text-[11px] font-bold tracking-wide text-zinc-500 uppercase hover:text-zinc-900">Área do cliente</Link>
           </nav>
-          <a href="#planos" className="rounded-full bg-zinc-950 px-4 py-2 text-[11px] font-bold tracking-[0.3px] text-fundo uppercase transition hover:bg-zinc-800">Assinar</a>
+          <a href="#planos" className="btn-primario px-4 py-2 text-[11px] font-bold tracking-[0.3px] uppercase">Assinar</a>
         </div>
       </header>
 
@@ -77,9 +77,9 @@ export default async function Assine() {
           // eslint-disable-next-line @next/next/no-img-element -- foto colocada pela barbearia em public/capa.jpg
           <img src={v.fotoCapa} alt={`Interior da ${v.nomeBarbearia}`} className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
         ) : (
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_75%_30%,rgba(211,171,69,0.18),transparent_55%),radial-gradient(ellipse_at_20%_90%,rgba(211,171,69,0.08),transparent_50%)]" />
+          <div className="crm-vitrine-fallback absolute inset-0" />
         )}
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,#0a0a0a_2%,rgba(10,10,10,0.88)_38%,rgba(10,10,10,0.3)_75%),linear-gradient(0deg,#0a0a0a_0%,transparent_45%)]" />
+        <div className="crm-vitrine-veil absolute inset-0" />
         <div className="relative mx-auto w-full max-w-6xl px-5 pb-20 lg:px-8">
           <div className="entrar-suave max-w-3xl">
             {indicador && (
@@ -138,7 +138,7 @@ export default async function Assine() {
       </section>
 
       {/* Planos */}
-      <section id="planos" className="scroll-mt-16 border-y border-zinc-200 bg-[#141312]">
+      <section id="planos" className="crm-vitrine-planos scroll-mt-16 border-y border-zinc-200">
         <div className="mx-auto max-w-6xl px-5 py-24 lg:px-8 lg:py-32">
           <p className="eyebrow">Planos</p>
           <h2 className="titulo-marca mt-4 text-4xl sm:text-5xl">Escolha sua <span className="text-ouro">rotina.</span></h2>
@@ -151,7 +151,7 @@ export default async function Assine() {
                 const esgotado = p.vagasRestantes === 0;
                 return (
                   <article key={p.id}
-                    className={`relative flex flex-col rounded-2xl border bg-white p-7 ${emDestaque ? "border-ouro shadow-[0_10px_32px_rgba(211,171,69,0.2)] lg:-translate-y-3" : "border-zinc-200"}`}>
+                    className={`crm-plan-card relative flex flex-col rounded-2xl border bg-white p-7 ${emDestaque ? "border-ouro shadow-[0_10px_32px_rgba(211,171,69,0.2)] lg:-translate-y-3" : "border-zinc-200"}`}>
                     {emDestaque && (
                       <span className="absolute top-0 right-5 -translate-y-1/2 rounded-full bg-ouro px-3 py-1 text-[9px] font-black text-fundo uppercase">Destaque</span>
                     )}

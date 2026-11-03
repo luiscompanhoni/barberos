@@ -6,6 +6,7 @@ import { dataLocal, instanteLocal, minParaHhmm, minutosLocal } from "@/lib/agend
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { useSelecaoGrade } from "./useSelecaoGrade";
 import { ROTULO_ORIGEM, ROTULO_STATUS, type AgendamentoApi, type Coluna, type Status } from "./tipos";
+import styles from "./agenda-crm.module.css";
 
 const PX_MIN = 1.6; // 15 min = 24 px
 const LIMIAR_ARRASTO = 5;
@@ -154,11 +155,11 @@ export function Grade(props: {
   const hoje = dataLocal(agora, fuso);
 
   return (
-    <div className="max-h-[calc(100vh-150px)] overflow-auto rounded-xl border border-zinc-200 bg-white" onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => { arrasto.current = null; setPrevia(null); selecao.cancelar(); }} onKeyDown={e => { if (e.key === "Escape") { arrasto.current = null; setPrevia(null); selecao.cancelar(); } }}>
+    <div data-crm-reveal className={`${styles.grade} max-h-[calc(100vh-150px)] overflow-auto rounded-xl border border-zinc-200 bg-white`} onPointerMove={mover} onPointerUp={soltar} onPointerCancel={() => { arrasto.current = null; setPrevia(null); selecao.cancelar(); }} onKeyDown={e => { if (e.key === "Escape") { arrasto.current = null; setPrevia(null); selecao.cancelar(); } }}>
       <div className="grid select-none" style={{ gridTemplateColumns: `52px repeat(${colunas.length}, minmax(150px, 1fr))`, minWidth: 52 + colunas.length * 150 }}>
-        <div className="sticky left-0 top-0 z-30 border-b border-zinc-200 bg-white" />
+        <div className={`${styles.cabecalho} sticky left-0 top-0 z-30 border-b border-zinc-200 bg-white`} />
         {colunas.map((c) => (
-          <div key={c.chave} className="sticky top-0 z-20 border-b border-l border-zinc-200 bg-white px-2 py-2">
+          <div key={c.chave} className={`${styles.cabecalho} sticky top-0 z-20 border-b border-l border-zinc-200 bg-white px-2 py-2`}>
             <div className="flex items-center gap-2">
               <FotoBarbeiro id={c.barbeiroId} nome={c.barbeiroNome} cor={c.cor} versao={c.fotoVersao} tamanho={30} />
               <div className="min-w-0">
@@ -173,7 +174,7 @@ export function Grade(props: {
           </div>
         ))}
 
-        <div className="sticky left-0 z-20 bg-white" style={{ height: altura }}>
+        <div className={`${styles.horarios} sticky left-0 z-20 bg-white`} style={{ height: altura }}>
           {horas.map((m) => (
             <div key={m} className="absolute right-2 -translate-y-2 text-[11px] text-zinc-500" style={{ top: y(m) }}>{minParaHhmm(m)}</div>
           ))}
@@ -183,7 +184,7 @@ export function Grade(props: {
           const editavel = props.podeEditar(c.barbeiroId);
           return (
             <div key={c.chave} ref={(el) => { if (el) refsColunas.current.set(c.chave, el); else refsColunas.current.delete(c.chave); }}
-              className={`relative border-l border-zinc-200 bg-zinc-100 ${editavel ? "cursor-cell" : ""}`}
+              className={`${styles.coluna} relative border-l border-zinc-200 bg-zinc-100 ${editavel ? "cursor-cell" : ""}`}
               style={{ height: altura, touchAction: props.arrastarToque ? "none" : "pan-y" }}
               onPointerDown={e => { if (editavel) selecao.iniciar(e, c); }}>
               {c.janelas.map((j) => (
@@ -253,10 +254,11 @@ function Cartao(p: {
   const { ag } = p;
   return (
     <div
-      className={`absolute inset-x-1 z-10 overflow-hidden rounded-md border-l-4 px-2 py-1 text-xs leading-tight shadow-sm touch-none ${
+      className={`${styles.atendimento} absolute inset-x-1 z-10 overflow-hidden rounded-md border-l-4 px-2 py-1 text-xs leading-tight shadow-sm touch-none ${
         p.fantasma ? "opacity-80 ring-2 ring-zinc-900" : "cursor-grab active:cursor-grabbing"
       } ${ESTILO_STATUS[ag.status] ?? ""}`}
       style={{ top: p.topo + 1, height: Math.max(p.alturaPx - 2, 18), borderLeftColor: p.cor, background: `${p.cor}1f` }}
+      data-previa={p.fantasma || undefined}
       onPointerDown={(e) => p.onPointerDown?.(e, "mover")}
       onClick={(e) => e.stopPropagation()}
       role={p.fantasma ? undefined : "button"} tabIndex={p.fantasma ? undefined : 0}

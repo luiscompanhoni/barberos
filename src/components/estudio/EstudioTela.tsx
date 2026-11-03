@@ -9,6 +9,7 @@ import type { Roteiro } from "@/lib/estudio/roteiro-tipos";
 import { Templates } from "./Templates";
 import { ImportarRoteiro, ReferenciaRoteiro } from "./Roteiros";
 import { alterada, conferida, emConflito, iniciarMontagem, reduzirMontagem, type Clipe } from "./montagem";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Versao = { id: string; numero: number; revisao: number; estado: string; disponivel: boolean; comentario: string | null; erro: string | null; bytes: number; aprovadaEm: string | null; preset: Preset };
 type Projeto = { id: string; nome: string; revisao: number; clipes: Clipe[]; versoes: Versao[]; preset: Preset; titulo: string; chamada: string; roteiro: Roteiro | null };
@@ -58,9 +59,9 @@ export function EstudioTela({ podeImportar = false, roteiroInicial }: { podeImpo
       <p className="relative mt-4 text-xs text-zinc-500">Seus projetos são privados. Exportação vertical com cortes, áudio original e textos da Black.</p>
     </header>
     {dados && !p && <section className="black-studio-summary" aria-label="Resumo dos seus projetos">
-      <article className="cartao"><Clapperboard size={18} className="text-ouro" aria-hidden="true" /><strong>{dados.projetos.length}</strong><p>Projetos privados</p></article>
-      <article className="cartao"><Scissors size={18} className="text-ouro" aria-hidden="true" /><strong>{dados.projetos.reduce((n, projeto) => n + projeto.clipes.length, 0)}</strong><p>Clipes enviados</p></article>
-      <article className="cartao"><Check size={18} className="text-ouro" aria-hidden="true" /><strong>{dados.projetos.reduce((n, projeto) => n + projeto.versoes.filter(v => v.estado === "APROVADO").length, 0)}</strong><p>Versões aprovadas</p></article>
+      <article className="cartao crm-kpi"><Clapperboard size={18} className="text-ouro" aria-hidden="true" /><strong><ContadorCrm valor={dados.projetos.length} /></strong><p>Projetos privados</p></article>
+      <article className="cartao crm-kpi"><Scissors size={18} className="text-ouro" aria-hidden="true" /><strong><ContadorCrm valor={dados.projetos.reduce((n, projeto) => n + projeto.clipes.length, 0)} /></strong><p>Clipes enviados</p></article>
+      <article className="cartao crm-kpi"><Check size={18} className="text-ouro" aria-hidden="true" /><strong><ContadorCrm valor={dados.projetos.reduce((n, projeto) => n + projeto.versoes.filter(v => v.estado === "APROVADO").length, 0)} /></strong><p>Versões aprovadas</p></article>
     </section>}
     {erro && <div role="alert" className="cartao border-red-500/30 text-sm text-red-500">{erro}<button className="btn ml-3" onClick={() => void executar(carregar)}>Atualizar</button></div>}
     {!dados ? <p role="status" className="cartao">Carregando seus projetos…</p> : <>
@@ -72,7 +73,7 @@ export function EstudioTela({ podeImportar = false, roteiroInicial }: { podeImpo
           <label className="min-w-0 flex-1 text-sm">Nome do projeto<input className="campo mt-1 w-full" placeholder="Ex.: Degradê da semana" value={nome} onChange={e => setNome(e.target.value)} maxLength={80} minLength={2} required /></label>
           <button className="btn-primario flex items-center justify-center gap-2" disabled={ocupado || dados.projetos.length >= LIMITES.projetos}><Plus size={17} /> Novo projeto</button>
         </form>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{dados.projetos.map(p => <button key={p.id} onClick={() => setSelecionado(p.id)} className="cartao-clicavel group text-left">
+        <div className="crm-collection grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{dados.projetos.map(p => <button key={p.id} onClick={() => setSelecionado(p.id)} className="cartao-clicavel crm-operation-card group text-left">
           <div className="mb-4 flex items-center justify-between"><Clapperboard className="text-ouro" size={23} /><span className="text-xs text-zinc-500">{p.clipes.length} vídeo(s)</span></div>
           <h2 className="break-words font-semibold group-hover:text-ouro">{p.nome}</h2><p className="mt-2 text-sm text-zinc-500">{p.versoes[0] ? ROTULOS[p.versoes[0].estado] : "Preparando a montagem"}</p>
         </button>)}</div>

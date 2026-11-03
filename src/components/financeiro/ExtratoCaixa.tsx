@@ -77,9 +77,9 @@ export function ExtratoCaixa({ caixaId, versao = 0, compacto = false, onFechar }
       </div>
 
       {!compacto && (
-        <div className="sem-impressao flex flex-wrap gap-1.5">
+        <div className="crm-subtabs sem-impressao flex flex-wrap gap-1.5" aria-label="Filtrar movimentação do caixa">
           {FILTROS.map((f) => (
-            <button key={f.k} className={`rounded-full border px-3 py-1 text-xs ${filtro === f.k ? "border-ouro bg-ouro/15 font-semibold text-ouro" : "border-zinc-200 text-zinc-600"}`} onClick={() => setFiltro(f.k)}>{f.r}</button>
+            <button key={f.k} aria-pressed={filtro === f.k} className={`rounded-full border px-3 py-1 text-xs ${filtro === f.k ? "border-ouro bg-ouro/15 font-semibold text-ouro" : "border-zinc-200 text-zinc-600"}`} onClick={() => setFiltro(f.k)}>{f.r}</button>
           ))}
         </div>
       )}

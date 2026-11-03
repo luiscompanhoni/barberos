@@ -5,6 +5,7 @@ import { Ban, CreditCard, Link2, MessageCircle, Plus, QrCode, RefreshCw } from "
 import { BotaoEstorno } from "@/components/estornos/BotaoEstorno";
 import { api, reais } from "@/lib/cliente-api";
 import { BotaoCopiar, NovoLinkModal, type LinkPainel } from "./NovoLinkModal";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Filtro = "PENDENTE" | "PAGO" | "FECHADO" | "TODOS";
 const FILTROS: { k: Filtro; r: string }[] = [{ k: "PENDENTE", r: "Em aberto" }, { k: "PAGO", r: "Pagos" }, { k: "FECHADO", r: "Cancelados/estornados" }, { k: "TODOS", r: "Todos" }];
@@ -53,13 +54,13 @@ export function LinksPagamentoTela() {
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <div className="cartao"><p className="rotulo">Em aberto</p><p className="text-xl font-black">{reais(emAberto.reduce((t, l) => t + l.valorCentavos, 0))}</p><p className="text-xs text-zinc-500">{emAberto.length} link(s)</p></div>
-        <div className="cartao"><p className="rotulo">Recebido (30 dias)</p><p className="text-xl font-black text-ouro">{reais(pagos30.reduce((t, l) => t + l.valorCentavos, 0))}</p><p className="text-xs text-zinc-500">{pagos30.length} pagamento(s) · entra na conciliação como online</p></div>
+        <div className="crm-kpi cartao"><p className="rotulo">Em aberto</p><p className="text-xl font-normal"><ContadorCrm valor={emAberto.reduce((t, l) => t + l.valorCentavos, 0)} formatar={reais} /></p><p className="text-xs text-zinc-500">{emAberto.length} link(s)</p></div>
+        <div className="crm-kpi cartao"><p className="rotulo">Recebido (30 dias)</p><p className="text-xl font-normal text-ouro"><ContadorCrm valor={pagos30.reduce((t, l) => t + l.valorCentavos, 0)} formatar={reais} /></p><p className="text-xs text-zinc-500">{pagos30.length} pagamento(s) · entra na conciliação como online</p></div>
         <button className="btn-primario py-3 text-base sm:h-full" onClick={() => setNovo(true)}><Plus size={18} /> Novo link</button>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {FILTROS.map((f) => <button key={f.k} className={filtro === f.k ? "btn-primario" : "btn"} onClick={() => setFiltro(f.k)}>{f.r}</button>)}
+      <div className="crm-subtabs flex flex-wrap gap-2" aria-label="Situação dos links de pagamento">
+        {FILTROS.map((f) => <button key={f.k} aria-pressed={filtro === f.k} className={filtro === f.k ? "btn-primario" : "btn"} onClick={() => setFiltro(f.k)}>{f.r}</button>)}
         <button className="btn ml-auto" onClick={carregar} aria-label="Atualizar"><RefreshCw size={15} /></button>
       </div>
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}

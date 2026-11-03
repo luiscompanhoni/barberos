@@ -4,7 +4,7 @@ import { TrocarSenha } from "@/components/conta/TrocarSenha";
 export default function Conta() {
   return (
     <div className="mx-auto max-w-xl space-y-4">
-      <div>
+      <div className="crm-page-header">
         <p className="eyebrow">Minha conta</p>
         <h1 className="titulo-marca text-2xl">Acesso</h1>
       </div>

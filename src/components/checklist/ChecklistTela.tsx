@@ -74,16 +74,16 @@ export function ChecklistTela() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="crm-page-header flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="eyebrow">Equipe</p>
           <h1 className="titulo-marca text-2xl">Checklist</h1>
           {aba === "hoje" && total > 0 && <p className="text-sm text-zinc-500">{feitas} de {total} tarefas feitas</p>}
         </div>
-        <div className="flex gap-2">
-          <button className={aba === "hoje" ? "btn-primario" : "btn"} onClick={() => setAba("hoje")}>Dia</button>
-          <button className={aba === "classificacao" ? "btn-primario" : "btn"} onClick={() => setAba("classificacao")}>Classificação</button>
-          <button className={aba === "cadastro" ? "btn-primario" : "btn"} onClick={() => setAba("cadastro")}>Tarefas e pessoas</button>
+        <div className="crm-subtabs flex gap-2" aria-label="Seções do checklist">
+          <button aria-pressed={aba === "hoje"} className={aba === "hoje" ? "btn-primario" : "btn"} onClick={() => setAba("hoje")}>Dia</button>
+          <button aria-pressed={aba === "classificacao"} className={aba === "classificacao" ? "btn-primario" : "btn"} onClick={() => setAba("classificacao")}>Classificação</button>
+          <button aria-pressed={aba === "cadastro"} className={aba === "cadastro" ? "btn-primario" : "btn"} onClick={() => setAba("cadastro")}>Tarefas e pessoas</button>
         </div>
       </div>
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
@@ -97,7 +97,7 @@ export function ChecklistTela() {
           {pessoas && pessoas.length === 0 && (
             <div className="cartao text-sm text-zinc-500">Ninguém cadastrado ainda. Vá em <b>Tarefas e pessoas</b> e cadastre a diarista, os barbeiros e o gerente com o WhatsApp de cada um.</div>
           )}
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="crm-collection grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {pessoas?.map((p) => {
               const ok = p.itens.filter((i) => i.feito).length;
               return (
@@ -112,7 +112,7 @@ export function ChecklistTela() {
                       <button className="rounded p-1.5 text-zinc-500 hover:bg-zinc-100" title="Mandar a lista no WhatsApp agora" onClick={() => enviar({ acao: "lista", pessoaId: p.id }, `Lista enviada para ${p.nome}.`)}><Send size={15} /></button>
                     </div>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-zinc-200"><div className="h-full bg-ouro transition-all" style={{ width: `${p.itens.length ? (ok / p.itens.length) * 100 : 0}%` }} /></div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-zinc-200" role={p.itens.length ? "progressbar" : undefined} aria-label={`Tarefas concluídas de ${p.nome}`} aria-valuemin={p.itens.length ? 0 : undefined} aria-valuemax={p.itens.length || undefined} aria-valuenow={p.itens.length ? ok : undefined}><div className="h-full origin-left bg-ouro transition-transform duration-500 motion-reduce:transition-none" style={{ transform: `scaleX(${p.itens.length ? ok / p.itens.length : 0})` }} /></div>
                   {p.itens.length === 0 ? <p className="text-xs text-zinc-500">Sem tarefas nesse dia.</p> : (
                     <ul className="space-y-1">
                       {p.itens.map((i) => (

@@ -1,0 +1,4 @@
+.resumo { display: grid; align-items: center; gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(250px, .7fr); }
+.resumo > :only-child { grid-column: 1 / -1; }
+.grafico { min-width: 0; }
+@media (max-width: 767px) { .resumo { grid-template-columns: minmax(0, 1fr); } }

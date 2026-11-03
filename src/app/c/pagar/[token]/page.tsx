@@ -35,7 +35,7 @@ export default async function Pagar(props: PageProps<"/c/pagar/[token]">) {
   const a = c.assinatura;
   return (
     <main className="flex flex-1 items-center justify-center px-5 py-12">
-      <section className="entrar-suave w-full max-w-md text-center">
+      <section className="crm-public-card entrar-suave w-full max-w-md p-6 text-center">
         <div className="flex justify-center"><Marca nome={cfg.nomeBarbearia} /></div>
 
         {c.status === "PAGA" ? (

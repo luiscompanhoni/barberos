@@ -26,7 +26,7 @@ export function SeloNivel({ nivel, pequeno }: { nivel: Nivel; pequeno?: boolean 
 export function ProgressoNivel({ percentual, proximo, faltam }: { percentual: number; proximo: Nivel | null; faltam: number }) {
   return (
     <div className="space-y-1">
-      <div className="h-2 overflow-hidden rounded-full bg-zinc-200"><div className="h-full bg-ouro transition-all" style={{ width: `${percentual}%` }} /></div>
+      <div className="h-2 overflow-hidden rounded-full bg-zinc-200" role="progressbar" aria-label="Progresso até a próxima faixa" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentual}><div className="h-full origin-left bg-ouro transition-transform duration-500 motion-reduce:transition-none" style={{ transform: `scaleX(${percentual / 100})` }} /></div>
       <p className="text-[11px] text-zinc-500">{proximo ? `Faltam ${faltam} pts para ${NOME_NIVEL[proximo]}` : "Topo alcançado 👑"}</p>
     </div>
   );

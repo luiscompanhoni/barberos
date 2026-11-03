@@ -1,0 +1,6 @@
+.candidatura { --tom: #91c4e4; position: relative; overflow: hidden; }
+.candidatura::before { content: ""; position: absolute; inset: 14px auto 14px 0; width: 3px; border-radius: 4px; background: var(--tom); opacity: .7; pointer-events: none; }
+.candidatura[data-etapa="TRIAGEM"], .candidatura[data-etapa="BANCO"] { --tom: #b4c3bd; }
+.candidatura[data-etapa="ENTREVISTA"], .candidatura[data-etapa="TESTE"] { --tom: #eca58e; }
+.candidatura[data-etapa="APROVADO"], .candidatura[data-etapa="CONTRATADO"] { --tom: #c6f566; }
+.candidatura[data-etapa="ENCERRADO"] { --tom: #8d9795; }

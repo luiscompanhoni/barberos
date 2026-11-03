@@ -71,7 +71,7 @@ html .crm-workspace .crm-sidebar[data-compacto="false"] .crm-nav-toggle { justif
 html .crm-workspace .crm-nav-panel { display: flex; min-height: 0; flex: 1; flex-direction: column; padding: 10px; }
 html .crm-workspace .crm-nav-panel .crm-nav-toggle { flex-shrink: 0; margin-bottom: 12px; }
 html .crm-workspace .crm-brand { display: flex; align-items: center; min-height: 72px; padding: 12px; gap: 8px; }
-html .crm-workspace .crm-brand .black-brand-seal { background: #c6f566; color: #17200a; border-color: #c6f566; box-shadow: none; border-radius: 11px; }
+html .crm-workspace .crm-brand .black-brand-seal { background: #101316; color: #c6f566; border-color: transparent; box-shadow: none; border-radius: 11px; }
 html .crm-workspace .crm-sidebar { width: 246px; top: 10px; height: calc(100dvh - 20px); padding: 6px 0 6px 12px; border: 0; background: transparent; gap: 10px; transition: width 360ms cubic-bezier(.2,.8,.2,1); }
 html .crm-workspace .crm-user { padding: 12px; margin-top: 0; border: 1px solid var(--border-subtle); }
 html .crm-workspace .crm-user-profile > .black-avatar { display: grid; margin-top: 0; color: var(--color-ouro); }
@@ -92,7 +92,8 @@ html .crm-workspace .crm-sidebar[data-compacto="true"] .crm-user-profile { flex:
 
 /* A posição da seleção é calculada pelas abas reais, inclusive após redimensionar. */
 html .crm-workspace .crm-tabs { align-items: center; width: fit-content; max-width: 100%; height: 54px; margin: 0 auto 28px; padding: 4px; gap: 5px; border: 1px solid rgb(255 255 255 / 13%); border-radius: 999px; background: rgb(17 23 24 / 69%); backdrop-filter: blur(22px); box-shadow: inset 0 1px 0 rgb(255 255 255 / 7%), 0 8px 20px rgb(0 0 0 / 10%); z-index: 30; }
-html .crm-workspace .crm-tabs-list { position: relative; align-items: center; gap: 3px; height: 44px; padding: 1px; border-radius: 999px; }
+html .crm-workspace .crm-tabs-list { position: relative; align-items: center; gap: 3px; height: 44px; padding: 1px; border-radius: 999px; scrollbar-width: none; overflow-y: hidden; }
+html .crm-workspace .crm-tabs-list::-webkit-scrollbar { display: none; }
 html .crm-workspace .crm-tab { position: relative; height: 42px; border: 0; border-radius: 999px; background: transparent; z-index: 1; color: #b1bab5; font-size: 12px; }
 html .crm-workspace .crm-tab:hover { color: #f5f7f5; background: rgb(255 255 255 / 5%); }
 html .crm-workspace .crm-tab[data-ativa="true"] { color: #f5f7f5; background: rgb(222 234 227 / 18%); }

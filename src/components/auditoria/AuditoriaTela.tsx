@@ -49,22 +49,22 @@ export function AuditoriaTela() {
   const maisAntigos = () => { setCarregando(true); buscar(proximo ?? undefined); };
   return (
     <div className="space-y-4">
-      <div>
+      <div className="crm-page-header">
         <p className="eyebrow">Segurança</p>
         <h1 className="titulo-marca text-2xl">Auditoria</h1>
         <p className="text-sm text-zinc-500">Quem mudou o quê, quando e de onde. Este registro não pode ser alterado nem apagado.</p>
       </div>
-      <div className="flex flex-wrap items-end gap-2">
-        <div><label className="rotulo">De</label><input type="date" className="campo" value={f.de} onChange={(e) => muda({ de: e.target.value })} /></div>
-        <div><label className="rotulo">Até</label><input type="date" className="campo" value={f.ate} onChange={(e) => muda({ ate: e.target.value })} /></div>
-        <div className="min-w-48 flex-1"><label className="rotulo">Quem</label>
-          <select className="campo" value={f.usuarioId} onChange={(e) => muda({ usuarioId: e.target.value })}>
+      <div className="crm-filterbar flex flex-wrap items-end gap-2">
+        <div><label className="rotulo" htmlFor="auditoria-de">De</label><input id="auditoria-de" type="date" className="campo" value={f.de} onChange={(e) => muda({ de: e.target.value })} /></div>
+        <div><label className="rotulo" htmlFor="auditoria-ate">Até</label><input id="auditoria-ate" type="date" className="campo" value={f.ate} onChange={(e) => muda({ ate: e.target.value })} /></div>
+        <div className="min-w-48 flex-1"><label className="rotulo" htmlFor="auditoria-pessoa">Quem</label>
+          <select id="auditoria-pessoa" className="campo" value={f.usuarioId} onChange={(e) => muda({ usuarioId: e.target.value })}>
             <option value="">Todos</option>
             {filtros?.pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
           </select>
         </div>
-        <div className="min-w-48 flex-1"><label className="rotulo">O quê</label>
-          <select className="campo" value={f.entidade} onChange={(e) => muda({ entidade: e.target.value })}>
+        <div className="min-w-48 flex-1"><label className="rotulo" htmlFor="auditoria-entidade">O quê</label>
+          <select id="auditoria-entidade" className="campo" value={f.entidade} onChange={(e) => muda({ entidade: e.target.value })}>
             <option value="">Tudo</option>
             {filtros?.entidades.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
           </select>
@@ -73,13 +73,13 @@ export function AuditoriaTela() {
       {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       {!carregando && !erro && itens.length === 0 && <div className="cartao text-sm text-zinc-500">Nada registrado nesse período.</div>}
 
-      <div className="cartao divide-y divide-zinc-200 p-0">
+      <div className="crm-collection cartao divide-y divide-zinc-200 p-0">
         {itens.map((x, i) => (
           <div key={x.id}>
             {(i === 0 || diaDe(itens[i - 1].criadoEm) !== diaDe(x.criadoEm)) && (
               <p className="bg-zinc-100 px-4 py-1.5 text-xs font-semibold text-zinc-500 first-letter:uppercase">{diaTexto(x.criadoEm)}</p>
             )}
-            <button className="flex w-full items-start gap-3 px-4 py-2.5 text-left text-sm hover:bg-zinc-50" onClick={() => setAberto(aberto === x.id ? null : x.id)}>
+            <button aria-expanded={aberto === x.id} aria-controls={`auditoria-${x.id}`} className="crm-list-row flex w-full items-start gap-3 px-4 py-2.5 text-left text-sm hover:bg-zinc-50" onClick={() => setAberto(aberto === x.id ? null : x.id)}>
               <span className="w-12 shrink-0 pt-0.5 text-xs text-zinc-500">{hora(x.criadoEm)}</span>
               <span className="min-w-0 flex-1">
                 <span className="font-semibold">{x.quem}</span>{x.papel && <span className="text-xs text-zinc-500"> ({x.papel})</span>} · {x.descricao}
@@ -88,7 +88,7 @@ export function AuditoriaTela() {
               {aberto === x.id ? <ChevronDown size={15} className="mt-0.5 shrink-0 text-zinc-500" /> : <ChevronRight size={15} className="mt-0.5 shrink-0 text-zinc-500" />}
             </button>
             {aberto === x.id && (
-              <div className="space-y-1 px-4 pb-3 pl-[4.75rem] text-xs text-zinc-500">
+              <div id={`auditoria-${x.id}`} className="space-y-1 px-4 pb-3 pl-[4.75rem] text-xs text-zinc-500">
                 <p>Registro: {x.entidadeId} · ação “{x.acao}”</p>
                 <p>De onde: {x.ip ?? "—"}{x.aparelho ? ` · ${x.aparelho}` : ""}{!x.ip && !x.aparelho ? " (rotina automática ou script)" : ""}</p>
                 {x.dados !== null && <pre className="overflow-x-auto rounded-lg bg-zinc-100 p-2 text-[11px]">{JSON.stringify(x.dados, null, 2)}</pre>}

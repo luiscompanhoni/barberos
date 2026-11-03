@@ -50,7 +50,7 @@ export function ChecklistClassificacao() {
         <span className="ml-auto">Ré: −{d.config.pontosRe} pts</span>
       </div>
       {d.pessoas.length === 0 && <div className="cartao text-sm text-zinc-500">Ninguém cadastrado no checklist ainda.</div>}
-      <ol className="space-y-2">
+      <ol className="crm-collection space-y-2">
         {d.pessoas.map((p, n) => (
           <li key={p.id} className={n === 0 && p.pontos > 0 ? "cartao-destaque space-y-2" : "cartao space-y-2"}>
             <div className="flex flex-wrap items-center gap-3">
@@ -61,7 +61,7 @@ export function ChecklistClassificacao() {
               </div>
               <SeloNivel nivel={p.nivel} />
               <p className="w-20 text-right text-xl font-black tabular-nums">{p.pontos}<span className="ml-0.5 text-xs font-semibold text-zinc-500">pts</span></p>
-              <button className="rounded p-1.5 text-zinc-500 hover:bg-zinc-100" title="Extrato e ajuste manual" onClick={() => setAberto(aberto === p.id ? null : p.id)}><SlidersHorizontal size={15} /></button>
+              <button className="rounded p-1.5 text-zinc-500 hover:bg-zinc-100" aria-label={`Extrato e ajuste manual de ${p.nome}`} aria-expanded={aberto === p.id} title="Extrato e ajuste manual" onClick={() => setAberto(aberto === p.id ? null : p.id)}><SlidersHorizontal size={15} /></button>
             </div>
             <ProgressoNivel percentual={p.percentual} proximo={p.proximo} faltam={p.faltam} />
             {aberto === p.id && (

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
+import styles from "./conversas-crm.module.css";
 
 type Resumo = {
   id: string;
@@ -73,13 +74,14 @@ export function ConversasTela() {
   };
 
   return (
-    <div className="grid h-[calc(100vh-90px)] gap-3 md:grid-cols-[320px_1fr]">
-      <aside className={`cartao overflow-y-auto p-0 ${aberta ? "hidden md:block" : ""}`}>
+    <div className={`${styles.grade} grid h-[calc(100vh-90px)] gap-3 md:grid-cols-[320px_1fr]`}>
+      <aside aria-label="Lista de conversas" className={`cartao overflow-y-auto p-0 ${aberta ? "hidden md:block" : ""}`}>
+        <header className={styles.titulo}><p className="eyebrow">Relacionamento</p><h1 className="titulo-marca text-xl">Conversas</h1></header>
         {lista.length === 0 && <p className="p-4 text-sm text-zinc-500">Nenhuma conversa ainda.</p>}
         <ul className="divide-y divide-zinc-100">
           {lista.map((c) => (
             <li key={c.id}>
-              <button onClick={() => setAberta(c.id)} className={`w-full px-4 py-3 text-left hover:bg-zinc-50 ${aberta === c.id ? "bg-zinc-100" : ""}`}>
+              <button onClick={() => setAberta(c.id)} aria-pressed={aberta === c.id} className={`${styles.contato} w-full px-4 py-3 text-left hover:bg-zinc-50 ${aberta === c.id ? "bg-zinc-100" : ""}`}>
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-semibold">{nomeDe(c)}</span>
                   {c.estado === "HUMANO" && <span className="rounded bg-amber-100 px-1.5 text-[11px] text-amber-900">Equipe</span>}
@@ -98,7 +100,7 @@ export function ConversasTela() {
         ) : (
           <>
             <header className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-2">
-              <button className="btn md:hidden" onClick={() => setAberta(null)}>‹</button>
+              <button className="btn md:hidden" aria-label="Voltar à lista de conversas" onClick={() => setAberta(null)}>‹</button>
               <div>
                 <p className="text-sm font-semibold">{nomeDe(detalhe)}</p>
                 <p className="text-xs text-zinc-500">{formatarTelefone(detalhe.telefone)} · {detalhe.estado === "BOT" ? "Bot respondendo" : "Equipe respondendo"}</p>
@@ -111,14 +113,14 @@ export function ConversasTela() {
                 )}
               </div>
             </header>
-            <div className="flex-1 space-y-2 overflow-y-auto bg-[#0b141a] p-4">
+            <div className={`${styles.mensagens} flex-1 space-y-2 overflow-y-auto bg-[#0b141a] p-4`}>
               {detalhe.mensagens.map((m) =>
                 m.autor === "NOTA" ? (
                   <p key={m.id} className="text-center text-[11px] text-zinc-600">{m.texto} · {hora(m.criadoEm)}</p>
                 ) : (
                   <div key={m.id} className={`flex ${m.autor === "CLIENTE" ? "justify-start" : "justify-end"}`}>
-                    <div className={`max-w-[80%] rounded-lg px-3 py-1.5 text-sm shadow-sm ${m.autor === "CLIENTE" ? "bg-[#202c33]" : m.autor === "BOT" ? "bg-[#005c4b]" : "border border-ouro/40 bg-[#2a2415]"}`}>
-                      <p className="whitespace-pre-wrap">{m.texto}</p>
+                    <div data-autor={m.autor} className={`${styles.balao} max-w-[80%] rounded-lg px-3 py-1.5 text-sm shadow-sm`}>
+                      <p className="whitespace-pre-wrap break-words">{m.texto}</p>
                       <p className="mt-0.5 text-right text-[10px] text-zinc-500">
                         {m.autor === "BOT" ? "Bot" : m.autor === "EQUIPE" ? "Equipe" : m.autor === "SISTEMA" ? "Aviso automático" : ""} {hora(m.criadoEm)}
                         {m.autor !== "CLIENTE" && !m.erro && (m.lidaEm ? <span className="text-sky-400" title="Lida"> ✓✓</span> : m.entregueEm ? <span title="Entregue"> ✓✓</span> : null)}
@@ -131,7 +133,7 @@ export function ConversasTela() {
               <div ref={fim} />
             </div>
             <form onSubmit={enviar} className="flex gap-2 border-t border-zinc-200 p-3">
-              <input className="campo" placeholder={detalhe.estado === "BOT" ? "Responder (assume a conversa)" : "Escreva uma mensagem"} value={texto} onChange={(e) => setTexto(e.target.value)} />
+              <input className="campo" aria-label="Mensagem para a conversa selecionada" placeholder={detalhe.estado === "BOT" ? "Responder (assume a conversa)" : "Escreva uma mensagem"} value={texto} onChange={(e) => setTexto(e.target.value)} />
               <button className="btn-primario">Enviar</button>
             </form>
           </>

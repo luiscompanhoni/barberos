@@ -18,13 +18,13 @@ const ABAS = [
 export function NavCliente({ jogos = false, avaliacoes = false }: { jogos?: boolean; avaliacoes?: boolean }) {
   const path = usePathname();
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-fundo/95 backdrop-blur">
+    <nav aria-label="Navegação do cliente" className="crm-client-nav fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-fundo/95 backdrop-blur">
       <div className="mx-auto flex max-w-2xl justify-around overflow-x-auto px-2 py-2.5">
         {ABAS.filter((a) => (jogos || a.href !== "/c/jogos") && (avaliacoes || a.href !== "/c/avaliacoes")).map(({ href, rotulo, Icone }) => {
           const ativo = href === "/c" ? path === "/c" : path.startsWith(href);
           return (
-            <Link key={href} href={href} className={`flex min-w-12 flex-col items-center gap-1 text-[10px] font-semibold ${ativo ? "text-ouro" : "text-zinc-500"}`}>
-              <Icone size={19} />
+            <Link key={href} href={href} aria-current={ativo ? "page" : undefined} className={`crm-client-tab flex min-w-12 flex-col items-center gap-1 text-[10px] font-semibold ${ativo ? "text-ouro" : "text-zinc-500"}`}>
+              <Icone size={19} aria-hidden="true" />
               {rotulo}
             </Link>
           );

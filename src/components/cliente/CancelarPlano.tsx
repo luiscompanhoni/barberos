@@ -112,7 +112,7 @@ export function CancelarPlano() {
           <div className="space-y-2">
             {motivos.map((m) => (
               <label key={m.codigo} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm ${motivo === m.codigo ? "border-ouro" : "border-zinc-200"}`}>
-                <input type="radio" name="motivo" value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} className="accent-[#d3ab45]" />
+                <input type="radio" name="motivo" value={m.codigo} checked={motivo === m.codigo} onChange={() => setMotivo(m.codigo)} className="accent-ouro" />
                 {m.rotulo}
               </label>
             ))}

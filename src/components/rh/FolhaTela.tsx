@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Download, Lock, Plus, RotateCcw, Trash2, Wallet } from "lucide-react";
 import { api, paraCentavos, reais } from "@/lib/cliente-api";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Tipo = "ADICIONAL" | "BONUS" | "VALE" | "DESCONTO";
 type Lanc = { id: string; tipo: Tipo; valorCentavos: number; descricao: string; doCaixa: boolean };
@@ -80,18 +82,19 @@ export function FolhaTela() {
   const abertas = visiveis.filter((l) => l.status === "ABERTA" && (l.salario || l.comissao || l.lancamentos.length)).length;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-2">
-        <div><label className="rotulo">Competência</label><input type="month" className="campo" value={d.competencia} onChange={(e) => e.target.value && carregar(e.target.value)} /></div>
+      <div className="crm-filterbar flex flex-wrap items-end gap-2">
+        <div><label className="rotulo">Competência</label><input aria-label="Competência da folha" type="month" className="campo" value={d.competencia} onChange={(e) => e.target.value && carregar(e.target.value)} /></div>
         <button className="btn-primario" disabled={!abertas} onClick={() => acao({ acao: "fechar" }, "Folha fechada: valores congelados.", `Fechar a folha de ${d.competencia.split("-").reverse().join("/")}? Os valores ficam congelados.`)}><Lock size={15} /> Fechar folha{abertas ? ` (${abertas})` : ""}</button>
         <a className="btn" href={`/api/rh/folha/csv?competencia=${d.competencia}`}><Download size={15} /> Exportar CSV</a>
-        <div className="ml-auto text-right"><p className="text-xs text-zinc-500">Líquido total</p><p className="text-xl font-black text-ouro">{reais(total)}</p></div>
+        <div className="ml-auto text-right"><p className="text-xs text-zinc-500">Líquido total</p><p className="text-xl font-normal text-ouro"><ContadorCrm valor={total} formatar={reais} /></p></div>
       </div>
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
       {visiveis.length === 0 && <div className="cartao text-sm text-zinc-500">Ninguém na folha. Cadastre os funcionários no checklist e preencha a ficha na aba Funcionários.</div>}
+      {visiveis.length > 0 && <section className="cartao space-y-4"><h2 className="font-semibold">Leitura da folha</h2><p className="text-xs text-zinc-500">Líquido por pessoa na competência. O estado de cada folha e a memória de cálculo estão nos cartões abaixo.</p><GraficoBarrasCrm rotulo="Valor líquido da folha por pessoa" formatar={reais} itens={visiveis.map(l => ({ rotulo: l.nome, valor: l.liquido, nota: STATUS[l.status] }))} /></section>}
       {visiveis.map((l) => (
         <section key={l.pessoaId} className="cartao space-y-2">
           <div className="flex flex-wrap items-center gap-3">
-            <button className="flex flex-1 items-center gap-2 text-left" onClick={() => setAberto(aberto === l.pessoaId ? null : l.pessoaId)}>
+            <button className="flex flex-1 items-center gap-2 text-left" aria-expanded={aberto === l.pessoaId} onClick={() => setAberto(aberto === l.pessoaId ? null : l.pessoaId)}>
               {aberto === l.pessoaId ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
               <span>
                 <span className="font-semibold">{l.nome}</span>

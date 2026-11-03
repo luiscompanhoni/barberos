@@ -8,9 +8,9 @@ export default function ErroGeral({ error, retry }: { error: Error & { digest?: 
     <html lang="pt-BR" className="h-full antialiased">
       <body className="flex min-h-full flex-col">
         <title>Algo deu errado</title>
-        <main className="flex flex-1 items-center justify-center px-5 py-12">
-          <section className="w-full max-w-md text-center">
-            <p className="text-5xl font-black text-ouro">Ops</p>
+        <main className="crm-surface flex flex-1 items-center justify-center px-5 py-12">
+          <section className="crm-public-card w-full max-w-md p-6 text-center">
+            <p className="text-5xl font-normal text-ouro">Ops</p>
             <h1 className="mt-3 text-xl font-bold">O sistema teve um problema</h1>
             <p className="mt-3 text-sm text-zinc-600">Tente de novo em instantes. Se continuar, avise a barbearia{error.digest ? " com o código abaixo" : ""}.</p>
             {error.digest && <p className="mt-3 font-mono text-xs text-zinc-500">Código: {error.digest}</p>}

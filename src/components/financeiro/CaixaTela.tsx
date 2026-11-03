@@ -6,6 +6,7 @@ import { ArrowDownCircle, ArrowUpCircle, Lock, LockOpen, Receipt, TriangleAlert 
 import { useAcesso } from "@/components/AcessoContexto";
 import { api, paraCentavos, reais } from "@/lib/cliente-api";
 import { ExtratoCaixa } from "./ExtratoCaixa";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Totais = Record<"DINHEIRO" | "PIX" | "DEBITO" | "CREDITO" | "ONLINE", number>;
 type Mov = { id: string; tipo: "SANGRIA" | "SUPRIMENTO"; valorCentavos: number; motivo: string; criadoEm: string };
@@ -91,15 +92,15 @@ export function CaixaTela({ compacto = false }: { compacto?: boolean } = {}) {
             </div>
             <div className="text-right">
               <p className="text-xs text-zinc-500">Dinheiro que deve ter na gaveta</p>
-              <p className="text-2xl font-black text-ouro">{reais(a.esperado)}</p>
+              <p className="text-2xl font-normal text-ouro"><ContadorCrm valor={a.esperado} formatar={reais} /></p>
             </div>
           </div>
 
           <div className={`grid grid-cols-2 gap-2 ${compacto ? "" : "sm:grid-cols-5"}`}>
             {FORMAS.map((f) => (
-              <div key={f.k} className="rounded-xl border border-zinc-200 p-3">
+              <div key={f.k} className="crm-kpi rounded-xl border border-zinc-200 p-3">
                 <p className="text-[11px] text-zinc-500">{f.r}</p>
-                <p className="font-bold">{reais(a.totais[f.k] ?? 0)}</p>
+                <p className="font-normal tabular-nums"><ContadorCrm valor={a.totais[f.k] ?? 0} formatar={reais} /></p>
               </div>
             ))}
           </div>

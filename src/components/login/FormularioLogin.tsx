@@ -127,8 +127,8 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel }
   );
 
   return (
-    <main className="flex flex-1 items-center justify-center px-5 py-16">
-      <div className="entrar-suave w-full max-w-md">
+    <main className="crm-surface crm-login flex flex-1 items-center justify-center px-5 py-16">
+      <div className="crm-public-card entrar-suave w-full max-w-md">
         <Marca nome={titulo} tamanho="lg" />
         <div className="mt-12">
           <p className="eyebrow">{subtitulo}</p>
@@ -207,7 +207,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel }
         )}
 
         {contaExcluida && <p role="status" className="mt-4 text-sm text-emerald-700">Sua conta foi excluída e seus dados pessoais foram apagados.</p>}
-        {erro && <p className="mt-4 text-sm text-red-600">{erro}</p>}
+        {erro && <p role="alert" className="mt-4 text-sm text-red-600">{erro}</p>}
         {area === "cliente" && modo === "senha" && (
           <Link href="/assine" className="mt-10 flex items-center gap-2 text-sm font-semibold text-zinc-500 hover:text-zinc-900">
             Ainda não é assinante? <span className="text-ouro">Conheça os planos</span> <ArrowRight size={14} className="text-ouro" />

@@ -57,7 +57,7 @@ export function ResgatesBalcao({ podeCancelar }: { podeCancelar: boolean }) {
             {lista.map((p) => {
               const aberto = p.status === "DISPONIVEL" || p.status === "RESERVADO";
               return (
-                <li key={p.id} className="flex flex-wrap items-center gap-3 py-3 text-sm">
+                <li key={p.id} className="crm-list-row flex flex-wrap items-center gap-3 py-3 text-sm">
                   <IconePremio icone={p.icone} tamanho={26} cor="#d3ab45" />
                   <div className="min-w-0 flex-1">
                     <p><b>{p.tipo === "CREDITO" ? reais(p.valorCentavos) : p.rotulo}</b> · {p.cliente.nome} <span className="font-mono text-xs text-zinc-500">{p.codigo}</span></p>

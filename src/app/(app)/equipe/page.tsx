@@ -12,6 +12,11 @@ export default async function Equipe() {
   if (!GESTAO.includes(s.papel)) redirect("/");
   return (
     <div className="mx-auto max-w-4xl space-y-4">
+      <header className="crm-page-header">
+        <p className="eyebrow">Gestão da Black</p>
+        <h1 className="titulo-marca text-3xl">Configurações</h1>
+        <p className="text-sm text-zinc-500">Equipe, acessos e preferências da barbearia.</p>
+      </header>
       <ConfiguracaoTela />
       <AutomacoesTela />
       {s.papel === "DONO" && <AcessosTela />}

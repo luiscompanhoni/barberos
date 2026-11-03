@@ -6,14 +6,14 @@ import type { Controlador } from "@/lib/lgpd/textos";
 export function PaginaLegal({ titulo, versao, controlador: c, children }: { titulo: string; versao: string; controlador: Controlador; children: React.ReactNode }) {
   const [a, m, d] = versao.split("-");
   return (
-    <div className="min-h-full bg-fundo">
+    <div className="crm-surface crm-legal min-h-full flex-1 bg-fundo">
       <header className="border-b border-[rgba(255,255,255,0.05)]">
         <div className="mx-auto flex max-w-3xl items-center justify-between px-5 py-4">
           <Link href="/assine"><Marca nome={c.nomeFantasia} /></Link>
           <Link href="/c" className="text-sm text-zinc-500 underline hover:text-zinc-900">Área do cliente</Link>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-5 py-10">
+      <main className="entrar-suave mx-auto max-w-3xl px-5 py-10">
         <p className="eyebrow">Privacidade e uso</p>
         <h1 className="titulo-marca mt-2 text-3xl">{titulo}</h1>
         <p className="mt-2 text-sm text-zinc-500">Versão de {d}/{m}/{a}</p>

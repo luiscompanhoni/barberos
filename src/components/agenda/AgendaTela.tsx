@@ -93,7 +93,7 @@ export function AgendaTela(p: {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="crm-filterbar flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
           <button className="btn" onClick={() => setData(somarDias(data, -passo))} aria-label="Anterior">‹</button>
           <button className="btn" onClick={() => setData(dataLocal(Date.now(), FUSO))}>Hoje</button>
@@ -105,9 +105,9 @@ export function AgendaTela(p: {
         </span>
 
         {p.permitirTrocarModo && (
-          <div className="flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm">
+          <div className="crm-subtabs flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm" aria-label="Visualização da agenda">
             {(["dia", "semana"] as const).map((m) => (
-              <button key={m} className={`rounded-md px-3 py-1 capitalize ${modo === m ? "bg-zinc-900 text-white" : ""}`} onClick={() => setModo(m)}>{m}</button>
+              <button key={m} aria-pressed={modo === m} className={`rounded-md px-3 py-1 capitalize ${modo === m ? "bg-zinc-900 text-white" : ""}`} onClick={() => setModo(m)}>{m}</button>
             ))}
           </div>
         )}

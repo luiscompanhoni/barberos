@@ -47,11 +47,11 @@ export function ChecklistPublico({ token, nome, data, itens: inicial, pontos }: 
         </div>
         <ProgressoNivel percentual={pontos.percentual} proximo={pontos.proximo} faltam={pontos.faltam} />
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-zinc-200"><div className="h-full bg-ouro transition-all" style={{ width: `${itens.length ? (feitas / itens.length) * 100 : 0}%` }} /></div>
+      <div role="progressbar" aria-label="Tarefas concluídas" aria-valuemin={0} aria-valuemax={itens.length || 1} aria-valuenow={feitas} className="h-2 overflow-hidden rounded-full bg-zinc-200"><div className="h-full origin-left bg-ouro transition-transform duration-300" style={{ transform: `scaleX(${itens.length ? feitas / itens.length : 0})` }} /></div>
       <ul className="space-y-2">
         {itens.map((i) => (
           <li key={i.id}>
-            <button onClick={() => marcar(i, !i.feito)} className={`cartao flex w-full items-center gap-3 p-4 text-left ${i.feito ? "opacity-70" : ""}`}>
+            <button aria-pressed={i.feito} onClick={() => marcar(i, !i.feito)} className={`cartao flex w-full items-center gap-3 p-4 text-left ${i.feito ? "opacity-70" : ""}`}>
               {i.feito ? <CheckCircle2 size={26} className="shrink-0 text-emerald-600" /> : <Circle size={26} className="shrink-0 text-zinc-400" />}
               <span className="flex-1">
                 <span className={`block text-base ${i.feito ? "line-through" : "font-semibold"}`}>
@@ -64,7 +64,7 @@ export function ChecklistPublico({ token, nome, data, itens: inicial, pontos }: 
           </li>
         ))}
       </ul>
-      {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      {erro && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       <p className="text-center text-xs text-zinc-500">Toque na tarefa para marcar como feita. O gerente confere e valida: cada tarefa validada soma pontos; marcar sem fazer dá ré e tira pontos.</p>
     </div>
   );

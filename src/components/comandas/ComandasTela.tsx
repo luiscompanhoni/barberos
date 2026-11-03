@@ -45,7 +45,7 @@ export function ComandasTela() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="crm-page-header flex flex-wrap items-center gap-3">
         <div>
           <p className="eyebrow">Balcão</p>
           <h1 className="titulo-marca text-2xl">Comandas</h1>
@@ -64,9 +64,9 @@ export function ComandasTela() {
           Nenhuma comanda aberta. Abra pelo botão acima ou pelo atendimento na agenda.
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="crm-collection grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {abertas.map((c) => (
-            <Link key={c.id} href={`/comandas/${c.id}`} className="cartao-clicavel flex flex-col gap-3">
+            <Link key={c.id} href={`/comandas/${c.id}`} className="cartao-clicavel crm-operation-card flex flex-col gap-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-xs font-bold text-ouro">#{c.numero}</p>
@@ -78,7 +78,7 @@ export function ComandasTela() {
                 {c.itens.length ? c.itens.map((i) => (i.quantidade > 1 ? `${i.quantidade}× ` : "") + i.descricao).join(" · ") : "Sem itens"}
               </p>
               <div className="flex items-end justify-between">
-                <span className="text-xl font-black">{reais(c.resumo.total)}</span>
+                <span className="text-xl font-normal tabular-nums">{reais(c.resumo.total)}</span>
                 {c.resumo.aguardando > 0 ? (
                   <span className="flex items-center gap-1 text-xs font-semibold text-ouro"><LoaderCircle size={13} className="animate-spin" /> Na maquininha</span>
                 ) : c.resumo.podeFechar ? (

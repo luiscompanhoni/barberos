@@ -10,6 +10,9 @@ import { AlertTriangle, RefreshCw, Trash2, Upload } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { CATEGORIAS_DESPESA, ROTULO_CATEGORIA } from "@/lib/financeiro/regras";
 import { mesAtual } from "./DespesasTela";
+import { GraficoRoscaCrm } from "@/components/visual/GraficosCrm";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Extrato = {
   recebido: number; recebidoPorForma: Record<string, number>; taxas: number; antecipacao: number; tarifas: number; estornos: number; custoGateway: number;
@@ -95,8 +98,8 @@ export function ResultadoTela() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div><label className="rotulo">Mês</label><input type="month" className="campo" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} /></div>
+      <div className="crm-filterbar flex flex-wrap items-end gap-3">
+        <div><label className="rotulo">Mês</label><input aria-label="Mês do resultado financeiro" type="month" className="campo" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} /></div>
         <button className="btn" disabled={ocupado} onClick={() => sincronizar(false)}><RefreshCw size={14} className={ocupado ? "animate-spin" : ""} /> Atualizar Celcash</button>
         <label className={`btn cursor-pointer ${ocupado ? "pointer-events-none opacity-50" : ""}`}>
           <Upload size={14} /> Subir extrato da Stone (CSV)
@@ -111,10 +114,15 @@ export function ResultadoTela() {
       {!r ? <p className="cartao text-sm text-zinc-500">Carregando…</p> : (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="cartao"><p className="text-xs text-zinc-500">Faturamento registrado</p><p className="text-2xl font-black">{reais(r.registrado.total)}</p></div>
-            <div className="cartao"><p className="text-xs text-zinc-500">Caiu nas contas</p><p className="text-2xl font-black">{reais(r.celcash.recebido + r.stone.recebido)}</p><p className="text-[11px] text-zinc-500">Celcash {reais(r.celcash.recebido)} · Stone {reais(r.stone.recebido)}</p></div>
-            <div className="cartao"><p className="text-xs text-zinc-500">Despesas + taxas</p><p className="text-2xl font-black">{reais(r.despesas.total + r.custos.total)}</p>{!!r.retiradas && <p className="text-[11px] text-zinc-500">retiradas do sócio {reais(r.retiradas)} (fora do lucro)</p>}</div>
-            <div className="cartao-destaque"><p className="text-xs text-zinc-500">Lucro</p><p className={`text-2xl font-black ${r.lucro >= 0 ? "text-ouro" : "text-red-600"}`}>{reais(r.lucro)}</p></div>
+            <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Faturamento registrado</p><p className="text-2xl font-normal"><ContadorCrm valor={r.registrado.total} formatar={reais} /></p></div>
+            <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Caiu nas contas</p><p className="text-2xl font-normal"><ContadorCrm valor={r.celcash.recebido + r.stone.recebido} formatar={reais} /></p><p className="text-[11px] text-zinc-500">Celcash {reais(r.celcash.recebido)} · Stone {reais(r.stone.recebido)}</p></div>
+            <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Despesas + taxas</p><p className="text-2xl font-normal"><ContadorCrm valor={r.despesas.total + r.custos.total} formatar={reais} /></p>{!!r.retiradas && <p className="text-[11px] text-zinc-500">retiradas do sócio {reais(r.retiradas)} (fora do lucro)</p>}</div>
+            <div className="crm-kpi cartao-destaque"><p className="text-xs text-zinc-500">Lucro</p><p className={`text-2xl font-normal ${r.lucro >= 0 ? "text-ouro" : "text-red-600"}`}><ContadorCrm valor={r.lucro} formatar={reais} /></p></div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section className="cartao space-y-4"><h2 className="font-semibold">Recebimentos nas contas</h2><p className="text-xs text-zinc-500">Recebido por origem, antes das taxas e transferências entre contas.</p><GraficoBarrasCrm rotulo="Recebimentos nas contas Celcash e Stone" formatar={reais} itens={[{ rotulo: "Celcash", valor: r.celcash.recebido }, { rotulo: "Stone", valor: r.stone.recebido, cor: "#91c4e4" }]} /></section>
+            <section className="cartao space-y-4"><h2 className="font-semibold">Despesas por categoria</h2><p className="text-xs text-zinc-500">Despesas classificadas; taxas e retiradas do sócio seguem separadas nos detalhes.</p><GraficoRoscaCrm rotulo="Despesas classificadas por categoria" formatar={reais} itens={Object.entries(r.despesas.porCategoria).map(([categoria, valor]) => ({ rotulo: ROTULO_CATEGORIA[categoria] ?? categoria, valor }))} /></section>
           </div>
 
           {r.alertas.length > 0 && (

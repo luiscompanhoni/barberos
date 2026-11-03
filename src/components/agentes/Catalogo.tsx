@@ -17,7 +17,7 @@ export function Catalogo({ painel }: { painel: PainelAgentes }) {
     {Object.entries(GRUPOS).map(([grupo, rotulo]) => {
       const lista = agentes.filter(a => a.grupo === grupo);
       if (!lista.length) return null;
-      return <div key={grupo}><h3 className="mb-3 text-sm font-semibold text-zinc-500">{rotulo}</h3><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{lista.map(a => <article className="cartao space-y-3" key={a.id}><h4 className="font-semibold">{a.nome}</h4><p className="text-sm text-zinc-600">{a.objetivo}</p>
+      return <div key={grupo}><h3 className="mb-3 text-sm font-semibold text-zinc-500">{rotulo}</h3><div className="crm-collection grid gap-3 md:grid-cols-2 xl:grid-cols-3">{lista.map(a => <article className="cartao space-y-3" key={a.id}><h4 className="font-semibold">{a.nome}</h4><p className="text-sm text-zinc-600">{a.objetivo}</p>
         <div className="flex flex-wrap gap-1.5">{a.integracoes.length ? a.integracoes.map(id => { const i = mapa.get(id); return <span key={id} className={`rounded-full px-2.5 py-1 text-xs ${i?.disponivel ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{i?.nome ?? id}: {i?.disponivel ? "configurada" : "pendente"}</span>; }) : <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs text-zinc-600">Contexto interno</span>}</div>
         {a.proximos.length ? <p className="text-xs text-zinc-500">Pode encaminhar para {a.proximos.map(id => nomes.get(id) ?? id).join(", ")}.</p> : null}
       </article>)}</div></div>;

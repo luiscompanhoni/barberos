@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, BellRing, Wallet, X } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Espera = { id: string; data: string; periodo: string; servico: string; barbeiro: string | null };
 type Resumo = {
@@ -55,7 +56,7 @@ export function IndiqueEsperas() {
           <Wallet className="shrink-0 text-ouro" size={24} />
           <div className="min-w-0 flex-1 text-sm">
             <p className="text-xs text-zinc-500">Seu saldo</p>
-            <p className="text-xl font-black text-ouro">{reais(saldo.saldoCentavos)}</p>
+            <p className="text-xl font-medium tabular-nums text-ouro"><ContadorCrm valor={saldo.saldoCentavos} formatar={reais} /></p>
             <p className="text-xs text-zinc-500">
               {[saldo.cashback.ativo && `${saldo.cashback.pct}% de cashback`, saldo.indicacao.ativa && `${reais(saldo.indicacao.premioIndicadorCentavos)} por amigo indicado`].filter(Boolean).join(" · ")}
             </p>

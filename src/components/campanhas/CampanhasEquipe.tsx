@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Dices } from "lucide-react";
 import { api, paraCentavos, reais } from "@/lib/cliente-api";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 type Campanha = { id: string; nome: string; inicio: string; fim: string; metaQuantidade: number; metaCentavos: number; premios: number[]; rodadasDisponiveis: number; vendas: { quantidade: number; receita: number; ciclos: number } | null; bonus: { id: string; barbeiroId: string; ciclo: number; valorCentavos: number; pagoEm: string | null; folhaLancamentoId: string | null; nomeBarbeiro: string | null }[] };
 export function CampanhasEquipe({ gestao, barbeiro }: { gestao: boolean; barbeiro: boolean }) {
   const [cs, setCs] = useState<Campanha[]>([]), [msg, setMsg] = useState(""), [ocupado, setOcupado] = useState(false);
@@ -17,7 +18,7 @@ export function CampanhasEquipe({ gestao, barbeiro }: { gestao: boolean; barbeir
     try { const r = await api<{ valorCentavos: number }>("/api/campanhas-equipe", { method: "POST", body: { acao: "girar", campanhaId } }); setMsg(`Você ganhou ${reais(r.valorCentavos)} de bônus! Registrado para conferência e pagamento pela gestão.`); await carregar(); }
     catch(e) { setMsg((e as Error).message); } finally { setOcupado(false); }
   }
-  return <div className="space-y-5"><header className="cabecalho-gestao"><div><p className="eyebrow">Reconhecimento da equipe</p><h1 className="titulo-marca text-3xl">Campanhas e bônus</h1><p className="mt-2 text-sm text-zinc-600">Venda, complete as metas e libere sua rodada. Bônus adicional à comissão.</p></div></header>
+  return <div className="space-y-5"><header className="crm-page-header cabecalho-gestao"><div><p className="eyebrow">Reconhecimento da equipe</p><h1 className="titulo-marca text-3xl">Campanhas e bônus</h1><p className="mt-2 text-sm text-zinc-600">Venda, complete as metas e libere sua rodada. Bônus adicional à comissão.</p></div></header>
     {msg && <p role="status" className="cartao-destaque">{msg}</p>}
     <p className="text-sm text-zinc-600">Contam produtos com vendedor identificado em comandas fechadas e pagas dentro do período. Descontos reduzem o valor elegível. Comandas com estorno ficam fora da apuração e exigem conferência. As metas de quantidade e valor precisam ser atingidas juntas em cada ciclo.</p>
     {gestao && <form className="cartao grid gap-3 sm:grid-cols-2" onSubmit={criar}><h2 className="font-semibold sm:col-span-2">Criar campanha</h2>
@@ -32,7 +33,7 @@ export function CampanhasEquipe({ gestao, barbeiro }: { gestao: boolean; barbeir
     {cs.map(c => <section key={c.id} className="cartao-destaque space-y-4"><div><h2 className="text-xl font-bold">{c.nome}</h2><p className="text-xs text-zinc-500">{new Date(c.inicio).toLocaleString("pt-BR")} até {new Date(c.fim).toLocaleString("pt-BR")}</p></div>
       <p className="text-sm">Uma rodada a cada <b>{c.metaQuantidade} produtos</b>{c.metaCentavos > 0 && <> e <b>{reais(c.metaCentavos)}</b> em vendas elegíveis</>}.</p>
       <div className="flex flex-wrap gap-2">{c.premios.map((p,i) => <span key={i} className="rounded-xl border border-ouro/30 bg-ouro/10 px-3 py-2 text-sm text-ouro">{reais(p)} · {(100/c.premios.length).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%</span>)}</div>
-      {c.vendas && <><div className="grid grid-cols-2 gap-3 text-sm"><p>Seus produtos: <b>{c.vendas.quantidade}</b></p><p>Suas vendas: <b>{reais(c.vendas.receita)}</b></p></div><button className="btn-primario w-full" disabled={ocupado || c.rodadasDisponiveis <= 0} onClick={() => girar(c.id)}><Dices size={20} /> Girar roleta · {c.rodadasDisponiveis} rodada(s) disponível(is)</button></>}
+      {c.vendas && <><div className="grid grid-cols-2 gap-3 text-sm"><div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Seus produtos</p><p className="mt-2 text-2xl font-normal"><ContadorCrm valor={c.vendas.quantidade} /></p></div><div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Suas vendas</p><p className="mt-2 text-2xl font-normal"><ContadorCrm valor={c.vendas.receita} formatar={reais} /></p></div></div><button className="btn-primario w-full" disabled={ocupado || c.rodadasDisponiveis <= 0} onClick={() => girar(c.id)}><Dices size={20} /> Girar roleta · {c.rodadasDisponiveis} rodada(s) disponível(is)</button></>}
       {!barbeiro && gestao && <p className="text-xs text-zinc-500">As rodadas aparecem no acesso individual de cada barbeiro.</p>}
       <div><h3 className="mb-2 text-sm font-semibold">Histórico de bônus · {reais(c.bonus.reduce((s,b) => s+b.valorCentavos,0))}</h3><ul className="space-y-2 text-sm">{c.bonus.map(b => <li className="flex flex-wrap justify-between gap-2 border-t border-zinc-200 pt-2" key={b.id}><span>Rodada {b.ciclo}{gestao ? ` · vendedor ${(b.nomeBarbeiro ?? b.barbeiroId)}` : ""}</span><b>{reais(b.valorCentavos)} · {b.pagoEm ? "Pago" : b.folhaLancamentoId ? "Lançado na folha" : "A conferir pela gestão"}</b></li>)}</ul></div>
     </section>)}

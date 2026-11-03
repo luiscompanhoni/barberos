@@ -32,10 +32,10 @@ export function ExpedienteTela(p: { barbeiros: { id: string; nome: string }[]; i
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-lg font-semibold">Horários {cfg ? `de ${cfg.nome}` : ""}</h1>
+      <div className="crm-page-header flex flex-wrap items-center gap-2">
+        <h1 className="titulo-marca text-3xl">Horários {cfg ? `de ${cfg.nome}` : ""}</h1>
         {p.barbeiros.length > 1 && (
-          <select className="campo ml-auto w-auto" value={barbeiroId} onChange={(e) => { setBarbeiroId(e.target.value); setCfg(null); }}>
+          <select className="campo ml-auto w-auto" aria-label="Profissional dos horários" value={barbeiroId} onChange={(e) => { setBarbeiroId(e.target.value); setCfg(null); }}>
             {p.barbeiros.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
           </select>
         )}

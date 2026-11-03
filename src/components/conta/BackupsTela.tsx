@@ -33,7 +33,7 @@ export function BackupsTela() {
       {d && d.backups.length > 0 && (
         <ul className="divide-y divide-zinc-200 text-sm">
           {d.backups.map((b) => (
-            <li key={b.id} className="flex items-start gap-2 py-2">
+            <li key={b.id} className="crm-list-row flex items-start gap-2 py-2">
               {b.erro || !b.restaurado
                 ? <CircleAlert size={16} className="mt-0.5 shrink-0 text-red-500" />
                 : <CircleCheck size={16} className="mt-0.5 shrink-0 text-emerald-600" />}

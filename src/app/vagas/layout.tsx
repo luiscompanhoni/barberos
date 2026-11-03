@@ -1,0 +1,5 @@
+import { TransicaoCrm } from "@/components/visual/TransicaoCrm";
+
+export default function LayoutVagaPublica({ children }: { children: React.ReactNode }) {
+  return <div className="crm-surface crm-public flex min-h-full flex-1 flex-col"><TransicaoCrm>{children}</TransicaoCrm></div>;
+}

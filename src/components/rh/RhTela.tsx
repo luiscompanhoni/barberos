@@ -25,14 +25,14 @@ export function RhTela() {
   const [aba, setAba] = useState<Aba>(abas[0]?.v ?? "relatorio");
   return (
     <div className="space-y-4">
-      <div>
+      <header className="crm-page-header">
         <p className="eyebrow">Equipe</p>
         <h1 className="titulo-marca text-2xl">RH</h1>
-      </div>
-      <div className="flex flex-wrap gap-2">
+      </header>
+      <nav className="crm-subtabs flex flex-wrap gap-2" aria-label="Áreas do RH">
         {(acesso.papel === "DONO" || acesso.papel === "GERENTE") && <Link className="btn" href="/recrutamento">Recrutamento</Link>}
-        {abas.map((a) => <button key={a.v} className={aba === a.v ? "btn-primario" : "btn"} onClick={() => setAba(a.v)}>{a.r}</button>)}
-      </div>
+        {abas.map((a) => <button key={a.v} className={aba === a.v ? "btn-primario" : "btn"} aria-pressed={aba === a.v} onClick={() => setAba(a.v)}>{a.r}</button>)}
+      </nav>
       {aba === "folha" && <FolhaTela />}
       {aba === "relatorio" && <ComissoesRelatorio />}
       {aba === "regras" && <div className="space-y-6"><ComissoesConfig /><ComissoesExtras /></div>}

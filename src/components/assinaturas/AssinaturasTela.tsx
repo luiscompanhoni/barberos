@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
 import { DetalheAssinatura } from "./DetalheAssinatura";
@@ -62,19 +63,19 @@ export function AssinaturasTela({ podeCancelar }: { podeCancelar: boolean }) {
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-lg font-semibold">Assinaturas</h1>
+      <div className="crm-page-header flex flex-wrap items-center gap-2">
+        <h1 className="titulo-marca text-3xl">Assinaturas</h1>
         <button className="btn-primario ml-auto" onClick={() => setNova(true)}>+ Vender plano</button>
       </div>
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
       {r && (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Card rotulo="Assinantes ativos" valor={String(r.ativas + r.atrasadas)} detalhe={`${r.atrasadas} com pagamento atrasado`} ruim={r.atrasadas > 0} />
-          <Card rotulo="Receita recorrente (mês)" valor={reais(r.receitaMensalCentavos)} detalhe="soma das mensalidades ativas" />
+          <Card rotulo="Assinantes ativos" valor={String(r.ativas + r.atrasadas)} numero={r.ativas + r.atrasadas} detalhe={`${r.atrasadas} com pagamento atrasado`} ruim={r.atrasadas > 0} />
+          <Card rotulo="Receita recorrente (mês)" valor={reais(r.receitaMensalCentavos)} numero={r.receitaMensalCentavos} formatar={reais} detalhe="soma das mensalidades ativas" />
           <Card rotulo="Vendas × cancelamentos no mês" valor={`${r.vendidasNoMes} × ${r.canceladasNoMes}`}
             detalhe={saldo >= 0 ? `saldo +${saldo}` : `saldo ${saldo}: mais saídas que entradas`} ruim={saldo < 0} />
-          <Card rotulo="Aguardando 1º pagamento" valor={String(r.pendentes)} detalhe="link enviado, ainda não pago" />
+          <Card rotulo="Aguardando 1º pagamento" valor={String(r.pendentes)} numero={r.pendentes} detalhe="link enviado, ainda não pago" />
         </section>
       )}
 
@@ -94,14 +95,14 @@ export function AssinaturasTela({ podeCancelar }: { podeCancelar: boolean }) {
       )}
 
       <section className="cartao space-y-3 p-0">
-        <div className="flex flex-wrap gap-2 p-3">
+        <div className="crm-subtabs flex flex-wrap gap-2 p-3" aria-label="Situação das assinaturas">
           {(["TODAS", "ATIVA", "ATRASADA", "PENDENTE", "CANCELADA"] as const).map((s) => (
-            <button key={s} onClick={() => setStatus(s)}
+            <button key={s} aria-pressed={status === s} onClick={() => setStatus(s)}
               className={`rounded-full px-3 py-1 text-sm ${status === s ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}>
               {s === "TODAS" ? "Todas" : ROTULO[s].texto}
             </button>
           ))}
-          <input className="campo ml-auto max-w-60" placeholder="Buscar cliente" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <input className="campo ml-auto max-w-60" aria-label="Buscar cliente nas assinaturas" placeholder="Buscar cliente" value={busca} onChange={(e) => setBusca(e.target.value)} />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -143,11 +144,11 @@ export function AssinaturasTela({ podeCancelar }: { podeCancelar: boolean }) {
   );
 }
 
-function Card(p: { rotulo: string; valor: string; detalhe: string; ruim?: boolean }) {
+function Card(p: { rotulo: string; valor: string; detalhe: string; ruim?: boolean; numero?: number; formatar?: (n: number) => string }) {
   return (
-    <div className="cartao space-y-1">
+    <div className="cartao crm-kpi space-y-1">
       <p className="text-xs font-medium text-zinc-500">{p.rotulo}</p>
-      <p className="text-2xl font-semibold">{p.valor}</p>
+      <p className="text-2xl font-normal">{p.numero === undefined ? p.valor : <ContadorCrm valor={p.numero} formatar={p.formatar} />}</p>
       <p className={`text-xs ${p.ruim ? "text-red-700" : "text-zinc-500"}`}>{p.detalhe}</p>
     </div>
   );

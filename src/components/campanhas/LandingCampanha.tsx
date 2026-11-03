@@ -34,7 +34,7 @@ export function LandingCampanha({ token, dados }: { token: string; dados: Landin
 
   return (
     <main className="flex flex-1 items-start justify-center px-4 py-8">
-      <section className="entrar-suave w-full max-w-md space-y-5">
+      <section className="crm-public-card entrar-suave w-full max-w-md space-y-5 p-6">
         <div className="flex justify-center"><Marca nome={dados.barbearia} /></div>
         {!j ? (
           <div className="text-center">

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/cliente-api";
+import styles from "./conversas-crm.module.css";
 
 type Msg = { id: string; autor: string; texto: string; criadoEm: string };
 
@@ -72,7 +73,7 @@ export function SimuladorTela({ semChave }: { semChave: boolean }) {
     <div className="mx-auto grid max-w-4xl gap-4 md:grid-cols-[1fr_360px]">
       <div className="space-y-3">
         <div className="cartao space-y-2 text-sm">
-          <h1 className="font-semibold">Simulador do WhatsApp</h1>
+          <h1 className="titulo-marca text-2xl">Simulador do WhatsApp</h1>
           <p className="text-zinc-600">
             Converse como se fosse um cliente. As mensagens passam pelo mesmo caminho do WhatsApp de verdade: o bot consulta e
             marca na agenda real, e a conversa aparece em Conversas.
@@ -80,11 +81,11 @@ export function SimuladorTela({ semChave }: { semChave: boolean }) {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="rotulo">Celular do cliente</label>
-              <input className="campo" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
+              <input className="campo" aria-label="Celular do cliente simulado" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
             </div>
             <div>
               <label className="rotulo">Nome no perfil do WhatsApp</label>
-              <input className="campo" value={nome} onChange={(e) => setNome(e.target.value)} />
+              <input className="campo" aria-label="Nome no perfil do cliente simulado" value={nome} onChange={(e) => setNome(e.target.value)} />
             </div>
           </div>
           {semChave && (
@@ -104,22 +105,22 @@ export function SimuladorTela({ semChave }: { semChave: boolean }) {
         </div>
       </div>
 
-      <div className="flex h-[640px] flex-col overflow-hidden rounded-3xl border-8 border-zinc-300 bg-[#0b141a]">
-        <div className="bg-[#202c33] px-4 py-2 text-sm font-medium text-zinc-900">Barbearia</div>
+      <div className={`${styles.telefone} cartao flex h-[640px] flex-col overflow-hidden p-0`}>
+        <div className={`${styles.titulo} text-sm font-medium text-zinc-900`}>Barbearia</div>
         <div className="flex-1 space-y-2 overflow-y-auto p-3">
           {visiveis.map((m) => (
             <div key={m.id} className={`flex ${m.autor === "CLIENTE" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm ${m.autor === "CLIENTE" ? "bg-[#005c4b]" : "bg-[#202c33]"}`}>
-                <p className="whitespace-pre-wrap">{m.texto}</p>
+              <div data-simulador data-autor={m.autor} className={`${styles.balao} max-w-[85%] rounded-lg px-2.5 py-1.5 text-sm shadow-sm`}>
+                <p className="whitespace-pre-wrap break-words">{m.texto}</p>
                 <p className="text-right text-[10px] text-zinc-500">{hora(m.criadoEm)}</p>
               </div>
             </div>
           ))}
-          {esperando && <p className="text-xs text-zinc-500">digitando...</p>}
+          {esperando && <p role="status" className="text-xs text-zinc-500">Digitando…</p>}
           <div ref={fim} />
         </div>
-        <form onSubmit={enviar} className="flex gap-2 bg-[#202c33] p-2">
-          <input className="campo rounded-full" placeholder="Mensagem" value={texto} onChange={(e) => setTexto(e.target.value)} />
+        <form onSubmit={enviar} className="flex gap-2 border-t border-zinc-200 p-2">
+          <input className="campo min-w-0 flex-1 rounded-full" aria-label="Mensagem do cliente simulado" placeholder="Mensagem" value={texto} onChange={(e) => setTexto(e.target.value)} />
           <button className="btn-primario rounded-full" disabled={esperando}>Enviar</button>
         </form>
         {erro && <p className="bg-red-50 p-2 text-xs text-red-700">{erro}</p>}

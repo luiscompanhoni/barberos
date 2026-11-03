@@ -1,10 +1,17 @@
 # Design e acessibilidade
 
+Logo BarberOS aprovada em 03/11/2026: opção 01, chama verde-lima `#C6F566` sobre grafite
+`#101316`. Arquivos vetoriais em `public/brand/`; o nome BarberOS está convertido em contornos.
+`Marca` apresenta a identidade do sistema e mantém o nome configurado da barbearia como identificação
+secundária. O ícone compacto, favicon e os ícones instaláveis usam a mesma chama. Os arquivos em
+`public/pwa/` mantêm seus endereços para compatibilidade com notificações e instalações existentes.
+
 ## Direção
 
 **Atualização visual CRM de 02/11/2026.** A área autenticada da equipe recebe vidro escuro,
 fundo difuso azul/coral/oliva, destaque verde-lima, menu compacto expansível e abas com seleção
-animada. O escopo está em `.crm-workspace`, preservando os fluxos da área do cliente. A referência
+animada. A revisão completa alcança as 65 páginas: `.crm-workspace` na equipe e `.crm-surface`
+nos fluxos do cliente e nas páginas públicas. A referência
 observada foi o vídeo “Sales CRM dashboard” de `_code_and_chill_`, publicação `DfIKeN-P4ox` no Instagram:
 somente Overview, Pipeline, Customers e Growth aparecem; as outras páginas não foram demonstradas.
 Foram adaptados o tratamento visual e o movimento aos módulos reais, sem dados ou marcas do exemplo.
@@ -15,11 +22,26 @@ sem valores inventados. O funil de campanhas mantém suas etapas reais. Moviment
 animações, gráficos mantêm leitura textual e os controles aceitam teclado. A navegação agrupada,
 TopoWorkspace, Central de Agentes e contexto financeiro pessoal permanecem disponíveis.
 
-**Black Barber Design System — direção 01 aprovada em 01/11/2026.** Preto profundo, superfícies grafite,
+A camada `crm-components.css` harmoniza cabeçalhos, listas, tabelas, filtros e diálogos. Subabas
+acompanham o elemento ativo real com uma cápsula, inclusive após rolagem e redimensionamento.
+`TransicaoCrm` observa blocos novos durante a vida da página, sem remontar formulários, SSE ou
+conteúdo ao trocar filtros. A entrada é curta e escalonada; movimento reduzido a desliga.
+
+Indicadores, detalhe do profissional, financeiro pessoal/empresa, RH, desempenho, avaliações,
+recompra, campanhas, estoque e reuniões reutilizam dados já autorizados nos gráficos. Barras
+têm eixo zero e leitura textual para negativos e ausências; notas e taxas mantêm suas unidades.
+Os números finais ficam disponíveis para leitores de tela durante o contador visual.
+
+Agenda mantém dimensões, arrasto, edição de horários e alternativa por formulário. Busca e filtros
+se adaptam ao celular. Cliente, vitrine, login, links de pagamento, privacidade, vagas e checklist
+recebem a mesma família de superfícies e controles. QR, pagamentos, termos, permissões e mecânicas
+dos jogos não foram alterados. Artes de prêmios e cores de raridade conservam seu significado.
+
+**Base anterior — Black Barber Design System, direção 01 de 01/11/2026.** Preto profundo, superfícies grafite,
 ouro luminoso, cartões de 18 px e Manrope. A proposta visual está em
 `/workspace/exports/black-barber-design-v1/DESIGN-SYSTEM.md` no ambiente de preparação; o código do aplicativo
-é a fonte de verdade dos tokens implementados. Marca, seleção e ação principal usam dourado; cores de status
-mantêm seus significados. Botões dourados têm texto escuro e brilho pontual no hover. Movimento reduzido desliga
+é a fonte de verdade dos tokens implementados. Os tokens dourados dessa base são substituídos pelo verde-lima
+nas superfícies CRM; cores de status mantêm seus significados. Ações principais têm texto escuro. Movimento reduzido desliga
 as transições da área da equipe. O acabamento com tesoura que seguia a rolagem foi retirado do layout.
 
 O menu agrupa Agenda, Relacionamento, Equipe e Configurações, preservando todos os links autorizados pelo
@@ -43,7 +65,7 @@ Fonte de verdade: `src/app/globals.css` (Tailwind 4, `@import "tailwindcss"` + `
   - cores de status (`emerald`, `red`, `amber`, `sky`) → fundos escuros translúcidos + textos claros.
   - `violet` (selo "Assinante") → dourado.
 - **Tokens da marca:** `ouro`, `ouro-claro`, `ouro-escuro` e `fundo` (uso direto: `bg-ouro`, `text-ouro`...). Fundo
-  da página e `themeColor` do viewport em `#090a0b`; tokens do design system em `:root` (`--surface-*`, `--border-*`,
+  das superfícies CRM e `themeColor` do viewport em `#101316`; tokens do design system em `:root` (`--surface-*`, `--border-*`,
   `--text-*`, `--glow-ouro`, `--brand-metal`); seleção de texto dourada; `color-scheme: dark` em campos.
 - **Tipografia:** Manrope (`--font-manrope`, pesos 300–800; números em peso 400 com `-0.02em`) e Geist Mono, carregadas por `next/font/google` em
   `src/app/layout.tsx`.
@@ -73,7 +95,8 @@ Fonte de verdade: `src/app/globals.css` (Tailwind 4, `@import "tailwindcss"` + `
   o caixa operacional único.
 - As abas de telas abertas guardam também a query e convertem favoritos locais do antigo financeiro pessoal
   para o novo endereço, sem manter dois destinos repetidos.
-- Estilos da navegação estão em `black-navigation.css`; padrões da equipe em `black-workspace.css`. O
+- Estilos de base estão em `black-navigation.css` e `black-workspace.css`; a apresentação atual é definida por
+  `crm-workspace.css`, `crm-components.css` e `crm-public.css`. O
   reapontamento existente de `white`/`zinc` foi preservado por compatibilidade; não foi adicionado outro tema global.
 
 ## Interação
@@ -85,7 +108,7 @@ O que está implementado:
 
 - **Modal** (`src/components/Modal.tsx`): `role="dialog"`, `aria-modal`, `aria-label` com o título, fecha com Esc,
   clique fora ou botão "Fechar" (com `aria-label`). No celular abre como folha de baixo; em `sm+`, centralizado.
-- **Foco:** na equipe, links, botões, resumos expansíveis e campos têm contorno dourado de 2 px com afastamento de 4 px. Há atalho para pular ao conteúdo. O menu Mais usa `dialog` nativo, com Escape, foco contido e retorno ao acionador.
+- **Foco:** na equipe, links, botões, resumos expansíveis e campos têm contorno verde-lima de 2 px com afastamento de 4 px. Há atalho para pular ao conteúdo. O menu Mais usa `dialog` nativo, com Escape, foco contido e retorno ao acionador.
 - **Movimento reduzido:**
   - Global: `@media (prefers-reduced-motion: reduce)` em `globals.css` encurta toda animação e transição.
   - Jogos: `useMovimentoReduzido()` (`useSyncExternalStore` sobre `matchMedia`) deixa animações curtas, sem tremor
@@ -118,7 +141,7 @@ O que está implementado:
 
 ## Layout e revisão
 
-- **Painel:** `Navegacao` mostra menu lateral fixo (largura 60) a partir de `lg`; abaixo disso, cabeçalho no topo e
+- **Painel:** `Navegacao` mostra menu lateral fixo compacto de 84 px, expansível para 246 px, a partir de `lg`; abaixo disso, cabeçalho no topo e
   barra de navegação fixa embaixo com os primeiros itens e um selo quando há pendência nos demais. Barra de abas
   (`AbasPainel`, até 8) lembra a última página e a rolagem.
 - **Área do cliente:** coluna única centralizada `max-w-2xl` (`src/app/c/(area)/layout.tsx`), navegação em

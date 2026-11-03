@@ -5,6 +5,11 @@
 .black-brand-name small { display: block; font-size: 8px; letter-spacing: 5px; margin-top: 5px; }
 .black-brand--large .black-brand-seal { width: 58px; height: 58px; font-size: 30px; }
 .black-brand--large .black-brand-name { font-size: 25px; }
+.barberos-brand .black-brand-seal { overflow: hidden; border: 0; border-radius: 11px; background: #101316; }
+.barberos-brand .black-brand-seal img { display: block; width: 100%; height: 100%; }
+.barberos-brand .black-brand-name > img { display: block; width: 136px; height: auto; max-width: 100%; }
+.barberos-brand .black-brand-name > small { font-size: 10px; line-height: 1.35; letter-spacing: .03em; color: var(--text-secondary); }
+.black-brand--large.barberos-brand .black-brand-name > img { width: 170px; }
 .black-sidebar { position: sticky; top: 0; display: flex; flex-direction: column; flex-shrink: 0; width: 248px; height: 100dvh; padding: 28px 16px 18px; border-right: 1px solid var(--border-default); background: linear-gradient(170deg, #131516, #0d0e0f 60%); }
 .black-sidebar-brand { padding: 0 8px 24px; }
 .black-sidebar-caption { display: flex; align-items: center; gap: 9px; padding: 12px; margin-bottom: 20px; border: 1px solid var(--border-default); border-radius: 10px; color: var(--text-secondary); font-size: 12px; }

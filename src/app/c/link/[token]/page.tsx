@@ -26,7 +26,7 @@ export default async function PagarLink(props: PageProps<"/c/link/[token]">) {
 
   return (
     <main className="flex flex-1 items-center justify-center px-5 py-12">
-      <section className="entrar-suave w-full max-w-md">
+      <section className="crm-public-card entrar-suave w-full max-w-md p-6">
         <div className="flex justify-center"><Marca nome={cfg.nomeBarbearia} /></div>
         <Checkout
           alvo={{ tipo: "link", token }}

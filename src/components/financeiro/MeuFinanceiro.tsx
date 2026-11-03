@@ -1,6 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { api, paraCentavos, reais } from "@/lib/cliente-api";
+import { GraficoRoscaCrm } from "@/components/visual/GraficosCrm";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 type Item = { id: string; tipo: string; descricao: string; categoria: string; valorCentavos: number; data: string; realizado: boolean };
 type Painel = { itens: Item[]; resumo: { receitas: number; despesas: number; saldo: number; projetado: number; categorias: Record<string, number> } };
 const hoje = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
@@ -25,10 +28,14 @@ export function MeuFinanceiro() {
     catch (e) { setMsg((e as Error).message); } finally { setOcupado(false); }
   }
   return <div className="space-y-5">
-    <header className="cabecalho-gestao"><div><p className="eyebrow">Seu dinheiro · área pessoal</p><h1 className="titulo-marca text-3xl">Financeiro</h1><p className="mt-2 text-sm text-zinc-600">Receitas e despesas pessoais. Apenas você acessa estes lançamentos.</p></div><label className="rotulo">Mês<input className="campo" aria-label="Mês do financeiro pessoal" type="month" value={mes} onChange={e => setMes(e.target.value)} required /></label></header>
+    <header className="crm-page-header cabecalho-gestao"><div><p className="eyebrow">Seu dinheiro · área pessoal</p><h1 className="titulo-marca text-3xl">Financeiro</h1><p className="mt-2 text-sm text-zinc-600">Receitas e despesas pessoais. Apenas você acessa estes lançamentos.</p></div><label className="rotulo">Mês<input className="campo" aria-label="Mês do financeiro pessoal" type="month" value={mes} onChange={e => setMes(e.target.value)} required /></label></header>
     {msg && <p role="status" className="cartao text-sm">{msg}</p>}
     {ultimoAnulado && <p role="status" className="flex items-center gap-3 text-sm">Lançamento anulado.<button className="btn" disabled={ocupado} onClick={() => anular(ultimoAnulado, false)}>Desfazer</button></p>}
-    {p && <><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[["Receitas recebidas",p.resumo.receitas],["Despesas pagas",p.resumo.despesas],["Sobrou no mês",p.resumo.saldo],["Saldo projetado",p.resumo.projetado]].map(([n,v]) => <div className="cartao" key={n}><p className="text-xs text-zinc-600">{n}</p><p className="mt-2 text-xl font-bold">{reais(Number(v))}</p></div>)}</div>
+    {p && <><div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[["Receitas recebidas",p.resumo.receitas],["Despesas pagas",p.resumo.despesas],["Sobrou no mês",p.resumo.saldo],["Saldo projetado",p.resumo.projetado]].map(([n,v]) => <div className="crm-kpi cartao" key={n}><p className="text-xs text-zinc-600">{n}</p><p className="mt-2 text-xl font-normal"><ContadorCrm valor={Number(v)} formatar={reais} /></p></div>)}</div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="cartao space-y-4"><h2 className="font-semibold">Recebido e pago</h2><p className="text-xs text-zinc-500">Lançamentos realizados no mês selecionado.</p><GraficoBarrasCrm rotulo="Receitas recebidas e despesas pessoais pagas no mês" formatar={reais} itens={[{ rotulo: "Receitas recebidas", valor: p.resumo.receitas }, { rotulo: "Despesas pagas", valor: p.resumo.despesas, cor: "#eca58e" }]} /></section>
+        <section className="cartao space-y-4"><h2 className="font-semibold">Onde você gastou</h2><GraficoRoscaCrm rotulo="Despesas pessoais pagas por categoria" formatar={reais} itens={Object.entries(p.resumo.categorias).map(([rotulo, valor]) => ({ rotulo, valor }))} /></section>
+      </div>
       <section className="cartao space-y-2"><h2 className="font-semibold">Leitura do mês</h2><p className="text-sm text-zinc-600">{p.itens.length === 0 ? "Comece registrando suas receitas e despesas para acompanhar o que sobra." : p.resumo.despesas > p.resumo.receitas ? "As despesas pagas superam as receitas registradas. Revise os gastos e confira se todas as entradas foram lançadas." : "O saldo dos lançamentos realizados está positivo ou equilibrado. Reserve uma parte antes de assumir novos gastos."}</p>{maior && <p className="text-sm">Maior categoria de gasto: <b>{maior[0]}</b>, {reais(maior[1])}. Confira os itens antes de decidir onde economizar.</p>}<p className="text-xs text-zinc-500">Projeção = saldo realizado + receitas previstas − despesas previstas. Não inclui contas ainda não registradas.</p></section></>}
     <form onSubmit={salvar} className="cartao grid gap-3 sm:grid-cols-2"><h2 className="font-semibold sm:col-span-2">Novo lançamento</h2>
       <label className="rotulo">Tipo<select name="tipo" className="campo"><option value="RECEITA">Receita</option><option value="DESPESA">Despesa</option></select></label>

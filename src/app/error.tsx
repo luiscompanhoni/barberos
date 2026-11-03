@@ -13,9 +13,9 @@ export default function Erro({ error, retry }: { error: Error & { digest?: strin
   }, [error]);
 
   return (
-    <main className="flex flex-1 items-center justify-center px-5 py-12">
-      <section className="entrar-suave w-full max-w-md text-center">
-        <p className="text-5xl font-black text-ouro">Ops</p>
+    <main className="crm-surface flex flex-1 items-center justify-center px-5 py-12">
+      <section className="crm-public-card entrar-suave w-full max-w-md p-6 text-center">
+        <p className="text-5xl font-normal text-ouro">Ops</p>
         <h1 className="mt-3 text-xl font-bold">Algo deu errado nesta página</h1>
         <p className="mt-3 text-sm text-zinc-600">
           Não foi culpa sua. Tente de novo; se continuar, avise a barbearia{error.digest ? " com o código abaixo" : ""}.

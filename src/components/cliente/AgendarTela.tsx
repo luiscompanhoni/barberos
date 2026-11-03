@@ -174,12 +174,12 @@ export function AgendarTela() {
 
       {passo === 3 && servico && (
         <Passo eyebrow={`${servico.nome} · ${barbeiroEscolhido?.nome ?? "qualquer barbeiro"}`} titulo="Quando?">
-          <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-3 [scrollbar-width:none]">
+          <div className="crm-client-days -mx-5 flex gap-2 overflow-x-auto px-5 pb-3 [scrollbar-width:none]">
             {dias.map((d) => {
               const c = diaCurto(d);
               const sel = d === data;
               return (
-                <button key={d} onClick={() => { setData(d); setDisp(null); }}
+                <button key={d} aria-pressed={sel} onClick={() => { setData(d); setDisp(null); }}
                   className={`min-w-[68px] shrink-0 rounded-xl border p-3 text-center text-xs font-bold transition ${sel ? "border-ouro bg-ouro text-fundo" : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-400"}`}>
                   <span className="block capitalize">{c.semana}</span>
                   <span className={`mt-0.5 block text-sm ${sel ? "" : "text-zinc-900"}`}>{c.dia}</span>
@@ -193,7 +193,7 @@ export function AgendarTela() {
           ) : opcoes.length === 0 ? (
             <SemVaga key={`${data}|${barbeiroId}`} data={data} servicoId={servico.id} barbeiroId={barbeiroId === QUALQUER ? null : barbeiroId} />
           ) : (
-            <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
+            <div className="crm-client-slots mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
               {opcoes.map((o) => (
                 <button key={o.inicio} onClick={() => setEscolha(o)}
                   className="rounded-lg border border-zinc-200 bg-white py-3 text-sm font-bold transition hover:border-ouro hover:text-ouro">

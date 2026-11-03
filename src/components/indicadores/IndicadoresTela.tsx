@@ -31,15 +31,15 @@ export function IndicadoresTela() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
-      <div className="flex flex-wrap items-end gap-3">
+      <header className="crm-page-header flex flex-wrap items-end gap-3">
         <div>
           <p className="eyebrow">Visão do negócio</p>
           <h1 className="titulo-marca text-3xl">Indicadores</h1>
         </div>
         <div className="ml-auto"><SeletorPeriodo valor={periodo} onChange={trocar} /></div>
-      </div>
+      </header>
       {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
-      {!d ? <p className="text-sm text-zinc-500">Calculando...</p> : (
+      {!d ? <p role="status" className="text-sm text-zinc-500">Calculando…</p> : (
         <div className={`space-y-10 transition-opacity ${carregando ? "opacity-50" : ""}`}>
           <Leituras d={d} />
           <Resumo d={d} />
@@ -80,17 +80,17 @@ function Resumo({ d }: { d: Dados }) {
   return (
     <Secao titulo="Resumo" descricao={`${d.periodo.rotulo}, comparado com o mesmo número de dias antes.`}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi destaque rotulo="Faturamento total" valor={din(r.total)} variacao={variacao(r.total, b.receita.total)}
+        <Kpi destaque rotulo="Faturamento total" valor={din(r.total)} numero={r.total} formatar={din} variacao={variacao(r.total, b.receita.total)}
           ajuda="Serviços avulsos concluídos + mensalidades pagas + bar + loja + itens avulsos das comandas." />
-        <Kpi rotulo="Atendimentos" valor={num(a.atendimentos)} variacao={variacao(a.atendimentos, b.atendimentos)} detalhe={`${a.peloPlano} pelo plano`} />
-        <Kpi rotulo="Clientes atendidos" valor={num(a.clientesUnicos)} variacao={variacao(a.clientesUnicos, b.clientesUnicos)} detalhe={`${d.negocio.clientes.novos} novos`} />
+        <Kpi rotulo="Atendimentos" valor={num(a.atendimentos)} numero={a.atendimentos} formatar={num} variacao={variacao(a.atendimentos, b.atendimentos)} detalhe={`${a.peloPlano} pelo plano`} />
+        <Kpi rotulo="Clientes atendidos" valor={num(a.clientesUnicos)} numero={a.clientesUnicos} formatar={num} variacao={variacao(a.clientesUnicos, b.clientesUnicos)} detalhe={`${d.negocio.clientes.novos} novos`} />
         <Kpi rotulo="Gasto médio por cliente" valor={din(a.gastoPorCliente)} variacao={a.gastoPorCliente && b.gastoPorCliente ? variacao(a.gastoPorCliente, b.gastoPorCliente) : null}
           ajuda="Faturamento total dividido pelos clientes atendidos no período (ticket por cabeça)." />
         <Kpi rotulo="Ticket médio do serviço avulso" valor={din(a.ticketAvulso)} variacao={a.ticketAvulso && b.ticketAvulso ? variacao(a.ticketAvulso, b.ticketAvulso) : null} />
         <Kpi rotulo="Ocupação da agenda" valor={pct(d.equipe.total.taxa)} detalhe={`${num(Math.round((d.equipe.total.capacidadeMin - d.equipe.total.ocupadoMin) / 60))} h livres`}
           ajuda="Minutos com cliente na cadeira ÷ minutos de agenda aberta (expediente menos horários fechados). Falta não conta." />
         <Kpi rotulo="Taxa de faltas" valor={pct(d.negocio.agenda.taxaFalta, 1)} inverso variacao={variacao(a.faltas, b.faltas)} detalhe={`${a.faltas} faltas`} />
-        <Kpi rotulo="Receita recorrente (MRR)" valor={din(d.assinaturas.mrrCentavos)} detalhe={`${d.assinaturas.ativas} assinantes`} />
+        <Kpi rotulo="Receita recorrente (MRR)" valor={din(d.assinaturas.mrrCentavos)} numero={d.assinaturas.mrrCentavos} formatar={din} detalhe={`${d.assinaturas.ativas} assinantes`} />
       </div>
       <div className="cartao">
         <p className="mb-3 text-sm font-semibold">De onde veio o dinheiro</p>

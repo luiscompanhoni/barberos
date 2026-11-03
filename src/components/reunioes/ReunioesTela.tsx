@@ -34,7 +34,7 @@ export function ReunioesTela() {
       if (apresentar) setApresentacao(r); else setSelecionada(r);
     } catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
   }
-  return <div className="space-y-5"><div><p className="eyebrow">Gestão da equipe</p><h1 className="titulo-marca">Reuniões</h1><p className="mt-2 text-sm text-zinc-500">Transforme os registros da barbearia em resultados, slides e ações para a próxima semana.</p></div>
+  return <div className="space-y-5"><div className="crm-page-header"><div><p className="eyebrow">Gestão da equipe</p><h1 className="titulo-marca text-3xl">Reuniões</h1><p className="mt-2 text-sm text-zinc-500">Transforme os registros da barbearia em resultados, slides e ações para a próxima semana.</p></div></div>
     <form onSubmit={gerar} className="cartao space-y-3"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><label className="rotulo">Reunião<select className="campo mt-1" value={tipo} onChange={(e) => { const t = e.target.value as typeof tipo; setTipo(t); setTitulo(t === "DIARIA" ? "Reunião diária" : "Reunião semanal"); setPeriodo(t === "DIARIA" ? { inicio: hoje(), fim: hoje() } : semanaAnterior()); }}><option value="SEMANAL">Semanal · 60 min</option><option value="DIARIA">Diária · 20 min</option></select></label>
       <label className="rotulo">Título<input className="campo mt-1" value={titulo} minLength={3} maxLength={120} required onChange={(e) => setTitulo(e.target.value)} /></label>
       <label className="rotulo">De<input className="campo mt-1" type="date" value={periodo.inicio} required onChange={(e) => setPeriodo((p) => ({ ...p, inicio: e.target.value, ...(tipo === "DIARIA" ? { fim: e.target.value } : {}) }))} /></label>

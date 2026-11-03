@@ -7,6 +7,7 @@ import type { Capacidade } from "@/lib/campanhas/capacidade";
 import { loteSugerido, SEGMENTOS } from "@/lib/campanhas/regras";
 import { CapacidadePainel } from "./CapacidadePainel";
 import { FunilCampanha } from "./FunilCampanha";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Seg = { chave: string; rotulo: string; total: number; podemReceber: number };
 type Campanha = {
@@ -46,7 +47,7 @@ export function CampanhasTela() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="crm-page-header flex flex-wrap items-end gap-2">
         <div>
           <p className="eyebrow">Marketing</p>
           <h1 className="titulo-marca text-2xl">Campanhas</h1>
@@ -64,11 +65,11 @@ export function CampanhasTela() {
         <section className="space-y-2">
           <h2 className="font-semibold">Segmentos da base</h2>
           <p className="text-xs text-zinc-500">{num(d.clientes)} clientes, {num(d.aceitamMensagens)} aceitam mensagens. “Podem receber” = aceitam mensagens e não têm horário marcado. Um cliente pode estar em mais de um grupo.</p>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="crm-collection grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {d.segmentos.map((s) => (
-              <div key={s.chave} className="cartao p-3">
+              <div key={s.chave} className="cartao crm-kpi p-3">
                 <p className="text-xs text-zinc-500">{s.rotulo}</p>
-                <p className="text-2xl font-black">{num(s.total)}</p>
+                <p className="text-2xl font-normal"><ContadorCrm valor={s.total} formatar={num} /></p>
                 <p className="text-xs text-zinc-500">{num(s.podemReceber)} {s.podemReceber === 1 ? "pode" : "podem"} receber</p>
               </div>
             ))}
@@ -136,7 +137,7 @@ function CartaoCampanha({ c, vagas7, onAgir }: { c: Campanha; vagas7: number | n
       )}
       {(c.enviados > 0 || c.fila > 0) && (
         <div className="border-t border-zinc-200 pt-2">
-          <button className="flex items-center gap-1 text-sm font-semibold" onClick={() => setFunil(!funil)}>
+          <button className="flex items-center gap-1 text-sm font-semibold" aria-expanded={funil} onClick={() => setFunil(!funil)}>
             {funil ? <ChevronDown size={15} /> : <ChevronRight size={15} />} Funil da campanha
           </button>
           {funil && <div className="mt-2"><FunilCampanha id={c.id} /></div>}

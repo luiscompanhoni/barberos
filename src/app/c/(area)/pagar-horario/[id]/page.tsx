@@ -31,7 +31,7 @@ export default async function PagarHorario(props: PageProps<"/c/pagar-horario/[i
   const g = await gateway();
 
   return (
-    <div className="mx-auto max-w-md">
+    <div className="crm-public-card mx-auto max-w-md p-6">
       <Link href="/c" className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 hover:text-zinc-900"><ArrowLeft size={14} /> Meus horários</Link>
       {motivo ? (
         <p className="cartao mt-6 text-sm text-zinc-600">{motivo}</p>

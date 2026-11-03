@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Soma = { qtd: number; base: number; comissao: number; adicional: number };
 type Atend = { id: string; inicio: string; cliente: string; servico: string; modalidade: "AVULSO" | "PLANO"; base: number; regra: string; comissao: number };
@@ -45,10 +47,10 @@ export function ComissoesRelatorio() {
   const a = d?.assinaturas;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-2">
-        <div><label className="rotulo">De</label><input type="date" className="campo" value={d?.inicio ?? ""} onChange={(e) => d && carregar(e.target.value, d.fim)} /></div>
-        <div><label className="rotulo">Até</label><input type="date" className="campo" value={d?.fim ?? ""} onChange={(e) => d && carregar(d.inicio, e.target.value)} /></div>
-        {d && <p className="ml-auto text-sm">Comissões do período: <b className="text-lg text-ouro">{reais(d.total)}</b></p>}
+      <div className="crm-filterbar flex flex-wrap items-end gap-2">
+        <div><label className="rotulo">De</label><input aria-label="Data inicial das comissões" type="date" className="campo" value={d?.inicio ?? ""} onChange={(e) => d && carregar(e.target.value, d.fim)} /></div>
+        <div><label className="rotulo">Até</label><input aria-label="Data final das comissões" type="date" className="campo" value={d?.fim ?? ""} onChange={(e) => d && carregar(d.inicio, e.target.value)} /></div>
+        {d && <p className="ml-auto text-sm">Comissões do período: <b className="text-lg font-normal text-ouro"><ContadorCrm valor={d.total} formatar={reais} /></b></p>}
       </div>
       {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       {a && (
@@ -60,10 +62,11 @@ export function ComissoesRelatorio() {
         </div>
       )}
       {d && !d.competencia && <p className="text-xs text-zinc-500">Escolha um mês inteiro (dia 1 ao último dia) para ver bônus, descontos e o total a pagar de cada um.</p>}
+      {d && d.barbeiros.length > 0 && <section className="cartao space-y-4"><h2 className="font-semibold">Comissões por profissional</h2><p className="text-xs text-zinc-500">Comissões apuradas no período selecionado. Salário, bônus e descontos permanecem na folha.</p><GraficoBarrasCrm rotulo="Comissões do período por profissional" formatar={reais} itens={d.barbeiros.map(b => ({ rotulo: b.nome, valor: b.total }))} /></section>}
       {d && d.barbeiros.length === 0 && <div className="cartao text-sm text-zinc-500">Nenhum atendimento concluído no período.</div>}
       {d?.barbeiros.map((b) => (
         <section key={b.barbeiroId} className="cartao space-y-2">
-          <button className="flex w-full flex-wrap items-center gap-3 text-left" onClick={() => setAberto(aberto === b.barbeiroId ? null : b.barbeiroId)}>
+          <button className="flex w-full flex-wrap items-center gap-3 text-left" aria-expanded={aberto === b.barbeiroId} onClick={() => setAberto(aberto === b.barbeiroId ? null : b.barbeiroId)}>
             {aberto === b.barbeiroId ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
             <span className="flex-1 font-semibold">{b.nome}</span>
             {a

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Star, ShieldCheck } from "lucide-react";
 import { api } from "@/lib/cliente-api";
 import { ConfiguracaoAvaliacoes } from "./ConfiguracaoAvaliacoes";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Resumo = { barbeiroId: string; nome: string; media: number | null; quantidade: number; faixa: string; emFormacao: boolean; categorias: { chave: string; media: number | null }[] };
 type Linha = { id: string; nota: number; criadoEm: string; convite: { barbeiro: { nome: string } } };
@@ -11,6 +13,7 @@ type Painel = { resumos: Resumo[]; avaliacoes: Linha[]; dono: boolean };
 type Detalhe = { id: string; cliente: string; barbeiro: string; nota: number; comentario: string | null; criadoEm: string; corte: number | null; atendimento: number | null; ambiente: number | null; pontualidade: number | null };
 const CORES: Record<string, string> = { excelente: "text-emerald-700", atencao: "text-amber-700", melhorar: "text-red-600", formacao: "text-zinc-500" };
 const ROTULOS: Record<string, string> = { excelente: "Excelente", atencao: "Acompanhar", melhorar: "Melhorar", formacao: "Em formação" };
+const nota = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 
 export function AvaliacoesTela() {
   const [painel, setPainel] = useState<Painel | null>(null);
@@ -28,13 +31,13 @@ export function AvaliacoesTela() {
     catch (e) { setErro((e as Error).message); }
     finally { setAbrindo(false); }
   }
-  return <main className="space-y-5"><div><p className="eyebrow">Qualidade do atendimento</p><h1 className="titulo-marca">Avaliações dos clientes</h1></div>
+  return <div className="space-y-5"><header className="crm-page-header"><div><p className="eyebrow">Qualidade do atendimento</p><h1 className="titulo-marca">Avaliações dos clientes</h1></div></header>
     <p className="flex items-start gap-2 text-sm text-zinc-600"><ShieldCheck className="shrink-0" size={18} />Médias publicadas em grupos de pelo menos 5 clientes. A atualização não acontece a cada resposta. A nota do cliente é independente da avaliação do líder.</p>
     {erro && <p role="alert" className="text-red-600">{erro}</p>}
     {!painel && !erro && <p role="status">Carregando avaliações…</p>}
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{painel?.resumos.map(r => <section key={r.barbeiroId} className="cartao space-y-3"><h2 className="font-semibold">{r.nome}</h2><div className={`flex items-center gap-2 ${CORES[r.faixa]}`}><Star aria-hidden size={24} /><span className="text-3xl font-semibold">{r.media === null ? "—" : r.media.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 2 })}</span><span>/ 5 · {ROTULOS[r.faixa]}</span></div>
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{painel?.resumos.map(r => <section key={r.barbeiroId} className="crm-kpi cartao space-y-3"><h2 className="font-semibold">{r.nome}</h2><div className={`flex flex-wrap items-center gap-2 ${CORES[r.faixa]}`}><Star aria-hidden size={24} /><span className="text-3xl font-normal">{r.media === null ? "—" : <ContadorCrm valor={r.media} formatar={nota} />}</span><span>/ 5 · {ROTULOS[r.faixa]}</span></div>
       <p className="text-sm text-zinc-600">{r.emFormacao ? "Ainda sem avaliações suficientes." : `${r.quantidade} avaliações publicadas · acumulado desde a ativação`}</p>
-      <dl className="space-y-1 text-sm">{r.categorias.map(c => <div className="flex justify-between gap-2" key={c.chave}><dt className="capitalize">{c.chave}</dt><dd>{c.media === null ? "Base insuficiente" : `${c.media.toLocaleString("pt-BR")} / 5`}</dd></div>)}</dl>
+      <GraficoBarrasCrm rotulo={`Notas publicadas por categoria de ${r.nome}`} maximo={5} formatar={n => `${nota(n)} / 5`} itens={r.categorias.map(c => ({ rotulo: c.chave.charAt(0).toLocaleUpperCase("pt-BR") + c.chave.slice(1), valor: c.media, ...(c.media === null ? { nota: "Base insuficiente" } : {}) }))} />
     </section>)}</div>
     {painel?.dono && <><ConfiguracaoAvaliacoes /><section className="cartao space-y-3"><h2 className="font-semibold">Consulta reservada ao dono</h2><p className="text-sm text-zinc-600">Cada abertura da identidade fica registrada na auditoria. As 100 avaliações mais recentes aparecem abaixo.</p>
       {painel.avaliacoes.length === 0 && <p className="text-sm">Nenhuma avaliação recebida.</p>}
@@ -42,5 +45,5 @@ export function AvaliacoesTela() {
       {abrindo && <p role="status">Registrando consulta…</p>}
       {detalhe && <div className="cartao-destaque space-y-2 p-4"><div className="flex justify-between gap-3"><h3 className="font-semibold">{detalhe.cliente} · {detalhe.nota}/5</h3><button className="btn" onClick={() => setDetalhe(null)}>Fechar dados</button></div><p className="text-sm">Atendido por {detalhe.barbeiro}</p><p className="whitespace-pre-wrap text-sm">{detalhe.comentario || "Sem comentário."}</p></div>}
     </section></>}
-  </main>;
+  </div>;
 }

@@ -1,0 +1,167 @@
+/* Padrão comum dos módulos: superfícies, filtros, listas, tabelas e diálogos. */
+html .crm-workspace {
+  color-scheme: dark;
+  --brand-metal: linear-gradient(110deg, #c6f566, #dcff99);
+  --border-control: rgb(206 224 214 / 27%);
+}
+html .crm-workspace :is(.crm-page-header, .cabecalho-gestao) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 0;
+  padding-block: 8px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+html .crm-workspace :is(.crm-page-header, .cabecalho-gestao) h1 {
+  font-size: clamp(26px, 2.8vw, 36px);
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: -.045em;
+  text-wrap: balance;
+}
+html .crm-workspace :is(.crm-page-header, .cabecalho-gestao) > div { min-width: 0; }
+html .crm-workspace .crm-page-header:has(> h1) { display: block; }
+html .crm-workspace .crm-page-header > h1 { margin-top: 6px; }
+html .crm-workspace .crm-page-header > h1 + p { margin-top: 10px; max-width: 70ch; }
+html .crm-workspace .crm-page :is(h2, h3) { text-wrap: pretty; }
+html .crm-workspace .text-red-600 { color: var(--color-red-700); }
+html .crm-workspace .crm-page :is(section, article, form, fieldset, figure) { min-width: 0; }
+
+html .crm-workspace .crm-card,
+html .crm-workspace .crm-operation-card,
+html .crm-workspace .crm-collection:not(.grid),
+html .crm-workspace :where(.cartao:not(.black-metric):not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-emerald"]):not([class*="border-red"])) {
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  background: linear-gradient(130deg, rgb(255 255 255 / 4%), transparent), var(--surface-card);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%);
+  backdrop-filter: blur(16px);
+}
+/* Avisos e estados semânticos mantêm suas próprias cores. */
+html .crm-workspace .crm-inset { border: 1px solid var(--border-subtle); border-radius: 14px; background: var(--surface-inset); }
+html .crm-workspace .crm-kpi { font-variant-numeric: tabular-nums; }
+html .crm-workspace .crm-kpi > :is(strong, b),
+html .crm-workspace .crm-kpi .numero-kpi { font-weight: 400; letter-spacing: -.04em; }
+html .crm-workspace .crm-list-row { border-color: var(--border-subtle); transition: background-color 180ms ease, border-color 180ms ease; }
+html .crm-workspace .crm-list-row:hover { background-color: rgb(255 255 255 / 3%); }
+html .crm-workspace .crm-list-row:focus-within { border-color: rgb(198 245 102 / 36%); }
+html .crm-workspace .crm-person-card { padding: 18px; border-radius: 20px; background: var(--surface-inset); border: 1px solid var(--border-subtle); }
+html .crm-workspace .crm-people { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 12px; }
+html .crm-workspace .crm-person-card h3 { font-weight: 500; }
+html .crm-workspace .crm-operation-card:has(input[type="radio"]:checked) { border-color: rgb(198 245 102 / 55%); background: rgb(198 245 102 / 6%); }
+html .crm-workspace input:is([type="radio"], [type="checkbox"]) { accent-color: var(--color-ouro); }
+html .crm-workspace .crm-culture-hero { background: radial-gradient(ellipse at top right, rgb(198 245 102 / 11%), transparent 65%), var(--surface-card); }
+
+html .crm-workspace .crm-filterbar {
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 20px;
+  background: rgb(13 19 20 / 36%);
+}
+html .crm-workspace .crm-filterbar:not(.grid) { display: flex; }
+html .crm-workspace .crm-filterbar .campo { border-radius: 999px; }
+html .crm-workspace .crm-filterbar label { margin-bottom: 5px; }
+html .crm-workspace .crm-subtabs {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  gap: 4px;
+  padding: 5px;
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: rgb(10 16 17 / 48%);
+  scrollbar-width: none;
+}
+html .crm-workspace .crm-subtabs::-webkit-scrollbar { display: none; }
+html .crm-workspace .crm-subtabs:has(> .campo),
+html .crm-workspace .crm-subtabs:has(> div .campo) { flex-wrap: wrap; border-radius: 22px; }
+html .crm-workspace .crm-subtabs > .campo,
+html .crm-workspace .crm-subtabs > div:has(.campo) { flex: 1 0 180px; min-width: 0; }
+html .crm-workspace .crm-subtabs > :is(a, button) {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color 180ms ease, background-color 180ms ease;
+}
+html .crm-workspace .crm-subtabs > :is(a, button):hover { color: var(--text-primary); background: rgb(255 255 255 / 6%); }
+html .crm-workspace .crm-subtabs > :is([aria-current="page"], [aria-pressed="true"], [aria-selected="true"]) { color: #f5f7f5; background: rgb(222 234 227 / 16%); }
+html .crm-workspace .crm-subtabs[data-crm-pill="true"]::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 0;
+  top: 0;
+  width: var(--crm-pill-width);
+  height: var(--crm-pill-height);
+  transform: translate3d(var(--crm-pill-x), var(--crm-pill-y), 0);
+  border-radius: 999px;
+  background: rgb(222 234 227 / 16%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 10%);
+  pointer-events: none;
+  transition: transform 400ms cubic-bezier(.22,1.15,.4,1), width 350ms cubic-bezier(.22,1.15,.4,1), height 200ms ease;
+}
+html .crm-workspace .crm-subtabs[data-crm-pill="true"] > :is([aria-current="page"], [aria-pressed="true"], [aria-selected="true"]) { background: transparent; }
+/* Subabas que reutilizam o botão primário recebem a mesma cápsula das demais. */
+html .black-workspace.crm-workspace .crm-subtabs > button.btn-primario[aria-pressed],
+html .black-workspace.crm-workspace .crm-subtabs > button.btn-primario[aria-pressed]:not(:disabled):hover {
+  background: rgb(222 234 227 / 16%); color: #f5f7f5; border: 0; box-shadow: none;
+}
+html .black-workspace.crm-workspace .crm-subtabs[data-crm-pill="true"] > button.btn-primario[aria-pressed] { background: transparent; }
+html .black-workspace.crm-workspace .crm-subtabs > .btn-primario::after { display: none; }
+html .crm-workspace .crm-page table { border-color: var(--border-subtle); font-variant-numeric: tabular-nums; }
+html .crm-workspace .crm-page thead { background: rgb(255 255 255 / 3%); }
+html .crm-workspace .crm-page th { color: var(--text-secondary); font-weight: 500; }
+html .crm-workspace .crm-page tbody tr { transition: background-color 160ms ease; }
+html .crm-workspace .crm-page tbody tr:hover { background-color: rgb(255 255 255 / 3%); }
+html .crm-workspace .crm-page :is(th, td) { border-color: var(--border-subtle); }
+html .crm-workspace .crm-modal-backdrop { background: rgb(3 8 10 / 70%); backdrop-filter: blur(8px); }
+html .crm-workspace .crm-modal {
+  border: 1px solid rgb(255 255 255 / 18%);
+  background: linear-gradient(135deg, rgb(103 133 145 / 9%), transparent), #1a2224;
+  color: var(--text-primary);
+  box-shadow: 0 30px 100px rgb(0 0 0 / 45%);
+  overscroll-behavior: contain;
+  animation: crm-dialog-in 240ms cubic-bezier(.16,1,.3,1) both;
+}
+html .crm-workspace .crm-modal > header { border-bottom: 1px solid var(--border-subtle); padding-bottom: 16px; }
+@keyframes crm-dialog-in { from { opacity: .4; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 639px) {
+  html .crm-workspace .crm-filterbar:not(.grid) > div { min-width: min(100%, 140px); flex: 1; }
+  html .crm-workspace .crm-filterbar .campo { max-width: 100%; }
+  html .crm-workspace .crm-subtabs > :is(a,button) { min-height: 44px; padding-inline: 13px; }
+  html .crm-workspace .crm-modal { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html .crm-workspace .crm-subtabs::before,
+  html .crm-workspace :is(.crm-subtabs > *, .crm-list-row, .crm-modal, .crm-page tbody tr) { transition: none; animation: none; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  html .crm-workspace :is(.crm-card, .crm-operation-card, .crm-collection, .cartao, .crm-filterbar, .crm-subtabs) { backdrop-filter: none; background: #202628; }
+}
+@media print {
+  html .crm-workspace :is(.crm-subtabs, .crm-filterbar) { display: none; }
+  html .crm-workspace :is(.cartao, .crm-card, .crm-collection, .crm-modal) { backdrop-filter: none; box-shadow: none; }
+}

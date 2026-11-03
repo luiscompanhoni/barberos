@@ -35,9 +35,9 @@ export function SemVaga({ data, servicoId, barbeiroId }: { data: string; servico
   return (
     <div className="cartao mt-3 space-y-3 text-sm">
       <p className="text-zinc-500">Sem horários livres nesse dia{barbeiroId ? " com esse barbeiro" : ""}. Tente outro dia ou entre na lista de espera:</p>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Período de preferência">
         {PERIODOS.map(([v, r]) => (
-          <button key={v} onClick={() => setPeriodo(v)} className={`rounded-full px-3 py-1 text-xs font-semibold ${periodo === v ? "bg-ouro text-fundo" : "bg-zinc-100 text-zinc-600"}`}>{r}</button>
+          <button key={v} aria-pressed={periodo === v} onClick={() => setPeriodo(v)} className={`min-h-11 rounded-full px-3 py-1 text-xs font-semibold ${periodo === v ? "bg-ouro text-fundo" : "bg-zinc-100 text-zinc-600"}`}>{r}</button>
         ))}
       </div>
       <button className="btn-primario w-full py-2.5" onClick={entrar} disabled={estado === "enviando"}>

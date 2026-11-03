@@ -11,6 +11,10 @@ import { PresencaPainel } from "./PresencaPainel";
 import { ProgramaForm } from "./ProgramaForm";
 import { ConquistaNivel } from "./ConquistaNivel";
 import type { Acao, PainelDesempenho } from "./tipos";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
+import { ContadorCrm } from "@/components/visual/ContadorCrm";
+
+const percentual = (n: number) => `${n.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`;
 
 export function DesempenhoTela() {
   const [competencia, setCompetencia] = useState(""), [pessoaId, setPessoaId] = useState("");
@@ -34,23 +38,24 @@ export function DesempenhoTela() {
   const r = dados?.resumo, propria = !!r && r.pessoa.usuarioId === dados?.contexto.usuarioId;
   return <div className="space-y-5">
     {r && propria && r.competencia === dados?.contexto.hoje.slice(0, 7) && <ConquistaNivel pessoaId={r.pessoa.id} nivel={r.nivel} />}
-    <div><p className="eyebrow">Cultura Black</p><h1 className="titulo-marca flex items-center gap-2"><Medal aria-hidden="true" /> Presença e desempenho</h1><p className="mt-2 text-sm text-zinc-500">Acompanhe seus registros, critérios e evolução. Bônus depende de adesão, regras vigentes e aprovação.</p></div>
+    <header className="crm-page-header"><div><p className="eyebrow">Cultura Black</p><h1 className="titulo-marca flex items-center gap-2"><Medal aria-hidden="true" /> Presença e desempenho</h1><p className="mt-2 text-sm text-zinc-500">Acompanhe seus registros, critérios e evolução. Bônus depende de adesão, regras vigentes e aprovação.</p></div></header>
     {erro && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
     {msg && <p role="status" className="text-sm text-emerald-700">{msg}</p>}
     {!dados ? <p className="text-sm text-zinc-500">Carregando desempenho…</p> : <>
-      <div className="flex flex-wrap gap-3">
+      <div className="crm-filterbar flex flex-wrap gap-3">
         <label className="text-sm">Competência<input type="month" className="campo mt-1" value={competencia || dados.competencia} onChange={(e) => setCompetencia(e.target.value)} /></label>
         {dados.contexto.avaliar && <label className="min-w-48 text-sm">Pessoa<select className="campo mt-1" value={pessoaId || r?.pessoa.id || ""} onChange={(e) => setPessoaId(e.target.value)}>{dados.pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}{p.ativo ? "" : " (inativo)"}</option>)}</select></label>}
       </div>
-      <nav aria-label="Seções de desempenho" className="flex flex-wrap gap-2">{[["resumo", "Resumo"], ["presenca", "Marcações"], ["adesao", "Adesão e horários"], ...(dados.contexto.dono ? [["regras", "Regras do programa"]] : [])].map(([valor, texto]) => <button key={valor} className={aba === valor ? "btn-primario" : "btn"} aria-current={aba === valor ? "page" : undefined} onClick={() => setAba(valor)}>{texto}</button>)}</nav>
+      <nav aria-label="Seções de desempenho" className="crm-subtabs flex flex-wrap gap-2">{[["resumo", "Resumo"], ["presenca", "Marcações"], ["adesao", "Adesão e horários"], ...(dados.contexto.dono ? [["regras", "Regras do programa"]] : [])].map(([valor, texto]) => <button key={valor} className={aba === valor ? "btn-primario" : "btn"} aria-current={aba === valor ? "page" : undefined} onClick={() => setAba(valor)}>{texto}</button>)}</nav>
       {!r && aba !== "regras" && <div className="cartao space-y-3">{dados.contexto.dono ? <><p>Cadastre o vínculo de RH da equipe para começar.</p><p className="text-sm text-zinc-500">Em Configurações → Acessos da equipe, abra “Editar cadastro”, escolha a função do checklist e salve. Depois volte para propor a adesão e os horários.</p><Link className="btn-primario inline-flex" href="/equipe">Abrir acessos da equipe</Link></> : <p>Seu acesso ainda não está vinculado ao cadastro do RH. Peça ao dono para conferir seu cadastro em Acessos da equipe.</p>}</div>}
       {r && aba === "resumo" && <>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div className="cartao"><p className="rotulo">Faixa acumulada</p><SeloNivel nivel={r.nivel} /><p className="mt-2 text-sm">{r.pontos} pontos até o fim do período</p></div>
-          <div className="cartao"><p className="rotulo"><Clock3 size={14} className="mr-1 inline" /> Presença</p><p className="numero-kpi">{r.presenca.percentual?.toFixed(0) ?? "—"}%</p><p className="text-xs text-zinc-500">{r.presenca.cumpridos}/{r.presenca.previstos} dias · {r.presenca.pendentes} pendentes</p></div>
+          <div className="crm-kpi cartao"><p className="rotulo"><Clock3 size={14} className="mr-1 inline" /> Presença</p><p className="numero-kpi">{r.presenca.percentual === null ? "—" : <ContadorCrm valor={r.presenca.percentual} formatar={percentual} />}</p><p className="text-xs text-zinc-500">{r.presenca.cumpridos}/{r.presenca.previstos} dias · {r.presenca.pendentes} pendentes</p></div>
           <div className="cartao"><p className="rotulo"><CalendarCheck size={14} className="mr-1 inline" /> Checklist</p><p className="numero-kpi">{r.checklist.validados}/{r.checklist.total}</p><p className="text-xs text-zinc-500">Tarefas validadas</p></div>
           <div className="cartao"><p className="rotulo">Nota dos clientes</p><p className={`numero-kpi ${r.clientes.media === null ? "text-zinc-500" : r.clientes.media >= 4.5 ? "text-emerald-700" : r.clientes.media >= 4 ? "text-amber-700" : "text-red-700"}`}>{r.clientes.media?.toFixed(1) ?? "—"}<span className="text-sm"> / 5</span></p><p className="text-xs text-zinc-500">{r.clientes.quantidade >= 5 ? `${r.clientes.quantidade} avaliações publicadas no mês` : "Avaliações ainda em formação"}</p></div>
         </div>
+        <section className="cartao space-y-4"><h2 className="font-semibold">Participação na competência</h2><p className="text-xs text-zinc-500">Presença sobre os dias previstos e checklist sobre as tarefas do período. Pendências e critérios de bônus continuam discriminados abaixo.</p><GraficoBarrasCrm rotulo="Percentuais de presença e checklist validado" maximo={100} formatar={percentual} itens={[{ rotulo: "Presença cumprida", valor: r.presenca.percentual }, { rotulo: "Checklist validado", valor: r.checklist.total ? r.checklist.validados / r.checklist.total * 100 : null, cor: "#91c4e4" }]} /></section>
         <section className="cartao space-y-3"><h2 className="font-semibold">Bônus da competência</h2><p>{r.fechado ? `Aprovado: ${reais(r.fechado.valorCentavos)}` : `Valor da faixa: ${reais(r.resultado.previstoCentavos)}`}</p>
           <p className="text-sm text-zinc-500">A faixa acumulada é preservada. O bônus é conferido a cada mês; nenhuma pendência gera desconto automático.</p>
           {r.resultado.criterios.map((c) => <p key={c.nome} className={`text-sm ${c.cumpriu ? "text-emerald-700" : "text-zinc-600"}`}>{c.cumpriu ? "✓" : "○"} <b>{c.nome}</b>: {c.detalhe}</p>)}

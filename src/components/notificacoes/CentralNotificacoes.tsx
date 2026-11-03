@@ -37,7 +37,7 @@ export function CentralNotificacoes({ area }: { area: "cliente" | "equipe" }) {
     } catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
   }
   return <div className="space-y-5">
-    <header className="flex flex-wrap items-start gap-3">
+    <header className="crm-page-header flex flex-wrap items-start gap-3">
       <div className="min-w-0 flex-1"><p className="eyebrow">Sua conta</p><h1 className="titulo-marca mt-1 text-3xl">Notificações</h1><p className="mt-2 text-sm text-zinc-500">Seus avisos, preferências e aparelhos.</p></div>
       <button className="btn focus-visible:ring-2 focus-visible:ring-ouro" disabled={ocupado} onClick={() => void atualizar()}><RefreshCw size={16} aria-hidden="true" /> Atualizar</button>
     </header>
@@ -47,7 +47,7 @@ export function CentralNotificacoes({ area }: { area: "cliente" | "equipe" }) {
     {dados && <>
       <section className="cartao space-y-3" aria-labelledby="avisos-lista-titulo">
         <h2 id="avisos-lista-titulo" className="flex items-center gap-2 font-semibold"><Bell size={18} aria-hidden="true" /> Seus avisos <span className="text-xs font-normal text-zinc-500">{dados.naoLidas} não lido(s)</span></h2>
-        {!dados.itens.length ? <p className="py-3 text-sm text-zinc-500">Nenhum aviso por enquanto.</p> : <ul className="divide-y divide-zinc-200">{dados.itens.map(n => <li key={n.id} className="space-y-2 py-4">
+        {!dados.itens.length ? <p className="py-3 text-sm text-zinc-500">Nenhum aviso por enquanto.</p> : <ul className="divide-y divide-zinc-200">{dados.itens.map(n => <li key={n.id} className="crm-list-row space-y-2 py-4">
           <div className="flex items-start gap-2"><h3 className="min-w-0 flex-1 break-words text-sm font-semibold">{n.titulo}</h3>{!n.lidaEm && <span className="selo-ouro shrink-0">Novo</span>}</div>
           <p className="break-words text-sm text-zinc-600">{n.corpo}</p>
           <time className="block text-xs text-zinc-500" dateTime={n.criadoEm}>{new Date(n.criadoEm).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" })}</time>

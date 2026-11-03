@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BellRing } from "lucide-react";
 import { api } from "@/lib/cliente-api";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
 
 type Cfg = {
   lembreteHorasAntes: number;
@@ -154,6 +155,10 @@ export function AutomacoesTela() {
 
       {log && (
         <div className="space-y-2 border-t border-zinc-200 pt-4">
+          <div className="crm-inset p-4">
+            <h3 className="titulo-marca mb-4 text-lg">Automações nos últimos 7 dias</h3>
+            <GraficoBarrasCrm rotulo="Mensagens automáticas registradas por tipo nos últimos sete dias" itens={Object.keys(NOMES).map(t => ({ rotulo: NOMES[t], valor: log.semana[t] ?? 0 }))} />
+          </div>
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
             <h3 className="font-semibold">Últimos 7 dias</h3>
             {Object.keys(NOMES).map((t) => <span key={t} className="text-zinc-500">{NOMES[t]}: <b className="text-zinc-900">{log.semana[t] ?? 0}</b></span>)}
@@ -165,7 +170,7 @@ export function AutomacoesTela() {
           ) : (
             <ul className="max-h-64 divide-y divide-zinc-200 overflow-y-auto text-sm">
               {log.ultimas.map((u) => (
-                <li key={u.id} className="flex items-center gap-3 py-1.5">
+                <li key={u.id} className="crm-list-row flex items-center gap-3 py-1.5">
                   <span className="w-28 shrink-0 text-xs text-zinc-500">
                     {new Date(u.criadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}
                   </span>
@@ -184,7 +189,7 @@ export function AutomacoesTela() {
 
 function Bloco({ titulo, ajuda, children }: { titulo: string; ajuda: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2 rounded-xl border border-zinc-200 p-3">
+    <div className="crm-inset space-y-2 rounded-xl border border-zinc-200 p-3">
       <p className="text-sm font-semibold">{titulo}</p>
       <p className="text-xs text-zinc-500">{ajuda}</p>
       {children}

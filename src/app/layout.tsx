@@ -12,10 +12,10 @@ export const metadata: Metadata = {
   description: "Agenda, atendimento e assinaturas da barbearia",
   manifest: "/manifest-cliente.webmanifest",
   appleWebApp: { capable: true, title: "Black Barber", statusBarStyle: "black" },
-  icons: { icon: "/pwa/icon-192.png", apple: "/pwa/apple-touch-icon.png" },
+  icons: { icon: "/pwa/icon.svg?v=barberos-01", apple: "/pwa/apple-touch-icon.png?v=barberos-01" },
 };
 
-export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#090a0b" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#101316" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (

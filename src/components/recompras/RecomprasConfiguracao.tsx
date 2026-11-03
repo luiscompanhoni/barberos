@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/cliente-api";
 import type { ConfigRecompra } from "@/lib/recompras/schemas";
+import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
 
 type Servico = ConfigRecompra["servicos"][number] & { nome: string };
 type Tela = { config: Omit<ConfigRecompra, "servicos">; servicos: Servico[]; avisos: { id: string; estado: string; erro: string | null; tentativas: number; criadoEm: string; enviadoEm: string | null; cliente: { nome: string } }[]; conversao: { desde: string; ofertas: number; aceitas: number; recusadas: number; percentual: number | null } };
@@ -31,8 +32,8 @@ export function RecomprasConfiguracao() {
   if (!tela) return <p role="status">{erro || "Carregando configuração…"}</p>;
   const c = tela.config;
   return <form onSubmit={salvar} className="space-y-5">
-    <div><h1 className="titulo-marca">Recompra e custos</h1><p className="mt-2 text-sm text-zinc-500">Defina os intervalos por serviço, custos e condições comerciais. Valores vazios ficam como dados não informados.</p></div>
-    <section className="cartao space-y-2"><h2 className="font-semibold">Ofertas registradas nos últimos 30 dias</h2><p className="text-sm">{tela.conversao.ofertas} oportunidades oferecidas · {tela.conversao.aceitas} aceitas · {tela.conversao.recusadas} recusadas · conversão {tela.conversao.percentual === null ? "sem dados" : `${tela.conversao.percentual}%`}</p><p className="text-xs text-zinc-500">Aceite representa serviço agendado; o recebimento só entra no financeiro quando realizado.</p></section>
+    <header className="crm-page-header"><div><p className="eyebrow">Relacionamento</p><h1 className="titulo-marca">Recompra e custos</h1><p className="mt-2 text-sm text-zinc-500">Defina os intervalos por serviço, custos e condições comerciais. Valores vazios ficam como dados não informados.</p></div></header>
+    <section className="cartao space-y-4"><h2 className="font-semibold">Ofertas registradas nos últimos 30 dias</h2><p className="text-sm">{tela.conversao.ofertas} oportunidades oferecidas · {tela.conversao.aceitas} aceitas · {tela.conversao.recusadas} recusadas · conversão {tela.conversao.percentual === null ? "sem dados" : `${tela.conversao.percentual}%`}</p><GraficoBarrasCrm rotulo="Ofertas, aceites e recusas de recompra nos últimos 30 dias" itens={[{ rotulo: "Ofertas", valor: tela.conversao.ofertas }, { rotulo: "Aceites", valor: tela.conversao.aceitas, cor: "#91c4e4" }, { rotulo: "Recusas", valor: tela.conversao.recusadas, cor: "#eca58e" }]} /><p className="text-xs text-zinc-500">Aceite representa serviço agendado; o recebimento só entra no financeiro quando realizado.</p></section>
     <section className="cartao space-y-3">
       <h2 className="font-semibold">Recomendações e lembretes</h2>
       <label className="flex gap-2 text-sm"><input type="checkbox" checked={c.ativo} onChange={e => mudar("ativo", e.target.checked)} /> Ativar sugestões de recompra no Meu dia</label>

@@ -55,7 +55,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="crm-page-header flex flex-wrap items-center gap-3">
         <Link href="/comandas" className="btn h-9 w-9 p-0" aria-label="Voltar"><ArrowLeft size={16} /></Link>
         <div>
           <p className="text-xs font-bold text-ouro">Comanda #{c.numero}</p>
@@ -150,7 +150,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
               ) : null}
               <div className="flex items-baseline justify-between pt-1">
                 <span className="font-semibold">Total</span>
-                <span className="text-2xl font-black">{reais(r.total)}</span>
+                <span className="text-2xl font-normal tabular-nums">{reais(r.total)}</span>
               </div>
               {!!r.estornado && <Linha rotulo="Estornado" valor={`− ${reais(r.estornado)}`} />}
               {r.pago > 0 && <Linha rotulo={r.estornado ? "Ficou com a barbearia" : "Recebido"} valor={reais(r.pago)} />}

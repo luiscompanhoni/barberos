@@ -143,7 +143,7 @@ export function PlanosCliente() {
             const itens = itensDoPlano(p);
             return (
               <article key={p.id} id={`plano-${p.id}`} style={{ scrollMarginTop: 80 }}
-                className={`relative rounded-2xl border bg-white p-6 ${p.id === destaque || aberto ? "border-ouro shadow-[0_10px_32px_rgba(211,171,69,0.2)]" : "border-zinc-200"}`}>
+                className={`crm-plan-card relative rounded-2xl border bg-white p-6 ${p.id === destaque || aberto ? "border-ouro shadow-[0_10px_32px_rgba(211,171,69,0.2)]" : "border-zinc-200"}`}>
                 {p.id === destaque && (
                   <span className="absolute top-0 right-5 -translate-y-1/2 rounded-full bg-ouro px-3 py-1 text-[9px] font-black text-fundo uppercase">Destaque</span>
                 )}

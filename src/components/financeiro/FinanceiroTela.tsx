@@ -26,13 +26,13 @@ export function FinanceiroTela({ verLucro, gestao, dono = false, abaInicial = "c
   const abas = ABAS.filter((a) => a.k !== "caixa" && (!a.lucro || verLucro) && (a.k !== "historico" || dono));
   return (
     <div className="space-y-4">
-      <header className="cabecalho-gestao">
+      <header className="crm-page-header cabecalho-gestao">
         <div><p className="eyebrow">Gestão da Black</p>
           <h1 className="titulo-marca mt-1 text-3xl">Financeiro</h1>
           <p className="mt-2 text-sm text-zinc-600">Acompanhe o resultado, organize despesas e confira os recebimentos.</p></div>
         <Link href="/caixa" className="btn">Abrir caixa do balcão →</Link>
       </header>
-      <nav className="black-finance-tabs print:hidden" aria-label="Áreas do financeiro da barbearia">
+      <nav className="crm-subtabs black-finance-tabs print:hidden" aria-label="Áreas do financeiro da barbearia">
         {abas.map((a) => (
           <Link key={a.k} href={`/financeiro?area=empresa&aba=${a.k}`} scroll={false} aria-current={aba === a.k ? "page" : undefined}>
             {a.r}

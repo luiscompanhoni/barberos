@@ -30,10 +30,10 @@ function ConviteEntrevista({ token }: { token: string }) {
       .catch(e => { if (!controlador.signal.aborted) { setErro((e as Error).message); setOcupado(false); } });
     return () => controlador.abort();
   }, [token]);
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return <main className="mx-auto max-w-2xl p-8"><h1>Entrevista presencial</h1><p role="alert">Use o link privado fornecido pela Black para consultar seu convite.</p></main>;
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return <main className="crm-public-card mx-auto my-8 w-full max-w-2xl space-y-4 p-8"><h1 className="titulo-marca text-3xl">Entrevista presencial</h1><p role="alert">Use o link privado fornecido pela Black para consultar seu convite.</p></main>;
 
   const proposta = vista?.estado === "AGUARDA_CONFIRMACAO" && vista.propostaInicio;
-  return <main className="mx-auto max-w-2xl px-4 py-8 space-y-5 [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-4 [&_button]:focus-visible:outline-ouro"><header><p className="eyebrow">Black Barber</p><h1 className="titulo-marca text-3xl">Sua entrevista presencial</h1></header>
+  return <main className="mx-auto w-full max-w-2xl px-4 py-8 space-y-5 [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-4 [&_button]:focus-visible:outline-ouro"><header><p className="eyebrow">Black Barber</p><h1 className="titulo-marca text-3xl">Sua entrevista presencial</h1></header>
     <section className="cartao space-y-3"><p>Olá! Vou ajudar você a escolher e confirmar sua entrevista com o dono da Black.</p><p>Segundas-feiras, das 14h às 16h, no horário de São Paulo. A escolha só vira reserva após sua confirmação e a conferência de disponibilidade.</p><p className="text-sm text-zinc-500">Não compartilhe este link. A entrevista não garante contratação.</p></section>
     {erro && <p className="cartao text-red-500" role="alert">{erro}</p>}{ocupado && <p role="status">Conferindo a agenda…</p>}
     {!vista && !ocupado && <button className="btn" onClick={() => pedir(token, { acao: "CONSULTAR" })}>Tentar consultar novamente</button>}

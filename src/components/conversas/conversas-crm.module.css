@@ -1,0 +1,14 @@
+.grade { height: max(450px, calc(100dvh - 224px)); min-width: 0; }
+.titulo { position: sticky; top: 0; z-index: 1; padding: 20px 18px; border-bottom: 1px solid var(--border-subtle); background: #202729; }
+.contato { min-height: 76px; border-left: 3px solid transparent; transition: background-color 160ms ease, border-color 160ms ease; }
+.contato[aria-pressed="true"] { border-left-color: var(--color-ouro); background: rgb(198 245 102 / 9%); }
+.mensagens { background: radial-gradient(ellipse at 90% 0, #91c4e40a, transparent 65%), rgb(8 12 13 / 24%); overscroll-behavior: contain; }
+.balao { min-width: 0; border: 1px solid var(--border-subtle); border-radius: 16px; padding: 10px 14px; background: rgb(255 255 255 / 5%); box-shadow: inset 0 1px 0 #ffffff08; animation: mensagem 220ms ease both; }
+.balao[data-autor="BOT"] { background: rgb(133 216 175 / 10%); border-color: rgb(133 216 175 / 24%); }
+.balao[data-autor="EQUIPE"] { background: rgb(198 245 102 / 11%); border-color: rgb(198 245 102 / 24%); }
+.balao[data-autor="SISTEMA"] { background: rgb(145 196 228 / 10%); border-color: rgb(145 196 228 / 24%); }
+.telefone { min-width: 0; border-radius: 24px; }
+.balao[data-simulador][data-autor="CLIENTE"] { background: rgb(198 245 102 / 11%); border-color: rgb(198 245 102 / 24%); }
+@keyframes mensagem { from { opacity: .45; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 767px) { .grade { height: max(400px, calc(100dvh - 210px)); } .balao { max-width: 92%; } }
+@media (prefers-reduced-motion: reduce) { .balao { animation: none; } .contato { transition: none; } }
