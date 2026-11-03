@@ -28,11 +28,22 @@ class CacheBuildTest(unittest.TestCase):
             return json.dumps([self.app])
         return ""
 
-    def chamar(self, depois):
+    def chamar(self, depois, manutencao=False):
         with patch.object(cache, "executar", side_effect=self.executar), \
                 patch.object(cache, "preservar", side_effect=[self.retrato, depois]), \
                 patch.object(cache.shutil, "disk_usage", side_effect=[SimpleNamespace(free=5), SimpleNamespace(free=20)]):
-            return cache.liberar(Path("/opt/barberos"), "barberos", self.imagem)
+            return cache.liberar(Path("/opt/barberos"), "barberos", self.imagem, manutencao)
+
+    def test_manutencao_manual_mantem_escopo_privado_e_exige_preservacao(self):
+        r = self.chamar(copy.deepcopy(self.retrato), manutencao=True)
+        mutacoes = [c for c in self.comandos if "prune" in c and "--help" not in c]
+        self.assertEqual(mutacoes, [["docker", "buildx", "prune", "--force", "--filter", "until=1h", "--filter", "inuse=false", "--filter", "shared=false", "--filter", "type=regular", "--max-used-space", "1GB", "--min-free-space", "8GB"]])
+        self.assertEqual(r["filtro"], "until=1h")
+        for campo in self.retrato:
+            depois = copy.deepcopy(self.retrato)
+            depois[campo].clear()
+            with self.assertRaisesRegex(RuntimeError, "bloqueada"):
+                self.chamar(depois, manutencao=True)
 
     def test_libera_apenas_cache_antigo_com_reserva_e_preserva_dados(self):
         depois = copy.deepcopy(self.retrato)

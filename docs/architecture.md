@@ -363,3 +363,7 @@ A migração aditiva `20261102220000_entrevistas_piloto_whatsapp` não cria regi
 
 
 O inventário de capacidade também coleta tamanhos agregados de caches do sistema, temporários, journal e diretórios Docker, além do resumo de uso do builder. Não lista arquivos internos nem lê conteúdo de logs ou credenciais; o relatório detalhado continua cifrado. Essa inspeção não faz limpeza.
+
+### Manutenção manual de cache antes da publicação
+
+`manter-cache-vps.yml` é exclusivamente manual e não publica a aplicação. Em caso de falta de espaço, confere a imagem saudável esperada e usa a mesma trava da publicação para remover somente cache Buildx privado regular, fora de uso há pelo menos uma hora, com alvo de 8 GB livres e teto de 1 GB de cache. Confere a preservação das imagens, containers, volumes, configurações e backups. Nunca executa prune de imagens ou volumes. A reserva livre obrigatória do publicador permanece inalterada. Depois da manutenção, repetir o workflow original publica exatamente o commit aprovado; este workflow de manutenção não instala outro commit.

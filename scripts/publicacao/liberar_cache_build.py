@@ -30,7 +30,7 @@ def preservar(base):
     }
 
 
-def liberar(base, projeto, imagem):
+def liberar(base, projeto, imagem, manutencao=False):
     ids = executar(["docker", "ps", "-q", "--filter", "label=com.docker.compose.project=" + projeto,
                     "--filter", "label=com.docker.compose.service=app"]).split()
     if len(ids) != 1:
@@ -43,10 +43,12 @@ def liberar(base, projeto, imagem):
         raise RuntimeError("Buildx sem opções de espaço necessárias; nenhuma limpeza executada.")
     antes = preservar(base)
     livre = shutil.disk_usage(base).free
-    # Buildx: apenas cache privado regular, fora de uso há 48h; não remove imagens.
-    executar(["docker", "buildx", "prune", "--force", "--filter", "until=48h",
+    # A manutenção manual amplia somente a idade de cache privado descartável.
+    filtro = "until=1h" if manutencao else "until=48h"
+    reserva = "1GB" if manutencao else "6GB"
+    executar(["docker", "buildx", "prune", "--force", "--filter", filtro,
               "--filter", "inuse=false", "--filter", "shared=false", "--filter", "type=regular",
-              "--max-used-space", "6GB", "--min-free-space", "8GB"])
+              "--max-used-space", reserva, "--min-free-space", "8GB"])
     depois = preservar(base)
     for campo in ("imagens", "containers", "volumes"):
         if not antes[campo].issubset(depois[campo]):
@@ -56,7 +58,7 @@ def liberar(base, projeto, imagem):
     return {"livreAntes": livre, "livreDepois": shutil.disk_usage(base).free,
             "imagensPreservadas": True, "containersPreservados": True,
             "volumesPreservados": True, "backupsConfiguracaoPreservados": True,
-            "filtro": "until=48h", "reservaCache": "6GB", "escopoCache": "unused-private-regular", "livreAlvo": "8GB", "builder": "buildx"}
+            "filtro": filtro, "reservaCache": reserva, "escopoCache": "unused-private-regular", "livreAlvo": "8GB", "builder": "buildx"}
 
 
 if __name__ == "__main__":
@@ -68,6 +70,7 @@ if __name__ == "__main__":
     parser.add_argument("base")
     parser.add_argument("projeto")
     parser.add_argument("imagem")
+    parser.add_argument("--manutencao", action="store_true")
     args = parser.parse_args()
     base = Path(args.base)
     if os.geteuid() != 0 or not re.fullmatch(r"/[A-Za-z0-9_/-]+", args.base) or ".." in base.parts or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", args.projeto) or not re.fullmatch(r"sha256:[a-f0-9]{64}", args.imagem):
@@ -77,5 +80,5 @@ if __name__ == "__main__":
         raise SystemExit("Trava inesperada.")
     with open(trava, "a") as f:
         fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        print(json.dumps(liberar(base, args.projeto, args.imagem)))
+        print(json.dumps(liberar(base, args.projeto, args.imagem, args.manutencao)))
 
