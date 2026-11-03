@@ -80,6 +80,12 @@ def inspecionar(base, projeto):
     # Somente metadados de ocupação, sem abrir arquivos de clientes ou configuração.
     relatorio["ocupacaoDocker"] = executar(["docker", "system", "df", "-v"])
     relatorio["ocupacaoInstalacao"] = executar(["du", "-x", "-B1", "--max-depth=1", str(base)])
+    # Tamanhos agregados: não lista nomes internos nem lê logs, credenciais ou arquivos.
+    relatorio["ocupacaoCaches"] = {p: executar(["du", "-x", "-s", "-B1", p]) for p in (
+        "/var/cache/apt/archives", "/root/.npm/_cacache", "/root/.cache/pip",
+        "/root/.cache/ms-playwright", "/tmp", "/var/tmp", "/var/log/journal",
+        "/var/lib/docker/containers", "/var/lib/docker/buildkit")}
+    relatorio["ocupacaoBuilder"] = executar(["docker", "buildx", "du"])
     ids = executar(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + projeto])
     containers = []
     if ids and ids.split():

@@ -60,6 +60,19 @@ process.stdout.write(JSON.stringify(corpos));
         self.assertGreater(len(r["bloqueios"]), 0)
         self.assertFalse(r["backupRestauravelComprovado"])
 
+    def test_ocupacao_de_caches_e_apenas_agregada_e_sem_conteudo(self):
+        consultas = []
+        def executar(args):
+            consultas.append(args)
+            return None
+        with tempfile.TemporaryDirectory() as d, patch.object(inspecao, "executar", side_effect=executar):
+            r = inspecao.inspecionar(Path(d), "barberos")
+        self.assertIn("/root/.npm/_cacache", r["ocupacaoCaches"])
+        self.assertIn("/var/log/journal", r["ocupacaoCaches"])
+        for p in r["ocupacaoCaches"]:
+            self.assertIn(["du", "-x", "-s", "-B1", p], consultas)
+        self.assertFalse(any(a in {"cat", "tail", "rm", "prune"} for args in consultas for a in args))
+
     def test_consulta_do_banco_permite_somente_select_e_nao_ler_env(self):
         consultas = []
         banco = {"Id": "b" * 64, "Config": {"Labels": {"com.docker.compose.service": "db"}}, "State": {"Running": True}}
