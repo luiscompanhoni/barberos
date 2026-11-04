@@ -3,6 +3,13 @@
 // Rodar: npm run teste:pagarme
 process.env.PAGAMENTOS_PROVIDER = "pagarme";
 process.env.PAGARME_SECRET_KEY = "sk_test_falsa";
+process.env.WHATSAPP_PROVIDER = "simulador";
+process.env.WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO = "false";
+process.env.WHATSAPP_ENVIOS_BLOQUEADOS = "false";
+process.env.COBRANCA_LEGADA_WHATSAPP_ATIVA = "false";
+globalThis.fetch = async () => { throw new Error("Rede bloqueada no teste"); };
+const bancoTeste = new URL(process.env.DATABASE_URL ?? "http://invalid");
+if (!["localhost", "127.0.0.1"].includes(bancoTeste.hostname) || !(process.env.CI === "true" && bancoTeste.pathname === "/barberos" || bancoTeste.port === "55439" && bancoTeste.pathname.startsWith("/barberos_ci_local_"))) throw new Error("Use somente banco descartável do CI ou banco local dedicado.");
 
 process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ||= "89160161"; process.env.COBRANCA_CIDADE ||= "Rio do Sul"; process.env.COBRANCA_UF ||= "SC";
 import { db } from "@/lib/db";
@@ -13,7 +20,7 @@ import { ativarComCartao } from "@/lib/assinaturas/cartao-pix";
 import { gerarPixDoProximoMes, marcarVencidas } from "@/lib/assinaturas/rotina";
 import { ErroNegocio } from "@/lib/erros";
 
-const ok = (c: boolean, msg: string) => console.log(`${c ? "OK  " : "FALHOU"} ${msg}`);
+const ok = (c: boolean, msg: string) => { if (!c) process.exitCode = 1; console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); };
 
 // ---- Pagar.me falsa
 type Charge = { id: string; amount: number; status: string; payment_method: string; created_at: string; due_at?: string; invoice?: { id: string; subscriptionId: string }; last_transaction: Record<string, string> };
@@ -85,16 +92,25 @@ async function main() {
   ok(!!venc1, `próximo vencimento: ${venc1}`);
   // rotina gera o Pix do proximo mes quando faltam 3 dias
   await db.assinatura.update({ where: { id: sit!.assinatura.id }, data: { proximoVencimento: new Date(Date.now() + 2 * 86400000) } });
+  process.env.PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA = "false";
+  ok(await gerarPixDoProximoMes() === 0, "emissão automática desativada não gera Pix");
+  process.env.PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA = "true";
   const geradas = await gerarPixDoProximoMes();
   const geradas2 = await gerarPixDoProximoMes();
   ok(geradas >= 1 && geradas2 === 0, "rotina gera o Pix do próximo mês uma vez só");
-  // O aviso sai em segundo plano: espera ate 3 s.
+  const avisosDesativados = await db.mensagem.count({ where: { conversa: { telefone: P }, texto: { contains: "Pix para pagar" } } });
+  ok(avisosDesativados === 0, "aviso legado desativado não envia mensagem");
+  // Habilita apenas neste processo, com gateway falso, WhatsApp simulador e rede bloqueada.
+  process.env.COBRANCA_LEGADA_WHATSAPP_ATIVA = "true";
+  await db.assinatura.update({ where: { id: sit!.assinatura.id }, data: { proximoVencimento: new Date(Date.now() + 86400000) } });
+  ok(await gerarPixDoProximoMes() === 1, "emissão habilitada cria nova cobrança fictícia");
   let aviso = null;
   for (let i = 0; i < 30 && !aviso; i++) {
     aviso = await db.mensagem.findFirst({ where: { conversa: { telefone: P }, texto: { contains: "Pix para pagar" } } });
     if (!aviso) await new Promise((r) => setTimeout(r, 100));
   }
-  ok(!!aviso, "cliente recebe o Pix no WhatsApp");
+  ok(!!aviso && aviso.erro === null, "aviso legado habilitado chega somente ao simulador");
+  process.env.COBRANCA_LEGADA_WHATSAPP_ATIVA = "false";
   // vence sem pagar
   const prox = await cobrancaEmAberto(sit!.assinatura.id);
   await db.cobranca.update({ where: { id: prox!.id }, data: { vencimento: new Date(Date.now() - 2 * 86400000) } });

@@ -2,6 +2,13 @@
 // limite de faltas) contra o banco de DESENVOLVIMENTO, com o WhatsApp em modo simulador.
 // Usa uma data em 2031 e so os clientes que ele cria. Rodar: npm run teste:automacoes
 process.env.WHATSAPP_PROVIDER = "simulador";
+process.env.WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO = "false";
+process.env.WHATSAPP_ATENDIMENTO_IA_PAGA = "false";
+process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO = "false";
+process.env.WHATSAPP_ENVIOS_BLOQUEADOS = "false";
+globalThis.fetch = async () => { throw new Error("Rede bloqueada no teste"); };
+const bancoTeste = new URL(process.env.DATABASE_URL ?? "http://invalid");
+if (!["localhost", "127.0.0.1"].includes(bancoTeste.hostname) || !(process.env.CI === "true" && bancoTeste.pathname === "/barberos" || bancoTeste.port === "55439" && bancoTeste.pathname.startsWith("/barberos_ci_local_"))) throw new Error("Use somente banco descartável do CI ou banco local dedicado.");
 
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
@@ -9,7 +16,7 @@ import { checarFaltas, confirmarPeloCliente } from "@/lib/agenda/cliente";
 import { rodarAutomacoes } from "@/lib/automacoes/rotina";
 import { receberMensagem } from "@/lib/bot/processar";
 
-const ok = (c: boolean, msg: string) => console.log(`${c ? "OK  " : "FALHOU"} ${msg}`);
+const ok = (c: boolean, msg: string) => { if (!c) process.exitCode = 1; console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); };
 const H = 3_600_000;
 const D = 24 * H;
 const agora = Date.UTC(2031, 2, 5, 15, 0); // quarta 05/03/2031 12:00 em Brasilia
@@ -88,11 +95,19 @@ async function main() {
     try { await checarFaltas(c2.id, { limiteFaltas: 2, janelaFaltasDias: 60 }); } catch (e) { erroFaltas = e; }
     ok(erroFaltas instanceof ErroNegocio && erroFaltas.codigo === "limite_faltas", "2 faltas em 60 dias: só marca com a equipe");
 
-    // PARAR pelo WhatsApp (sem chamar o modelo)
+    // Mesmo com envios bloqueados, PARAR registra a preferência sem responder.
+    process.env.WHATSAPP_ENVIOS_BLOQUEADOS = "true";
     await receberMensagem({ telefone: TELS[0], texto: "PARAR", wamid: `teste-${Date.now()}` });
     const c1b = await db.cliente.findUniqueOrThrow({ where: { id: c1.id } });
     const resp = await db.mensagem.findFirst({ where: { conversa: { telefone: TELS[0] }, autor: "BOT" }, orderBy: { criadoEm: "desc" } });
-    ok(!c1b.aceitaMensagens && !!resp?.texto.includes("Não vou mais mandar"), "PARAR desliga e responde na hora");
+    ok(!c1b.aceitaMensagens && !resp, "PARAR preserva recusa sem responder quando envios bloqueados");
+    // Habilita atendimento somente neste processo, com simulador e rede bloqueada.
+    process.env.WHATSAPP_ENVIOS_BLOQUEADOS = "false";
+    process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO = "true";
+    await receberMensagem({ telefone: TELS[2], texto: "PARAR", wamid: `teste-habilitado-${Date.now()}` });
+    const c3b = await db.cliente.findUniqueOrThrow({ where: { id: c3.id } });
+    const respSimulada = await db.mensagem.findFirst({ where: { conversa: { telefone: TELS[2] }, autor: "BOT" }, orderBy: { criadoEm: "desc" } });
+    ok(!c3b.aceitaMensagens && !!respSimulada?.texto.includes("Não vou mais mandar") && respSimulada.erro === null, "PARAR habilitado responde somente no simulador, sem IA paga");
   } finally {
     const { id: _id, ...dados } = original;
     void _id;
