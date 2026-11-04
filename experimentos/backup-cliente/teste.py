@@ -152,8 +152,10 @@ for cmd in pg_dump psql createdb dropdb pg_isready gzip gunzip find stat flock p
             old.write_bytes(dump.read_bytes())
             os.utime(old, (1, 1))
             s3_env = ["-e", "BACKUP_S3_BUCKET=fixture", "-e", "BACKUP_SENHA=fixture",
-                      "-e", "BACKUP_S3_CHAVE=ficticia", "-e", "BACKUP_S3_SEGREDO=ficticio",
-                      "-e", "BACKUP_S3_ENDPOINT=http://127.0.0.1:1"]
+                      "-e", "BACKUP_S3_CHAVE=incorreta", "-e", "BACKUP_S3_SEGREDO=incorreto",
+                      "-e", "BACKUP_S3_PROVEDOR=Rclone", "-e", "BACKUP_S3_ENDPOINT=http://" + s3 + ":9000",
+                      "-e", "RCLONE_RETRIES_SLEEP=1s", "-e", "RCLONE_TIMEOUT=5s",
+                      "-e", "RCLONE_CONNECT_TIMEOUT=2s", "-e", "RCLONE_LOW_LEVEL_RETRIES=1"]
             run([*common, *s3_env, image, "agora"], expect_failure=True)
             assert old.is_file() and dump.is_file()
             failure = run(["docker", "exec", db, "psql", "-X", "-U", "postgres", "-d", "fixture",
