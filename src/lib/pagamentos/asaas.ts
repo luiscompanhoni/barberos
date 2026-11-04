@@ -35,6 +35,7 @@ type PagamentoAsaas = {
   value: number;
   dueDate: string;
   status: string;
+  billingType?: string | null;
   invoiceUrl?: string | null;
   paymentDate?: string | null;
   clientPaymentDate?: string | null;
@@ -64,13 +65,17 @@ export function traduzirStatus(p: Pick<PagamentoAsaas, "status" | "deleted">): C
   }
 }
 
-function converter(p: PagamentoAsaas): CobrancaGateway {
+export function converter(p: PagamentoAsaas): CobrancaGateway {
+  const formas: Record<string, FormaPagamento> = { CREDIT_CARD: "CARTAO", PIX: "PIX", BOLETO: "BOLETO" };
   return {
     id: p.id,
     assinaturaGatewayId: p.subscription ?? null,
     valorCentavos: Math.round(p.value * 100),
     vencimento: p.dueDate,
+    vencimentoConfirmado: /^\d{4}-\d{2}-\d{2}$/.test(p.dueDate ?? ""),
     status: traduzirStatus(p),
+    abertaConfirmada: !p.deleted && ["PENDING", "OVERDUE"].includes(p.status),
+    forma: p.billingType ? formas[p.billingType] ?? null : null,
     pagaEm: p.confirmedDate ?? p.paymentDate ?? p.clientPaymentDate ?? null,
     link: p.invoiceUrl ?? null,
   };

@@ -17,6 +17,7 @@ type Ag = {
   assinaturaId?: string | null;
   barbeiro: { id?: string; nome: string; cor?: string; fotoVersao?: number };
   servico: { id?: string; nome: string };
+  adicionais?: { precoCentavos: number; servico: { id?: string; nome: string } }[];
   antecipado?: { status: string } | null;
 };
 
@@ -169,15 +170,15 @@ export function MeusHorarios() {
                     <div className="min-w-0 flex-1">
                       <p className="flex items-center gap-2 font-bold">
                         {a.barbeiro.id && <FotoBarbeiro id={a.barbeiro.id} nome={a.barbeiro.nome} cor={a.barbeiro.cor ?? "#d3ab45"} versao={a.barbeiro.fotoVersao ?? 0} tamanho={26} />}
-                        <span>{a.servico.nome} com {a.barbeiro.nome}</span>
+                        <span>{[a.servico.nome, ...(a.adicionais ?? []).map((x) => x.servico.nome)].join(" + ")} com {a.barbeiro.nome}</span>
                       </p>
                       <p className="mt-1 flex items-center gap-2 text-xs text-zinc-500 first-letter:uppercase">
                         <Clock3 size={13} /> {d.toLocaleDateString("pt-BR", { weekday: "long", timeZone: FUSO })}, {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: FUSO })}
                       </p>
-                      {a.assinaturaId
+                      {a.assinaturaId && !(a.adicionais?.length)
                         ? <span className="selo-ouro mt-3"><Check size={11} /> Pelo plano</span>
-                        : <p className="mt-2 text-xs font-semibold text-zinc-700">{reais(a.precoCentavos)}</p>}
-                      {!a.assinaturaId && a.precoCentavos > 0 && (dados.pagarAntes || a.antecipado?.status === "PAGO") && (
+                        : <p className="mt-2 text-xs font-semibold text-zinc-700">{reais(a.precoCentavos + (a.adicionais ?? []).reduce((t, x) => t + x.precoCentavos, 0))}</p>}
+                      {!a.adicionais?.length && !a.assinaturaId && a.precoCentavos > 0 && (dados.pagarAntes || a.antecipado?.status === "PAGO") && (
                         <PagarAntes agendamentoId={a.id} precoCentavos={a.precoCentavos} status={a.antecipado?.status ?? null} checkout={!!dados.checkout}
                           aoPagar={() => { setAviso("Pagamento recebido! É só vir no horário."); carregar(); }} />
                       )}
@@ -195,7 +196,7 @@ export function MeusHorarios() {
                     </div>
                   ) : (
                     <div className="mt-4 grid grid-cols-2 gap-2">
-                      <Link className="btn" href={`/c/agendar?remarcar=${a.id}&servico=${a.servico.id}&barbeiro=${a.barbeiro.id}`}>Remarcar</Link>
+                      <Link className="btn" href={`/c/agendar?remarcar=${a.id}&servico=${a.servico.id}&barbeiro=${a.barbeiro.id}${a.adicionais?.length ? `&adicionais=${encodeURIComponent(a.adicionais.map((x) => x.servico.id).join(","))}` : ""}`}>Remarcar</Link>
                       <button className="btn border-transparent text-red-600 hover:bg-red-50" onClick={() => setConfirmar(a.id)}>Cancelar</button>
                     </div>
                   )}
@@ -220,7 +221,7 @@ export function MeusHorarios() {
               <li key={a.id} className="flex items-center gap-4 border-b border-zinc-200 py-4">
                 <Scissors className="shrink-0 text-zinc-500" size={17} />
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold">{a.servico.nome}</p>
+                  <p className="text-sm font-semibold">{[a.servico.nome, ...(a.adicionais ?? []).map((x) => x.servico.nome)].join(" + ")}</p>
                   <p className="text-xs text-zinc-500">com {a.barbeiro.nome} · {STATUS[a.status] ?? a.status}</p>
                 </div>
                 <span className="text-xs text-zinc-500">{new Date(a.inicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: FUSO }).replace(".", "")}</span>

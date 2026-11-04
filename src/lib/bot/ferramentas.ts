@@ -10,16 +10,14 @@ import { executarCrescimento, FERRAMENTAS_CRESCIMENTO, NOMES_CRESCIMENTO } from 
 import { executarPagamento, FERRAMENTAS_PAGAMENTO, NOMES_PAGAMENTO } from "./ferramentas-pagamento";
 import { ORIGENS_CLIENTE, zNascimento } from "@/lib/validacao-cliente";
 import { dataLocal, hhmmParaMin, instanteLocal, minParaHhmm, minutosLocal, parseData, somarDias } from "@/lib/agenda/tempo";
-
+import { atualizarPreferencia, travarPreferencia } from "@/lib/whatsapp/preferencia";
 /** Quem esta conversando: o bot so enxerga e altera os dados deste telefone. */
 export type ContextoBot = {
   conversaId: string;
   telefone: string;
   nomePerfil: string | null;
 };
-
 type Ferramenta = Anthropic.Beta.BetaTool;
-
 export const FERRAMENTAS: Ferramenta[] = [
   {
     name: "listar_servicos",
@@ -309,9 +307,14 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
     }
     case "receber_mensagens": {
       const e = ENTRADAS.receber_mensagens.parse(entrada);
-      const r = await db.cliente.updateMany({ where: { telefone: ctx.telefone }, data: { aceitaMensagens: e.receber } });
-      if (!r.count) return { texto: "Cliente sem cadastro: nada para mudar." };
-      return { texto: e.receber ? "Mensagens automáticas religadas." : "Pronto: não mandamos mais lembretes nem novidades. Ele ainda pode falar com a gente aqui quando quiser." };
+      // Um modelo não comprova consentimento: a reativação fica no controle explícito do aplicativo.
+      if (e.receber) return { texto: "Para reativar mensagens, use a opção de privacidade em Meus Dados no aplicativo.", erro: true };
+      const r = await db.$transaction(async tx => {
+        await travarPreferencia(tx, ctx.telefone);
+        return atualizarPreferencia(tx, ctx.telefone, false);
+      });
+      if (!r.count) return { texto: "Preferência registrada para este contato: sem lembretes nem novidades. Para reativar depois, use a privacidade no aplicativo." };
+      return { texto: "Pronto: não mandamos mais lembretes nem novidades. Ele ainda pode falar com a gente aqui quando quiser." };
     }
     case "salvar_perfil": {
       const e = ENTRADAS.salvar_perfil.parse(entrada);

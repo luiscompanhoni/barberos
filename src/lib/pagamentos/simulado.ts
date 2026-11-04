@@ -16,7 +16,9 @@ function converter(c: { id: string; assinaturaGatewayId: string; valorCentavos: 
     assinaturaGatewayId: c.assinaturaGatewayId,
     valorCentavos: c.valorCentavos,
     vencimento: data(c.vencimento),
+    vencimentoConfirmado: Number.isFinite(+c.vencimento),
     status: c.status as CobrancaGateway["status"],
+    abertaConfirmada: c.status === "PENDENTE" || c.status === "ATRASADA",
     pagaEm: c.pagaEm?.toISOString() ?? null,
     link: `/c/pagamento-simulado/${c.id}`,
   };

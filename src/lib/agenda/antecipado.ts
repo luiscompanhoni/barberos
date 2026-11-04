@@ -72,6 +72,9 @@ export async function pagarAntecipado(p: {
     include: { servico: { select: { nome: true } }, barbeiro: { select: { nome: true } }, antecipado: true, itemComanda: { select: { id: true } } },
   });
   if (!ag) throw naoEncontrado("Horário");
+  if (await db.agendamento.count({ where: { adicionalDeId: ag.id, origem: "SITE", status: { not: "CANCELADO" } } })) {
+    throw new ErroNegocio("Para horários com vários serviços, o pagamento é feito na barbearia.", 422, "pagamento_multiplos");
+  }
   const motivo = motivoParaNaoPagar(ag);
   if (motivo) throw new ErroNegocio(motivo, 409, "nao_pode");
   if (ag.itemComanda) throw new ErroNegocio("Esse atendimento já está na comanda: pague no balcão.", 409, "na_comanda");

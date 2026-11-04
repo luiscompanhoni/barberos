@@ -57,7 +57,8 @@ export const RodaBlack = forwardRef<RodaRef, {
   podeGirar?: boolean;
   aoGirar?: () => void;
   rotuloBotao?: string;
-}>(function RodaBlack({ fatias, girando = false, vencedora = null, podeGirar = false, aoGirar, rotuloBotao = "GIRAR" }, ref) {
+  rotuloAcessivel?: string;
+}>(function RodaBlack({ fatias, girando = false, vencedora = null, podeGirar = false, aoGirar, rotuloBotao = "GIRAR", rotuloAcessivel = "Girar a roleta" }, ref) {
   const roda = useRef<HTMLDivElement>(null);
   const ponteiro = useRef<SVGGElement>(null);
   const angulo = useRef(0);
@@ -212,7 +213,7 @@ export const RodaBlack = forwardRef<RodaRef, {
       {/* botao central GIRAR */}
       <button type="button" onClick={aoGirar} disabled={!podeGirar || girando}
         className="rb-botao absolute left-1/2 top-1/2 z-10 grid aspect-square w-[27%] -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full"
-        aria-label="Girar a roleta">
+        aria-label={rotuloAcessivel}>
         <span className="flex flex-col items-center leading-none">
           <Monograma tamanho={26} className="mb-1 opacity-90" />
           <span className="rb-botao-texto">{girando ? "···" : rotuloBotao}</span>

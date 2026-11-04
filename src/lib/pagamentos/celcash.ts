@@ -92,7 +92,9 @@ export function converter(t: Transacao, a: Pick<Assinatura, "paymentLink" | "mai
     assinaturaGatewayId: t.subscriptionGalaxPayId ? `${PREFIXO.assinatura}${t.subscriptionGalaxPayId}` : null,
     valorCentavos: t.value,
     vencimento: t.payday,
+    vencimentoConfirmado: /^\d{4}-\d{2}-\d{2}$/.test(t.payday ?? ""),
     status,
+    abertaConfirmada: ["pendingPix", "pendingBoleto"].includes(t.status),
     pagaEm: status === "PAGA" ? (t.paydayDate ?? t.payday) : null,
     // Cartao: link da assinatura para cadastrar/trocar o cartao. Pix/boleto: a pagina da cobranca.
     link: forma === "CARTAO" ? (a?.paymentLink ?? null) : (t.Pix?.page ?? t.Boleto?.pdf ?? a?.paymentLink ?? null),

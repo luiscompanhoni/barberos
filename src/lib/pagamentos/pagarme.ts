@@ -105,7 +105,9 @@ export function converterCobranca(c: CobrancaPagarme, assinaturaGatewayId?: stri
     assinaturaGatewayId: assinaturaGatewayId ?? sub,
     valorCentavos: c.amount,
     vencimento: (c.due_at ?? c.metadata?.vencimento ?? c.created_at ?? new Date().toISOString()).slice(0, 10),
+    vencimentoConfirmado: !!c.due_at && Number.isFinite(Date.parse(c.due_at)),
     status: traduzirStatus(c.status),
+    abertaConfirmada: c.status === "pending",
     pagaEm: c.paid_at ?? null,
     link: null, // a pagina de pagamento e a do BarberOS (/c/pagar/...)
     forma: c.payment_method ? (FORMA[c.payment_method] ?? null) : null,

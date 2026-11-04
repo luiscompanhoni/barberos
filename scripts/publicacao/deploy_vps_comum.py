@@ -8,6 +8,15 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+CONTROLES_PUBLICACAO = {
+    "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "",
+    "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO": "true",
+    "WHATSAPP_ATENDIMENTO_APOS_PILOTO": "false", "WHATSAPP_ATENDIMENTO_IA_PAGA": "false",
+    "WHATSAPP_ENVIOS_BLOQUEADOS": "true", "PUSH_PROVIDER": "desativado",
+    "COBRANCA_LEGADA_WHATSAPP_ATIVA": "false", "COBRANCA_AUTOMATICA_WHATSAPP_ATIVA": "false",
+    "PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA": "false",
+}
+
 
 def executar(args, *, entrada=None, ambiente=None, prazo=300):
     r = subprocess.run(args, input=entrada, capture_output=True, env=ambiente, timeout=prazo)
@@ -66,12 +75,15 @@ def conferir_migracoes(aplicadas, pasta):
 
 def exigir_migracoes_da_publicacao(pendentes):
     # Somente as migrações revisadas; executar a publicação ainda exige pedido explícito.
-    if set(pendentes) - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros", "20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto", "20261102210000_recrutamento_entrevistas", "20261102220000_entrevistas_piloto_whatsapp", "20261102221000_piloto_destino_obrigatorio", "20261103143000_agenda_externa_transicao"}:
+    if set(pendentes) - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros", "20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto", "20261102210000_recrutamento_entrevistas", "20261102220000_entrevistas_piloto_whatsapp", "20261102221000_piloto_destino_obrigatorio", "20261103143000_agenda_externa_transicao", "20261104120000_campanha_equipe_servicos", "20261104121000_solicitacoes_horario", "20261104121500_solicitacao_horario_periodo", "20261104123000_reunioes_avisos", "20261104130000_planos_vitrine", "20261104131000_avaliacao_mensal_elegibilidade", "20261104132000_cobranca_automatica_tentativas", "20261104133000_webhook_pagamento_entrada", "20261104134000_webhook_pagamento_sequencia", "20261104135000_emissao_pix_mensal", "20261104140000_optout_contato_antes_cadastro", "20261104141000_webhook_pagamento_ordem"}:
         raise RuntimeError("Migração pendente fora do escopo aprovado desta publicação.")
 
 
 def conferir_central_desligada(app):
     env = ambiente_container(app)
+    for chave, valor in CONTROLES_PUBLICACAO.items():
+        if env.get(chave) != valor:
+            raise RuntimeError("Controle de publicação não confirmado: " + chave)
     if env.get("AGENTES_HABILITADOS") != "true" or env.get("AGENTES_EXECUCAO_ATIVA") != "false" or env.get("META_ADS_TOKEN") != "":
         raise RuntimeError("A Central não confirmou interface habilitada com execução e conexão Meta desligadas.")
     if env.get("RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO") != "false":

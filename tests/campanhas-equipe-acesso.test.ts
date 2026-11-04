@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/campanhas-equipe/route";
-const m = vi.hoisted(() => ({ sessao:vi.fn(), campanha:vi.fn(), contar:vi.fn(), criar:vi.fn(), vendas:vi.fn(), lock:vi.fn(), criarCampanha:vi.fn(), folha:vi.fn(), pessoa:vi.fn() }));
+const m = vi.hoisted(() => ({ sessao:vi.fn(), campanha:vi.fn(), contar:vi.fn(), criar:vi.fn(), vendas:vi.fn(), lock:vi.fn(), lockBarbeiro:vi.fn(), criarCampanha:vi.fn(), contarServicos:vi.fn(), folha:vi.fn(), pessoa:vi.fn() }));
 vi.mock("@/lib/auth/sessao",()=>({exigirSessao:m.sessao,GESTAO:["DONO","GERENTE"]}));
 vi.mock("@/lib/auditoria",()=>({auditar:vi.fn()}));
 vi.mock("@/lib/campanha-equipe",()=>({vendasDaCampanha:m.vendas,painelCampanhas:vi.fn(),lancarBonusNaFolha:m.folha,pessoaDaFolha:m.pessoa}));
 vi.mock("@/lib/agenda/carregar",()=>({configuracao:async()=>({fuso:"America/Sao_Paulo"})}));
-vi.mock("@/lib/db",()=>{const tx={$queryRaw:m.lock,campanhaEquipe:{findUniqueOrThrow:m.campanha,create:m.criarCampanha},bonusEquipe:{count:m.contar,create:m.criar}};return{db:{$transaction:(fn:(t:typeof tx)=>unknown)=>fn(tx)}};});
+vi.mock("@/lib/db",()=>{const tx={$queryRaw:m.lock,$executeRaw:m.lockBarbeiro,servico:{count:m.contarServicos},campanhaEquipe:{findUniqueOrThrow:m.campanha,create:m.criarCampanha},bonusEquipe:{count:m.contar,create:m.criar}};return{db:{$transaction:(fn:(t:typeof tx)=>unknown)=>fn(tx)}};});
 const req=(b:unknown)=>new Request("http://localhost/api/campanhas-equipe",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(b)});
 describe("rodadas adicionais à comissão",()=>{
   beforeEach(()=>{vi.clearAllMocks();m.sessao.mockResolvedValue({usuarioId:"u",papel:"BARBEIRO",barbeiroId:"b"});m.campanha.mockResolvedValue({id:"c",inicio:new Date(0),premios:[500,1000]});m.vendas.mockResolvedValue({ciclos:1});m.contar.mockResolvedValue(0);m.criar.mockResolvedValue({id:"bonus",ciclo:1,valorCentavos:500});m.folha.mockResolvedValue({id:"l1",competencia:"2026-10"});m.pessoa.mockResolvedValue("p1");});
@@ -14,4 +14,18 @@ describe("rodadas adicionais à comissão",()=>{
   it("não permite gastar a mesma rodada novamente",async()=>{m.contar.mockResolvedValue(1);expect((await POST(req({acao:"girar",campanhaId:"c"}))).status).toBe(422);expect(m.criar).not.toHaveBeenCalled();expect(m.lock).toHaveBeenCalledOnce();});
   it("sorteia no servidor e vincula ao barbeiro da sessão",async()=>{expect((await POST(req({acao:"girar",campanhaId:"c",barbeiroId:"outro",valorCentavos:99999}))).status).toBe(200);expect(m.criar.mock.calls[0][0].data).toMatchObject({campanhaId:"c",barbeiroId:"b",ciclo:1});expect([500,1000]).toContain(m.criar.mock.calls[0][0].data.valorCentavos);expect(m.folha).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({pessoaId:"p1"}));expect(m.criar.mock.calls[0][0].data.folhaLancamentoId).toBe("l1");});
   it("sem ficha de RH não sorteia",async()=>{const {ErroNegocio}=await import("@/lib/erros");m.pessoa.mockRejectedValue(new ErroNegocio("sem folha",409));expect((await POST(req({acao:"girar",campanhaId:"c"}))).status).toBe(409);expect(m.criar).not.toHaveBeenCalled();expect(m.folha).not.toHaveBeenCalled();});
+  it("bloqueia giro de serviços enquanto o tratamento de estornos não estiver definido",async()=>{
+    m.campanha.mockResolvedValue({id:"c",tipo:"SERVICOS",inicio:new Date(0),premios:[500]});
+    m.vendas.mockResolvedValue({quantidade:5,ciclos:1,atendimentoIds:["a1"]});
+    expect((await POST(req({acao:"girar",campanhaId:"c"}))).status).toBe(409);
+    expect(m.lock).toHaveBeenCalledOnce(); expect(m.vendas).not.toHaveBeenCalled();
+    expect(m.folha).not.toHaveBeenCalled(); expect(m.criar).not.toHaveBeenCalled();
+  });
+  it("valida e registra serviços ativos sem duplicar IDs",async()=>{
+    m.sessao.mockResolvedValue({usuarioId:"u",papel:"DONO",barbeiroId:null});m.contarServicos.mockResolvedValue(1);m.criarCampanha.mockResolvedValue({id:"c"});
+    const body={acao:"criar",nome:"Cortes",inicio:"2026-10-01T00:00:00.000Z",fim:"2099-10-31T00:00:00.000Z",tipo:"SERVICOS",servicoIds:["s1","s1"],metaQuantidade:5,metaCentavos:0,premios:[500]};
+    expect((await POST(req(body))).status).toBe(201);
+    expect(m.criarCampanha).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({tipo:"SERVICOS",servicoIds:["s1"]})}));
+    m.contarServicos.mockResolvedValue(0);expect((await POST(req(body))).status).toBe(422);
+  });
 });

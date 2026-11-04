@@ -5,7 +5,7 @@ import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { MOTIVOS, ROTULO_MOTIVO } from "@/lib/assinaturas/retencao-regras";
-import { assinar, entrarNaListaDeEspera, situacaoDoCliente, vagasRestantes } from "@/lib/assinaturas/servico";
+import { assinar, entrarNaListaDeEspera, situacaoDoCliente, vagasRestantes, verificarNovaAdesao } from "@/lib/assinaturas/servico";
 import { executarCancelamento } from "./ferramentas-cancelamento";
 import type { ContextoBot, ResultadoFerramenta } from "./ferramentas";
 
@@ -119,7 +119,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
   switch (nome) {
     case "listar_planos": {
       const planos = await db.plano.findMany({
-        where: { ativo: true },
+        where: { ativo: true, visivel: true },
         orderBy: [{ ordem: "asc" }, { precoCentavos: "asc" }],
         include: { servicos: { include: { servico: { select: { nome: true } } } } },
       });
@@ -132,6 +132,8 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
               nome: p.nome,
               preco_mensal: reais(p.precoCentavos),
               descricao: p.descricao,
+              disponivel_para_compra: p.compravel,
+              condicoes: p.compravel ? null : "Consulte as condições com a equipe; não está disponível para compra ou lista de espera.",
               inclui: p.servicos.map((s) => s.servico.nome + (s.usosPorCiclo ? ` (${s.usosPorCiclo}x por mês)` : " (à vontade)")),
               intervalo_entre_visitas_dias: p.intervaloMinDias,
               dias_validos: p.diasSemana.length && p.diasSemana.length < 7 ? [...p.diasSemana].sort().map((d) => DIAS[d]) : "todos os dias de funcionamento",
@@ -165,6 +167,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
     }
     case "assinar_plano": {
       const e = ENTRADAS.assinar_plano.parse(entrada);
+      if (!await db.cliente.findUnique({ where: { telefone: ctx.telefone }, select: { id: true } })) await verificarNovaAdesao(e.plano_id, "BOT");
       const c = await clienteGarantido(ctx, e.nome_cliente);
       if (!c) return { texto: "Cliente sem cadastro: pergunte o nome dele antes de assinar.", erro: true };
       const r = await assinar({ clienteId: c.id, planoId: e.plano_id, forma: e.forma_pagamento, cpf: e.cpf, email: e.email, origem: "BOT" });

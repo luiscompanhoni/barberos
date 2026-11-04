@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowRight, CalendarCheck, Clock3, Gift, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Clock3, Gift, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import type { PremioCliente } from "@/lib/jogos/tipos";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
@@ -17,7 +17,7 @@ type Servico = { id: string; nome: string; duracaoMin: number; precoCentavos: nu
 type Catalogo = { nomeBarbearia: string; janelaDias: number; servicos: Servico[]; confirmacaoEquipe?: boolean; atendimentoUrl?: string | null };
 type Disp = { barbeiroId: string; nome: string; duracaoMin: number; precoCentavos: number; horarios: string[] };
 /** Horario escolhido: com "qualquer barbeiro", fica com o primeiro livre naquele horario. */
-type Opcao = { inicio: string; barbeiroId: string; barbeiroNome: string; precoCentavos: number };
+type Opcao = { inicio: string; barbeiroId: string; barbeiroNome: string; duracaoMin: number; precoCentavos: number };
 
 const QUALQUER = "qualquer";
 const hora = (iso: string) => minParaHhmm(minutosLocal(Date.parse(iso), FUSO));
@@ -39,6 +39,8 @@ export function AgendarTela() {
   const [premio, setPremio] = useState<PremioCliente | null>(null);
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
   const [servicoId, setServicoId] = useState(q.get("servico") ?? "");
+  const [adicionais, setAdicionais] = useState<string[]>(remarcarId ? (q.get("adicionais")?.split(",").filter(Boolean) ?? []) : []);
+  const [servicosConfirmados, setServicosConfirmados] = useState(!!remarcarId);
   const [barbeiroId, setBarbeiroId] = useState(remarcarId ? (q.get("barbeiro") ?? QUALQUER) : "");
   const [hoje] = useState(() => dataLocal(Date.now(), FUSO));
   const [data, setData] = useState(hoje);
@@ -46,16 +48,17 @@ export function AgendarTela() {
   const [escolha, setEscolha] = useState<Opcao | null>(null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [recarregar, setRecarregar] = useState(0);
   const [previa, setPrevia] = useState<{ precoCentavos: number; peloPlano: boolean; nota: string | null; bloqueio: string | null } | null>(null);
 
   // Preco real para este cliente (incluso no plano, desconto de assinante ou avulso).
   useEffect(() => {
     if (!escolha || !servicoId) return;
     let vivo = true;
-    const q = new URLSearchParams({ servicoId, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, ...(remarcarId ? { remarcar: remarcarId } : {}) });
-    api<NonNullable<typeof previa>>(`/api/cliente/preco?${q}`).then((r) => vivo && setPrevia(r)).catch(() => {});
+    const q = new URLSearchParams({ servicoId, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, ...(remarcarId ? { remarcar: remarcarId } : {}), ...(adicionais.length ? { adicionais: adicionais.join(",") } : {}) });
+    api<NonNullable<typeof previa>>(`/api/cliente/preco?${q}`).then((r) => vivo && setPrevia(r)).catch(() => vivo && setErro("Não foi possível consultar o preço. Escolha o horário novamente."));
     return () => { vivo = false; setPrevia(null); };
-  }, [escolha, servicoId, remarcarId]);
+  }, [escolha, servicoId, remarcarId, adicionais]);
 
   useEffect(() => {
     api<Catalogo>("/api/cliente/servicos").then(setCatalogo).catch((e) => setErro(e.message));
@@ -66,24 +69,27 @@ export function AgendarTela() {
   }, [premioId]);
 
   const servico = catalogo?.servicos.find((s) => s.id === servicoId);
-  const passo = !servico ? 1 : !barbeiroId ? 2 : !escolha ? 3 : 4;
+  const escolhidos = [servicoId, ...adicionais].filter(Boolean);
+  const servicosEscolhidos = escolhidos.map((id) => catalogo?.servicos.find((s) => s.id === id)).filter((s): s is Servico => !!s);
+  const barbeirosCompativeis = servico?.barbeiros.filter((b) => servicosEscolhidos.every((s) => s.barbeiros.some((c) => c.id === b.id))) ?? [];
+  const passo = !servico || !servicosConfirmados ? 1 : !barbeiroId ? 2 : !escolha ? 3 : 4;
 
   useEffect(() => {
     if (!servicoId || !barbeiroId) return;
     let vivo = true;
-    const params = new URLSearchParams({ data, servicoId, ...(barbeiroId !== QUALQUER ? { barbeiroId } : {}) });
+    const params = new URLSearchParams({ data, servicoId, ...(adicionais.length ? { adicionais: adicionais.join(",") } : {}), ...(barbeiroId !== QUALQUER ? { barbeiroId } : {}) });
     api<Disp[]>(`/api/cliente/disponibilidade?${params}`)
       .then((r) => vivo && setDisp(r))
       .catch((e) => vivo && setErro(e.message));
     return () => { vivo = false; };
-  }, [servicoId, barbeiroId, data]);
+  }, [servicoId, barbeiroId, data, adicionais, recarregar]);
 
   // Junta os horarios de todos os barbeiros (modo "qualquer um").
   const opcoes = useMemo<Opcao[]>(() => {
     const mapa = new Map<string, Opcao>();
     for (const b of disp ?? []) {
       for (const h of b.horarios) {
-        if (!mapa.has(h)) mapa.set(h, { inicio: h, barbeiroId: b.barbeiroId, barbeiroNome: b.nome, precoCentavos: b.precoCentavos });
+        if (!mapa.has(h)) mapa.set(h, { inicio: h, barbeiroId: b.barbeiroId, barbeiroNome: b.nome, duracaoMin: b.duracaoMin, precoCentavos: b.precoCentavos });
       }
     }
     return [...mapa.values()].sort((a, b) => a.inicio.localeCompare(b.inicio));
@@ -95,9 +101,9 @@ export function AgendarTela() {
     setSalvando(true);
     try {
       if (remarcarId) {
-        await api(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId, forcarAvulso: !!previa?.bloqueio } });
+        await api(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId, forcarAvulso: !!previa?.bloqueio, precoEsperadoCentavos: previa?.precoCentavos } });
       } else {
-        await api("/api/cliente/agendamentos", { method: "POST", body: { servicoId, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio, ...(premio ? { premioId: premio.id } : {}) } });
+        await api("/api/cliente/agendamentos", { method: "POST", body: { servicoId, servicosAdicionais: adicionais, precoEsperadoCentavos: previa?.precoCentavos, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio, ...(premio ? { premioId: premio.id } : {}) } });
       }
       router.push("/c");
       router.refresh();
@@ -106,6 +112,7 @@ export function AgendarTela() {
       setSalvando(false);
       setEscolha(null); // horario pode ter sido ocupado: mostra a lista atualizada
       setDisp(null);
+      setRecarregar((n) => n + 1);
     }
   }
 
@@ -116,7 +123,7 @@ export function AgendarTela() {
   const voltarPasso = () => {
     if (passo === 4) setEscolha(null);
     else if (passo === 3) { setBarbeiroId(""); setDisp(null); }
-    else if (passo === 2 && !remarcarId) setServicoId("");
+    else if (passo === 2 && !remarcarId) setServicosConfirmados(false);
   };
 
   return (
@@ -140,19 +147,24 @@ export function AgendarTela() {
       )}
 
       {passo === 1 && (
-        <Passo eyebrow="Comece por aqui" titulo="Qual serviço?">
+        <Passo eyebrow="Comece por aqui" titulo="Quais serviços?">
+          <p className="mb-4 text-sm text-zinc-500">Escolha um ou mais serviços para o mesmo atendimento.</p>
           <div className="space-y-3">
             {catalogo.servicos.map((s) => (
-              <button key={s.id} className="cartao-clicavel flex w-full items-center gap-4 p-5 text-left" onClick={() => setServicoId(s.id)}>
+              <button key={s.id} type="button" aria-pressed={escolhidos.includes(s.id)} className={`cartao-clicavel flex w-full items-center gap-4 p-5 text-left ${escolhidos.includes(s.id) ? "border-ouro" : ""}`} onClick={() => {
+                const ids = escolhidos.includes(s.id) ? escolhidos.filter((id) => id !== s.id) : [...escolhidos, s.id];
+                setServicoId(ids[0] ?? ""); setAdicionais(ids.slice(1));
+              }}>
                 <Scissors className="shrink-0 text-ouro" size={20} />
                 <span className="flex-1">
                   <span className="block font-bold">{s.nome}</span>
                   <span className="mt-1 block text-xs text-zinc-500">{s.duracaoMin} min · {reais(s.precoCentavos)}</span>
                 </span>
-                <ArrowRight className="text-zinc-400" size={16} />
+                <span className="text-xs font-bold text-ouro">{escolhidos.includes(s.id) ? "Selecionado" : "Adicionar"}</span>
               </button>
             ))}
           </div>
+          {servicosEscolhidos.length > 0 && <p className="mt-4 text-sm">{servicosEscolhidos.length} selecionado(s) · valor de tabela {reais(servicosEscolhidos.reduce((t, s) => t + s.precoCentavos, 0))}. O valor final pode variar conforme o profissional e o plano.</p>}
         </Passo>
       )}
 
@@ -164,7 +176,7 @@ export function AgendarTela() {
               <p className="mt-4 text-sm font-bold">Qualquer barbeiro</p>
               <p className="mt-1 text-[11px] text-zinc-500">Mais horários</p>
             </button>
-            {servico.barbeiros.map((b) => (
+            {barbeirosCompativeis.map((b) => (
               <button key={b.id} className="cartao-clicavel px-4 py-6 text-center" onClick={() => setBarbeiroId(b.id)}>
                 <FotoBarbeiro id={b.id} nome={b.nome} cor={b.cor} versao={b.fotoVersao} tamanho={96} className="mx-auto" />
                 <p className="mt-4 text-sm font-bold">{b.nome}</p>
@@ -175,7 +187,7 @@ export function AgendarTela() {
       )}
 
       {passo === 3 && servico && (
-        <Passo eyebrow={`${servico.nome} · ${barbeiroEscolhido?.nome ?? "qualquer barbeiro"}`} titulo="Quando?">
+        <Passo eyebrow={`${servicosEscolhidos.map((s) => s.nome).join(" + ")} · ${barbeiroEscolhido?.nome ?? "qualquer barbeiro"}`} titulo="Quando?">
           <div className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-3 [scrollbar-width:none]">
             {dias.map((d) => {
               const c = diaCurto(d);
@@ -193,7 +205,7 @@ export function AgendarTela() {
           {!disp ? (
             <p className="mt-3 text-sm text-zinc-500">Buscando horários...</p>
           ) : opcoes.length === 0 ? (
-            <SemVaga key={`${data}|${barbeiroId}`} data={data} servicoId={servico.id} barbeiroId={barbeiroId === QUALQUER ? null : barbeiroId} />
+            adicionais.length ? <p className="mt-3 text-sm">Não há horários para todos os serviços neste dia. Tente outra data ou altere os serviços.</p> : <SemVaga key={`${data}|${barbeiroId}`} data={data} servicoId={servico.id} barbeiroId={barbeiroId === QUALQUER ? null : barbeiroId} />
           ) : (
             <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
               {opcoes.map((o) => (
@@ -210,11 +222,12 @@ export function AgendarTela() {
       {passo === 4 && escolha && servico && (
         <Passo eyebrow="Confirme seu horário" titulo="Tudo certo?">
           <div className="cartao-destaque grid gap-5 p-6">
-            <Linha Icone={Scissors} rotulo="Serviço" valor={servico.nome} />
+            <Linha Icone={Scissors} rotulo="Serviços" valor={servicosEscolhidos.map((s) => s.nome).join(" + ")} />
             <Linha Icone={UserRound} rotulo="Barbeiro" valor={escolha.barbeiroNome} />
             <Linha Icone={CalendarCheck} rotulo="Data"
               valor={new Date(escolha.inicio).toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: FUSO })} />
             <Linha Icone={Clock3} rotulo="Horário" valor={hora(escolha.inicio)} />
+            <Linha Icone={Clock3} rotulo="Duração total" valor={`${escolha.duracaoMin} min`} />
             <Linha Icone={Wallet} rotulo="Valor"
               valor={!previa ? reais(escolha.precoCentavos) : previa.peloPlano ? "Incluso no seu plano" : `${reais(previa.precoCentavos)}${previa.nota ? ` (${previa.nota})` : ""}`}
               destaque={!!previa?.peloPlano} />
@@ -224,6 +237,7 @@ export function AgendarTela() {
               <strong className="text-ouro">Regra do plano:</strong> {previa.bloqueio}
             </div>
           )}
+          {adicionais.length > 0 && <p className="mt-4 text-xs text-zinc-500">O pagamento destes serviços será feito na barbearia.</p>}
         </Passo>
       )}
 
@@ -231,12 +245,15 @@ export function AgendarTela() {
         {passo > 1 && !(passo === 2 && remarcarId) && (
           <button className="btn h-12 w-12 shrink-0 p-0" aria-label="Voltar" onClick={voltarPasso}><ArrowLeft size={18} /></button>
         )}
+        {passo === 1 && <button className="btn-primario h-12 flex-1" disabled={!servico || !barbeirosCompativeis.length || escolhidos.length > 10} onClick={() => setServicosConfirmados(true)}>Continuar</button>}
         {passo === 4 && (
-          <button className="btn-primario h-12 flex-1" onClick={confirmar} disabled={salvando}>
-            {salvando ? "Confirmando..." : previa?.bloqueio ? `Confirmar como avulso · ${reais(previa.precoCentavos)}` : remarcarId ? "Confirmar remarcação" : "Confirmar agendamento"}
+          <button className="btn-primario h-12 flex-1" onClick={confirmar} disabled={salvando || !previa}>
+            {salvando ? "Confirmando..." : previa?.bloqueio ? `Confirmar total · ${reais(previa.precoCentavos)}` : remarcarId ? "Confirmar remarcação" : "Confirmar agendamento"}
           </button>
         )}
       </div>
+      {passo === 1 && escolhidos.length > 0 && !barbeirosCompativeis.length && <p className="mt-3 text-sm text-red-700">Nenhum profissional realiza todos esses serviços. Ajuste a seleção.</p>}
+      {passo === 1 && escolhidos.length > 10 && <p className="mt-3 text-sm text-red-700">Selecione até 10 serviços.</p>}
       {passo < 4 && <Link href="/c" className="mt-6 block text-center text-sm text-zinc-500 hover:text-zinc-900">Voltar para meus horários</Link>}
     </div>
   );

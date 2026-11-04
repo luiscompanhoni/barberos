@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { GESTAO, exigirSessao } from "@/lib/auth/sessao";
+import { EQUIPE, GESTAO, exigirSessao } from "@/lib/auth/sessao";
 import { vagasRestantes } from "@/lib/assinaturas/servico";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
@@ -7,7 +7,7 @@ import { corpo } from "@/lib/validacao";
 import { schemaPlano } from "@/lib/assinaturas/schemas";
 
 export const GET = rota(async () => {
-  await exigirSessao();
+  await exigirSessao(EQUIPE);
   const planos = await db.plano.findMany({
     orderBy: [{ ordem: "asc" }, { precoCentavos: "asc" }],
     include: {

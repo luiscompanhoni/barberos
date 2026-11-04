@@ -1,4 +1,5 @@
 import type { Instrumentation } from "next";
+import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 
 /**
  * Erro no servidor: uma linha com o codigo que aparece na tela "Algo deu errado" (digest), para achar no log
@@ -17,6 +18,10 @@ export const onRequestError: Instrumentation.onRequestError = async (err, reques
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+  if (quarentenaRestauracao()) {
+    console.warn("[recuperacao] Quarentena ativa: inicialização automática pausada.");
+    return;
+  }
   (await import("@/lib/agentes/rotina-servidor")).agendarCentralAgentes();
   // Rotina de pagamentos (Pix mensal e cobrancas vencidas) roda tambem em desenvolvimento.
   (await import("@/lib/assinaturas/rotina")).agendarRotina();

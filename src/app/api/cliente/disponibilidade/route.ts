@@ -9,9 +9,11 @@ import { parametros, zData, zId } from "@/lib/validacao";
 
 export const GET = rota(async (req: Request) => {
   await exigirCliente();
-  const q = parametros(req, z.object({ data: zData, servicoId: zId, barbeiroId: zId.optional() }));
+  const q = parametros(req, z.object({ data: zData, servicoId: zId, barbeiroId: zId.optional(), adicionais: z.string().max(409).optional() }));
+  const servicosAdicionais = q.adicionais ? z.array(zId).max(9).parse(q.adicionais.split(",")) : [];
+  if (new Set([q.servicoId, ...servicosAdicionais]).size !== servicosAdicionais.length + 1) return NextResponse.json([], { status: 400 });
   const cfg = await configuracao();
   const hoje = dataLocal(Date.now(), cfg.fuso);
   if (q.data < hoje || q.data > somarDias(hoje, cfg.janelaAgendamentoDias)) return NextResponse.json([]);
-  return NextResponse.json(await horariosDisponiveis({ ...q, paraCliente: true }));
+  return NextResponse.json(await horariosDisponiveis({ ...q, servicosAdicionais, paraCliente: true }));
 });

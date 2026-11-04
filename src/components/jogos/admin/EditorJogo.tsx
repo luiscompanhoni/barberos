@@ -10,6 +10,7 @@ import { ArrowDown, ArrowUp, FlaskConical, Plus, Save, Trash2 } from "lucide-rea
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
 import { ICONES, ROTULO_RARIDADE, type Raridade, type TipoPremio } from "@/lib/jogos/tipos";
 import { IconePremio } from "../kit/IconePremio";
+import { PreviaRoleta } from "./PreviaRoleta";
 import type { JogoPainel, Painel, PremioPainel, Simulacao } from "./tipos";
 
 type Linha = {
@@ -218,6 +219,7 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
           <h2 className="font-semibold">Simulação antes de publicar</h2>
           <button className="btn" onClick={simular} disabled={!somaOk}><FlaskConical size={15} /> Simular 10.000 jogadas</button>
         </div>
+        {jogo.tipo === "ROLETA" && <PreviaRoleta fatias={premios.filter((p) => p.ativo && p.rotulo.trim()).map((p) => ({ id: p.chave, rotulo: p.rotulo.trim(), cor: p.cor, icone: p.icone, tipo: p.tipo, raridade: p.raridade }))} />}
         {sim ? (
           <>
             <div className="overflow-x-auto">

@@ -7,6 +7,10 @@ export const schemaPlano = z.object({
   descricao: z.string().trim().max(500).nullable().optional(),
   precoCentavos: z.number().int().min(100).max(100_000_00),
   ativo: z.boolean().optional(),
+  visivel: z.boolean().optional(),
+  compravel: z.boolean().optional(),
+  etiquetas: z.array(z.string().trim().min(1).max(40)).max(3)
+    .refine(xs => new Set(xs.map(x => x.toLocaleLowerCase("pt-BR"))).size === xs.length, "As etiquetas não podem se repetir.").optional(),
   vagas: z.number().int().min(1).max(100_000).nullable().optional(),
   intervaloMinDias: z.number().int().min(1).max(60).nullable().optional(),
   maxAgendamentosAbertos: z.number().int().min(1).max(10).optional(),

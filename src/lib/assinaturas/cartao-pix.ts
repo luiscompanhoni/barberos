@@ -18,13 +18,35 @@ import { valorComRetencao } from "./retencao-regras";
 
 /** Gera (e salva) a cobranca Pix de um mes da assinatura. */
 export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
-  const a = await db.assinatura.findUniqueOrThrow({ where: { id: assinaturaId }, include: { plano: true } });
-  if (!a.gatewayId || !a.gatewayClienteId) throw new Error("Assinatura sem cadastro no meio de pagamento.");
-  const g = await gatewayPorId(a.gatewayId);
-  if (!g.criarCobrancaPix) throw new Error(`O gateway ${g.nome} não gera Pix avulso.`);
-  const cfg = await configuracao();
-  const cob = await g.criarCobrancaPix({
-    clienteGatewayId: a.gatewayClienteId,
+  const data = new Date(`${vencimento}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(vencimento) || !Number.isFinite(+data) || data.toISOString().slice(0, 10) !== vencimento) throw new ErroNegocio("Vencimento inválido.");
+  const reserva = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${assinaturaId}`}, 0))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal:${assinaturaId}:${vencimento}`}, 0))`;
+    const a = await tx.assinatura.findUniqueOrThrow({ where: { id: assinaturaId }, include: { plano: true } });
+    if (a.status === "CANCELADA" || a.pausadaEm || a.encerraEm) throw new ErroNegocio("Assinatura cancelada, pausada ou em encerramento; confira antes de emitir Pix.", 409, "pix_revisao");
+    if (!a.gatewayId || !a.gatewayClienteId) throw new ErroNegocio("Assinatura sem cadastro no meio de pagamento.");
+    const intento = await tx.emissaoPixMensal.findUnique({ where: { assinaturaId_vencimento: { assinaturaId, vencimento: data } } });
+    if (intento) {
+      if (intento.estado === "CONFIRMADA" && intento.cobrancaId) {
+        const c = await tx.cobranca.findUnique({ where: { id: intento.cobrancaId } });
+        if (c && c.status !== "CANCELADA") return { existente: c };
+      }
+      throw new ErroNegocio("Esta mensalidade já tem uma emissão ou resultado incerto. Confira no gateway antes de emitir outro Pix.", 409, "pix_revisao");
+    }
+    const existente = await tx.cobranca.findFirst({ where: { assinaturaId, vencimento: data, status: { not: "CANCELADA" } } });
+    if (existente) return { existente };
+    const emissao = await tx.emissaoPixMensal.create({ data: { assinaturaId, vencimento: data } });
+    return { a, emissaoId: emissao.id };
+  });
+  if (reserva.existente) return reserva.existente;
+  const { a, emissaoId } = reserva;
+  try {
+    const g = await gatewayPorId(a.gatewayId!);
+    if (!g.criarCobrancaPix) throw new Error(`O gateway ${g.nome} não gera Pix avulso.`);
+    const cfg = await configuracao();
+    const cob = await g.criarCobrancaPix({
+    clienteGatewayId: a.gatewayClienteId!,
     // Desconto de retencao nas mensalidades cobertas.
     valorCentavos: valorComRetencao({
       precoCentavos: a.precoCentavos, vencimento,
@@ -32,20 +54,27 @@ export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
     }),
     vencimento,
     descricao: `${a.plano.nome} - ${cfg.nomeBarbearia}`,
-    referencia: a.gatewayId,
+    referencia: a.gatewayId!,
     // Vale do dia em que e gerado ate o fim da tolerancia de atraso.
     validadeHoras: (cfg.toleranciaAtrasoDias + 4) * 24,
-  });
-  await sincronizarCobranca(cob);
-  return db.cobranca.findUniqueOrThrow({ where: { gatewayId: cob.id } });
+    });
+    await sincronizarCobranca(cob);
+    const c = await db.cobranca.findUniqueOrThrow({ where: { gatewayId: cob.id } });
+    if (c.assinaturaId !== assinaturaId || c.vencimento.getTime() !== data.getTime()) throw new Error("Cobrança vinculada a outra assinatura ou competência.");
+    await db.emissaoPixMensal.update({ where: { id: emissaoId }, data: { estado: "CONFIRMADA", cobrancaId: c.id } });
+    return c;
+  } catch {
+    // Mesmo timeout ou falha ao salvar pode ocorrer após o gateway ter criado o Pix.
+    await db.emissaoPixMensal.updateMany({ where: { id: emissaoId, estado: "EMITINDO" }, data: { estado: "INCERTA" } }).catch(() => {});
+    throw new ErroNegocio("Não foi possível confirmar a emissão do Pix. A equipe deve conferir o gateway antes de uma nova tentativa.", 503, "pix_incerto");
+  }
 }
 
 /** Pix expirado sem pagamento: cancela o antigo e gera outro para o mesmo mes. */
 export async function renovarPixSeExpirado(cobrancaId: string) {
   const c = await db.cobranca.findUniqueOrThrow({ where: { id: cobrancaId } });
   if (c.forma !== "PIX" || c.status === "PAGA" || !c.expiraEm || c.expiraEm.getTime() > Date.now() + 3_600_000) return c;
-  await db.cobranca.update({ where: { id: c.id }, data: { status: "CANCELADA" } });
-  return gerarPixDoMes(c.assinaturaId, c.vencimento.toISOString().slice(0, 10));
+  throw new ErroNegocio("O Pix venceu. A equipe precisa conferir o pagamento no gateway antes de substituir a cobrança.", 409, "pix_revisao");
 }
 
 async function assinaturaPorToken(tokenPublico: string) {
@@ -161,6 +190,8 @@ export async function pagarPlanoComPix(tokenPublico: string) {
     await db.assinatura.update({ where: { id: a.id }, data: { formaPagamento: "PIX", gatewayId } });
     return await gerarPixDoMes(a.id, dataLocal(Date.now(), cfg.fuso));
   } catch (e) {
+    const emissao = await db.emissaoPixMensal.findFirst({ where: { assinaturaId: a.id }, select: { id: true } });
+    if (emissao) throw new ErroNegocio("A emissão do Pix precisa ser conferida pela equipe antes de tentar novamente.", 503, "pix_revisao");
     // Nao gerou o Pix: a assinatura volta a ser como era (o cliente pode tentar o cartao).
     await db.assinatura.update({ where: { id: a.id }, data: { formaPagamento: a.formaPagamento, gatewayId: a.gatewayId } }).catch(() => {});
     console.error("[assinaturas] Pix do checkout:", e);

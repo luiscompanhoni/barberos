@@ -25,7 +25,7 @@ const ABERTOS = ["DISPONIVEL", "RESERVADO"] as const;
  */
 export async function atualizarPremios(filtro: { clienteId?: string } = {}) {
   const agora = new Date();
-  const soltar = await db.premioGanho.findMany({
+  await db.premioGanho.updateMany({
     where: {
       ...filtro, status: "RESERVADO",
       OR: [
@@ -34,11 +34,8 @@ export async function atualizarPremios(filtro: { clienteId?: string } = {}) {
         { agendamento: { inicio: { lt: new Date(+agora - 2 * DIA) } } },
       ],
     },
-    select: { id: true },
+    data: { status: "DISPONIVEL", agendamentoId: null, reservadoEm: null },
   });
-  if (soltar.length) {
-    await db.premioGanho.updateMany({ where: { id: { in: soltar.map((p) => p.id) }, status: "RESERVADO" }, data: { status: "DISPONIVEL", agendamentoId: null, reservadoEm: null } });
-  }
   await db.premioGanho.updateMany({ where: { ...filtro, status: "DISPONIVEL", expiraEm: { lt: agora } }, data: { status: "EXPIRADO" } });
 }
 
@@ -59,6 +56,7 @@ export async function premiosParaReservar(clienteId: string) {
 
 /** Liga o premio ao horario marcado (chamado ao agendar com "usar meu premio"). */
 export async function reservarPremio(tx: Tx, clienteId: string, premioId: string, agendamento: { id: string; inicio: Date }) {
+  await tx.$queryRaw`SELECT 1 FROM premios_ganhos WHERE id = ${premioId} FOR UPDATE`;
   const p = await tx.premioGanho.findUnique({ where: { id: premioId } });
   if (!p || p.clienteId !== clienteId) throw naoEncontrado("Prêmio");
   if (p.status !== "DISPONIVEL") throw new ErroNegocio("Esse prêmio não está disponível para reservar.", 409, "premio_indisponivel");
@@ -180,6 +178,7 @@ export async function desfazerValidacao(s: Sessao, premioId: string) {
 export async function cancelarPremio(s: Sessao, premioId: string, motivo: string) {
   if (motivo.trim().length < 3) throw new ErroNegocio("Escreva o motivo do cancelamento.");
   await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM premios_ganhos WHERE id = ${premioId} FOR UPDATE`;
     const p = await tx.premioGanho.findUnique({ where: { id: premioId } });
     if (!p) throw naoEncontrado("Prêmio");
     if (p.status === "CANCELADO") return;

@@ -29,6 +29,8 @@ export async function precificar(p: {
   fuso: string;
   forcarAvulso?: boolean;
   ignorarAgendamentoId?: string;
+  ignorarAgendamentoIds?: string[];
+  usosExtras?: { id: string; inicio: number; servicoId: string; futuro: boolean }[];
   c?: Cliente;
 }): Promise<Precificacao> {
   const sit = await situacaoDoCliente(p.clienteId);
@@ -51,7 +53,7 @@ export async function precificar(p: {
     where: {
       assinaturaId: a.id,
       status: { not: "CANCELADO" }, // falta conta como uso (evita marcar e nao vir)
-      ...(p.ignorarAgendamentoId ? { id: { not: p.ignorarAgendamentoId } } : {}),
+      ...((p.ignorarAgendamentoId || p.ignorarAgendamentoIds?.length) ? { id: { notIn: [...(p.ignorarAgendamentoId ? [p.ignorarAgendamentoId] : []), ...(p.ignorarAgendamentoIds ?? [])] } } : {}),
     },
     select: { id: true, inicio: true, servicoId: true, status: true },
   });
@@ -62,12 +64,12 @@ export async function precificar(p: {
     barbeiroId: p.barbeiroId,
     inicio: p.inicio,
     diaSemana: diaSemana(dataLocal(p.inicio, p.fuso)),
-    usos: usos.map((u) => ({
+    usos: [...usos.map((u) => ({
       id: u.id,
       inicio: u.inicio.getTime(),
       servicoId: u.servicoId,
       futuro: u.inicio.getTime() > agora && (u.status === "MARCADO" || u.status === "CONFIRMADO"),
-    })),
+    })), ...(p.usosExtras ?? [])],
     cicloInicio: a.cicloInicio?.getTime() ?? null,
   });
 

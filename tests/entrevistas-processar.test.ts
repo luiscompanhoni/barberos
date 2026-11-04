@@ -5,7 +5,7 @@ vi.mock("@/lib/bot/agente", () => ({ executarTurno: m.modelo }));
 vi.mock("@/lib/db", () => ({ db: { entrevistaRecrutamento: { findUnique: m.sessao } } }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: m.cfg }));
 import { receberMensagem } from "@/lib/bot/processar";
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); vi.stubEnv("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "false"); });
 afterEach(() => vi.unstubAllEnvs());
 describe("convites não entram no modelo operacional", () => {
   it("a chave geral do bot impede inclusive entrevista quando desativada", async () => {

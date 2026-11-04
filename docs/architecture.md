@@ -89,6 +89,29 @@ webhooks / rotinas ─────────┘
 - Transações com `db.$transaction` e travas onde há concorrência: `SELECT ... FOR UPDATE` (comanda) e
   `pg_advisory_xact_lock` (jogada por cliente e sorteio por jogo).
 
+## Solicitações de horário e serviços em grupo
+
+- O barbeiro solicita alteração de semana padrão, folga integral ou bloqueio de parte do dia. Existe no máximo
+  uma solicitação pendente por profissional; a aprovação ou recusa cabe a dono/gerente com a permissão
+  `bloquear_agenda`. A decisão e a proposta ficam auditadas. A semana proposta é comparada com o estado
+  original antes da aplicação; se mudou, a gestão recusa o pedido e o profissional solicita novamente.
+- A prévia de conflitos considera atendimentos futuros e exceções no calendário. Uma aprovação com conflito é
+  recusada até a equipe resolvê-lo: a operação não cancela ou transfere clientes automaticamente. Os pedidos
+  pontuais aprovados se tornam bloqueios de agenda. A edição direta do expediente, exceção ou bloqueio pelo
+  barbeiro é recusada pelo servidor mesmo que a permissão antiga estivesse concedida.
+- Confirmação/cancelamento de atendimento pelo cliente, abertura de comanda, status e solicitação de horário
+  compartilham a trava de agenda do barbeiro. Cancelamento de cliente é recusado quando algum serviço do grupo
+  já consta em comanda. A equipe também não cancela um grupo com item de comanda vinculado; é necessário
+  resolver a comanda antes. Serviços adicionais criados pela comanda também verificam bloqueios sob essa trava.
+  Serviços SITE ligados ao principal não podem ser remarcados nem ter o status alterado isoladamente; mudanças
+  do principal não reativam filhos cancelados. A confirmação de fechamento de agenda com serviços em grupo
+  fica bloqueada até existir resolução integral do grupo.
+- Campanhas da equipe preservam a apuração histórica de produtos; campanhas de serviços selecionam os
+  serviços e contam atendimentos concluídos, inclusive cobertos por plano, excluindo comandas canceladas e
+  estornos registrados. Os IDs elegíveis ficam na auditoria do giro. **O giro de campanhas de serviços está
+  bloqueado preventivamente** enquanto a concorrência e a revisão de estornos não forem resolvidas; a
+  apuração não cancela bônus já sorteado nem altera a folha automaticamente.
+
 ## Integrações
 
 - **WhatsApp** (`WHATSAPP_PROVIDER`): `simulador` (nada sai), `cloud` (oficial da Meta; webhook assinado) ou

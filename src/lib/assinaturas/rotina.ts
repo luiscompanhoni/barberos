@@ -19,11 +19,16 @@ import { gerarPixDoMes } from "./cartao-pix";
 import { sincronizarAntecipadosPendentes } from "@/lib/agenda/antecipado";
 import { sincronizarLinksPendentes } from "@/lib/links/servico";
 import { encerrarCancelados, reativarPausas } from "./retencao-rotina";
+import { processarCobrancasAutomaticas } from "./cobranca-automatica-rotina";
+import { recuperarWebhooksPagamento } from "@/lib/pagamentos/webhook-entrada";
+import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 
 const DIAS_ANTES_PIX = 3;
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export async function gerarPixDoProximoMes() {
+  // A publicação pode suspender novas emissões sem interromper sincronização ou webhooks.
+  if (process.env.PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA === "false") return 0;
   const cfg = await configuracao();
   const limite = somarDias(dataLocal(Date.now(), cfg.fuso), DIAS_ANTES_PIX);
   const assinaturas = await db.assinatura.findMany({
@@ -46,11 +51,14 @@ export async function gerarPixDoProximoMes() {
     try {
       const c = await gerarPixDoMes(a.id, venc);
       geradas++;
-      notificarEmSegundoPlano(
-        a.cliente.telefone,
-        `Oi, ${a.cliente.nome.split(" ")[0]}! A mensalidade do ${a.plano.nome} (${reais(c.valorCentavos)}) vence em ${venc.split("-").reverse().join("/")}. ` +
-          `Pix para pagar: ${linkAbsoluto(c.link)} 💈`,
-      );
+      // A emissão e a notificação têm controles separados; aviso legado não é reativado junto com atendimento.
+      if (process.env.COBRANCA_LEGADA_WHATSAPP_ATIVA === "true") {
+        notificarEmSegundoPlano(
+          a.cliente.telefone,
+          `Oi, ${a.cliente.nome.split(" ")[0]}! A mensalidade do ${a.plano.nome} (${reais(c.valorCentavos)}) vence em ${venc.split("-").reverse().join("/")}. ` +
+            `Pix para pagar: ${linkAbsoluto(c.link)} 💈`,
+        );
+      }
     } catch (e) {
       console.error(`[rotina] falha ao gerar Pix da assinatura ${a.id}:`, e);
     }
@@ -94,6 +102,10 @@ export async function sincronizarCelcash() {
 }
 
 export async function rodarRotinaDePagamentos() {
+  if (quarentenaRestauracao()) return { pix: 0, vencidas: 0, celcash: 0, reativadas: 0, encerradas: 0 };
+  await recuperarWebhooksPagamento().catch(() => console.error("[rotina] recuperação de webhooks falhou"));
+  // A fila de cobrança não roda sem flag e data inicial explícitas; o erro não interrompe outras rotinas.
+  await processarCobrancasAutomaticas().catch((e) => console.error("[rotina] cobrança automática:", e instanceof Error ? e.message : "falha"));
   // Cancelamento com retencao: pausas que acabaram e planos no fim do ciclo.
   const reativadas = await reativarPausas().catch((e) => { console.error("[rotina] pausas:", e); return 0; });
   const encerradas = await encerrarCancelados().catch((e) => { console.error("[rotina] encerramentos:", e); return 0; });
@@ -114,6 +126,7 @@ export async function rodarRotinaDePagamentos() {
 
 /** Liga a rotina uma vez por processo (chamado do instrumentation). */
 export function agendarRotina() {
+  if (quarentenaRestauracao()) return;
   const g = globalThis as unknown as { rotinaPagamentos?: boolean };
   if (g.rotinaPagamentos) return;
   g.rotinaPagamentos = true;

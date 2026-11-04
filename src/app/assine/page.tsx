@@ -18,7 +18,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const v = await dadosDaVitrine();
   return {
     title: `Assinatura — ${v.nomeBarbearia}`,
-    description: `Assine a ${v.nomeBarbearia} e corte quantas vezes quiser. Agende pelo WhatsApp ou pelo site.`,
+    description: `Conheça os planos da ${v.nomeBarbearia} e consulte as condições de cada opção.`,
   };
 }
 
@@ -32,18 +32,21 @@ export default async function Assine() {
   const codigo = (await cookies()).get(COOKIE_INDICACAO)?.value;
   const indicador = codigo && v.indicacao.ativa ? await donoDoCodigo(codigo) : null;
   const destaque = planoEmDestaque(v.planos);
-  const maisBarato = v.planos.length ? Math.min(...v.planos.map((p) => p.precoCentavos)) : null;
-  const temIlimitado = v.planos.some((p) => p.servicos.some((s) => s.usosPorCiclo === null));
-  const maiorDesconto = Math.max(0, ...v.planos.map((p) => p.descontoExtrasPct));
+  const disponiveis = v.planos.filter(p => p.compravel);
+  const maisBarato = disponiveis.length ? Math.min(...disponiveis.map((p) => p.precoCentavos)) : null;
+  const temIlimitado = disponiveis.some((p) => p.servicos.some((s) => s.usosPorCiclo === null));
+  const maiorDesconto = Math.max(0, ...disponiveis.map((p) => p.descontoExtrasPct));
 
   const beneficios: { Icone: LucideIcon; titulo: string; texto: string }[] = [
-    temIlimitado
-      ? { Icone: Scissors, titulo: "Corte à vontade", texto: "Uma mensalidade e você corta quantas vezes quiser, respeitando o intervalo do plano." }
-      : { Icone: Scissors, titulo: "Cortes garantidos", texto: "Seus cortes do mês incluídos numa mensalidade só." },
-    { Icone: MessageCircle, titulo: "Agende pelo WhatsApp", texto: "Nosso atendente virtual responde a qualquer hora e marca seu horário em segundos." },
+    !disponiveis.length
+      ? { Icone: Scissors, titulo: "Planos da Black", texto: "Conheça os planos e consulte as condições de adesão." }
+      : temIlimitado
+      ? { Icone: Scissors, titulo: "Serviços sem limite de usos", texto: "Alguns planos incluem serviços sem limite de usos. Confira os serviços e as regras do plano." }
+      : { Icone: Scissors, titulo: "Serviços no plano", texto: "Confira os serviços e a quantidade de usos incluídos em cada plano." },
+    { Icone: MessageCircle, titulo: "Fale pelo WhatsApp", texto: "Converse com nossa equipe para tirar dúvidas e pedir ajuda com seu agendamento." },
     { Icone: Smartphone, titulo: "Ou pelo site", texto: "Escolha serviço, barbeiro e horário na sua área de cliente, sem ligar pra ninguém." },
     { Icone: ShieldCheck, titulo: "Sem fidelidade", texto: "Cancele quando quiser, direto pelo site ou pelo WhatsApp. Sem multa." },
-    { Icone: CreditCard, titulo: "Pagamento automático", texto: "Cartão de crédito recorrente ou Pix todo mês. Você não precisa lembrar de nada." },
+    { Icone: CreditCard, titulo: "Pagamento mensal", texto: "Consulte as formas de pagamento disponíveis em cada plano." },
     maiorDesconto > 0
       ? { Icone: BadgePercent, titulo: "Desconto nos extras", texto: `Até ${maiorDesconto}% de desconto nos serviços que não estão no seu plano.` }
       : { Icone: Crown, titulo: "Prioridade de assinante", texto: "Seus horários pelo plano ficam separados e confirmados na agenda." },
@@ -67,7 +70,7 @@ export default async function Assine() {
             ))}
             <Link href="/c" className="text-[11px] font-bold tracking-wide text-zinc-500 uppercase hover:text-zinc-900">Área do cliente</Link>
           </nav>
-          <a href="#planos" className="btn-primario px-4 py-2 text-[11px] font-bold tracking-[0.3px] uppercase">Assinar</a>
+          <a href="#planos" className="btn-primario px-4 py-2 text-[11px] font-bold tracking-[0.3px] uppercase">Ver planos</a>
         </div>
       </header>
 
@@ -91,16 +94,16 @@ export default async function Assine() {
             )}
             {v.cidade && <p className="eyebrow">{v.cidade}</p>}
             <h1 className="titulo-marca mt-5 text-[3.4rem] leading-[0.94] sm:text-7xl lg:text-[5rem]">
-              {temIlimitado ? "Cortes" : "Seu corte"}
+              Conheça
               <br />
-              <span className="text-ouro">{temIlimitado ? "ilimitados." : "garantido."}</span>
+              <span className="text-ouro">nossos planos.</span>
             </h1>
             <p className="mt-6 max-w-xl text-base leading-7 text-zinc-500 sm:text-lg">
               {maisBarato !== null && <>A partir de <strong className="text-zinc-900">{reais(porDia(maisBarato))}/dia.</strong> </>}
               Cancele quando quiser.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-4">
-              <a href="#planos" className="btn-primario px-6 py-3">Quero ser assinante <ArrowRight size={16} /></a>
+              <a href="#planos" className="btn-primario px-6 py-3">Conhecer planos <ArrowRight size={16} /></a>
               <a href="#como-funciona" className="inline-flex items-center gap-1.5 text-sm font-semibold text-zinc-900 hover:text-ouro">
                 Como funciona <ArrowRight size={15} />
               </a>
@@ -152,9 +155,7 @@ export default async function Assine() {
                 return (
                   <article key={p.id}
                     className={`crm-plan-card relative flex flex-col rounded-2xl border bg-white p-7 ${emDestaque ? "border-ouro shadow-[0_10px_32px_rgba(211,171,69,0.2)] lg:-translate-y-3" : "border-zinc-200"}`}>
-                    {emDestaque && (
-                      <span className="absolute top-0 right-5 -translate-y-1/2 rounded-full bg-ouro px-3 py-1 text-[9px] font-black text-fundo uppercase">Destaque</span>
-                    )}
+                    {(p.etiquetas.length > 0 || emDestaque) && <div className="mb-3 flex flex-wrap gap-1">{(p.etiquetas.length ? p.etiquetas : ["Destaque"]).map(etiqueta => <span key={etiqueta} className="max-w-full break-words rounded-full bg-ouro px-3 py-1 text-[10px] font-black text-fundo uppercase">{etiqueta}</span>)}</div>}
                     <p className="text-sm font-bold">{p.nome}</p>
                     <div className="mt-5 flex items-end gap-2">
                       <span className="text-4xl font-black">{reais(p.precoCentavos)}</span>
@@ -168,12 +169,11 @@ export default async function Assine() {
                         <li key={item} className="flex gap-3 text-sm text-zinc-500"><Check className="mt-0.5 h-4 w-4 shrink-0 text-ouro" />{item}</li>
                       ))}
                     </ul>
-                    {p.vagasRestantes !== null && p.vagasRestantes > 0 && p.vagasRestantes <= 10 && (
+                    {p.compravel && p.vagasRestantes !== null && p.vagasRestantes > 0 && p.vagasRestantes <= 10 && (
                       <p className="mt-6 text-xs font-semibold text-ouro">Últimas {p.vagasRestantes} vagas</p>
                     )}
-                    <Link href={linkAssinar(p.id)} className={`${emDestaque && !esgotado ? "btn-primario" : "btn"} mt-6 w-full py-3`}>
-                      {esgotado ? "Esgotado · entrar na lista de espera" : "Assinar plano"}
-                    </Link>
+                    {!p.compravel ? v.whatsapp ? <a href={`https://wa.me/${v.whatsapp}?text=${encodeURIComponent(`Olá! Quero consultar as condições do plano ${p.nome}.`)}`} target="_blank" rel="noreferrer" className="btn mt-6 w-full py-3">Consultar condições</a> : <p className="mt-6 text-sm">Consulte as condições deste plano com a recepção.</p>
+                      : <Link href={linkAssinar(p.id)} className={`${emDestaque && !esgotado ? "btn-primario" : "btn"} mt-6 w-full py-3`}>{esgotado ? "Esgotado · entrar na lista de espera" : "Assinar plano"}</Link>}
                   </article>
                 );
               })}

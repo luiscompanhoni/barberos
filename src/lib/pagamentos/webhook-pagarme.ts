@@ -39,7 +39,10 @@ export async function processarWebhookPagarme(alvos: NonNullable<ReturnType<type
   const { evento, tipo, cobrancas, pedido, assinaturaCancelada } = alvos;
   // Comanda na maquininha, horario pago antes ou link de pagamento: nao e mensalidade.
   if (pedido && ((await sincronizarPedido(pedido)) || (await sincronizarPedidoOnline(pedido)))) return;
-  for (const id of cobrancas) await processarEventoGateway(`${evento}:${id}`, tipo, id);
+  for (const id of cobrancas) {
+    const r = await processarEventoGateway(`${evento}:${id}`, tipo, id);
+    if (!r.repetido && !r.transicao) throw new Error("Cobrança sem transição comprovada.");
+  }
   if (assinaturaCancelada) {
     // Cancelada na Pagar.me (ex.: tentativas do cartao esgotadas): reflete aqui.
     const a = await db.assinatura.findUnique({ where: { gatewayId: assinaturaCancelada } });

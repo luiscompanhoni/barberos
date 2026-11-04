@@ -15,7 +15,11 @@ export type CobrancaGateway = {
   assinaturaGatewayId: string | null;
   valorCentavos: number;
   vencimento: string; // AAAA-MM-DD
+  /** O vencimento veio do campo do provedor, e não de um fallback local. */
+  vencimentoConfirmado?: boolean;
   status: "PENDENTE" | "PAGA" | "ATRASADA" | "CANCELADA" | "ESTORNADA";
+  /** Somente estados brutos comprovadamente abertos autorizam aviso de cobrança. */
+  abertaConfirmada?: boolean;
   pagaEm: string | null;
   /** Link externo de pagamento (fatura hospedada). null = usar a pagina do BarberOS. */
   link: string | null;

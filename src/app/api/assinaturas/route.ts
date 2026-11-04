@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
-import { assinar } from "@/lib/assinaturas/servico";
+import { assinar, verificarNovaAdesao } from "@/lib/assinaturas/servico";
 import { mascararCpf } from "@/lib/assinaturas/regras";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, instanteLocal } from "@/lib/agenda/tempo";
@@ -78,7 +78,12 @@ export const POST = rota(async (req: Request) => {
   else {
     const tel = normalizarTelefone(b.cliente.telefone);
     if (!tel) throw new ErroNegocio("Telefone inválido.", 400);
-    clienteId = (await db.cliente.upsert({ where: { telefone: tel }, create: { telefone: tel, nome: b.cliente.nome }, update: {} })).id;
+    const existente = await db.cliente.findUnique({ where: { telefone: tel }, select: { id: true } });
+    if (existente) clienteId = existente.id;
+    else {
+      await verificarNovaAdesao(b.planoId, "RECEPCAO");
+      clienteId = (await db.cliente.upsert({ where: { telefone: tel }, create: { telefone: tel, nome: b.cliente.nome }, update: {} })).id;
+    }
   }
   const r = await assinar({ clienteId, planoId: b.planoId, forma: b.forma, cpf: b.cpf, email: b.email || undefined, origem: "RECEPCAO", usuarioId: s.usuarioId });
   if (b.enviarWhatsApp && r.link) {

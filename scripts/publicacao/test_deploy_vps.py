@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from deploy_vps_comum import conferir_migracoes, conferir_pacote, conferir_central_desligada, exigir_migracoes_da_publicacao
+from deploy_vps_comum import CONTROLES_PUBLICACAO, conferir_migracoes, conferir_pacote, conferir_central_desligada, exigir_migracoes_da_publicacao
 from receber_release import receber
 
 
@@ -50,14 +50,31 @@ class DeployTest(unittest.TestCase):
         sql = "\n".join(l for l in (pasta / "migration.sql").read_text(encoding="utf8").splitlines() if not l.startswith("--")).strip()
         self.assertEqual(sql, 'ALTER TABLE "configuracao" ADD COLUMN "agendaExternaAtiva" BOOLEAN NOT NULL DEFAULT false;')
 
+    def test_prioridades_aceita_exatamente_as_migracoes_revisadas(self):
+        revisadas = [
+            "20261104120000_campanha_equipe_servicos", "20261104121000_solicitacoes_horario",
+            "20261104121500_solicitacao_horario_periodo", "20261104123000_reunioes_avisos",
+            "20261104130000_planos_vitrine", "20261104131000_avaliacao_mensal_elegibilidade",
+            "20261104132000_cobranca_automatica_tentativas", "20261104133000_webhook_pagamento_entrada",
+            "20261104134000_webhook_pagamento_sequencia", "20261104135000_emissao_pix_mensal",
+            "20261104140000_optout_contato_antes_cadastro", "20261104141000_webhook_pagamento_ordem",
+        ]
+        exigir_migracoes_da_publicacao(revisadas)
+        for nome in revisadas:
+            exigir_migracoes_da_publicacao([nome])
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao(revisadas + ["20261104142000_nao_revisada"])
+
     def test_conferencia_recusa_execucao_paga_token_meta_ou_interface_ausente(self):
-        seguro = {"AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO": "true"}
+        seguro = dict(CONTROLES_PUBLICACAO)
         def app(env):
             return {"Config": {"Env": [k + "=" + v for k, v in env.items()]}}
         self.assertFalse(conferir_central_desligada(app(seguro))["execucaoAtiva"])
-        for chave, valor in (("AGENTES_HABILITADOS", "false"), ("AGENTES_EXECUCAO_ATIVA", "true"), ("META_ADS_TOKEN", "fixture"), ("RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO", "true"), ("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "false")):
+        for chave, valor in (("AGENTES_HABILITADOS", "false"), ("AGENTES_EXECUCAO_ATIVA", "true"), ("META_ADS_TOKEN", "fixture"), ("RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO", "true"), ("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "false"), ("WHATSAPP_ATENDIMENTO_APOS_PILOTO", "true"), ("WHATSAPP_ATENDIMENTO_IA_PAGA", "true"), ("WHATSAPP_ENVIOS_BLOQUEADOS", "false"), ("PUSH_PROVIDER", "webpush"), ("COBRANCA_LEGADA_WHATSAPP_ATIVA", "true"), ("COBRANCA_AUTOMATICA_WHATSAPP_ATIVA", "true"), ("PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA", "true")):
             with self.assertRaises(RuntimeError):
                 conferir_central_desligada(app({**seguro, chave: valor}))
+            with self.assertRaises(RuntimeError):
+                conferir_central_desligada(app({k: v for k, v in seguro.items() if k != chave}))
 
     def test_crlf_equivalente_sem_mudar_checksum_nem_aceitar_sql_diferente(self):
         with tempfile.TemporaryDirectory() as d:

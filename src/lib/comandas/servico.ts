@@ -13,6 +13,7 @@ import { estornosDaComanda } from "@/lib/estornos/servico";
 import { devolverPremiosDaComanda } from "@/lib/jogos/comanda";
 import { cancelarAdicionalDoItem } from "./adicional";
 import { descricaoServico, erroNoPagamento, resumoComanda, valorCashback } from "./regras";
+import { travarBarbeiro } from "@/lib/agenda/agendamentos";
 
 type Tx = Prisma.TransactionClient;
 
@@ -89,19 +90,24 @@ export async function atendimentosSemComanda(desde: Date) {
  * se o cliente ja tem comanda aberta, o atendimento entra nela (ex.: corte + barba).
  */
 export async function abrirComanda(s: Sessao, a: { clienteId?: string | null; nomeAvulso?: string | null; agendamentoId?: string | null }) {
+  const referencia = a.agendamentoId ? await db.agendamento.findUnique({ where: { id: a.agendamentoId }, select: { barbeiroId: true } }) : null;
+  if (a.agendamentoId && !referencia) throw naoEncontrado("Atendimento");
   // Pagou antes pelo link e o aviso ainda nao chegou: confere agora.
   if (a.agendamentoId) {
     const ant = await db.pagamentoAntecipado.findUnique({ where: { agendamentoId: a.agendamentoId }, select: { id: true, status: true } });
     if (ant?.status === "PENDENTE") await sincronizarAntecipado(ant.id);
   }
   const r = await db.$transaction(async (tx) => {
+    if (referencia) await travarBarbeiro(tx, referencia.barbeiroId);
     let clienteId = a.clienteId ?? null;
     let ag: Prisma.AgendamentoGetPayload<{ include: { servico: true; barbeiro: true; itemComanda: true } }> | null = null;
     if (a.agendamentoId) {
       ag = await tx.agendamento.findUnique({ where: { id: a.agendamentoId }, include: { servico: true, barbeiro: true, itemComanda: true } });
       if (!ag) throw naoEncontrado("Atendimento");
-      if (ag.itemComanda) return { id: ag.itemComanda.comandaId, nova: false };
+      if (ag.barbeiroId !== referencia?.barbeiroId) throw new ErroNegocio("O atendimento mudou. Confira novamente antes de abrir a comanda.", 409);
+      if (ag.adicionalDeId && ag.origem === "SITE") throw new ErroNegocio("Abra a comanda pelo atendimento principal do grupo.", 422, "alteracao_multiplos");
       if (ag.status === "CANCELADO" || ag.status === "FALTOU") throw new ErroNegocio("Esse atendimento foi cancelado ou o cliente faltou.");
+      if (ag.itemComanda) return { id: ag.itemComanda.comandaId, nova: false };
       clienteId = ag.clienteId;
     }
     if (!clienteId && !a.nomeAvulso?.trim()) throw new ErroNegocio("Escolha o cliente ou digite um nome.");
@@ -119,6 +125,12 @@ export async function abrirComanda(s: Sessao, a: { clienteId?: string | null; no
           barbeiroId: ag.barbeiroId,
         },
       });
+      const adicionais = await tx.agendamento.findMany({ where: { adicionalDeId: ag.id, origem: "SITE", status: { not: "CANCELADO" }, itemComanda: null }, include: { servico: true, barbeiro: true } });
+      for (const adicional of adicionais) await tx.itemComanda.create({ data: {
+        comandaId: comanda.id, agendamentoId: adicional.id,
+        descricao: descricaoServico(adicional.servico.nome, adicional.barbeiro.nome, !!adicional.assinaturaId),
+        quantidade: 1, precoUnitCentavos: adicional.precoCentavos, barbeiroId: adicional.barbeiroId,
+      } });
       const antecipado = await tx.pagamentoAntecipado.findUnique({ where: { agendamentoId: ag.id } });
       if (antecipado?.status === "PAGO") await aplicarNaComanda(tx, comanda.id, antecipado);
     }

@@ -6,22 +6,20 @@ import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { exigirPermissao } from "@/lib/auth/permissoes";
 import { validarCadeira } from "./cadeiras";
+import { grupoTemComanda } from "./grupo-comanda";
 import { erroDuracao } from "./encaixes-regras";
 import { exigirGestaoBarbeiro, type Sessao } from "@/lib/auth/sessao";
 import { avisarMudanca } from "@/lib/whatsapp/avisos";
 import { precificar } from "@/lib/assinaturas/agenda";
 import { normalizarTelefone } from "@/lib/telefone";
+import { reservarPremio } from "@/lib/jogos/premios";
 import { carregarDia, configuracao, servicoDoBarbeiro, STATUS_ATIVOS } from "./carregar";
 import { contido, sobrepoe, type Intervalo } from "./disponibilidade";
 import { dataLocal, minParaHhmm, minutosLocal, recusaOutroDia, recusaRetroativo } from "./tempo";
 import { checarTransicaoNaReserva } from "./transicao";
-
 const MIN = 60_000;
-
 export const conflitoHorario = () =>
   new ErroNegocio("Esse horário acabou de ser ocupado. Escolha outro.", 409, "conflito_horario");
-
-/** Violacao da exclusao "agendamentos_sem_sobreposicao" (corrida entre bot, site e recepcao). */
 function ehConflitoNoBanco(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
   return msg.includes("agendamentos_sem_sobreposicao") || msg.includes("23P01");
@@ -29,7 +27,6 @@ function ehConflitoNoBanco(e: unknown): boolean {
 
 type Tx = Prisma.TransactionClient;
 
-/** Serializa alteracoes na agenda de um barbeiro ate o fim da transacao. */
 export async function travarBarbeiro(tx: Tx, barbeiroId: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${barbeiroId}))`;
 }
@@ -74,6 +71,9 @@ export async function validarEncaixe(
 export type NovoAgendamento = {
   barbeiroId: string;
   servicoId: string;
+  servicosAdicionais?: string[];
+  premioId?: string;
+  precoEsperadoCentavos?: number;
   inicio: Date;
   /** Duracao diferente da padrao (so equipe). */
   duracaoMin?: number;
@@ -97,8 +97,12 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
   if (!barbeiro || !barbeiro.ativo) throw naoEncontrado("Barbeiro");
   const sb = await servicoDoBarbeiro(input.barbeiroId, input.servicoId);
   if (!sb) throw new ErroNegocio(`${barbeiro.nome} não faz esse serviço.`);
+  const idsAdicionais = input.servicosAdicionais ?? [];
+  if (idsAdicionais.length > 9 || new Set([input.servicoId, ...idsAdicionais]).size !== idsAdicionais.length + 1) throw new ErroNegocio("Selecione serviços diferentes.");
+  const adicionais = await Promise.all(idsAdicionais.map((id) => servicoDoBarbeiro(input.barbeiroId, id)));
+  if (adicionais.some((a) => !a)) throw new ErroNegocio(`${barbeiro.nome} não realiza todos os serviços escolhidos.`);
 
-  const duracao = equipe && input.duracaoMin !== undefined ? input.duracaoMin : sb.duracaoMin;
+  const duracao = equipe && input.duracaoMin !== undefined ? input.duracaoMin : sb.duracaoMin + adicionais.reduce((s, a) => s + (a?.duracaoMin ?? 0), 0);
   if (equipe && duracao !== sb.duracaoMin) await exigirPermissao(ator, "duracao");
   const erro = erroDuracao(duracao, sb.minimoDuracaoMin);
   if (erro) throw new ErroNegocio(erro);
@@ -124,8 +128,17 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
     const ag = await db.$transaction(async (tx) => {
       if (!equipe) await checarTransicaoNaReserva(tx);
       await validarEncaixe(tx, input.barbeiroId, int, { fuso: cfg.fuso, intervaloEntreClientes: cfg.intervaloEntreClientes });
-      await validarCadeira(tx, cadeiraId, int, undefined, cfg.intervaloEntreClientes);
       const clienteId = await resolverCliente(tx, input.cliente);
+      if (!equipe) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${clienteId}`}))`;
+        const futuros = await tx.agendamento.count({ where: { clienteId, adicionalDeId: null, status: { in: ["MARCADO", "CONFIRMADO"] }, fim: { gt: new Date() } } });
+        if (futuros >= cfg.maxAgendamentosCliente) throw new ErroNegocio("Você atingiu o limite de horários marcados.", 422, "limite_cliente");
+        const choque = await tx.agendamento.findFirst({ where: { clienteId, adicionalDeId: null, status: { in: ["MARCADO", "CONFIRMADO"] }, inicio: { lt: new Date(int.fim) }, fim: { gt: new Date(int.inicio) } } });
+        if (choque) throw new ErroNegocio("Você já tem um horário marcado nesse período.", 409, "choque_cliente");
+      }
+      await validarCadeira(tx, cadeiraId, int, undefined, cfg.intervaloEntreClientes); // Ordem: barbeiro, cliente, cadeira.
+      const sbAtual = await servicoDoBarbeiro(input.barbeiroId, input.servicoId, tx);
+      if (!sbAtual || sbAtual.duracaoMin !== sb.duracaoMin || sbAtual.precoCentavos !== sb.precoCentavos) throw new ErroNegocio("O serviço foi alterado. Consulte o horário e valor novamente.", 409, "servico_alterado");
       const preco = await precificar({
         clienteId, servicoId: input.servicoId, barbeiroId: input.barbeiroId, inicio: int.inicio,
         precoBase: sb.precoCentavos, fuso: cfg.fuso, forcarAvulso: input.forcarAvulso, c: tx,
@@ -147,10 +160,28 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
           criadoPorId: ator?.usuarioId,
         },
       });
+      let inicioAdicional = int.inicio + sb.duracaoMin * MIN;
+      let totalCentavos = preco.precoCentavos;
+      for (let i = 0; i < idsAdicionais.length; i++) {
+        const item = await servicoDoBarbeiro(input.barbeiroId, idsAdicionais[i], tx);
+        if (!item || item.duracaoMin !== adicionais[i]?.duracaoMin) throw conflitoHorario();
+        const precoItem = await precificar({ clienteId, servicoId: idsAdicionais[i], barbeiroId: input.barbeiroId, inicio: inicioAdicional,
+          precoBase: item.precoCentavos, fuso: cfg.fuso, forcarAvulso: input.forcarAvulso, c: tx });
+        totalCentavos += precoItem.precoCentavos;
+        const fimItem = inicioAdicional + item.duracaoMin * MIN;
+        await tx.agendamento.create({ data: { barbeiroId: input.barbeiroId, clienteId, servicoId: idsAdicionais[i],
+          inicio: new Date(inicioAdicional), fim: new Date(fimItem), origem: input.origem, precoCentavos: precoItem.precoCentavos,
+          assinaturaId: precoItem.assinaturaId, adicionalDeId: criado.id, semPreferencia: input.semPreferencia ?? false } });
+        inicioAdicional = fimItem;
+      }
+      if (input.precoEsperadoCentavos !== undefined && input.precoEsperadoCentavos !== totalCentavos) throw new ErroNegocio("O valor mudou. Consulte o horário e confirme novamente.", 409, "preco_alterado");
+      if (input.premioId) await reservarPremio(tx, clienteId, input.premioId, criado);
       await auditar(tx, ator?.usuarioId ?? null, "criar", "agendamento", criado.id, {
         inicio: criado.inicio.toISOString(),
         barbeiroId: criado.barbeiroId,
         origem: criado.origem,
+        servicos: [input.servicoId, ...idsAdicionais],
+        totalCentavos,
         realizado: !!input.realizado,
       });
       return criado;
@@ -189,11 +220,14 @@ export type AlteracaoAgendamento = {
   motivo?: string;
 };
 
-/** Mover (arrastar), mudar duracao (esticar), trocar barbeiro ou servico. So equipe. */
 export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, ator: Sessao) {
   const cfg = await configuracao();
   const atual = await db.agendamento.findUnique({ where: { id } });
   if (!atual) throw naoEncontrado("Agendamento");
+  if (atual.adicionalDeId && atual.origem === "SITE") throw new ErroNegocio("Este serviço pertence a um agendamento em grupo. Altere o horário principal.", 422, "alteracao_multiplos");
+  if (await db.agendamento.count({ where: { adicionalDeId: id, origem: "SITE", status: { not: "CANCELADO" } } })) {
+    throw new ErroNegocio("Este horário tem serviços agendados em conjunto. Cancele e reagende todos os serviços para alterar o horário.", 422, "alteracao_multiplos");
+  }
   exigirGestaoBarbeiro(ator, atual.barbeiroId);
   if (["CANCELADO", "CONCLUIDO"].includes(atual.status)) throw new ErroNegocio("Atendimento concluído ou cancelado não pode ter horário alterado.");
 
@@ -221,6 +255,7 @@ export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, 
       for (const b of [...new Set([atual.barbeiroId, barbeiroId])].sort()) await travarBarbeiro(tx, b);
       const vigente = await tx.agendamento.findUniqueOrThrow({ where: { id } });
       if (+vigente.inicio !== +atual.inicio || +vigente.fim !== +atual.fim || vigente.status !== atual.status || vigente.barbeiroId !== atual.barbeiroId || vigente.cadeiraId !== atual.cadeiraId) throw conflitoHorario();
+      if (vigente.adicionalDeId && vigente.origem === "SITE" || await tx.agendamento.count({ where: { adicionalDeId: id, origem: "SITE", status: { not: "CANCELADO" } } })) throw new ErroNegocio("Este horário tem serviços agendados em conjunto. Cancele e reagende todos os serviços para alterar o horário.", 422, "alteracao_multiplos");
       await validarEncaixe(tx, barbeiroId, { inicio, fim }, {
         fuso: cfg.fuso,
         intervaloEntreClientes: cfg.intervaloEntreClientes,
@@ -272,6 +307,7 @@ export async function alterarStatus(id: string, status: StatusAgendamento, ator:
   const atual = await db.agendamento.findUnique({ where: { id } });
   if (!atual) throw naoEncontrado("Agendamento");
   exigirGestaoBarbeiro(ator, atual.barbeiroId);
+  if (atual.adicionalDeId && atual.origem === "SITE") throw new ErroNegocio("Este serviço pertence a um agendamento em grupo. Altere o atendimento principal.", 422, "alteracao_multiplos");
   if (atual.status === status) return atual;
   // Criado depois de ja ter comecado (lancamento retroativo) e concluido em outro dia: mesma regra do "realizado".
   // Os marcados com antecedencia continuam com baixa normal (pendencia "sem baixa" dos ultimos dias).
@@ -285,13 +321,16 @@ export async function alterarStatus(id: string, status: StatusAgendamento, ator:
       await travarBarbeiro(tx, atual.barbeiroId);
       const vigente = await tx.agendamento.findUniqueOrThrow({ where: { id } });
       if (vigente.status !== atual.status || +vigente.inicio !== +atual.inicio || +vigente.fim !== +atual.fim || vigente.barbeiroId !== atual.barbeiroId) throw conflitoHorario();
+      if (vigente.adicionalDeId && vigente.origem === "SITE") throw new ErroNegocio("Este serviço pertence a um agendamento em grupo. Altere o atendimento principal.", 422, "alteracao_multiplos");
+      if (vigente.status === "CANCELADO" && status !== "CANCELADO" && await tx.agendamento.count({ where: { adicionalDeId: id, origem: "SITE" } })) throw new ErroNegocio("Este grupo foi cancelado. Agende novamente todos os serviços.", 422, "alteracao_multiplos");
+      if (status === "CANCELADO" && await grupoTemComanda(tx, id, { somenteSeGrupo: true, adicionalDeId: vigente.adicionalDeId })) throw new ErroNegocio("Este grupo já tem comanda. Resolva a comanda antes de cancelar o atendimento.", 409, "comanda_existente");
       if ((STATUS_ATIVOS as readonly string[]).includes(status) && !(STATUS_ATIVOS as readonly string[]).includes(atual.status)) {
         await validarEncaixe(tx, atual.barbeiroId, { inicio: +atual.inicio, fim: +atual.fim }, { fuso: cfg.fuso, intervaloEntreClientes: cfg.intervaloEntreClientes, ignorarAgendamentoId: id });
         await validarCadeira(tx, atual.cadeiraId, { inicio: +atual.inicio, fim: +atual.fim }, id, cfg.intervaloEntreClientes);
       }
       const novo = await tx.agendamento.update({ where: { id }, data: { status } });
       // Servico adicional da comanda acompanha o atendimento principal (concluiu, faltou, cancelou...).
-      await tx.agendamento.updateMany({ where: { adicionalDeId: id }, data: { status } });
+      await tx.agendamento.updateMany({ where: { adicionalDeId: id, status: { not: "CANCELADO" } }, data: { status } });
       await auditar(tx, ator.usuarioId, "status", "agendamento", id, { de: atual.status, para: status });
       return novo;
     });

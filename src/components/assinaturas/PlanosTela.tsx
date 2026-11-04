@@ -6,6 +6,7 @@ import { api, reais } from "@/lib/cliente-api";
 
 type PlanoApi = {
   id: string; nome: string; descricao: string | null; precoCentavos: number; ativo: boolean;
+  visivel: boolean; compravel: boolean; etiquetas: string[];
   vagas: number | null; intervaloMinDias: number | null; maxAgendamentosAbertos: number;
   diasSemana: number[]; descontoExtrasPct: number; formasPagamento: string[];
   servicos: { servicoId: string; usosPorCiclo: number | null; servico: { nome: string } }[];
@@ -91,6 +92,9 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
   );
   const [barbeiroIds, setBarbeiroIds] = useState<string[]>(x?.barbeiros.map((b) => b.barbeiroId) ?? []);
   const [ativo, setAtivo] = useState(x?.ativo ?? true);
+  const [visivel, setVisivel] = useState(x?.visivel ?? true);
+  const [compravel, setCompravel] = useState(x?.compravel ?? true);
+  const [etiquetas, setEtiquetas] = useState((x?.etiquetas ?? []).join(", "));
   const [erro, setErro] = useState("");
 
   const alterna = <T,>(lista: T[], v: T) => (lista.includes(v) ? lista.filter((i) => i !== v) : [...lista, v]);
@@ -105,7 +109,8 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
     if (!formas.length) return setErro("Escolha pelo menos uma forma de pagamento.");
     if (!dias.length) return setErro("Escolha pelo menos um dia da semana.");
     const body = {
-      nome: nome.trim(), descricao: descricao.trim() || null, precoCentavos, ativo,
+      nome: nome.trim(), descricao: descricao.trim() || null, precoCentavos, ativo, visivel, compravel,
+      etiquetas: etiquetas.split(",").map(s => s.trim()).filter(Boolean),
       vagas: vagas ? Number(vagas) : null, intervaloMinDias: intervalo ? Number(intervalo) : null,
       maxAgendamentosAbertos: Number(abertos) || 1, diasSemana: dias.length === 7 ? [] : dias,
       descontoExtrasPct: Number(desconto) || 0, formasPagamento: formas,
@@ -128,6 +133,7 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
           <div><label className="rotulo">Preço/mês (R$)</label><input className="campo" inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)} /></div>
         </div>
         <div><label className="rotulo">Descrição (aparece para o cliente)</label><input className="campo" value={descricao} onChange={(e) => setDescricao(e.target.value)} /></div>
+        <div><label className="rotulo" htmlFor="etiquetas-plano">Etiquetas (até 3, separadas por vírgula)</label><input id="etiquetas-plano" className="campo" value={etiquetas} onChange={(e) => setEtiquetas(e.target.value)} placeholder="Preferido da galera" maxLength={122} /></div>
 
         <div>
           <label className="rotulo">Serviços incluídos (usos por mês: vazio = à vontade)</label>
@@ -183,7 +189,10 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
           </div>
         </div>
 
-        <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />Plano à venda</label>
+        <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />Plano ativo</label>
+        <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" checked={visivel} onChange={(e) => setVisivel(e.target.checked)} />Mostrar na vitrine e no app</label>
+        <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" checked={compravel} onChange={(e) => setCompravel(e.target.checked)} />Permitir novas assinaturas</label>
+        <p className="text-xs text-zinc-500">Se visível sem compra, o cliente verá “Consultar condições”. Mudanças não cancelam assinaturas existentes.</p>
         {x && <p className="text-xs text-zinc-500">Mudar o preço vale só para novas assinaturas: quem já assina continua pagando o valor de quando entrou.</p>}
         {erro && <p className="text-red-600">{erro}</p>}
         <div className="flex justify-end gap-2">

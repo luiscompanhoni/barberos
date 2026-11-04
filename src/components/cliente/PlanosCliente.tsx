@@ -11,14 +11,16 @@ type Plano = {
   intervaloMinDias: number | null; diasSemana: number[]; descontoExtrasPct: number;
   formasPagamento: string[]; servicos: { nome: string; usosPorCiclo: number | null }[];
   vagasRestantes: number | null; naListaDeEspera: boolean;
+  etiquetas: string[]; compravel: boolean;
 };
 type Atual = {
   id: string; status: string; valida: boolean; plano: { id: string; nome: string }; precoCentavos: number;
   formaPagamento: string; proximoVencimento: string | null;
+  linkPendente: string | null;
   pausada: boolean; pausadaAte: string | null; valeAte: string | null; desconto: { pct: number; ate: string } | null;
   cobrancaEmAberto: { valorCentavos: number; vencimento: string; status: string; link: string | null } | null;
 } | null;
-type Dados = { atual: Atual; planos: Plano[]; cpfCadastrado: string | null; emailCadastrado: string | null };
+type Dados = { atual: Atual; planos: Plano[]; cpfCadastrado: string | null; emailCadastrado: string | null; whatsappContato: string | null };
 
 const FORMAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão de crédito", BOLETO: "Boleto" };
 const FORMAS_CURTAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão", BOLETO: "Boleto" };
@@ -41,8 +43,8 @@ export function PlanosCliente() {
     api<Dados>("/api/cliente/assinatura")
       .then((r) => {
         setD(r);
-        const p = alvo && (!r.atual || r.atual.status === "PENDENTE") ? r.planos.find((x) => x.id === alvo) : undefined;
-        if (p && p.vagasRestantes !== 0) {
+        const p = alvo && !r.atual ? r.planos.find((x) => x.id === alvo) : undefined;
+        if (p && p.compravel && p.vagasRestantes !== 0) {
           setEscolhido(p);
           setForma(p.formasPagamento.includes("PIX") ? "PIX" : p.formasPagamento[0]);
           setTimeout(() => { document.getElementById(`plano-${p.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }); }, 100);
@@ -121,6 +123,7 @@ export function PlanosCliente() {
               Pagar {reais(atual.cobrancaEmAberto.valorCentavos)} · venc. {dataBr(atual.cobrancaEmAberto.vencimento)}
             </a>
           )}
+          {!atual.cobrancaEmAberto?.link && atual.status === "PENDENTE" && atual.linkPendente && <a className="btn-primario w-full py-3" href={atual.linkPendente}>Continuar pagamento da assinatura</a>}
           {atual.pausada && atual.pausadaAte && (
             <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Plano pausado até {dataBr(atual.pausadaAte)}. Ele volta sozinho e nada é cobrado durante a pausa.</p>
           )}
@@ -136,7 +139,7 @@ export function PlanosCliente() {
         </section>
       )}
 
-      {(!atual || atual.status === "PENDENTE") && (
+      {(
         <section className="space-y-5 pt-2">
           {d.planos.map((p) => {
             const aberto = escolhido?.id === p.id;
@@ -144,9 +147,7 @@ export function PlanosCliente() {
             return (
               <article key={p.id} id={`plano-${p.id}`} style={{ scrollMarginTop: 80 }}
                 className={`relative rounded-2xl border bg-white p-6 ${p.id === destaque || aberto ? "border-ouro shadow-[0_10px_32px_rgba(211,171,69,0.2)]" : "border-zinc-200"}`}>
-                {p.id === destaque && (
-                  <span className="absolute top-0 right-5 -translate-y-1/2 rounded-full bg-ouro px-3 py-1 text-[9px] font-black text-fundo uppercase">Destaque</span>
-                )}
+                {(p.etiquetas.length > 0 || p.id === destaque) && <div className="mb-3 flex flex-wrap gap-1">{(p.etiquetas.length ? p.etiquetas : ["Destaque"]).map(etiqueta => <span key={etiqueta} className="max-w-full break-words rounded-full bg-ouro px-3 py-1 text-[10px] font-black text-fundo uppercase">{etiqueta}</span>)}</div>}
                 <p className="text-sm font-bold">{p.nome}</p>
                 <div className="mt-4 flex items-end gap-2">
                   <span className="text-4xl font-black">{reais(p.precoCentavos)}</span>
@@ -161,7 +162,14 @@ export function PlanosCliente() {
                   ))}
                 </ul>
 
-                {p.vagasRestantes === 0 ? (
+                {!p.compravel ? (
+                  d.whatsappContato ? <a href={`https://wa.me/${d.whatsappContato}?text=${encodeURIComponent(`Olá! Quero consultar as condições do plano ${p.nome}.`)}`} target="_blank" rel="noreferrer" className="btn mt-6 w-full py-2.5">Consultar condições</a>
+                    : <p className="mt-6 rounded-xl bg-zinc-100 p-3 text-sm">Consulte as condições deste plano com a recepção.</p>
+                ) : atual && atual.status === "PENDENTE" ? (
+                  <p className="mt-6 rounded-xl bg-amber-50 p-3 text-sm">Sua assinatura está aguardando pagamento. Use o link acima ou fale com a equipe antes de solicitar uma nova assinatura.</p>
+                ) : atual && atual.status !== "PENDENTE" ? (
+                  <p className="mt-6 rounded-xl bg-zinc-100 p-3 text-sm">Você já possui uma assinatura. Fale com a equipe para alterar seu plano.</p>
+                ) : p.vagasRestantes === 0 ? (
                   p.naListaDeEspera
                     ? <p className="mt-6 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Você está na lista de espera.</p>
                     : <button className="btn mt-6 w-full py-2.5" onClick={() => listaDeEspera(p)}>Esgotado: entrar na lista de espera</button>

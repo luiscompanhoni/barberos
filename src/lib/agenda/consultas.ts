@@ -93,6 +93,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
 export async function horariosDisponiveis(p: {
   data: string;
   servicoId: string;
+  servicosAdicionais?: string[];
   barbeiroId?: string;
   paraCliente: boolean;
   duracaoMin?: number;
@@ -115,8 +116,10 @@ export async function horariosDisponiveis(p: {
   for (const b of barbeiros) {
     const sb = await servicoDoBarbeiro(b.id, p.servicoId);
     if (!sb) continue;
+    const adicionais = await Promise.all((p.servicosAdicionais ?? []).map((id) => servicoDoBarbeiro(b.id, id)));
+    if (adicionais.some((a) => !a)) continue;
     const dia = mapa.get(b.id)!;
-    const duracao = p.paraCliente ? sb.duracaoMin : p.duracaoMin ?? sb.duracaoMin;
+    const duracao = p.paraCliente ? sb.duracaoMin + adicionais.reduce((s, a) => s + (a?.duracaoMin ?? 0), 0) : p.duracaoMin ?? sb.duracaoMin;
     const erro = erroDuracao(duracao, sb.minimoDuracaoMin);
     if (erro) throw new ErroNegocio(erro);
     const cadeiraId = p.paraCliente || p.cadeiraId === undefined ? b.cadeiraId : p.cadeiraId;
@@ -135,7 +138,7 @@ export async function horariosDisponiveis(p: {
       nome: b.nome,
       duracaoMin: duracao,
       minimoDuracaoMin: sb.minimoDuracaoMin,
-      precoCentavos: sb.precoCentavos,
+      precoCentavos: sb.precoCentavos + adicionais.reduce((s, a) => s + (a?.precoCentavos ?? 0), 0),
       horarios: inicios.map((ms) => new Date(ms).toISOString()),
     });
   }

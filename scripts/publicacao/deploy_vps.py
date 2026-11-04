@@ -10,7 +10,7 @@ import signal
 import time
 from pathlib import Path
 
-from deploy_vps_comum import (aguardar_saude, ambiente_container, arquivo_ambiente, backup_verificado,
+from deploy_vps_comum import (CONTROLES_PUBLICACAO, aguardar_saude, ambiente_container, arquivo_ambiente, backup_verificado,
     conferir_https, conferir_migracoes, conferir_pacote, conferir_central_desligada, consultar_banco, container, ensaiar_schema,
     escrever_privado, executar, exigir_migracoes_da_publicacao, migracoes)
 
@@ -43,6 +43,9 @@ def publicar(base, projeto, commit, imagem_esperada):
     app = container(projeto, "app")
     banco = container(projeto, "db")
     backup_anterior = container(projeto, "backup")
+    quarentena = ambiente_container(app).get("BARBEROS_QUARENTENA_RESTAURACAO", "").strip().lower()
+    if quarentena and quarentena != "false":
+        raise RuntimeError("Aplicativo em quarentena de restauração; conclua a reconciliação antes de publicar.")
     if app["Image"] != imagem_esperada or banco["State"].get("Health", {}).get("Status") != "healthy":
         raise RuntimeError("Estado instalado mudou desde o inventário ou banco indisponível.")
     aguardar_saude(projeto, prazo=30)
@@ -104,7 +107,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         override = codigo / "deploy/versao.json"
         escrever_privado(override, json.dumps({"services": {
             "app": {"image": novas["app"], "command": ["node", "server.js"], "environment": {
-                "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO": "true"}},
+                **CONTROLES_PUBLICACAO}},
             "backup": {"image": novas["backup"], "volumes": [str(base / "backups") + ":/backups"]},
             "video-worker": {"image": novas["video-worker"]}}}))
         arquivos = [codigo / "deploy/docker-compose.yml", codigo / "deploy/docker-compose.estudio.producao.yml", override]

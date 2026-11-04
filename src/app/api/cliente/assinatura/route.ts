@@ -16,7 +16,7 @@ export const GET = rota(async () => {
   const [sit, planos, cliente, espera] = await Promise.all([
     situacaoDoCliente(s.clienteId),
     db.plano.findMany({
-      where: { ativo: true },
+      where: { ativo: true, visivel: true },
       orderBy: [{ ordem: "asc" }, { precoCentavos: "asc" }],
       include: { servicos: { include: { servico: { select: { nome: true } } } } },
     }),
@@ -32,6 +32,7 @@ export const GET = rota(async () => {
       precoCentavos: sit.assinatura.precoCentavos,
       formaPagamento: sit.assinatura.formaPagamento,
       proximoVencimento: sit.assinatura.proximoVencimento,
+      linkPendente: sit.assinatura.status === "PENDENTE" && sit.assinatura.tokenPublico ? `/c/assinar/${sit.assinatura.tokenPublico}` : null,
       pausada: sit.pausada,
       pausadaAte: sit.pausada ? sit.assinatura.pausadaAte : null,
       // Cancelado no fim do ciclo: ultimo dia em que o plano vale.
@@ -49,6 +50,7 @@ export const GET = rota(async () => {
     planos: await Promise.all(
       planos.map(async (p) => ({
         id: p.id, nome: p.nome, descricao: p.descricao, precoCentavos: p.precoCentavos,
+        etiquetas: p.etiquetas, compravel: p.compravel,
         intervaloMinDias: p.intervaloMinDias, diasSemana: p.diasSemana, descontoExtrasPct: p.descontoExtrasPct,
         formasPagamento: p.formasPagamento,
         servicos: p.servicos.map((x) => ({ nome: x.servico.nome, usosPorCiclo: x.usosPorCiclo })),
@@ -58,6 +60,7 @@ export const GET = rota(async () => {
     ),
     cpfCadastrado: mascararCpf(cliente.cpf),
     emailCadastrado: cliente.email,
+    whatsappContato: process.env.WHATSAPP_NUMERO_PUBLICO?.replace(/\D/g, "") || null,
     motivosCancelamento: MOTIVOS_CANCELAMENTO,
   });
 });

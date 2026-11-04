@@ -5,7 +5,7 @@ import { Modal } from "@/components/Modal";
 import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
 
-type Plano = { id: string; nome: string; precoCentavos: number; ativo: boolean; formasPagamento: string[]; vagasRestantes: number | null };
+type Plano = { id: string; nome: string; precoCentavos: number; ativo: boolean; compravel: boolean; formasPagamento: string[]; vagasRestantes: number | null };
 type Cliente = { id: string; nome: string; telefone: string };
 const FORMAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão de crédito", BOLETO: "Boleto" };
 
@@ -29,7 +29,8 @@ export function NovaAssinatura(p: { onFechar: () => void; onCriada: () => void }
     api<Plano[]>("/api/planos").then((ps) => {
       const ativos = ps.filter((x) => x.ativo);
       setPlanos(ativos);
-      if (ativos[0]) setPlanoId(ativos[0].id);
+      const disponivel = ativos.find(x => x.compravel && x.vagasRestantes !== 0);
+      if (disponivel) setPlanoId(disponivel.id);
     }).catch((e) => setErro(e.message));
   }, []);
   useEffect(() => {
@@ -43,7 +44,7 @@ export function NovaAssinatura(p: { onFechar: () => void; onCriada: () => void }
   async function vender(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
-    if (!plano) return setErro("Escolha o plano.");
+    if (!plano || !plano.compravel || plano.vagasRestantes === 0) return setErro("Escolha um plano disponível para novas assinaturas.");
     if (!cliente && (nome.trim().length < 2 || telefone.replace(/\D/g, "").length < 10)) return setErro("Escolha um cliente ou informe nome e celular.");
     setSalvando(true);
     try {
@@ -106,8 +107,8 @@ export function NovaAssinatura(p: { onFechar: () => void; onCriada: () => void }
           <label className="rotulo">Plano</label>
           <select className="campo" value={planoId} onChange={(e) => setPlanoId(e.target.value)}>
             {planos.map((x) => (
-              <option key={x.id} value={x.id} disabled={x.vagasRestantes === 0}>
-                {x.nome} · {reais(x.precoCentavos)}/mês{x.vagasRestantes === 0 ? " (lotado)" : x.vagasRestantes !== null ? ` (${x.vagasRestantes} vagas)` : ""}
+              <option key={x.id} value={x.id} disabled={!x.compravel || x.vagasRestantes === 0}>
+                {x.nome} · {reais(x.precoCentavos)}/mês{!x.compravel ? " (consultar condições)" : x.vagasRestantes === 0 ? " (lotado)" : x.vagasRestantes !== null ? ` (${x.vagasRestantes} vagas)` : ""}
               </option>
             ))}
           </select>

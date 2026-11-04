@@ -13,5 +13,5 @@ export default async function Expediente() {
   if (!barbeiros.length) {
     return <p className="cartao text-sm text-zinc-500">Nenhum barbeiro cadastrado ainda.</p>;
   }
-  return <ExpedienteTela barbeiros={barbeiros} inicial={barbeiros[0].id} />;
+  return <ExpedienteTela barbeiros={barbeiros} inicial={barbeiros[0].id} gestao={GESTAO.includes(s.papel)} podeSolicitar={s.papel === "BARBEIRO"} />;
 }

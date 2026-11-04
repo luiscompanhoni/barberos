@@ -10,7 +10,7 @@ const DIAS = [
   [1, "Segunda"], [2, "Terça"], [3, "Quarta"], [4, "Quinta"], [5, "Sexta"], [6, "Sábado"], [0, "Domingo"],
 ] as const;
 
-export function SemanaPadrao(p: { barbeiroId: string; inicial: Linha[]; onSalvo: () => void }) {
+export function SemanaPadrao(p: { barbeiroId: string; inicial: Linha[]; gestao: boolean; podeSolicitar: boolean; onSalvo: () => void }) {
   const [linhas, setLinhas] = useState<Linha[]>(p.inicial);
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState("");
@@ -41,9 +41,14 @@ export function SemanaPadrao(p: { barbeiroId: string; inicial: Linha[]; onSalvo:
   async function salvar() {
     setErro(""); setOk(""); setSalvando(true);
     try {
-      const r = await api<{ afetados: Afetado[] }>(`/api/barbeiros/${p.barbeiroId}/agenda`, { method: "PUT", body: { expediente: linhas } });
-      setAfetados(r.afetados);
-      setOk("Semana salva. O bot e o site já usam os novos horários.");
+      if (p.gestao) {
+        const r = await api<{ afetados: Afetado[] }>(`/api/barbeiros/${p.barbeiroId}/agenda`, { method: "PUT", body: { expediente: linhas } });
+        setAfetados(r.afetados); setOk("Semana salva. O bot e o site já usam os novos horários.");
+      } else {
+        await api(`/api/barbeiros/${p.barbeiroId}/solicitacoes-horario`, { method: "POST", body: { acao: "solicitar", semana: linhas } });
+        setLinhas(p.inicial);
+        setOk("Solicitação enviada para aprovação. Os horários atuais continuam em vigor.");
+      }
       p.onSalvo();
     } catch (e) {
       setErro((e as Error).message);
@@ -89,7 +94,7 @@ export function SemanaPadrao(p: { barbeiroId: string; inicial: Linha[]; onSalvo:
       {erro && <p className="text-sm text-red-600">{erro}</p>}
       {ok && <p className="text-sm text-emerald-700">{ok}</p>}
       <ListaAfetados afetados={afetados} />
-      <button className="btn-primario" onClick={salvar} disabled={salvando}>{salvando ? "Salvando..." : "Salvar semana"}</button>
+      {(p.gestao || p.podeSolicitar) && <button className="btn-primario" onClick={salvar} disabled={salvando}>{salvando ? "Salvando..." : p.gestao ? "Salvar semana" : "Solicitar alteração"}</button>}
     </section>
   );
 }

@@ -2,7 +2,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { lancarBonusNaFolha, pessoaDaFolha, vendasDaCampanha } from "@/lib/campanha-equipe";
 import { proximaCompetencia } from "@/lib/equipe-regras";
 import { db } from "@/lib/db";
-vi.mock("@/lib/db",()=>({db:{comanda:{findMany:vi.fn()}}}));
+vi.mock("@/lib/db",()=>({db:{comanda:{findMany:vi.fn()},agendamento:{findMany:vi.fn()}}}));
 it("bônus entra na folha do primeiro mês ainda aberto, com a pessoa travada", async () => {
   expect(proximaCompetencia("2026-10")).toBe("2026-11");
   expect(proximaCompetencia("2026-12")).toBe("2027-01");
@@ -28,4 +28,17 @@ it("exclui comandas não quitadas e estornadas e rateia desconto",async()=>{
   listar.mockResolvedValue([comanda(30000),comanda(29999),comanda(40000,1000)] as never);
   expect(await vendasDaCampanha(db,{inicio:new Date(0),fim:new Date(),metaQuantidade:10,metaCentavos:30000},"b")).toEqual({quantidade:10,receita:30000,ciclos:1});
   expect(listar.mock.calls[0][0]?.where).toMatchObject({status:"FECHADA",itens:{some:{barbeiroId:"b",produtoId:{not:null}}}});
+});
+it("conta serviços concluídos por atendimento, inclusive sem comanda, e exclui estorno",async()=>{
+  const listarServicos=vi.mocked(db.agendamento.findMany);
+  listarServicos.mockResolvedValue([
+    {id:"a1",itemComanda:null},
+    {id:"a2",itemComanda:{comanda:{status:"FECHADA",pagamentos:[{estornadoCentavos:0}]}}},
+    {id:"a3",itemComanda:{comanda:{status:"FECHADA",pagamentos:[{estornadoCentavos:1}]}}},
+    {id:"a4",itemComanda:{comanda:{status:"CANCELADA",pagamentos:[]}}},
+  ] as never);
+  const c={tipo:"SERVICOS",servicoIds:["s1","s2"],inicio:new Date(0),fim:new Date(),metaQuantidade:2,metaCentavos:0};
+  expect(await vendasDaCampanha(db,c,"b")).toEqual({quantidade:2,receita:0,ciclos:1,atendimentoIds:["a1","a2"]});
+  expect(listarServicos.mock.calls[0][0]?.where).toMatchObject({barbeiroId:"b",status:"CONCLUIDO",servicoId:{in:["s1","s2"]},inicio:{gte:c.inicio,lte:c.fim}});
+  expect(listar).not.toHaveBeenCalled();
 });

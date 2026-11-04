@@ -27,7 +27,7 @@ export async function sincronizarFichas(tx: Tx, clienteId: string, jogo: Jogo, a
     precisa(jogo.jogadasPorAtendimento)
       ? tx.agendamento.findMany({ where: { clienteId, status: "CONCLUIDO", inicio: { gte: desde },
         ...(condicionado ? { NOT: { OR: [{ id: condicionado }, { adicionalDeId: condicionado }] } } : {}),
-      }, select: { id: true, precoCentavos: true, servico: { select: { precoCentavos: true } } } })
+      }, select: { id: true, origem: true, adicionalDeId: true, precoCentavos: true, servico: { select: { precoCentavos: true } } } })
       : [],
     precisa(jogo.jogadasPorIndicacao)
       ? tx.indicacao.findMany({ where: { indicadorId: clienteId, convertidaEm: { gte: desde } }, select: { id: true } })
@@ -41,9 +41,12 @@ export async function sincronizarFichas(tx: Tx, clienteId: string, jogo: Jogo, a
       : null,
   ]);
 
+  const valor = (a: (typeof atendimentos)[number]) => a.precoCentavos || a.servico.precoCentavos;
+  const adicionaisSite = new Map<string, number>();
+  for (const a of atendimentos) if (a.origem === "SITE" && a.adicionalDeId) adicionaisSite.set(a.adicionalDeId, (adicionaisSite.get(a.adicionalDeId) ?? 0) + valor(a));
   const devidas = fichasDevidas(jogo, {
     // Atendimento do plano sai a R$ 0: vale o preco do servico para o valor minimo.
-    atendimentos: atendimentos.map((a) => ({ id: a.id, valorCentavos: a.precoCentavos || a.servico.precoCentavos })),
+    atendimentos: atendimentos.filter((a) => !(a.origem === "SITE" && a.adicionalDeId)).map((a) => ({ id: a.id, valorCentavos: valor(a) + (adicionaisSite.get(a.id) ?? 0) })),
     indicacoes: indicacoes.map((i) => i.id),
     mensalidades: mensalidades.map((c) => c.id),
     nascimento: cliente?.dataNascimento ? cliente.dataNascimento.toISOString().slice(0, 10) : null,

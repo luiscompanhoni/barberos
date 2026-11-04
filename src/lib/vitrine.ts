@@ -30,7 +30,7 @@ export async function dadosDaVitrine() {
   const [cfg, planos, assinantes, expediente] = await Promise.all([
     configuracao(),
     db.plano.findMany({
-      where: { ativo: true },
+      where: { ativo: true, visivel: true },
       orderBy: [{ ordem: "asc" }, { precoCentavos: "asc" }],
       include: { servicos: { include: { servico: { select: { nome: true } } } } },
     }),
@@ -53,6 +53,8 @@ export async function dadosDaVitrine() {
         id: p.id,
         nome: p.nome,
         descricao: p.descricao,
+        etiquetas: p.etiquetas,
+        compravel: p.compravel,
         precoCentavos: p.precoCentavos,
         intervaloMinDias: p.intervaloMinDias,
         diasSemana: p.diasSemana,

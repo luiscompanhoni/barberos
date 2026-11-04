@@ -4,6 +4,7 @@
  * Cada envio grava antes uma linha unica (tipo + chave): nada sai duas vezes.
  */
 import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
+import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { apagarCandidaturasVencidas } from "@/lib/recrutamento/servico";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
@@ -25,10 +26,11 @@ const MAX_REATIVACAO_POR_RODADA = 15;
 
 /** `clienteIds` limita a rodada a esses clientes (usado nos testes). */
 export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
+  const cont = { lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0 };
+  if (quarentenaRestauracao() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return cont;
   const cfg = await configuracao();
   const so = opts.clienteIds ? { clienteId: { in: opts.clienteIds } } : {};
   const comercial = horarioComercial(agora, cfg.fuso);
-  const cont = { lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0 };
 
   if (recursoPiloto()) return cont; // Piloto não dispara campanhas nem rotinas de contato.
 
@@ -162,12 +164,14 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
 }
 
 export function agendarAutomacoes() {
+  if (quarentenaRestauracao()) return;
   const g = globalThis as unknown as { rotinaAutomacoes?: boolean };
   if (g.rotinaAutomacoes) return;
   g.rotinaAutomacoes = true;
   let rodando = false;
   const rodar = async () => {
-    if (rodando) return;
+    // Não consome fila nem marca checklist como enviado durante o bloqueio de mensagens.
+    if (rodando || quarentenaRestauracao() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return;
     rodando = true;
     try {
       const r = await rodarAutomacoes();

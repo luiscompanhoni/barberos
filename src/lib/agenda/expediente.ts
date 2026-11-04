@@ -2,11 +2,11 @@ import { aoCancelarHorario } from "./antecipado";
 import { Prisma, type TipoExcecao } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
-import { ErroNegocio, naoEncontrado } from "@/lib/erros";
+import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { exigirPermissao } from "@/lib/auth/permissoes";
 import { validarCadeira } from "./cadeiras";
-import { exigirGestaoBarbeiro, exigirConfigBarbeiro, type Sessao } from "@/lib/auth/sessao";
+import { exigirGestaoBarbeiro, exigirConfigBarbeiro, GESTAO, type Sessao } from "@/lib/auth/sessao";
 import { avisarMudanca } from "@/lib/whatsapp/avisos";
 import { carregarDia, configuracao, servicoDoBarbeiro, STATUS_ATIVOS } from "./carregar";
 import { contido, sobrepoe, type IntervaloMin } from "./disponibilidade";
@@ -16,7 +16,7 @@ import { conflitoHorario, travarBarbeiro, validarEncaixe } from "./agendamentos"
 const DIAS_VERIFICADOS = 60;
 
 /** Intervalos validos e sem sobreposicao dentro de cada dia. */
-function validarIntervalos(ints: (IntervaloMin & { diaSemana?: number })[]) {
+export function validarIntervalos(ints: (IntervaloMin & { diaSemana?: number })[]) {
   for (const i of ints) {
     if (!Number.isInteger(i.inicioMin) || !Number.isInteger(i.fimMin) || i.inicioMin < 0 || i.fimMin > 1440 || i.fimMin <= i.inicioMin) {
       throw new ErroNegocio("Horário de expediente inválido.");
@@ -84,8 +84,10 @@ export async function salvarExpediente(
 ) {
   exigirConfigBarbeiro(ator, barbeiroId);
   await exigirPermissao(ator, "bloquear_agenda");
+  if (!GESTAO.includes(ator.papel)) throw proibido();
   validarIntervalos(intervalos);
   await db.$transaction(async (tx) => {
+    await travarBarbeiro(tx, barbeiroId);
     await tx.expedientePadrao.deleteMany({ where: { barbeiroId } });
     await tx.expedientePadrao.createMany({ data: intervalos.map((i) => ({ ...i, barbeiroId })) });
     await auditar(tx, ator.usuarioId, "expediente", "barbeiro", barbeiroId, intervalos);
@@ -101,6 +103,7 @@ export async function salvarExcecao(
 ) {
   exigirConfigBarbeiro(ator, barbeiroId);
   await exigirPermissao(ator, "bloquear_agenda");
+  if (!GESTAO.includes(ator.papel)) throw proibido();
   const intervalos = e.tipo === "HORARIO_ESPECIAL" ? (e.intervalos ?? []) : [];
   if (e.tipo === "HORARIO_ESPECIAL") {
     if (!intervalos.length) throw new ErroNegocio("Informe o horário desse dia.");
@@ -109,6 +112,7 @@ export async function salvarExcecao(
   const data = dataParaColuna(e.data);
   const valorIntervalos = e.tipo === "HORARIO_ESPECIAL" ? (intervalos as Prisma.InputJsonValue) : Prisma.DbNull;
   await db.$transaction(async (tx) => {
+    await travarBarbeiro(tx, barbeiroId);
     const reg = await tx.excecaoAgenda.upsert({
       where: { barbeiroId_data: { barbeiroId, data } },
       create: { barbeiroId, data, tipo: e.tipo, intervalos: valorIntervalos, motivo: e.motivo },
@@ -123,7 +127,9 @@ export async function salvarExcecao(
 export async function removerExcecao(barbeiroId: string, data: string, ator: Sessao) {
   exigirConfigBarbeiro(ator, barbeiroId);
   await exigirPermissao(ator, "bloquear_agenda");
+  if (!GESTAO.includes(ator.papel)) throw proibido();
   await db.$transaction(async (tx) => {
+    await travarBarbeiro(tx, barbeiroId);
     await tx.excecaoAgenda.deleteMany({ where: { barbeiroId, data: dataParaColuna(data) } });
     await auditar(tx, ator.usuarioId, "remover_excecao", "barbeiro", barbeiroId, { data });
   });
@@ -134,6 +140,12 @@ export async function removerExcecao(barbeiroId: string, data: string, ator: Ses
 export type Resolucao =
   | { agendamentoId: string; acao: "cancelar" }
   | { agendamentoId: string; acao: "transferir"; barbeiroDestinoId: string };
+
+export async function validarGruposNoFechamento(tx: Prisma.TransactionClient, vigentes: { id: string; adicionalDeId: string | null }[]) {
+  const ids = vigentes.map(a => a.id);
+  const temAdicionais = vigentes.some(a => a.adicionalDeId) || (ids.length > 0 && await tx.agendamento.count({ where: { adicionalDeId: { in: ids }, status: { not: "CANCELADO" } } }) > 0);
+  if (temAdicionais) throw new ErroNegocio("Este período contém agendamento com serviços adicionais. Resolva o grupo completo antes de fechar a agenda; nenhum atendimento foi alterado.", 409, "grupo_nao_suportado");
+}
 
 /**
  * Fecha a agenda num periodo. Sem `confirmar`, so devolve os clientes afetados e
@@ -147,6 +159,7 @@ export async function fecharAgenda(
 ) {
   exigirGestaoBarbeiro(ator, barbeiroId);
   await exigirPermissao(ator, "bloquear_agenda");
+  if (ator.papel === "BARBEIRO") throw proibido();
   if (p.fim <= p.inicio) throw new ErroNegocio("O fim precisa ser depois do início.");
   const cfg = await configuracao();
 
@@ -200,6 +213,7 @@ export async function fecharAgenda(
       }
       const vigentes = await tx.agendamento.findMany({ where: { barbeiroId, status: { in: [...STATUS_ATIVOS].filter(s => s !== "CONCLUIDO") }, inicio: { lt: p.fim }, fim: { gt: p.inicio } } });
       if (vigentes.length !== afetados.length || vigentes.some(a => !afetados.some(b => b.id === a.id && +b.inicio === +a.inicio && +b.fim === +a.fim && b.status === a.status))) throw new ErroNegocio("A agenda mudou. Confira os atendimentos afetados novamente.", 409);
+      await validarGruposNoFechamento(tx, vigentes);
       for (const a of afetados) {
         const r = res.get(a.id)!;
         if (r.acao === "cancelar") {
@@ -250,6 +264,7 @@ export async function reabrirAgenda(bloqueioId: string, ator: Sessao) {
   if (!b) throw naoEncontrado("Bloqueio");
   exigirGestaoBarbeiro(ator, b.barbeiroId);
   await exigirPermissao(ator, "bloquear_agenda");
+  if (ator.papel === "BARBEIRO") throw proibido();
   await db.$transaction(async (tx) => {
     await tx.bloqueio.delete({ where: { id: bloqueioId } });
     await auditar(tx, ator.usuarioId, "reabrir_agenda", "bloqueio", bloqueioId);

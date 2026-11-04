@@ -1,6 +1,7 @@
 // Teste de integracao do ciclo da assinatura (gateway simulado) contra o banco de DESENVOLVIMENTO.
 // Cria e apaga os proprios dados. Rodar: npm run teste:assinaturas
 process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ||= "89160161"; process.env.COBRANCA_CIDADE ||= "Rio do Sul"; process.env.COBRANCA_UF ||= "SC";
+delete process.env.COBRANCA_LEGADA_WHATSAPP_ATIVA;
 import { db } from "@/lib/db";
 import { assinar, cancelar, situacaoDoCliente, entrarNaListaDeEspera } from "@/lib/assinaturas/servico";
 import { cobrancaEmAberto, processarEventoGateway } from "@/lib/assinaturas/cobrancas";
@@ -97,13 +98,13 @@ async function main() {
   await processarEventoGateway(`t_${prox.id}_atraso`, "PAYMENT_OVERDUE", prox.id);
   sit = await situacaoDoCliente(ca.id);
   ok(sit?.assinatura.status === "ATRASADA" && sit.valida === true, "vencida ontem: ATRASADA mas ainda vale (tolerância 3 dias)");
-  // O aviso sai em segundo plano: espera ate 3 s.
+  // O aviso legado de cobrança fica desativado até existir envio seguro.
   let aviso = null;
   for (let i = 0; i < 30 && !aviso; i++) {
     aviso = await db.mensagem.findFirst({ where: { conversa: { telefone: A }, texto: { contains: "ainda não foi paga" } } });
     if (!aviso) await new Promise((r) => setTimeout(r, 100));
   }
-  ok(!!aviso, "cliente avisado no WhatsApp com o link");
+  ok(!aviso, "aviso automático de cobrança permanece desativado por padrão");
 
   // 9. Cancelar: horario futuro vira avulso
   await cancelar(sit!.assinatura.id, "Ficou caro", null);

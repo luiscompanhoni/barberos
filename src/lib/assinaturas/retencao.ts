@@ -13,7 +13,6 @@ import { gatewayPorId } from "@/lib/pagamentos/gateway";
 import { adiarCobranca, aplicarDesconto, capacidades, ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { formatarTelefone } from "@/lib/telefone";
 import { cancelar } from "./servico";
-import { gerarPixDoMes } from "./cartao-pix";
 import {
   CONFIG_PADRAO, DIAS_ENTRE_DESCONTOS, DIAS_ENTRE_PAUSAS, ROTULO_MOTIVO, estaPausada, fimDoAcesso, ofertaPara,
   ultimoDia, ultimoVencimentoComDesconto, valorComRetencao, type ConfigRetencao, type Motivo, type Oferta,
@@ -104,21 +103,28 @@ export async function aceitarDesconto(p: Pedido) {
   const o = exigirOferta(c.oferta, "DESCONTO");
   const a = c.a;
   const ate = ultimoVencimentoComDesconto(iso(a.proximoVencimento)!, o.meses);
-  try {
-    await aplicarDesconto(a.gatewayId!, o.pct, o.meses);
-  } catch (e) {
-    console.error("[retencao] desconto no gateway:", e);
-    throw new ErroNegocio("Não foi possível aplicar o desconto agora. Tente de novo em instantes.", 502, "gateway");
-  }
-  await db.assinatura.update({ where: { id: a.id }, data: { descontoRetencaoPct: o.pct, descontoRetencaoAte: coluna(ate) } });
-  // Pix do proximo mes ja gerado (sem pagar): gera de novo com o desconto.
-  const pixAberto = await db.cobranca.findMany({
-    where: { assinaturaId: a.id, status: "PENDENTE", forma: "PIX", vencimento: { lte: coluna(ate) }, assinatura: { gatewayId: { startsWith: "pixrec_" } } },
-  });
-  for (const cob of pixAberto) {
-    await (await gatewayPorId(cob.gatewayId)).cancelarCobranca?.(cob.gatewayId).catch((e) => console.error("[retencao] cancelar Pix", e));
-    await db.cobranca.update({ where: { id: cob.id }, data: { status: "CANCELADA" } });
-    await gerarPixDoMes(a.id, iso(cob.vencimento)!);
+  // A substituição de um Pix existente exige conciliação com o gateway antes
+  // de cancelar a fatura ou alterar o desconto, para não criar duas cobranças.
+  if (a.gatewayId?.startsWith("pixrec_")) {
+    await db.$transaction(async (tx) => {
+      const venc = iso(a.proximoVencimento)!;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${a.id}`}, 0))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal:${a.id}:${venc}`}, 0))`;
+      const atual = await tx.assinatura.findUniqueOrThrow({ where: { id: a.id } });
+      if (iso(atual.proximoVencimento) !== venc || atual.status !== "ATIVA" || atual.pausadaEm || atual.encerraEm) throw new ErroNegocio("A assinatura mudou. Atualize antes de aplicar desconto.", 409, "assinatura_alterada");
+      const pixAberto = await tx.cobranca.findFirst({ where: { assinaturaId: a.id, status: { in: ["PENDENTE", "ATRASADA"] }, forma: "PIX", vencimento: { lte: coluna(ate) } } });
+      const emissao = await tx.emissaoPixMensal.findFirst({ where: { assinaturaId: a.id, vencimento: { lte: coluna(ate) }, estado: { in: ["EMITINDO", "INCERTA"] } } });
+      if (pixAberto || emissao) throw new ErroNegocio("Há Pix em aberto ou em verificação. A equipe precisa conferir a cobrança antes de aplicar desconto.", 409, "pix_revisao");
+      await tx.assinatura.update({ where: { id: a.id }, data: { descontoRetencaoPct: o.pct, descontoRetencaoAte: coluna(ate) } });
+    });
+  } else {
+    try {
+      await aplicarDesconto(a.gatewayId!, o.pct, o.meses);
+    } catch (e) {
+      console.error("[retencao] desconto no gateway:", e);
+      throw new ErroNegocio("Não foi possível aplicar o desconto agora. Tente de novo em instantes.", 502, "gateway");
+    }
+    await db.assinatura.update({ where: { id: a.id }, data: { descontoRetencaoPct: o.pct, descontoRetencaoAte: coluna(ate) } });
   }
   const novo = valorComRetencao({ precoCentavos: a.precoCentavos, vencimento: iso(a.proximoVencimento)!, pct: o.pct, ate });
   await registrar(p, "DESCONTO", { pct: o.pct, meses: o.meses, ate });
@@ -146,28 +152,35 @@ export async function pausar(p: Pedido & { dias: number }) {
   }
   const abertas = await db.cobranca.findMany({ where: { assinaturaId: a.id, status: { in: ["PENDENTE", "ATRASADA"] } } });
   const pixLocal = a.gatewayId?.startsWith("pixrec_");
-  if (abertas.some((x) => x.status === "ATRASADA" || !pixLocal)) {
+  if (abertas.length) {
     throw new ErroNegocio("Há uma mensalidade em aberto. Pague antes de pausar ou fale com a barbearia.", 409, "em_aberto");
   }
   const novoVenc = somarDias(iso(a.proximoVencimento)!, p.dias);
-  try {
-    await adiarCobranca(a.gatewayId!, novoVenc);
-  } catch (e) {
-    console.error("[retencao] pausa no gateway:", e);
-    throw new ErroNegocio("Não foi possível pausar agora. Tente de novo em instantes.", 502, "gateway");
-  }
-  // Pix do proximo mes ja gerado: cancela (a rotina gera de novo na data nova).
-  for (const cob of abertas) {
-    await (await gatewayPorId(cob.gatewayId)).cancelarCobranca?.(cob.gatewayId).catch((e) => console.error("[retencao] cancelar Pix", e));
-    await db.cobranca.update({ where: { id: cob.id }, data: { status: "CANCELADA" } });
-  }
-  await db.assinatura.update({
-    where: { id: a.id },
-    data: {
+  const dadosPausa = {
       pausadaEm: new Date(), pausadaAte: coluna(volta), proximoVencimento: coluna(novoVenc),
       ...(a.descontoRetencaoAte ? { descontoRetencaoAte: coluna(somarDias(iso(a.descontoRetencaoAte)!, p.dias)) } : {}),
-    },
-  });
+  };
+  if (pixLocal) {
+    await db.$transaction(async (tx) => {
+      const venc = iso(a.proximoVencimento)!;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${a.id}`}, 0))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal:${a.id}:${venc}`}, 0))`;
+      const atual = await tx.assinatura.findUniqueOrThrow({ where: { id: a.id } });
+      if (iso(atual.proximoVencimento) !== venc || atual.status !== "ATIVA" || atual.pausadaEm || atual.encerraEm) throw new ErroNegocio("A assinatura mudou. Atualize antes de pausar.", 409, "assinatura_alterada");
+      const aberto = await tx.cobranca.findFirst({ where: { assinaturaId: a.id, status: { in: ["PENDENTE", "ATRASADA"] } } });
+      const emissao = await tx.emissaoPixMensal.findFirst({ where: { assinaturaId: a.id, estado: { in: ["EMITINDO", "INCERTA"] } } });
+      if (aberto || emissao) throw new ErroNegocio("Há Pix em aberto ou em verificação. A equipe precisa conferir antes da pausa.", 409, "pix_revisao");
+      await tx.assinatura.update({ where: { id: a.id }, data: dadosPausa });
+    });
+  } else {
+    try {
+      await adiarCobranca(a.gatewayId!, novoVenc);
+    } catch (e) {
+      console.error("[retencao] pausa no gateway:", e);
+      throw new ErroNegocio("Não foi possível pausar agora. Tente de novo em instantes.", 502, "gateway");
+    }
+    await db.assinatura.update({ where: { id: a.id }, data: dadosPausa });
+  }
   await registrar(p, "PAUSA", { dias: p.dias, volta, proximoVencimento: novoVenc });
   aoCliente(p, a.cliente.telefone,
     `Oi, ${primeiroNome(a.cliente.nome)}! Seu ${a.plano.nome} está pausado por ${p.dias} dias ⏸️ Ele volta sozinho em ${dataBr(volta)} ` +
@@ -200,6 +213,19 @@ export async function cancelarPeloCliente(p: Pedido) {
   const motivo = textoMotivo(p);
   if (!c.fim) {
     await cancelar(a.id, motivo, p.usuarioId ?? null, { avisar: false, semGateway: cashbarber });
+  } else if (a.gatewayId?.startsWith("pixrec_")) {
+    // A recorrência Pix é local. Não cancelar fatura no banco sem confirmação
+    // do gateway nem avançar enquanto uma emissão está em resultado incerto.
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${a.id}`}, 0))`;
+      const atual = await tx.assinatura.findUniqueOrThrow({ where: { id: a.id } });
+      if (atual.status !== "ATIVA" || atual.encerraEm || iso(atual.proximoVencimento) !== iso(a.proximoVencimento)) throw new ErroNegocio("A assinatura mudou. Atualize antes de cancelar.", 409, "assinatura_alterada");
+      const aberto = await tx.cobranca.findFirst({ where: { assinaturaId: a.id, forma: "PIX", status: { in: ["PENDENTE", "ATRASADA"] } } });
+      const emissao = await tx.emissaoPixMensal.findFirst({ where: { assinaturaId: a.id, estado: { in: ["EMITINDO", "INCERTA"] } } });
+      if (aberto || emissao) throw new ErroNegocio("Há Pix em aberto ou em verificação. A equipe precisa conferir no gateway antes de cancelar.", 409, "pix_revisao");
+      await tx.assinatura.update({ where: { id: a.id }, data: { encerraEm: coluna(c.fim!), motivoCancelamento: motivo } });
+      await auditar(tx, p.usuarioId ?? null, "agendar_cancelamento", "assinatura", a.id, { motivo, encerraEm: c.fim });
+    });
   } else {
     if (a.gatewayId && !cashbarber) {
       try {

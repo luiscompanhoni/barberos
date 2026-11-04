@@ -19,6 +19,17 @@ import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 /** Assinaturas que ocupam vaga: ativas, atrasadas e pendentes recentes (link ainda valendo). */
 const PENDENTE_SEGURA_VAGA_MS = 3 * 86_400_000;
 
+function exigirVenda(plano: Pick<Plano, "ativo" | "visivel" | "compravel"> | null, origem?: OrigemAgendamento) {
+  if (!plano || !plano.ativo || ((origem === "SITE" || origem === "BOT") && !plano.visivel)) throw naoEncontrado("Plano");
+  if (!plano.compravel) throw new ErroNegocio("Este plano está disponível apenas para consulta. Fale com a equipe para conhecer as condições.", 409, "plano_consulta");
+}
+
+/** Verificação inicial, antes de cadastrar um novo cliente; a transação revalida sob trava. */
+export async function verificarNovaAdesao(planoId: string, origem: OrigemAgendamento) {
+  const plano = await db.plano.findUnique({ where: { id: planoId } });
+  exigirVenda(plano, origem);
+}
+
 export async function vagasRestantes(plano: Pick<Plano, "id" | "vagas">) {
   if (plano.vagas === null) return null;
   const ocupadas = await db.assinatura.count({
@@ -84,6 +95,9 @@ export async function assinar(p: {
 
   const atual = await situacaoDoCliente(cliente.id);
   if (atual) {
+    if (atual.assinatura.status === "PENDENTE" && await db.emissaoPixMensal.findFirst({ where: { assinaturaId: atual.assinatura.id, estado: { in: ["EMITINDO", "INCERTA"] } }, select: { id: true } })) {
+      throw new ErroNegocio("A emissão do Pix precisa ser conferida pela equipe antes de tentar novamente.", 409, "pix_revisao");
+    }
     const linkPendente =
       atual.cobrancaEmAberto?.link ?? (atual.assinatura.tokenPublico ? linkAbsoluto(`/c/assinar/${atual.assinatura.tokenPublico}`) : null);
     if (atual.assinatura.status === "PENDENTE" && atual.assinatura.planoId === plano.id && atual.assinatura.formaPagamento === p.forma && linkPendente) {
@@ -92,9 +106,12 @@ export async function assinar(p: {
     if (atual.assinatura.status !== "PENDENTE") {
       throw new ErroNegocio(`Esse cliente já tem o ${atual.assinatura.plano.nome} (${atual.assinatura.status.toLowerCase()}).`, 409, "ja_assinante");
     }
-    // Pendente de outro plano: troca (cancela a antiga que nunca foi paga).
-    await cancelar(atual.assinatura.id, "Trocou de plano antes de pagar", p.usuarioId ?? null, { avisar: false });
+    // Não é seguro cancelar no gateway antes de garantir a nova adesão. A equipe
+    // deve resolver a pendência; a troca automática exige reconciliação entre gateways.
+    throw new ErroNegocio("Existe uma assinatura pendente. Conclua o pagamento ou fale com a equipe antes de solicitar uma nova assinatura.", 409, "assinatura_pendente");
   }
+
+  exigirVenda(plano, p.origem);
 
   const vagas = await vagasRestantes(plano);
   if (vagas !== null && vagas <= 0) {
@@ -108,15 +125,33 @@ export async function assinar(p: {
   }
   const cpf = (p.cpf ?? cliente.cpf ?? "").replace(/\D/g, "");
   if (!cpfValido(cpf)) throw new ErroNegocio("Para assinar precisamos de um CPF válido (exigência do meio de pagamento).", 422, "cpf");
-  if (cpf !== cliente.cpf || (email && email !== cliente.email)) {
-    await db.cliente.update({ where: { id: cliente.id }, data: { cpf, ...(email ? { email } : {}) } });
-  }
-
-  const assinatura = await db.assinatura.create({
-    data: {
+  const assinatura = await db.$transaction(async (tx) => {
+    // Evita duas adesões concorrentes do mesmo cliente, mesmo em planos diferentes.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`assinatura-cliente:${cliente.id}`}, 0))`;
+    // O cadastro de plano também obtém este lock ao alterar as condições de venda.
+    await tx.$queryRaw`SELECT id FROM planos WHERE id = ${plano.id} FOR UPDATE`;
+    const corrente = await tx.plano.findUnique({ where: { id: plano.id } });
+    exigirVenda(corrente, p.origem);
+    if (!corrente || corrente.precoCentavos !== plano.precoCentavos || !corrente.formasPagamento.includes(p.forma)) {
+      throw new ErroNegocio("As condições do plano mudaram. Atualize antes de continuar.", 409, "plano_alterado");
+    }
+    if (await tx.assinatura.findFirst({ where: { clienteId: cliente.id, status: { not: "CANCELADA" } }, select: { id: true } })) {
+      throw new ErroNegocio("Já existe uma assinatura para este cliente. Atualize a tela e consulte a equipe antes de continuar.", 409, "assinatura_existente");
+    }
+    if (corrente.vagas !== null) {
+      const ocupadas = await tx.assinatura.count({ where: { planoId: corrente.id, OR: [
+        { status: { in: ["ATIVA", "ATRASADA"] } },
+        { status: "PENDENTE", criadaEm: { gt: new Date(Date.now() - PENDENTE_SEGURA_VAGA_MS) } },
+      ] } });
+      if (ocupadas >= corrente.vagas) throw new ErroNegocio(`As vagas do ${corrente.nome} estão esgotadas no momento.`, 409, "sem_vagas");
+    }
+    if (cpf !== cliente.cpf || (email && email !== cliente.email)) {
+      await tx.cliente.update({ where: { id: cliente.id }, data: { cpf, ...(email ? { email } : {}) } });
+    }
+    return tx.assinatura.create({ data: {
       clienteId: cliente.id, planoId: plano.id, formaPagamento: p.forma, precoCentavos: plano.precoCentavos,
       origem: p.origem, tokenPublico: novoTokenPublico(),
-    },
+    } });
   });
 
   let linkCartao: string | null = null;
@@ -150,6 +185,8 @@ export async function assinar(p: {
       else await sincronizarAssinatura(assinatura.id);
     }
   } catch (e) {
+    const emissao = await db.emissaoPixMensal.findFirst({ where: { assinaturaId: assinatura.id }, select: { id: true } });
+    if (emissao) throw new ErroNegocio("A emissão do Pix precisa ser conferida pela equipe antes de tentar novamente.", 503, "pix_revisao");
     await db.assinatura.delete({ where: { id: assinatura.id } });
     console.error("[assinaturas] falha no gateway:", e);
     throw new ErroNegocio("Não foi possível gerar a cobrança agora. Tente de novo em instantes.", 502, "gateway");
@@ -189,6 +226,12 @@ export async function cancelar(
     where: { assinaturaId: a.id, inicio: { gt: new Date() }, status: { in: ["MARCADO", "CONFIRMADO"] } },
   });
   await db.$transaction(async (tx) => {
+    if (a.gatewayId?.startsWith("pixrec_")) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${a.id}`}, 0))`;
+      const aberto = await tx.cobranca.findFirst({ where: { assinaturaId: a.id, forma: "PIX", status: { in: ["PENDENTE", "ATRASADA"] } } });
+      const emissao = await tx.emissaoPixMensal.findFirst({ where: { assinaturaId: a.id, estado: { in: ["EMITINDO", "INCERTA"] } } });
+      if (aberto || emissao) throw new ErroNegocio("Há Pix em aberto ou em verificação. A equipe precisa conferir no gateway antes de cancelar.", 409, "pix_revisao");
+    }
     await tx.assinatura.update({ where: { id: a.id }, data: { status: "CANCELADA", canceladaEm: new Date(), motivoCancelamento: motivo } });
     await tx.cobranca.updateMany({ where: { assinaturaId: a.id, status: { in: ["PENDENTE", "ATRASADA"] } }, data: { status: "CANCELADA" } });
     for (const ag of futuros) {
@@ -214,6 +257,7 @@ export async function cancelar(
 /** Vaga abriu: avisa o primeiro da fila que ainda nao foi avisado. */
 async function avisarListaEspera(planoId: string) {
   const plano = await db.plano.findUniqueOrThrow({ where: { id: planoId } });
+  if (!plano.ativo || !plano.visivel || !plano.compravel) return;
   if ((await vagasRestantes(plano)) === 0) return;
   const primeiro = await db.listaEsperaPlano.findFirst({
     where: { planoId, avisadoEm: null },
@@ -229,10 +273,15 @@ async function avisarListaEspera(planoId: string) {
 }
 
 export async function entrarNaListaDeEspera(clienteId: string, planoId: string) {
-  await db.listaEsperaPlano.upsert({
-    where: { planoId_clienteId: { planoId, clienteId } },
-    create: { planoId, clienteId },
-    update: {},
+  return db.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM planos WHERE id = ${planoId} FOR UPDATE`;
+    const plano = await tx.plano.findUnique({ where: { id: planoId } });
+    exigirVenda(plano, "SITE");
+    await tx.listaEsperaPlano.upsert({
+      where: { planoId_clienteId: { planoId, clienteId } },
+      create: { planoId, clienteId },
+      update: {},
+    });
+    return tx.listaEsperaPlano.count({ where: { planoId, avisadoEm: null } });
   });
-  return db.listaEsperaPlano.count({ where: { planoId, avisadoEm: null } });
 }

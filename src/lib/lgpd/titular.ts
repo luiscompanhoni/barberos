@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { impedimentosExclusao, NOME_EXCLUIDO, telefoneExcluido } from "./regras";
 import { VERSAO_TERMOS } from "./textos";
+import { atualizarPreferencia, travarMudancaTelefone, travarPreferencia } from "@/lib/whatsapp/preferencia";
 
 export async function situacaoPrivacidade(clienteId: string) {
   const c = await db.cliente.findUnique({ where: { id: clienteId }, select: { termosVersao: true, termosAceitosEm: true, aceitaMensagens: true } });
@@ -24,7 +25,12 @@ export async function aceitarTermos(clienteId: string, usuarioId: string) {
 
 export async function mudarMensagens(clienteId: string, usuarioId: string, aceita: boolean) {
   await db.$transaction(async (tx) => {
-    await tx.cliente.update({ where: { id: clienteId }, data: { aceitaMensagens: aceita } });
+    const cliente = await tx.cliente.findUnique({ where: { id: clienteId }, select: { telefone: true } });
+    if (!cliente) throw naoEncontrado("Cliente");
+    await travarPreferencia(tx, cliente.telefone);
+    const atual = await tx.cliente.findUnique({ where: { id: clienteId }, select: { telefone: true } });
+    if (!atual || atual.telefone !== cliente.telefone) throw new ErroNegocio("O telefone mudou. Atualize a página antes de alterar a preferência.", 409);
+    await atualizarPreferencia(tx, cliente.telefone, aceita);
     await auditar(tx, usuarioId, "lgpd_mensagens", "cliente", clienteId, { aceitaMensagens: aceita });
   });
 }
@@ -54,6 +60,7 @@ export async function exportarDados(clienteId: string) {
       assinaturas: { select: { status: true, criadaEm: true, plano: { select: { nome: true } }, cobrancas: { select: { valorCentavos: true, status: true, vencimento: true, pagaEm: true } } } },
       beneficios: { select: { descricao: true, valorCentavos: true, status: true, motivo: true } },
       premiosGanhos: { select: { codigo: true, rotulo: true, status: true } },
+      elegibilidadesMensais: { select: { competencia: true, pulouEm: true, criadoEm: true } },
       conversa: { select: { mensagens: { orderBy: { criadoEm: "asc" }, select: { autor: true, texto: true, criadoEm: true } } } },
     },
   });
@@ -69,10 +76,13 @@ export async function excluirConta(clienteId: string, usuarioId: string) {
   if (!c) throw naoEncontrado("Cliente");
   if (c.excluidoEm) return;
   await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`avaliacao-mensal:${clienteId}`}))`;
+    await travarMudancaTelefone(tx, c.telefone, telefoneExcluido(clienteId));
     await tx.conversa.deleteMany({ where: { OR: [{ clienteId }, { telefone: c.telefone }] } });
     await tx.codigoLogin.deleteMany({ where: { telefone: c.telefone } });
     await tx.esperaHorario.deleteMany({ where: { clienteId } });
     await tx.listaEsperaPlano.deleteMany({ where: { clienteId } });
+    await tx.avaliacaoMensalElegibilidade.deleteMany({ where: { clienteId } });
     await tx.agendamento.updateMany({ where: { clienteId }, data: { observacao: null } });
     await tx.comanda.updateMany({ where: { clienteId }, data: { observacao: null } });
     await tx.linkPagamento.updateMany({ where: { clienteId }, data: { nome: NOME_EXCLUIDO, telefone: "", cpf: null, email: null } });

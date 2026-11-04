@@ -1,6 +1,6 @@
 import { contemConviteEntrevista, comandoReservadoEntrevista, processarBotEntrevista, registroSeguroEntrevista } from "./entrevistas";
 import { estadoPiloto } from "@/lib/whatsapp/piloto";
-import { permitePiloto, recursoPiloto } from "@/lib/whatsapp/piloto-regras";
+import { atendimentoAposPiloto, permitePiloto, recursoPiloto } from "@/lib/whatsapp/piloto-regras";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -38,40 +38,59 @@ export function receberMensagem(e: Entrada, opts: { modelo?: Modelo } = {}) {
 
 async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   const texto = e.texto ?? "[mensagem que não e texto: áudio, foto, figurinha ou documento]";
-  const conversa = await registrarEntrada({ ...e, texto: registroSeguroEntrevista(texto) });
+  // A preferência deve ser registrada mesmo quando o bot está desligado,
+  // a conversa está com a equipe ou o piloto impede respostas.
+  const optOut = !!e.texto && pediuParar(e.texto);
+  const conversa = await registrarEntrada({ ...e, texto: registroSeguroEntrevista(texto), optOut });
   if (!conversa) return; // repetida
+  // Mantém o registro de PARAR, mas não executa ações nem responde durante o bloqueio.
+  if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return;
   const piloto = await estadoPiloto();
+  const modoAtendimento = atendimentoAposPiloto(piloto);
   if (piloto || recursoPiloto()) {
-    if (!piloto?.ativo || !permitePiloto(piloto, conversa.telefone, "ENTREVISTA_PILOTO") || conversa.estado === "HUMANO") return;
-    const r = await processarBotEntrevista({ conversaId: conversa.id, telefone: conversa.telefone }, texto);
-    if (r.resposta) await enviarNaConversa(conversa.id, r.resposta, "BOT", { entrevistaPiloto: true });
-    return; // Não existe fallback para modelo ou ferramentas operacionais no piloto.
+    if (piloto?.ativo) {
+      if (optOut) return;
+      if (!permitePiloto(piloto, conversa.telefone, "ENTREVISTA_PILOTO") || conversa.estado === "HUMANO") return;
+      const r = await processarBotEntrevista({ conversaId: conversa.id, telefone: conversa.telefone }, texto);
+      if (r.resposta) await enviarNaConversa(conversa.id, r.resposta, "BOT", { entrevistaPiloto: true });
+      return; // Não existe fallback para modelo ou ferramentas operacionais no piloto.
+    }
+    if (!modoAtendimento) return;
   }
-  const cfgEntrevista = process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true" ? await configuracao() : null;
+  const entrevistaAtiva = !modoAtendimento && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true";
+  const cfgEntrevista = entrevistaAtiva ? await configuracao() : null;
   if (cfgEntrevista && !cfgEntrevista.botAtivo) return;
   // Uma sessão de entrevista existente não cai no modelo geral se o canal for desligado.
-  if (conversa.estado !== "HUMANO" && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO !== "true" && !contemConviteEntrevista(texto) && !comandoReservadoEntrevista(texto)) {
+  if (conversa.estado !== "HUMANO" && !entrevistaAtiva && !contemConviteEntrevista(texto) && !comandoReservadoEntrevista(texto)) {
     if (await db.entrevistaRecrutamento.findUnique({ where: { conversaId: conversa.id }, select: { id: true } })) return;
   }
-  if (e.texto && conversa.estado !== "HUMANO" && (contemConviteEntrevista(e.texto) || comandoReservadoEntrevista(e.texto) || process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true")) {
+  if (e.texto && conversa.estado !== "HUMANO" && (contemConviteEntrevista(e.texto) || comandoReservadoEntrevista(e.texto) || entrevistaAtiva)) {
+    if (modoAtendimento) return;
     const entrevista = await processarBotEntrevista({ conversaId: conversa.id, telefone: conversa.telefone }, e.texto);
     if (entrevista.tratado) {
-      if (entrevista.resposta && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true") await enviarNaConversa(conversa.id, entrevista.resposta, "BOT");
+      if (entrevista.resposta && entrevistaAtiva) await enviarNaConversa(conversa.id, entrevista.resposta, "BOT");
       return;
     }
   }
   const cfg = cfgEntrevista ?? await configuracao();
   if (!cfg.botAtivo || conversa.estado === "HUMANO") return; // equipe responde pelo painel
+  if (process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true" && process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO !== "true") return;
 
   if (!e.texto) {
-    await enviarNaConversa(conversa.id, "Por enquanto só consigo ler mensagens de texto. Pode me escrever o que precisa? 🙂", "BOT");
+    await enviarNaConversa(conversa.id, "Por enquanto só consigo ler mensagens de texto. Pode me escrever o que precisa? 🙂", "BOT", { respostaAtendimento: true });
     return;
   }
 
   // "PARAR": desliga as mensagens automaticas na hora, sem passar pelo modelo.
-  if (pediuParar(e.texto)) {
-    await db.cliente.updateMany({ where: { telefone: conversa.telefone }, data: { aceitaMensagens: false } });
-    await enviarNaConversa(conversa.id, "Pronto! Não vou mais mandar lembretes nem novidades. Se precisar marcar, é só chamar aqui. 🙂", "BOT");
+  if (optOut) {
+    await enviarNaConversa(conversa.id, "Pronto! Não vou mais mandar lembretes nem novidades. Se precisar marcar, é só chamar aqui. 🙂", "BOT", { respostaAtendimento: true });
+    return;
+  }
+
+  // A autorização de IA é independente do estado do piloto e do bot geral.
+  if (process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") {
+    await passarParaEquipe(conversa.id, "Atendimento encaminhado para a equipe; IA paga desativada.");
+    await enviarNaConversa(conversa.id, "Olá! A equipe da Black vai te ajudar por aqui. Para agendar, você também pode acessar appblackbarber.com. 🙂", "BOT", { respostaAtendimento: true });
     return;
   }
 
@@ -107,14 +126,14 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   } catch (err) {
     console.error("[bot] falha ao chamar o modelo:", err);
     await passarParaEquipe(conversa.id, `Bot indisponível: ${(err as Error).message}`);
-    await enviarNaConversa(conversa.id, "Opa! Tive um problema aqui. Já chamei alguém da equipe para te responder. 🙏", "BOT");
+    await enviarNaConversa(conversa.id, "Opa! Tive um problema aqui. Já chamei alguém da equipe para te responder. 🙏", "BOT", { respostaAtendimento: true });
     return;
   }
 
   if (resultado.recusado) {
     await passarParaEquipe(conversa.id, "O modelo recusou responder essa mensagem.");
     await db.conversa.update({ where: { id: conversa.id }, data: { sessao: [] } });
-    await enviarNaConversa(conversa.id, "Vou pedir para alguém da equipe te responder, tudo bem? 🙂", "BOT");
+    await enviarNaConversa(conversa.id, "Vou pedir para alguém da equipe te responder, tudo bem? 🙂", "BOT", { respostaAtendimento: true });
     return;
   }
 
@@ -130,7 +149,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   // a primeira ainda espera o tempo de ler a mensagem.
   const bolhas = dividirEmBolhas(resultado.resposta);
   for (const [i, bolha] of bolhas.entries()) {
-    await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: (i === 0 ? tempoLendo() : 0) + tempoDigitando(bolha) });
+    await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: (i === 0 ? tempoLendo() : 0) + tempoDigitando(bolha), respostaAtendimento: true });
   }
 }
 

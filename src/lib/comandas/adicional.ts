@@ -12,6 +12,7 @@ import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { descricaoServico } from "./regras";
+import { travarBarbeiro } from "@/lib/agenda/agendamentos";
 
 const MIN = 60_000;
 
@@ -23,6 +24,8 @@ export async function adicionarServico(s: Sessao, comandaId: string, servicoId: 
   if (!sb) throw new ErroNegocio(`${barbeiro.nome} não faz esse serviço.`, 422, "servico_barbeiro");
 
   const r = await db.$transaction(async (tx) => {
+    // Mesma ordem de trava usada pelas mudanças de agenda: barbeiro antes da comanda.
+    await travarBarbeiro(tx, barbeiroId);
     await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${comandaId} FOR UPDATE`;
     const c = await tx.comanda.findUnique({ where: { id: comandaId }, include: { itens: { include: { agendamento: true } } } });
     if (!c) throw naoEncontrado("Comanda");
@@ -33,13 +36,16 @@ export async function adicionarServico(s: Sessao, comandaId: string, servicoId: 
     const principal = c.itens.map((i) => i.agendamento).filter((a) => a && !a.adicionalDeId && a.status !== "CANCELADO").at(-1) ?? null;
     if (!principal) throw new ErroNegocio("Abra a comanda pelo atendimento da agenda para lançar um serviço junto.", 422, "sem_atendimento");
     const inicio = principal.fim.getTime();
+    const fim = inicio + sb.duracaoMin * MIN;
+    const bloqueio = await tx.bloqueio.findFirst({ where: { barbeiroId, inicio: { lt: new Date(fim) }, fim: { gt: new Date(inicio) } }, select: { id: true } });
+    if (bloqueio) throw new ErroNegocio("O serviço adicional coincide com um período de agenda bloqueado para este profissional.", 409, "horario_bloqueado");
     // Assinante: o plano cobre se a regra deixar; senao sai avulso (com o desconto de assinante), sem travar o balcao.
     const preco = await precificar({
       clienteId: c.clienteId, servicoId, barbeiroId, inicio, precoBase: sb.precoCentavos, fuso: cfg.fuso, forcarAvulso: true, c: tx,
     });
     const ag = await tx.agendamento.create({
       data: {
-        barbeiroId, clienteId: c.clienteId, servicoId, inicio: new Date(inicio), fim: new Date(inicio + sb.duracaoMin * MIN),
+        barbeiroId, clienteId: c.clienteId, servicoId, inicio: new Date(inicio), fim: new Date(fim),
         status: principal.status, origem: "RECEPCAO", precoCentavos: preco.precoCentavos, assinaturaId: preco.assinaturaId,
         adicionalDeId: principal.id, observacao: "Adicional lançado na comanda", criadoPorId: s.usuarioId,
       },

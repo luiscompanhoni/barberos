@@ -28,7 +28,17 @@ export async function lancarBonusNaFolha(tx: Prisma.TransactionClient, d: { pess
 }
 
 /** Apenas produtos atribuídos ao vendedor em comandas fechadas e efetivamente pagas. */
-export async function vendasDaCampanha(tx: Prisma.TransactionClient, c: { inicio: Date; fim: Date; metaQuantidade: number; metaCentavos: number }, barbeiroId: string) {
+export async function vendasDaCampanha(tx: Prisma.TransactionClient, c: { inicio: Date; fim: Date; metaQuantidade: number; metaCentavos: number; tipo?: string; servicoIds?: string[] }, barbeiroId: string) {
+  if (c.tipo === "SERVICOS") {
+    const atendimentos = await tx.agendamento.findMany({
+      where: { barbeiroId, servicoId: { in: c.servicoIds ?? [] }, status: "CONCLUIDO", inicio: { gte: c.inicio, lte: c.fim } },
+      select: { id: true, itemComanda: { select: { comanda: { select: { status: true, pagamentos: { select: { estornadoCentavos: true } } } } } } },
+    });
+    // Uma linha por atendimento (inclui planos e adicionais); estornos exigem conferência.
+    const atendimentoIds = atendimentos.filter(a => !a.itemComanda || (a.itemComanda.comanda.status !== "CANCELADA" && !a.itemComanda.comanda.pagamentos.some(p => p.estornadoCentavos > 0))).map(a => a.id);
+    const quantidade = atendimentoIds.length;
+    return { quantidade, receita: 0, ciclos: ciclosDaCampanha(quantidade, 0, c.metaQuantidade, 0), atendimentoIds };
+  }
   const comandas = await tx.comanda.findMany({ where: { status: "FECHADA", fechadaEm: { gte: c.inicio, lte: c.fim }, itens: { some: { barbeiroId, produtoId: { not: null } } } }, include: { itens: true, pagamentos: true } });
   let quantidade = 0, receita = 0;
   for (const comanda of comandas) {

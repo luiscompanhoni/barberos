@@ -7,6 +7,7 @@ import type { ListaReuniao, ReuniaoResposta } from "@/lib/reunioes/tipos";
 import { RelatorioReuniao } from "./Relatorio";
 import { EditorReuniao } from "./EditorReuniao";
 import { Apresentacao } from "./Apresentacao";
+import { ChecklistAvisos, type Aviso } from "./ChecklistAvisos";
 
 const hoje = () => dataLocal(Date.now(), "America/Sao_Paulo");
 function semanaAnterior() {
@@ -19,8 +20,10 @@ export function ReunioesTela() {
   const [lista, setLista] = useState<ListaReuniao[]>([]), [selecionada, setSelecionada] = useState<ReuniaoResposta | null>(null);
   const [apresentacao, setApresentacao] = useState<ReuniaoResposta | null>(null), [erro, setErro] = useState(""), [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState("");
+  const [avisos, setAvisos] = useState<Aviso[]>([]), [avisosApresentacao, setAvisosApresentacao] = useState<Aviso[]>([]);
   const carregar = useCallback(() => api<ListaReuniao[]>("/api/reunioes").then(setLista).catch((e: Error) => setErro(e.message)), []);
-  useEffect(() => { void carregar(); }, [carregar]);
+  const carregarAvisos = useCallback(() => api<Aviso[]>("/api/reunioes/avisos").then(setAvisos).catch((e: Error) => setErro(e.message)), []);
+  useEffect(() => { void carregar(); void carregarAvisos(); }, [carregar, carregarAvisos]);
   const fechar = useCallback(() => setApresentacao(null), []);
   async function gerar(e: React.FormEvent) {
     e.preventDefault(); setErro(""); setAviso(""); setOcupado(true);
@@ -31,10 +34,11 @@ export function ReunioesTela() {
     setErro(""); setOcupado(true);
     try {
       const r = await api<ReuniaoResposta>(`/api/reunioes/${id}${apresentar ? `?apresentacao=${apresentar}` : ""}`);
-      if (apresentar) setApresentacao(r); else setSelecionada(r);
+      if (apresentar) { const atuais = await api<Aviso[]>("/api/reunioes/avisos"); setAvisos(atuais); setAvisosApresentacao(atuais); setApresentacao(r); } else setSelecionada(r);
     } catch (e) { setErro((e as Error).message); } finally { setOcupado(false); }
   }
   return <div className="space-y-5"><div className="crm-page-header"><div><p className="eyebrow">Gestão da equipe</p><h1 className="titulo-marca text-3xl">Reuniões</h1><p className="mt-2 text-sm text-zinc-500">Transforme os registros da barbearia em resultados, slides e ações para a próxima semana.</p></div></div>
+    <ChecklistAvisos avisos={avisos} atualizar={(a) => setAvisos(lista => [a, ...lista.filter(x => x.id !== a.id)])} recarregar={() => void carregarAvisos()} />
     <form onSubmit={gerar} className="cartao space-y-3"><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><label className="rotulo">Reunião<select className="campo mt-1" value={tipo} onChange={(e) => { const t = e.target.value as typeof tipo; setTipo(t); setTitulo(t === "DIARIA" ? "Reunião diária" : "Reunião semanal"); setPeriodo(t === "DIARIA" ? { inicio: hoje(), fim: hoje() } : semanaAnterior()); }}><option value="SEMANAL">Semanal · 60 min</option><option value="DIARIA">Diária · 20 min</option></select></label>
       <label className="rotulo">Título<input className="campo mt-1" value={titulo} minLength={3} maxLength={120} required onChange={(e) => setTitulo(e.target.value)} /></label>
       <label className="rotulo">De<input className="campo mt-1" type="date" value={periodo.inicio} required onChange={(e) => setPeriodo((p) => ({ ...p, inicio: e.target.value, ...(tipo === "DIARIA" ? { fim: e.target.value } : {}) }))} /></label>
@@ -45,6 +49,6 @@ export function ReunioesTela() {
     {!selecionada && <div className="cartao py-12 text-center text-sm text-zinc-500">Gere uma reunião ou selecione uma já salva para consultar seus resultados.</div>}
     {selecionada && <><div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-semibold">{selecionada.titulo}</h2><div className="flex flex-wrap gap-2"><button className="btn-primario" disabled={ocupado} onClick={() => abrir(selecionada.id, "equipe")}>Apresentar para a equipe</button><button className="btn" disabled={ocupado} onClick={() => abrir(selecionada.id, "gestao")}>Apresentar para a gestão</button></div></div>
       <RelatorioReuniao snapshot={selecionada.snapshot} /><EditorReuniao key={`${selecionada.id}:${selecionada.versao}`} reuniao={selecionada} onSalvar={(r) => { setSelecionada(r); void carregar(); setAviso("Conteúdo e ações salvos. Os números originais foram preservados."); }} /></>}
-    {apresentacao && <Apresentacao reuniao={apresentacao} onFechar={fechar} />}
+    {apresentacao && <Apresentacao reuniao={apresentacao} avisos={avisosApresentacao} onFechar={fechar} />}
   </div>;
 }

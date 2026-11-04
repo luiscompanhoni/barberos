@@ -8,9 +8,27 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
 import deploy_vps as deploy
+from deploy_vps_comum import CONTROLES_PUBLICACAO
 
 
 class RecuperacaoTest(unittest.TestCase):
+    def test_quarentena_impede_publicacao_antes_de_tocar_na_instalacao(self):
+        with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
+            base = Path(d)
+            commit = "a" * 40
+            codigo = base / "releases" / commit / "barberos"
+            codigo.mkdir(parents=True)
+            (base / ".env").write_text("sentinela-privada")
+            ativo = {"Config": {"Env": ["BARBEROS_QUARENTENA_RESTAURACAO=true"]}}
+            pilha.enter_context(patch.object(deploy.os, "geteuid", return_value=0))
+            pilha.enter_context(patch.object(deploy, "conferir_pacote", return_value=codigo))
+            pilha.enter_context(patch.object(deploy, "container", return_value=ativo))
+            executar = pilha.enter_context(patch.object(deploy, "executar"))
+            with self.assertRaisesRegex(RuntimeError, "quarentena"):
+                deploy.publicar(base, "barberos", commit, "sha256:" + "b" * 64)
+            executar.assert_not_called()
+            self.assertFalse((codigo.parent / "operacao.json").exists())
+
     def executar_cenario(self, falha, backup_sem_imagem=False):
         with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
             base = Path(d)
@@ -80,8 +98,7 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertTrue((base / "versao-ativa.json").is_file())
                 self.assertEqual(registro["backupAnteriorPreservado"], not backup_sem_imagem)
                 override = json.loads((codigo / "deploy/versao.json").read_text())
-                self.assertEqual(override["services"]["app"]["environment"], {
-                    "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO": "true"})
+                self.assertEqual(override["services"]["app"]["environment"], CONTROLES_PUBLICACAO)
                 self.assertFalse(registro["centralAgentes"]["execucaoAtiva"])
 
     def test_falha_backup_bloqueia_migracao_e_troca(self):

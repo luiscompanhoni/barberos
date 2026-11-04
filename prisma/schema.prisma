@@ -58,6 +58,8 @@ model Usuario {
   notificacoes           Notificacao[]
   pushInscricoes         PushInscricao[]
   permissoes             PermissaoUsuario[]
+  solicitacoesHorario     SolicitacaoHorario[] @relation("SolicitanteHorario")
+  decisoesHorario         SolicitacaoHorario[] @relation("DecisorHorario")
   checklistPessoa        ChecklistPessoa?
   id                     String                  @id @default(cuid())
   telefone               String                  @unique
@@ -254,6 +256,7 @@ model Barbeiro {
   tokenCalendario    String?             @unique
   servicos           BarbeiroServico[]
   expediente         ExpedientePadrao[]
+  solicitacoesHorario SolicitacaoHorario[]
   excecoes           ExcecaoAgenda[]
   bloqueios          Bloqueio[]
   agendamentos       Agendamento[]
@@ -305,6 +308,26 @@ model BarbeiroServico {
 }
 
 /// Semana padrao: varios intervalos por dia permitem pausa de almoco (ex.: 9-12 e 13-19).
+model SolicitacaoHorario {
+  id                String    @id @default(cuid())
+  barbeiroId        String
+  barbeiro          Barbeiro  @relation(fields: [barbeiroId], references: [id], onDelete: Restrict)
+  solicitadoPorId   String
+  solicitadoPor     Usuario   @relation("SolicitanteHorario", fields: [solicitadoPorId], references: [id], onDelete: Restrict)
+  tipo              String    @default("SEMANA")
+  proposto          Json
+  original          Json
+  status            String    @default("PENDENTE")
+  decididoPorId     String?
+  decididoPor       Usuario?  @relation("DecisorHorario", fields: [decididoPorId], references: [id], onDelete: Restrict)
+  motivoDecisao     String?
+  criadoEm          DateTime  @default(now()) @db.Timestamptz(3)
+  decididoEm        DateTime? @db.Timestamptz(3)
+
+  @@index([barbeiroId, criadoEm])
+  @@map("solicitacoes_horario")
+}
+
 model ExpedientePadrao {
   id         String   @id @default(cuid())
   barbeiroId String
@@ -348,6 +371,7 @@ model Bloqueio {
 }
 
 model Cliente {
+  elegibilidadesMensais AvaliacaoMensalElegibilidade[]
   conviteAvaliacao   ConviteAvaliacao?
   ofertasRecompra    OfertaRecompra[]
   avisosRecompra     RecompraAviso[]
@@ -479,6 +503,8 @@ enum AutorMensagem {
 model Conversa {
   id              String         @id @default(cuid())
   telefone        String         @unique
+  /// Recusa preservada mesmo antes de existir um cadastro de cliente.
+  recusaAutomaticas Boolean      @default(false)
   /// Numero como o WhatsApp identifica (celular BR antigo pode vir sem o 9).
   waId            String?
   nomePerfil      String?
@@ -546,6 +572,9 @@ model Plano {
   descricao              String?
   precoCentavos          Int
   ativo                  Boolean            @default(true)
+  visivel                Boolean            @default(true)
+  compravel              Boolean            @default(true)
+  etiquetas              String[]           @default([])
   ordem                  Int                @default(0)
   /// Limite de assinantes (null = sem limite).
   vagas                  Int?
@@ -631,6 +660,8 @@ model Assinatura {
 }
 
 model Cobranca {
+  elegibilidadeMensal AvaliacaoMensalElegibilidade?
+  tentativasAutomaticas TentativaCobrancaAutomatica[]
   id            String          @id @default(cuid())
   assinaturaId  String
   assinatura    Assinatura      @relation(fields: [assinaturaId], references: [id], onDelete: Cascade)
@@ -666,6 +697,34 @@ model EventoPagamento {
   processadoEm DateTime @default(now()) @db.Timestamptz(3)
 
   @@map("eventos_pagamento")
+}
+
+/// Entrada mínima persistida antes de confirmar webhook; falhas exigem revisão humana.
+model WebhookPagamentoEntrada {
+  id           String   @id
+  sequencia    BigInt   @unique @default(autoincrement())
+  fonte        String
+  chaveSequencia String @default("")
+  carga        Json
+  estado       String   @default("PENDENTE")
+  criadoEm     DateTime @default(now()) @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
+  @@index([estado, criadoEm])
+  @@index([chaveSequencia, estado])
+  @@map("webhooks_pagamento_entrada")
+}
+
+/// Uma tentativa de emitir Pix por assinatura e vencimento; falhas exigem conciliação.
+model EmissaoPixMensal {
+  id           String   @id @default(cuid())
+  assinaturaId String
+  vencimento   DateTime @db.Timestamptz(3)
+  estado       String   @default("EMITINDO")
+  cobrancaId   String?
+  criadoEm     DateTime @default(now()) @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([assinaturaId, vencimento])
+  @@map("emissoes_pix_mensal")
 }
 
 model ListaEsperaPlano {
@@ -1897,6 +1956,9 @@ model LancamentoPessoal {
 model CampanhaEquipe {
   id             String        @id @default(cuid())
   nome           String
+  /// Campanhas antigas apuram produtos; as novas podem apurar servicos concluidos.
+  tipo           String        @default("PRODUTOS")
+  servicoIds     String[]      @default([])
   inicio         DateTime      @db.Timestamptz(3)
   fim            DateTime      @db.Timestamptz(3)
   metaQuantidade Int
@@ -2206,6 +2268,21 @@ model Reuniao {
 
   @@index([criadoEm])
   @@map("reunioes")
+}
+
+/// Avisos operacionais compartilhados pela liderança para a próxima reunião.
+model AvisoReuniao {
+  id           String   @id @default(cuid())
+  tipo         String   @default("AVISO")
+  texto        String   @db.VarChar(500)
+  concluido    Boolean  @default(false)
+  criadoPorId  String
+  criadoEm     DateTime @default(now()) @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
+  versao       Int      @default(1)
+
+  @@index([concluido, criadoEm])
+  @@map("reunioes_avisos")
 }
 
 model AvaliacaoConfig {
@@ -2610,4 +2687,37 @@ model PilotoEntrevistaWhatsApp {
   versao Int @default(0)
   atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
   @@map("recrutamento_whatsapp_piloto")
+}
+
+/// Controle do direito mensal. Não armazena nota, texto, profissional ou vínculo com resposta.
+model AvaliacaoMensalElegibilidade {
+  id           String   @id @default(cuid())
+  clienteId    String
+  cliente      Cliente  @relation(fields: [clienteId], references: [id], onDelete: Restrict)
+  cobrancaId   String   @unique
+  cobranca     Cobranca @relation(fields: [cobrancaId], references: [id], onDelete: Restrict)
+  competencia  String   @db.VarChar(7)
+  pulouEm      DateTime? @db.Timestamptz(3)
+  criadoEm     DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([clienteId, competencia])
+  @@map("avaliacao_mensal_elegibilidade")
+}
+
+/// Intenção de aviso, sem texto, destinatário ou link copiados. Ainda sem transporte conectado.
+model TentativaCobrancaAutomatica {
+  id            String @id @default(cuid())
+  cobrancaId    String
+  cobranca      Cobranca @relation(fields: [cobrancaId], references: [id], onDelete: Restrict)
+  canal         String @default("WHATSAPP")
+  etapa         String @default("PRIMEIRO_AVISO")
+  estado        String @default("PREPARADA")
+  revisaoMotivo String?
+  mensagemId    String?
+  versao        Int @default(0)
+  criadoEm      DateTime @default(now()) @db.Timestamptz(3)
+  atualizadoEm  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@unique([cobrancaId, canal, etapa])
+  @@map("cobranca_automatica_tentativas")
 }

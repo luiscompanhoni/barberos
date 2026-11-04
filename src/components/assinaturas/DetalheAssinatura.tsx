@@ -41,6 +41,7 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
   const [msg, setMsg] = useState<{ texto: string; erro?: boolean } | null>(null);
   const [motivo, setMotivo] = useState("");
   const [cancelando, setCancelando] = useState(false);
+  const [cobrando, setCobrando] = useState(false);
   const [motivoBase, setMotivoBase] = useState("");
 
   const carregar = useCallback(() => api<Detalhe>(`/api/assinaturas/${p.id}`).then(setD).catch((e) => setMsg({ texto: e.message, erro: true })), [p.id]);
@@ -49,14 +50,20 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
   }, [carregar]);
 
   async function acao(acao: string, texto: string, extra: object = {}) {
+    if (acao === "cobrar" && cobrando) return;
+    if (acao === "cobrar") setCobrando(true);
     setMsg(null);
     try {
-      await api(`/api/assinaturas/${p.id}`, { method: "POST", body: { acao, ...extra } });
-      setMsg({ texto });
+      const resultado = await api<{ enviado?: boolean; motivo?: string }>(`/api/assinaturas/${p.id}`, { method: "POST", body: { acao, ...extra } });
+      setMsg(acao === "cobrar" && resultado.enviado === false
+        ? { texto: resultado.motivo ?? "Não foi possível enviar a cobrança.", erro: true }
+        : { texto });
       await carregar();
       p.onAlterado();
     } catch (e) {
       setMsg({ texto: (e as Error).message, erro: true });
+    } finally {
+      if (acao === "cobrar") setCobrando(false);
     }
   }
 
@@ -124,11 +131,12 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
 
         {d.status !== "CANCELADA" && (
           <div className="flex flex-wrap gap-2">
-            {temAberta && <button className="btn-primario" onClick={() => acao("cobrar", "Cobrança enviada no WhatsApp.")}>Cobrar no WhatsApp</button>}
+            {temAberta && <button className="btn-primario" disabled={cobrando} onClick={() => acao("cobrar", "Cobrança encaminhada ao canal do WhatsApp.")}>{cobrando ? "Enviando…" : "Cobrar no WhatsApp"}</button>}
             <button className="btn" onClick={() => acao("sincronizar", "Status atualizado com o meio de pagamento.")}>Atualizar status</button>
             {p.podeCancelar && !cancelando && <button className="btn-perigo" onClick={() => setCancelando(true)}>Cancelar assinatura</button>}
           </div>
         )}
+        {temAberta && <p className="mt-2 text-xs text-zinc-500">Uma tentativa por fatura. Se o resultado for incerto, confira a conversa antes de tentar novamente.</p>}
         {cancelando && (
           <div className="space-y-2 rounded-lg bg-red-50 p-3">
             <select className="campo" value={motivoBase} onChange={(e) => { setMotivoBase(e.target.value); setMotivo(e.target.value); }}>

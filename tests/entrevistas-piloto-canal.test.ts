@@ -7,7 +7,7 @@ vi.mock("@/lib/whatsapp/evolution",()=>({enviarTextoEvolution:m.evolution}));
 import { enviarTexto, enviarTemplate } from "@/lib/whatsapp/canal";
 const telefone="5547999990000";
 const ativo=()=>({ativo:true,telefone,expiraEm:new Date(Date.now()+60_000),enviados:0,versao:1});
-beforeEach(()=>{vi.clearAllMocks();vi.stubEnv("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO","true");vi.stubEnv("WHATSAPP_PROVIDER","evolution");m.find.mockResolvedValue(ativo());m.evolution.mockResolvedValue({wamid:"fixture"});});
+beforeEach(()=>{vi.clearAllMocks();vi.stubEnv("AMBIENTE","producao");vi.stubEnv("WHATSAPP_ATENDIMENTO_APOS_PILOTO","false");vi.stubEnv("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO","true");vi.stubEnv("WHATSAPP_PROVIDER","evolution");m.find.mockResolvedValue(ativo());m.evolution.mockResolvedValue({wamid:"fixture"});});
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
 describe("piloto de WhatsApp fechado por destinatário e finalidade",()=>{
  it("reconhece somente telefone e JID individual verificáveis",()=>{
