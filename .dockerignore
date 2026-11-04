@@ -20,5 +20,5 @@ tsconfig.tsbuildinfo
 
 .data
 .test-estudio
-scripts/dados
+scripts/dados/cashbarber.json
 docs/estudio-evidencias
