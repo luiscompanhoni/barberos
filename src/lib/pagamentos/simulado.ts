@@ -88,6 +88,7 @@ const avulsa = (c: Parameters<typeof converter>[0]): CobrancaAvulsa => {
   const recusada = x.status === "ATRASADA";
   return {
     id: x.id, status: x.status, pagaEm: x.pagaEm, link: x.link,
+    valorCentavos: c.valorCentavos, moeda: "BRL", liquidadoCentavos: x.status === "PAGA" ? c.valorCentavos : 0,
     pixCopiaECola: c.id.startsWith("simpix") ? `00020126SIMULADO${c.id}` : null,
     erro: recusada ? "O cartão não foi aceito (cartão de teste recusado)." : null,
   };

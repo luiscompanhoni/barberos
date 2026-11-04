@@ -12,19 +12,20 @@ import { somarPorForma } from "@/lib/estornos/regras";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { dinheiroEsperado, semNomeFolha, totaisPorForma } from "./regras";
 
-export const caixaAberto = () => db.caixa.findFirst({ where: { status: "ABERTO" }, orderBy: { abertoEm: "desc" } });
+type LeitorCaixa = Prisma.TransactionClient | typeof db;
+export const caixaAberto = (leitor: LeitorCaixa = db) => leitor.caixa.findFirst({ where: { status: "ABERTO" }, orderBy: { abertoEm: "desc" } });
 
 /** Numeros do caixa (do momento em que abriu ate fechar, ou ate agora). */
-export async function resumoCaixa(c: Caixa) {
+export async function resumoCaixa(c: Caixa, leitor: LeitorCaixa = db) {
   const fim = c.fechadoEm ?? new Date();
   const janela = { gte: c.abertoEm, lte: fim };
   // Estornado depois continua contando na hora do pagamento; o estorno aparece a parte (dinheiro = sangria).
   const [pagamentos, fechadas, abertas, movimentos, estornos] = await Promise.all([
-    db.pagamentoComanda.findMany({ where: { ...PAGAMENTO_RECEBIDO, pagoEm: janela }, select: { forma: true, valorCentavos: true, antecipadoId: true, linkPagamentoId: true } }),
-    db.comanda.findMany({ where: { status: "FECHADA", fechadaEm: janela }, include: { itens: true, pagamentos: true } }),
-    db.comanda.count({ where: { status: "ABERTA" } }),
-    db.movimentoCaixa.findMany({ where: { caixaId: c.id }, orderBy: { criadoEm: "asc" } }),
-    estornosEfetivos(janela),
+    leitor.pagamentoComanda.findMany({ where: { ...PAGAMENTO_RECEBIDO, pagoEm: janela }, select: { forma: true, valorCentavos: true, antecipadoId: true, linkPagamentoId: true } }),
+    leitor.comanda.findMany({ where: { status: "FECHADA", fechadaEm: janela }, include: { itens: true, pagamentos: true } }),
+    leitor.comanda.count({ where: { status: "ABERTA" } }),
+    leitor.movimentoCaixa.findMany({ where: { caixaId: c.id }, orderBy: { criadoEm: "asc" } }),
+    estornosEfetivos(janela, leitor),
   ]);
   const totais = totaisPorForma(pagamentos.map((p) => ({ forma: p.forma, valorCentavos: p.valorCentavos, online: !!p.antecipadoId || !!p.linkPagamentoId })));
   const troco = fechadas.reduce((t, x) => t + resumoComanda(x.itens, x.pagamentos, x.descontoCentavos).troco, 0);
@@ -57,17 +58,23 @@ export async function abrirCaixa(s: Sessao, fundoCentavos: number) {
 }
 
 export async function movimentarCaixa(s: Sessao, tipo: "SANGRIA" | "SUPRIMENTO", valorCentavos: number, motivo: string) {
-  const c = await caixaAberto();
+  return db.$transaction(tx => movimentarCaixaNaTransacao(tx, s, tipo, valorCentavos, motivo));
+}
+
+/** Permite ligar movimento, obrigação e auditoria na mesma transação, sob a trava do caixa. */
+export async function movimentarCaixaNaTransacao(tx: Prisma.TransactionClient, s: Sessao, tipo: "SANGRIA" | "SUPRIMENTO", valorCentavos: number, motivo: string) {
+  const c = await caixaAberto(tx);
   if (!c) throw new ErroNegocio("Abra o caixa primeiro.", 409, "fechado");
+  await tx.$queryRaw`SELECT 1 FROM caixas WHERE id = ${c.id} FOR UPDATE`;
+  const atual = await tx.caixa.findUnique({ where: { id: c.id } });
+  if (!atual || atual.status !== "ABERTO") throw new ErroNegocio("Esse caixa já foi fechado.", 409, "fechado");
   if (tipo === "SANGRIA") {
-    const r = await resumoCaixa(c);
+    const r = await resumoCaixa(atual, tx);
     if (valorCentavos > r.esperado) throw new ErroNegocio("A sangria é maior do que o dinheiro que deveria estar no caixa.");
   }
-  return db.$transaction(async (tx) => {
-    const m = await tx.movimentoCaixa.create({ data: { caixaId: c.id, tipo, valorCentavos, motivo, usuarioId: s.usuarioId } });
-    await auditar(tx, s.usuarioId, tipo === "SANGRIA" ? "sangria" : "suprimento", "caixa", c.id, { valorCentavos, motivo });
-    return m;
-  });
+  const m = await tx.movimentoCaixa.create({ data: { caixaId: c.id, tipo, valorCentavos, motivo, usuarioId: s.usuarioId } });
+  await auditar(tx, s.usuarioId, tipo === "SANGRIA" ? "sangria" : "suprimento", "caixa", c.id, { valorCentavos, motivo });
+  return m;
 }
 
 export async function fecharCaixa(s: Sessao, contadoCentavos: number, observacao?: string | null) {

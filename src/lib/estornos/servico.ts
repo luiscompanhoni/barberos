@@ -26,7 +26,7 @@ async function limiteDoAlvo(tx: Tx | typeof db, a: Alvo) {
   // Na comanda, pedidos ainda nao executados de outros pagamentos tambem seguram o liquido.
   let liquido = a.liquidoComanda;
   if (liquido !== null && a.comandaId) {
-    const emAndamento = await tx.pedidoEstorno.aggregate({ where: { comandaId: a.comandaId, status: { in: ["PENDENTE", "APROVADO"] } }, _sum: { valorCentavos: true } });
+    const emAndamento = await tx.pedidoEstorno.aggregate({ where: { comandaId: a.comandaId, status: { in: ["PENDENTE", "APROVADO", "FALHOU"] } }, _sum: { valorCentavos: true } });
     liquido -= emAndamento._sum.valorCentavos ?? 0;
   }
   return limiteEstorno({ valorCentavos: a.valorOriginal, jaPedido: ja._sum.valorCentavos ?? 0, liquidoComanda: liquido });
@@ -55,9 +55,14 @@ export async function pedirEstorno(s: Sessao, p: { tipo: TipoEstorno; referencia
   const pedido = await db.$transaction(async (tx) => {
     const alvo = await carregarAlvo(p.tipo, p.referenciaId, tx);
     // Um pedido por vez para o mesmo pagamento (dois cliques ou duas telas): trava e le de novo.
+    if (alvo.comandaId) await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${alvo.comandaId} FOR UPDATE`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`estorno:${alvo.tipo}:${alvo.referenciaId}`}))`;
     const a = await carregarAlvo(alvo.tipo, alvo.referenciaId, tx);
     exigirEstornavel(a);
+    const emConferencia = await tx.pedidoEstorno.findFirst({
+      where: { tipo: a.tipo, referenciaId: a.referenciaId, status: { in: ["PENDENTE", "APROVADO", "FALHOU"] } }, select: { id: true },
+    });
+    if (emConferencia) throw new ErroNegocio("Esse pagamento já tem um pedido de estorno em decisão ou conferência. Confira o pedido existente antes de solicitar outra devolução.", 409, "estorno_em_conferencia");
     const erro = erroNoPedido({ valorCentavos: p.valorCentavos, limite: await limiteDoAlvo(tx, a), motivo, parcialPermitido: aceitaParcial(a.meio, a.tipo), valorOriginal: a.valorOriginal });
     if (erro) throw new ErroNegocio(erro);
     if (a.meio === "DINHEIRO" && !(await tx.caixa.findFirst({ where: { status: "ABERTO" } }))) {
@@ -88,7 +93,7 @@ async function avisarDonos(s: Sessao, p: PedidoEstorno) {
   await Promise.all(donos.map((d) => notificarCliente(d.telefone, texto).catch((e) => console.error("[estornos] aviso ao dono", e))));
 }
 
-/** Dono decide: aprovar (executa), recusar (com motivo), tentar de novo (falhou) ou registrar que devolveu por fora. */
+/** Dono decide: aprovar, recusar ou comprovar devolução; reenvio financeiro exige conferência externa. */
 export async function decidirEstorno(s: Sessao, id: string, d: { acao: "aprovar" | "recusar" | "tentar" | "manual"; motivo?: string | null }) {
   if (!(await aprova(s))) throw new ErroNegocio("Só o dono (ou quem tem a permissão de estorno) aprova ou recusa estornos.", 403, "proibido");
   const p = await db.pedidoEstorno.findUnique({ where: { id } });
@@ -101,11 +106,13 @@ export async function decidirEstorno(s: Sessao, id: string, d: { acao: "aprovar"
     return paraTela(await db.pedidoEstorno.findUniqueOrThrow({ where: { id } }));
   }
   if (d.acao === "manual") {
-    if (p.status !== "FALHOU") throw new ErroNegocio("Só dá para registrar por fora um estorno que falhou.", 409);
+    if (p.status !== "FALHOU" && p.status !== "APROVADO") {
+      throw new ErroNegocio("Esse pedido não está aguardando confirmação manual.", 409);
+    }
     return paraTela(await registrarManual(s, id, motivo));
   }
+  if (d.acao === "tentar") throw new ErroNegocio("Reenvio automático bloqueado: confira a devolução anterior no provedor/caixa. O dono pode registrar a devolução efetiva com comprovante.", 409, "estorno_em_conferencia");
   if (d.acao === "aprovar") await transicao(s, p, "PENDENTE", { status: "APROVADO", motivoDecisao: motivo }, "estorno_aprovado");
-  else await transicao(s, p, "FALHOU", { status: "APROVADO", erro: null }, "estorno_tentar_de_novo");
   return paraTela(await executarEstorno(s, id));
 }
 
@@ -141,7 +148,7 @@ export async function listarEstornos(s: Sessao) {
   const ids = [...pendentes, ...historico].flatMap((p) => [p.pedidoPorId, p.decididoPorId]).filter((x): x is string => !!x);
   const nomes = new Map((await db.usuario.findMany({ where: { id: { in: ids } }, select: { id: true, nome: true } })).map((u) => [u.id, u.nome]));
   const com = (p: PedidoEstorno) => paraTela({ ...p, pedidoPor: nomes.get(p.pedidoPorId ?? "") ?? null, decididoPor: nomes.get(p.decididoPorId ?? "") ?? null });
-  return { pendentes: pendentes.map(com), historico: historico.map(com), dono: await aprova(s) };
+  return { pendentes: pendentes.map(com), historico: historico.map(com), dono: await aprova(s), podeConfirmarManual: s.papel === "DONO" };
 }
 
 /** Selo do painel: pedidos esperando o dono. */

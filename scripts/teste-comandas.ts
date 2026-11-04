@@ -15,14 +15,16 @@ import { alterarStatus } from "@/lib/agenda/agendamentos";
 import { adicionarServico } from "@/lib/comandas/adicional";
 import { abrirComanda, adicionarProduto, alterarItem, cancelarComanda, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
 
-const ok = (c: boolean, msg: string) => console.log(`${c ? "OK  " : "FALHOU"} ${msg}`);
+const ok = (c: boolean, msg: string) => { if (!c) throw new Error(`FALHOU ${msg}`); console.log(`OK  ${msg}`); };
 const falha = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
 
 // ---- Pagar.me falsa (so as rotas do Connect)
-type Pedido = { id: string; code: string; status: string; corpo: Record<string, unknown>; charges: { id: string; code: string; status: string; metadata: Record<string, string> }[] };
+type Pedido = { id: string; code: string; status: string; amount: number; currency: string; metadata: Record<string, string>;
+  corpo: Record<string, unknown>; charges: { id: string; code: string; status: string; amount: number; paid_amount: number; currency: string; metadata: Record<string, string> }[] };
 const pedidos = new Map<string, Pedido>();
 const fechados: { id: string; status: string }[] = [];
 let recusarProximo = false;
+let perderResposta = false;
 let seq = 0;
 _usarFetch((async (url: string, init?: RequestInit) => {
   const caminho = new URL(url).pathname.replace("/core/v5", "");
@@ -30,12 +32,18 @@ _usarFetch((async (url: string, init?: RequestInit) => {
   const json = (x: unknown, status = 200) => new Response(JSON.stringify(x), { status });
   if (init?.method === "POST" && caminho === "/orders") {
     if (recusarProximo) { recusarProximo = false; return json({ message: "Device not found" }, 422); }
-    const p: Pedido = { id: `or_${++seq}`, code: corpo.code, status: "pending", corpo, charges: [] };
+    const p: Pedido = { id: `or_${++seq}`, code: corpo.code, status: "pending", amount: corpo.items[0].amount,
+      currency: "BRL", metadata: corpo.metadata, corpo, charges: [] };
     pedidos.set(p.id, p);
+    if (perderResposta) { perderResposta = false; throw new TypeError("Conexão caiu após aceitar pedido"); }
     return json(p);
   }
   let m = caminho.match(/^\/orders\/([^/]+)\/closed$/);
-  if (m && init?.method === "PATCH") { fechados.push({ id: m[1], status: corpo.status }); return json({}); }
+  if (m && init?.method === "PATCH") {
+    fechados.push({ id: m[1], status: corpo.status });
+    const p = pedidos.get(m[1]); if (p) p.status = corpo.status;
+    return json({});
+  }
   m = caminho.match(/^\/orders\/([^/]+)$/);
   if (m && pedidos.has(m[1])) return json(pedidos.get(m[1]));
   return json({ message: `rota falsa nao implementada: ${init?.method} ${caminho}` }, 404);
@@ -47,6 +55,8 @@ async function limpar() {
   const ps = await db.produto.findMany({ where: { nome: { startsWith: "[teste] " } }, select: { id: true } });
   if (c) {
     const cs = await db.comanda.findMany({ where: { clienteId: c.id }, select: { id: true } });
+    await db.pedidoEstorno.deleteMany({ where: { comandaId: { in: cs.map((x) => x.id) } } });
+    await db.linkPagamento.deleteMany({ where: { comandaId: { in: cs.map((x) => x.id) } } });
     await db.itemComanda.deleteMany({ where: { comandaId: { in: cs.map((x) => x.id) } } });
     await db.comanda.deleteMany({ where: { id: { in: cs.map((x) => x.id) } } });
     await db.agendamento.deleteMany({ where: { clienteId: c.id } });
@@ -116,7 +126,8 @@ async function main() {
 
   // cliente passa o cartao -> webhook -> sincroniza
   pedido.status = "paid";
-  pedido.charges = [{ id: "ch_1", code: "NSU987", status: "paid", metadata: { schemeName: "Mastercard" } }];
+  pedido.charges = [{ id: "ch_1", code: "NSU987", status: "paid", amount: pedido.amount, paid_amount: pedido.amount,
+    currency: "BRL", metadata: { schemeName: "Mastercard" } }];
   ok(await sincronizarPedido(pedido.id), "webhook reconhece o pedido da comanda");
   await sincronizarPedido(pedido.id); // webhook repetido
   d = await detalheComanda(id);
@@ -141,12 +152,69 @@ async function main() {
   ok(fechados.some((f) => f.id === pg2.gatewayPedidoId && f.status === "canceled"), "desistiu: pedido cancelado na maquininha");
   await cancelarComanda(s, outra.id, "teste");
 
+  // ---- devolução externa: concilia pagamento E ledger financeiro uma única vez.
+  const devolucao = await abrirComanda(s, { clienteId: cliente.id });
+  await adicionarProduto(s, devolucao.id, cerveja.id, 1);
+  const pg3 = await registrarPagamento(s, devolucao.id, { forma: "CREDITO", valorCentavos: 1200, naMaquininha: true });
+  const pedido3 = pedidos.get(pg3.gatewayPedidoId!)!;
+  pedido3.charges = [{ id: "ch_devolucao", code: "NSU3", status: "paid", amount: 1200, paid_amount: 1200,
+    currency: "BRL", metadata: { schemeName: "Visa" } }];
+  await sincronizarPedido(pedido3.id);
+  await db.pedidoEstorno.create({ data: { tipo: "COMANDA", referenciaId: pg3.id, valorCentavos: 1200, valorOriginalCentavos: 1200,
+    motivo: "Teste devolução externa", status: "APROVADO", meio: "MAQUININHA", forma: "CREDITO", descricao: "Teste POS", comandaId: devolucao.id } });
+  Object.assign(pedido3.charges[0], { status: "canceled", canceled_amount: 1200 });
+  await sincronizarPedido(pedido3.id); await sincronizarPedido(pedido3.id);
+  const estornos = await db.pedidoEstorno.findMany({ where: { referenciaId: pg3.id } });
+  const pgDevolvido = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: pg3.id } });
+  ok(estornos.length === 1 && estornos[0].status === "EXECUTADO" && estornos[0].valorCentavos === 1200,
+    "devolução no POS concilia o pedido aprovado no ledger financeiro sem duplicar");
+  ok(pgDevolvido.status === "CANCELADO" && pgDevolvido.estornadoCentavos === 1200,
+    "pagamento e ledger concordam após webhook de devolução repetido");
+  await cancelarComanda(s, devolucao.id, "teste");
+
   // ---- cancelar comanda fechada devolve estoque
   await cancelarComanda(s, id, "lançou errado");
   const cv2 = await db.produto.findUniqueOrThrow({ where: { id: cerveja.id } });
   ok(cv2.estoque === 9, "cancelar comanda fechada devolve os produtos ao estoque");
   const movs = await db.movimentoEstoque.findMany({ where: { produtoId: cerveja.id }, orderBy: { criadoEm: "asc" } });
   ok(movs.map((m) => m.tipo).join(",") === "ENTRADA,AJUSTE,VENDA,ESTORNO" && movs.at(-1)!.saldoApos === 9, "histórico completo com saldo após cada movimento");
+
+  // ---- intenção de link incerta continua reservando, mesmo após expiração.
+  const concorrencia = await abrirComanda(s, { clienteId: cliente.id });
+  await adicionarProduto(s, concorrencia.id, cerveja.id, 1);
+  const linkIncerto = await db.linkPagamento.create({ data: {
+    token: `teste-pos-${concorrencia.id}`, descricao: "Teste link incerto", nome: "Teste", telefone: TEL,
+    comandaId: concorrencia.id, valorCentavos: 1200, expiraEm: new Date(Date.now() - 60_000), tentativaChave: `teste-pos-${concorrencia.id}`,
+  } });
+  const pedidoAntes = seq;
+  const erroLink = await falha(() => registrarPagamento(s, concorrencia.id, { forma: "DEBITO", valorCentavos: 1200, naMaquininha: true }));
+  ok(erroLink instanceof ErroNegocio && erroLink.codigo === "link_pendente" && seq === pedidoAntes,
+    "link vencido com resultado incerto bloqueia POS sem enviar outro pedido");
+  await db.linkPagamento.update({ where: { id: linkIncerto.id }, data: { status: "CANCELADO" } });
+  const enviar = () => registrarPagamento(s, concorrencia.id, { forma: "DEBITO", valorCentavos: 1200, naMaquininha: true });
+  const [primeiro, repetido] = await Promise.all([enviar(), enviar()]);
+  ok(primeiro.id === repetido.id && seq === pedidoAntes + 1,
+    "duas solicitações concorrentes criam uma intenção e um pedido POS");
+  await cancelarPagamento(s, primeiro.id); await cancelarComanda(s, concorrencia.id, "teste");
+
+  // ---- POST aceito sem resposta: não duplica; recupera somente pelo retorno autoritativo.
+  const incerta = await abrirComanda(s, { clienteId: cliente.id }); await adicionarProduto(s, incerta.id, cerveja.id, 1);
+  perderResposta = true;
+  const dadosIncerta = { forma: "PIX" as const, valorCentavos: 1200, naMaquininha: true };
+  const erroIncerto = await falha(() => registrarPagamento(s, incerta.id, dadosIncerta));
+  ok(erroIncerto instanceof ErroNegocio && erroIncerto.codigo === "maquininha_incerta", "POST sem resposta é tratado como incerto");
+  const atual = await db.pagamentoComanda.findFirstOrThrow({ where: { comandaId: incerta.id } });
+  const seqIncerta = seq; const novamente = await registrarPagamento(s, incerta.id, dadosIncerta);
+  ok(atual.status === "AGUARDANDO" && !atual.gatewayPedidoId && novamente.id === atual.id && seq === seqIncerta,
+    "resultado incerto reserva valor e não reenvia cobrança");
+  const pedidoIncerto = pedidos.get(`or_${seqIncerta}`)!;
+  pedidoIncerto.charges = [{ id: "ch_incerta", code: "NSUI", status: "paid", amount: 1200, paid_amount: 1200, currency: "BRL", metadata: {} }];
+  await sincronizarPedido(pedidoIncerto.id);
+  const recuperado = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: atual.id } });
+  ok(recuperado.status === "PAGO" && recuperado.gatewayPedidoId === pedidoIncerto.id,
+    "webhook consulta API e recupera vínculo perdido com identidade e valor exatos");
+  await fecharComanda(s, incerta.id);
+  await cancelarComanda(s, incerta.id, "teste");
 
   // ---- servico adicional (ex.: sobrancelha junto do corte)
   const extra = await db.barbeiroServico.findFirstOrThrow({ where: { barbeiroId: barbeiro.id, servico: { ativo: true } }, include: { servico: true } });

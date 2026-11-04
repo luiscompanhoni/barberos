@@ -24,6 +24,7 @@ describe("meio do estorno", () => {
   });
   it("parcial so onde o meio aceita; mensalidade so total", () => {
     expect(aceitaParcial("PAGARME", "LINK")).toBe(true);
+    expect(aceitaParcial("MAQUININHA", "COMANDA")).toBe(false);
     expect(aceitaParcial("DINHEIRO", "COMANDA")).toBe(true);
     expect(aceitaParcial("CELCASH", "ANTECIPADO")).toBe(false);
     expect(aceitaParcial("FORA", "COMANDA")).toBe(false);
@@ -55,9 +56,12 @@ describe("limite e validacao do pedido", () => {
 });
 
 describe("retorno, instrucoes e aviso", () => {
-  it("Pix em processamento conta como executado, com observacao", () => {
-    expect(statusDoRetorno({ pendente: false })).toEqual({ status: "EXECUTADO", instrucao: null });
-    expect(statusDoRetorno({ pendente: true }).instrucao).toMatch(/processamento/);
+  it("só devolução confirmada conta como executada; pendência ou estado desconhecido aguarda conferência", () => {
+    expect(statusDoRetorno({ pendente: false, status: "refunded" })).toEqual({ status: "EXECUTADO", instrucao: null });
+    expect(statusDoRetorno({ pendente: false, status: "canceled" })).toEqual({ status: "EXECUTADO", instrucao: null });
+    for (const r of [{ pendente: true, status: "pending_refund" }, { pendente: true, status: "processing" }, { pendente: false, status: "paid" }, { pendente: false }]) {
+      expect(statusDoRetorno(r)).toMatchObject({ status: "APROVADO", instrucao: expect.stringMatching(/conferência/) });
+    }
   });
   it("instrucao do estorno por fora diz onde fazer", () => {
     expect(instrucaoManual("CELCASH", 7000)).toMatch(/painel da Celcash/);

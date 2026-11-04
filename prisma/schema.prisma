@@ -1470,6 +1470,8 @@ model ChecklistPessoa {
   cargo                  String?
   salarioCentavos        Int                     @default(0)
   chavePix               String?
+  /// Invalida conferência local do lote ao mudar chave, nome ou estado do cadastro (trigger).
+  revisaoPix             Int                     @default(0)
   admissao               DateTime?               @db.Date
   /// Barbeiro da agenda (comissao dos atendimentos).
   barbeiroId             String?                 @unique
@@ -1716,6 +1718,22 @@ model FolhaPagamento {
   @@map("folha_pagamentos")
 }
 
+/// Preparação local: conferência não autoriza transferência nem quita a folha.
+model FolhaLotePix {
+  id              String   @id @default(cuid())
+  competencia     String
+  revisao         String
+  totalCentavos   Int
+  snapshot        Json
+  criadoPorId     String
+  criadoEm        DateTime @default(now()) @db.Timestamptz(3)
+  conferidoPorId   String?
+  conferidoEm     DateTime? @db.Timestamptz(3)
+
+  @@unique([competencia, revisao])
+  @@map("folha_lotes_pix")
+}
+
 // ======================= Despesas (contas a pagar)
 
 enum StatusDespesa {
@@ -1783,6 +1801,8 @@ model LinkPagamento {
   parcelas         Int?
   /// Pedido no gateway (ex.: "or_123" na Pagar.me).
   gatewayId        String?             @unique
+  /// Intenção persistida antes do envio ao gateway; sem gatewayId significa resultado incerto.
+  tentativaChave   String?             @unique
   pixCopiaECola    String?
   pixQrUrl         String?
   pixExpiraEm      DateTime?           @db.Timestamptz(3)

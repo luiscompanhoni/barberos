@@ -7,6 +7,7 @@ process.env.CELCASH_GALAX_ID = "falso";
 process.env.CELCASH_GALAX_HASH = "falso";
 delete process.env.CELCASH_AMBIENTE;
 process.env.WHATSAPP_PROVIDER = "simulador";
+process.env.AMBIENTE = ""; // API inteiramente falsa; não reutiliza a sessão de homologação.
 
 process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_CEP ||= "89160161"; process.env.COBRANCA_CIDADE ||= "Rio do Sul"; process.env.COBRANCA_UF ||= "SC";
 import type { Sessao } from "@/lib/auth/sessao";
@@ -31,9 +32,9 @@ const falha = async (fn: () => Promise<unknown>) => { try { await fn(); return n
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ------------------------------------------------------------------ Pagar.me falsa
-type Charge = { id: string; amount: number; status: string; payment_method: string; created_at: string; paid_at?: string; due_at?: string;
+type Charge = { id: string; amount: number; currency: "BRL"; paid_amount: number; canceled_amount: number; status: string; payment_method: string; created_at: string; paid_at?: string; due_at?: string;
   invoice?: { id: string; subscriptionId: string }; last_transaction: Record<string, string> };
-type Order = { id: string; status: string; charges: Charge[]; pedido: Record<string, unknown> };
+type Order = { id: string; amount: number; currency: "BRL"; status: string; charges: Charge[]; pedido: Record<string, unknown> };
 const orders = new Map<string, Order>();
 const charges = new Map<string, Charge>();
 const invoices: { id: string; sub: string; charge: string }[] = [];
@@ -41,13 +42,15 @@ const chamadas: { host: string; metodo: string; caminho: string }[] = [];
 let seq = 0;
 const nid = (p: string) => `${p}_${Date.now().toString(36)}${++seq}`;
 const json = (x: unknown, status = 200) => new Response(JSON.stringify(x), { status });
+const respostaPedido = (o: Order) => ({ id: o.id, code: o.pedido.code, metadata: o.pedido.metadata, amount: o.amount, currency: o.currency, status: o.status, charges: o.charges });
 
 function pagarme(metodo: string, caminho: string, corpo: Record<string, any>, u: URL) { // eslint-disable-line @typescript-eslint/no-explicit-any
   if (metodo === "POST" && caminho === "/customers") return json({ id: nid("cus") });
   if (metodo === "POST" && caminho === "/orders") {
     const pg = corpo.payments[0];
     const agora = new Date().toISOString();
-    const ch: Charge = { id: nid("ch"), amount: corpo.items[0].amount, status: "pending", payment_method: pg.payment_method, created_at: agora, last_transaction: {} };
+    const valor = corpo.items.reduce((total: number, item: { amount: number; quantity: number }) => total + item.amount * item.quantity, 0);
+    const ch: Charge = { id: nid("ch"), amount: valor, currency: "BRL", paid_amount: 0, canceled_amount: 0, status: "pending", payment_method: pg.payment_method, created_at: agora, last_transaction: {} };
     let status = "pending";
     if (pg.payment_method === "pix") {
       ch.last_transaction = { qr_code: `00020126PIXFALSO${ch.id}`, qr_code_url: "https://exemplo/qr.png", expires_at: new Date(Date.now() + pg.pix.expires_in * 1000).toISOString() };
@@ -61,15 +64,15 @@ function pagarme(metodo: string, caminho: string, corpo: Record<string, any>, u:
     } else if (pg.credit_card.card_token === "token_analise") {
       ch.status = "processing";
     } else {
-      ch.status = "paid"; ch.paid_at = agora; status = "paid";
+      ch.status = "paid"; ch.paid_amount = ch.amount; ch.paid_at = agora; status = "paid";
     }
-    const o: Order = { id: nid("or"), status, charges: [ch], pedido: corpo };
+    const o: Order = { id: nid("or"), amount: valor, currency: "BRL", status, charges: [ch], pedido: corpo };
     orders.set(o.id, o);
     charges.set(ch.id, ch);
-    return json({ id: o.id, status: o.status, charges: o.charges });
+    return json(respostaPedido(o));
   }
   let m = caminho.match(/^\/orders\/(.+)$/);
-  if (metodo === "GET" && m && orders.has(m[1])) { const o = orders.get(m[1])!; return json({ id: o.id, status: o.status, charges: o.charges }); }
+  if (metodo === "GET" && m && orders.has(m[1])) return json(respostaPedido(orders.get(m[1])!));
   m = caminho.match(/^\/charges\/(.+)$/);
   if (m && charges.has(m[1])) {
     const ch = charges.get(m[1])!;
@@ -81,7 +84,7 @@ function pagarme(metodo: string, caminho: string, corpo: Record<string, any>, u:
     if (corpo.payment_method === "credit_card" && !corpo.card?.billing_address?.zip_code) return json({ message: "billing value is required" }, 422);
     if (corpo.card_token === "token_recusado") return json({ message: "Card declined" }, 422);
     const sub = nid("sub");
-    const ch: Charge = { id: nid("ch"), amount: corpo.items[0].pricing_scheme.price, status: "paid", payment_method: "credit_card",
+    const ch: Charge = { id: nid("ch"), amount: corpo.items[0].pricing_scheme.price, currency: "BRL", paid_amount: corpo.items[0].pricing_scheme.price, canceled_amount: 0, status: "paid", payment_method: "credit_card",
       created_at: new Date().toISOString(), due_at: new Date().toISOString(), paid_at: new Date().toISOString(), invoice: { id: nid("in"), subscriptionId: sub }, last_transaction: {} };
     charges.set(ch.id, ch);
     invoices.push({ id: ch.invoice!.id, sub, charge: ch.id });
@@ -95,7 +98,7 @@ function pagarme(metodo: string, caminho: string, corpo: Record<string, any>, u:
 function pagarPedido(id: string) {
   const o = orders.get(id)!;
   o.status = "paid";
-  for (const c of o.charges) { c.status = "paid"; c.paid_at = new Date().toISOString(); }
+  for (const c of o.charges) { c.status = "paid"; c.paid_amount = c.amount; c.paid_at = new Date().toISOString(); }
 }
 
 // ------------------------------------------------------------------ Celcash falsa

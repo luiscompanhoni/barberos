@@ -2,12 +2,13 @@
  * Consultas dos estornos para o financeiro (caixa, extrato, conciliacao e resumo).
  * O recebimento original continua contando na data dele; o estorno desconta na data em que foi feito.
  */
+import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { STATUS_EFETIVOS } from "./regras";
 
 /** Estornos devolvidos (pelo sistema ou por fora) numa janela de tempo. */
-export function estornosEfetivos(janela: { gte: Date; lt?: Date; lte?: Date }) {
-  return db.pedidoEstorno.findMany({
+export function estornosEfetivos(janela: { gte: Date; lt?: Date; lte?: Date }, leitor: Pick<Prisma.TransactionClient, "pedidoEstorno"> = db) {
+  return leitor.pedidoEstorno.findMany({
     where: { status: { in: STATUS_EFETIVOS }, executadoEm: janela },
     orderBy: { executadoEm: "asc" },
     select: { id: true, tipo: true, forma: true, meio: true, valorCentavos: true, executadoEm: true, descricao: true, clienteNome: true, movimentoCaixaId: true, motivo: true },

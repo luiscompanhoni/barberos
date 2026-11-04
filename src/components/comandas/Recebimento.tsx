@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Banknote, CreditCard, LoaderCircle, QrCode, X } from "lucide-react";
 import { BotaoEstorno, SeloEstorno } from "@/components/estornos/BotaoEstorno";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
@@ -25,31 +25,51 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
   const [jaPassei, setJaPassei] = useState(false);
   const [maquinas, setMaquinas] = useState<{ serial: string; nome: string }[]>([]);
   const [serial, setSerial] = useState("");
+  const [carregandoMaquinas, setCarregandoMaquinas] = useState(maquininha === "stone");
+  const [erroLocal, setErroLocal] = useState("");
+  const emVoo = useRef(false);
   useEffect(() => {
-    if (maquininha !== "stone") return;
+    if (maquininha !== "stone" || !gerente) return;
+    let ativo = true;
     api<{ maquininhas: { serial: string; nome: string }[] }>("/api/comandas/maquininhas").then((r) => {
+      if (!ativo) return;
       setMaquinas(r.maquininhas);
       let salvo = "";
       try { salvo = localStorage.getItem("barberos:maquininha") ?? ""; } catch {}
       setSerial(r.maquininhas.some((m) => m.serial === salvo) ? salvo : (r.maquininhas[0]?.serial ?? ""));
-    }).catch(() => {});
-  }, [maquininha]);
+    }).catch(() => { if (ativo) setErroLocal("Não foi possível carregar as maquininhas. Atualize a página antes de cobrar."); })
+      .finally(() => { if (ativo) setCarregandoMaquinas(false); });
+    return () => { ativo = false; };
+  }, [maquininha, gerente]);
   const escolherMaquina = (v: string) => {
     setSerial(v);
     try { localStorage.setItem("barberos:maquininha", v); } catch {}
   };
   const aberta = comanda.status === "ABERTA";
+  const bloqueado = ocupado || r.aguardando > 0 || !gerente;
   const integrada = maquininha !== "manual" && forma !== "DINHEIRO";
+  const reservadoEmLinks = (comanda.linksPagamento ?? []).reduce((total, l) => total + l.valorCentavos, 0);
+  const disponivel = Math.max(0, r.falta - reservadoEmLinks);
+  const maquinaPronta = maquininha !== "stone" || (!carregandoMaquinas && maquinas.some((m) => m.serial === serial));
   // Estornados continuam na lista (com o selo), para ficar visivel na comanda.
   const vivos = comanda.pagamentos.filter((p) => p.status !== "CANCELADO" || !!p.estornadoEm);
   const estornosDe = (p: Pagamento) => (comanda.estornos ?? []).filter((e) =>
     (e.tipo === "COMANDA" && e.referenciaId === p.id) || (e.tipo === "ANTECIPADO" && e.referenciaId === p.antecipadoId) || (e.tipo === "LINK" && e.referenciaId === p.linkPagamentoId));
 
-  async function pagar(e: React.FormEvent) {
-    e.preventDefault();
-    const v = valor.trim() ? paraCentavos(valor) : r.falta;
-    if (Number.isNaN(v) || v <= 0) return;
-    if (await onPagar({ forma, valorCentavos: v, naMaquininha: integrada && !jaPassei, ...(integrada && !jaPassei && serial ? { serial } : {}) })) setValor("");
+  async function pagar(escolhida: Forma) {
+    if (emVoo.current || bloqueado || reservadoEmLinks > 0) return;
+    setErroLocal("");
+    const v = valor.trim() ? paraCentavos(valor) : disponivel;
+    const enviarMaquina = maquininha !== "manual" && escolhida !== "DINHEIRO" && !jaPassei;
+    if (!Number.isSafeInteger(v) || v <= 0) return setErroLocal("Informe um valor maior que zero.");
+    if (disponivel <= 0 || (escolhida !== "DINHEIRO" && v > disponivel)) return setErroLocal("Esse valor já está pago ou reservado em outra cobrança. Confira os pagamentos e links em aberto.");
+    if (enviarMaquina && !maquinaPronta) return setErroLocal("Escolha uma maquininha disponível antes de cobrar.");
+    emVoo.current = true;
+    try {
+      if (await onPagar({ forma: escolhida, valorCentavos: v, naMaquininha: enviarMaquina, ...(enviarMaquina && serial ? { serial } : {}) })) setValor("");
+    } finally {
+      emVoo.current = false;
+    }
   }
 
   return (
@@ -57,7 +77,7 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
       {vivos.length > 0 && (
         <ul className="space-y-2">
           {vivos.map((p) => (
-            <LinhaPagamento key={p.id} p={p} aberta={aberta} maquininha={maquininha} ocupado={ocupado} onAcao={onAcaoPagamento}
+            <LinhaPagamento key={p.id} p={p} aberta={aberta && gerente} maquininha={maquininha} ocupado={ocupado || !gerente} onAcao={onAcaoPagamento}
               // Desfazer lancamento errado (sem dinheiro): so quem aprova estornos. Devolver dinheiro e estorno.
               podeDesfazer={aprovaEstorno && p.status === "PAGO" && !p.antecipadoId && !p.linkPagamentoId && !p.estornadoCentavos && (!p.gatewayPedidoId || p.gatewayPedidoId.startsWith("sim_"))}
               estornos={estornosDe(p)} podeEstornar={gerente} onEstorno={onEstorno} />
@@ -65,39 +85,53 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
         </ul>
       )}
 
-      {aberta && r.falta > 0 && (
-        <form onSubmit={pagar} className="space-y-3 rounded-xl border border-zinc-200 p-3">
+      {aberta && gerente && disponivel > 0 && reservadoEmLinks === 0 && (
+        <form onSubmit={(e) => { e.preventDefault(); if (!integrada || jaPassei) void pagar(forma); }} className="space-y-3 rounded-xl border border-zinc-200 p-3">
+          <label className="block text-xs font-semibold text-zinc-600">
+            Valor a cobrar (R$)
+            <input className="campo mt-1" inputMode="decimal" disabled={bloqueado} placeholder={centavosParaTexto(disponivel)} value={valor} onChange={(e) => setValor(e.target.value)} aria-label="Valor a cobrar" />
+          </label>
+          {maquininha === "stone" && !jaPassei && maquinas.length > 1 && (
+            <select className="campo py-1.5 text-sm" disabled={bloqueado} value={serial} onChange={(e) => escolherMaquina(e.target.value)} aria-label="Maquininha">
+              {maquinas.map((m) => <option key={m.serial} value={m.serial}>{m.nome}</option>)}
+            </select>
+          )}
+          <p className="text-xs text-zinc-600">
+            {maquininha === "manual" ? "Integração da maquininha desativada: registre somente valores já recebidos."
+              : jaPassei ? "Registro manual de um pagamento já recebido."
+              : maquininha === "simulada" ? "Simulação: escolha débito, crédito ou Pix para enviar ao simulador."
+              : carregandoMaquinas ? "Carregando maquininhas…"
+              : maquinaPronta ? `Escolha débito, crédito ou Pix para cobrar na ${maquinas.find((m) => m.serial === serial)?.nome}.`
+              : "Nenhuma maquininha disponível. Confira a configuração antes de cobrar."}
+          </p>
           <div className="grid grid-cols-4 gap-1.5">
             {FORMAS.map((f) => {
               const Icone = ICONE[f.valor];
               return (
-                <button type="button" key={f.valor} onClick={() => setForma(f.valor)}
+                <button type="button" key={f.valor} disabled={bloqueado || (f.valor !== "DINHEIRO" && maquininha !== "manual" && !jaPassei && !maquinaPronta)}
+                  aria-pressed={forma === f.valor}
+                  onClick={() => { setForma(f.valor); if (f.valor !== "DINHEIRO" && maquininha !== "manual" && !jaPassei) void pagar(f.valor); }}
                   className={`flex flex-col items-center gap-1 rounded-lg border py-2 text-[11px] font-semibold transition ${forma === f.valor ? "border-ouro bg-ouro/10 text-ouro" : "border-zinc-200 text-zinc-600 hover:border-zinc-400"}`}>
                   <Icone size={16} /> {f.rotulo}
                 </button>
               );
             })}
           </div>
-          <div className="flex gap-2">
-            <input className="campo" inputMode="decimal" placeholder={centavosParaTexto(r.falta)} value={valor} onChange={(e) => setValor(e.target.value)} aria-label="Valor" />
-            <button className="btn-primario shrink-0 px-4" disabled={ocupado}>
-              {integrada && !jaPassei ? "Mandar p/ maquininha" : "Receber"}
-            </button>
-          </div>
-          {integrada && !jaPassei && maquinas.length > 1 && (
-            <select className="campo py-1.5 text-sm" value={serial} onChange={(e) => escolherMaquina(e.target.value)} aria-label="Maquininha">
-              {maquinas.map((m) => <option key={m.serial} value={m.serial}>{m.nome}</option>)}
-            </select>
+          {(!integrada || jaPassei) && (
+            <button className="btn-primario w-full" disabled={bloqueado}>Registrar pagamento recebido</button>
           )}
           {integrada && (
             <label className="flex items-center gap-2 text-xs text-zinc-500">
-              <input type="checkbox" checked={jaPassei} onChange={(e) => setJaPassei(e.target.checked)} className="accent-[#d3ab45]" />
+              <input type="checkbox" disabled={bloqueado} checked={jaPassei} onChange={(e) => setJaPassei(e.target.checked)} className="accent-[#d3ab45]" />
               Já passei na maquininha (só registrar)
             </label>
           )}
-          <p className="text-[11px] text-zinc-500">Em branco = o que falta ({reais(r.falta)}). Pode dividir: lance uma forma de cada vez.</p>
+          <p className="text-[11px] text-zinc-500">Em branco = saldo disponível ({reais(disponivel)}). Para dividir, informe o valor antes de escolher a forma.</p>
+          {r.aguardando > 0 && <p className="text-xs text-ouro">Confira ou cancele a cobrança pendente antes de receber o restante.</p>}
+          {erroLocal && <p role="alert" className="text-xs text-red-700">{erroLocal}</p>}
         </form>
       )}
+      {aberta && reservadoEmLinks > 0 && <p className="text-xs text-zinc-500">Há um link de pagamento ativo. Confira ou cancele os links antes de cobrar de outra forma.</p>}
     </div>
   );
 }
@@ -129,7 +163,7 @@ function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao, 
       </div>
       {p.status === "AGUARDANDO" && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-          <span className="flex items-center gap-1.5 text-ouro"><LoaderCircle size={13} className="animate-spin" /> Esperando o cliente passar na maquininha…</span>
+          <span className="flex items-center gap-1.5 text-ouro"><LoaderCircle size={13} className="animate-spin" /> {p.gatewayPedidoId ? "Aguardando confirmação do pagamento na maquininha…" : "Envio sem confirmação. Confira a cobrança antes de tentar novamente."}</span>
           <span className="ml-auto flex gap-1.5">
             {maquininha === "simulada" && <button disabled={ocupado} className="btn py-1 text-xs" onClick={() => onAcao(p.id, "simular")}>Simular aprovação</button>}
             {maquininha === "stone" && <button disabled={ocupado} className="btn py-1 text-xs" onClick={() => onAcao(p.id, "conferir")}>Conferir</button>}

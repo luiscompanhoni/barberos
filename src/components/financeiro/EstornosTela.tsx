@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { Check, RefreshCw, RotateCcw, X } from "lucide-react";
+import { Check, RefreshCw, X } from "lucide-react";
 import { SeloEstorno, type EstornoResumo } from "@/components/estornos/BotaoEstorno";
 import { api, reais } from "@/lib/cliente-api";
 import { ROTULO_MEIO, ROTULO_TIPO, type MeioEstorno, type TipoEstorno } from "@/lib/estornos/regras";
@@ -11,7 +11,7 @@ type Estorno = EstornoResumo & {
   tipo: TipoEstorno; meio: MeioEstorno; parcial: boolean; valorOriginalCentavos: number; comandaId: string | null; clienteNome: string | null;
   pedidoPor: string | null; decididoPor: string | null; decididoEm: string | null; executadoEm: string | null; gatewayEstornoId: string | null;
 };
-type Lista = { pendentes: Estorno[]; historico: Estorno[]; dono: boolean };
+type Lista = { pendentes: Estorno[]; historico: Estorno[]; dono: boolean; podeConfirmarManual: boolean };
 const quando = (d: string | null) => (d ? new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }) : "");
 
 /** Estornos: pendentes no topo (o dono aprova ou recusa) e o historico. */
@@ -26,15 +26,20 @@ export function EstornosTela({ onMudou }: { onMudou?: () => void }) {
 
   async function decidir(e: Estorno, acao: "aprovar" | "recusar" | "tentar" | "manual", motivo?: string) {
     if (acao === "aprovar" && !window.confirm(`Aprovar e devolver ${reais(e.valorCentavos)} para ${e.clienteNome ?? "o cliente"}?`)) return;
-    if (acao === "manual" && !window.confirm("Confirma que o dinheiro foi devolvido por fora (fora do sistema)?")) return;
+    if (acao === "manual") {
+      if (!window.confirm("Confirma que a devolução já foi efetivamente realizada e comprovada? Se há pedido em processamento, confira o provedor antes de fazer qualquer outra transferência.")) return;
+      motivo = window.prompt("Referência única do comprovante da devolução efetiva:")?.trim();
+      if (!motivo || motivo.length < 3) return setMsg({ t: "Informe a referência do comprovante para confirmar.", erro: true });
+    }
     setMsg(null);
     setOcupado(e.id);
     try {
       const r = await api<{ estorno: Estorno }>(`/api/estornos/${e.id}`, { method: "PATCH", body: { acao, motivo } });
       const x = r.estorno;
-      setMsg(x.status === "FALHOU" ? { t: `O meio de pagamento recusou: ${x.erro}`, erro: true }
+      setMsg(x.status === "FALHOU" ? { t: `Resultado ainda não conciliado: ${x.erro ?? "confira o provedor ou caixa"}`, erro: true }
         : x.status === "RECUSADO" ? { t: "Pedido recusado." }
-          : x.status === "MANUAL" ? { t: `Registrado. ${x.instrucao ?? ""}` } : { t: "Estorno feito. ✅" });
+          : x.status === "APROVADO" ? { t: `Aguardando confirmação da devolução. ${x.instrucao ?? ""}` }
+            : x.status === "MANUAL" ? { t: `Devolução registrada. ${x.instrucao ?? ""}` } : { t: "Estorno feito. ✅" });
       setRecusando(null);
       await carregar();
       onMudou?.();
@@ -85,11 +90,9 @@ export function EstornosTela({ onMudou }: { onMudou?: () => void }) {
           </div>
         )
       )}
-      {acoes && l.dono && e.status === "FALHOU" && (
-        <div className="flex flex-wrap gap-2">
-          <button className="btn" disabled={ocupado === e.id} onClick={() => decidir(e, "tentar")}><RotateCcw size={15} /> Tentar de novo</button>
-          <button className="btn" disabled={ocupado === e.id} onClick={() => decidir(e, "manual")}>Já devolvi por fora</button>
-        </div>
+      {acoes && ["FALHOU", "APROVADO"].includes(e.status) && <p className="text-xs text-amber-800">Reenvio automático bloqueado. Confira o resultado no provedor ou caixa antes de qualquer nova devolução.</p>}
+      {acoes && l.podeConfirmarManual && ["FALHOU", "APROVADO"].includes(e.status) && (
+        <button className="btn" disabled={ocupado === e.id} onClick={() => decidir(e, "manual")}>Registrar devolução comprovada</button>
       )}
     </li>
   );
@@ -104,7 +107,7 @@ export function EstornosTela({ onMudou }: { onMudou?: () => void }) {
       </div>
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
       <section className="space-y-2">
-        <h2 className="font-semibold">Aguardando decisão {l.pendentes.length > 0 && <span className="ml-1 rounded-full bg-amber-500 px-2 text-xs text-black">{l.pendentes.length}</span>}</h2>
+        <h2 className="font-semibold">Aguardando decisão ou conferência {l.pendentes.length > 0 && <span className="ml-1 rounded-full bg-amber-500 px-2 text-xs text-black">{l.pendentes.length}</span>}</h2>
         {l.pendentes.length === 0 ? <p className="cartao text-sm text-zinc-500">Nenhum pedido de estorno esperando.</p> : <ul className="space-y-2">{l.pendentes.map((e) => linha(e, true))}</ul>}
       </section>
       <section className="space-y-2">

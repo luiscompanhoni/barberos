@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, Gift, Link2, Minus, Plus, Scissors, Trash2 } from "lucide-react";
 import { useAcesso } from "@/components/AcessoContexto";
 import { BotaoCopiar, NovoLinkModal } from "@/components/financeiro/NovoLinkModal";
@@ -22,6 +22,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
   const [fechamento, setFechamento] = useState<{ troco: number; alertas: string[]; cashbackCentavos?: number } | null>(null);
   const [desconto, setDesconto] = useState<string | null>(null);
   const [cobrarLink, setCobrarLink] = useState(false);
+  const acaoEmVoo = useRef(false);
   const gerente = papel === "DONO" || papel === "GERENTE" || papel === "RECEPCAO";
   const pode = useAcesso().permissoes;
 
@@ -33,6 +34,8 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
 
   /** Chama a API, atualiza a tela com a comanda devolvida e mostra erro se houver. */
   async function executar(url: string, body: unknown, method = "PATCH") {
+    if (acaoEmVoo.current) return false;
+    acaoEmVoo.current = true;
     setErro("");
     setOcupado(true);
     try {
@@ -42,8 +45,11 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
       return true;
     } catch (e) {
       setErro((e as Error).message);
+      // Um timeout de envio pode ter criado uma cobrança pendente. Releia antes de liberar nova ação.
+      await api<Resposta>(`/api/comandas/${id}`).then((r) => setC(r.comanda)).catch(() => {});
       return false;
     } finally {
+      acaoEmVoo.current = false;
       setOcupado(false);
     }
   }
@@ -73,7 +79,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
         )}
       </div>
 
-      {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      {erro && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       {fechamento && (
         <div className="cartao-destaque flex items-start gap-3">
           <CheckCircle2 className="shrink-0 text-ouro" />
@@ -142,7 +148,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
                   if (!Number.isNaN(v) && (await executar(`/api/comandas/${id}`, { acao: "desconto", descontoCentavos: v }))) setDesconto(null);
                 }}>
                   <span className="text-zinc-500">Desconto R$</span>
-                  <input className="campo w-24 py-1" inputMode="decimal" autoFocus value={desconto} onChange={(e) => setDesconto(e.target.value)} />
+                  <input className="campo w-24 py-1" aria-label="Desconto em reais" name="desconto" inputMode="decimal" autoFocus value={desconto} onChange={(e) => setDesconto(e.target.value)} />
                   <button className="btn py-1 text-xs">Aplicar</button>
                 </form>
               ) : r.desconto > 0 ? (
@@ -184,7 +190,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
               {(c.linksPagamento ?? []).map((l) => (
                 <div key={l.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-ouro/40 bg-ouro/5 p-3 text-sm">
                   <Link2 size={16} className="text-ouro" />
-                  <span className="font-semibold">Link enviado</span>
+                  <span className="font-semibold">Link de pagamento em aberto</span>
                   <span className="text-xs text-zinc-500">aguardando o cliente pagar</span>
                   <span className="ml-auto font-bold">{reais(l.valorCentavos)}</span>
                   {l.url && <BotaoCopiar texto={l.url} className="btn w-full py-1 text-xs" />}
@@ -196,11 +202,11 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
                 gerente={gerente}
                 aprovaEstorno={pode.estorno}
                 ocupado={ocupado}
-                onPagar={(p: { forma: Forma; valorCentavos: number; naMaquininha: boolean }) => executar(`/api/comandas/${id}/pagamentos`, p, "POST")}
+                onPagar={(p: { forma: Forma; valorCentavos: number; naMaquininha: boolean; serial?: string }) => executar(`/api/comandas/${id}/pagamentos`, p, "POST")}
                 onAcaoPagamento={(pid, acao) => executar(`/api/comandas/pagamentos/${pid}`, { acao })}
                 onEstorno={carregar}
               />
-              {aberta && gerente && r.falta - emLinks > 0 && (
+              {aberta && gerente && r.aguardando === 0 && r.falta - emLinks > 0 && (
                 <button className="btn w-full" disabled={ocupado} onClick={() => setCobrarLink(true)}>
                   <Link2 size={15} /> Cobrar por link (Pix ou cartão à distância)
                 </button>

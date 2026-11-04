@@ -2,14 +2,16 @@
  * Folha de pagamento por competencia (AAAA-MM): previa ao vivo, lancamentos (vale pode sair do
  * caixa como sangria), fechar (congela), marcar como paga (gera Despesa FOLHA) e reabrir.
  */
+import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, dataParaColuna } from "@/lib/agenda/tempo";
 import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
-import { movimentarCaixa } from "@/lib/financeiro/caixa";
+import { movimentarCaixaNaTransacao } from "@/lib/financeiro/caixa";
 import { relatorioComissoes } from "./comissoes";
 import { csvFolha, intervaloCompetencia, totaisFolha, type TipoLancamento } from "./regras";
 
@@ -66,15 +68,34 @@ async function pessoaComFolha(comp: string, pessoaId: string) {
 }
 
 /** Adicional, bonus, vale ou desconto. Vale com `doCaixa` sai do caixa aberto como sangria. */
-export async function lancar(s: Sessao, d: { competencia: string; pessoaId: string; tipo: TipoLancamento; valorCentavos: number; descricao: string; doCaixa?: boolean }) {
+export async function lancar(s: Sessao, d: { competencia: string; pessoaId: string; tipo: TipoLancamento; valorCentavos: number; descricao: string; doCaixa?: boolean; idempotencia?: string }) {
   intervaloCompetencia(d.competencia);
-  const { p, f } = await pessoaComFolha(d.competencia, d.pessoaId);
-  if (f) throw new ErroNegocio("A folha desse funcionário já foi fechada neste mês. Reabra para lançar.", 409, "folha_fechada");
-  if (d.doCaixa && d.tipo !== "VALE") throw new ErroNegocio("Só o vale pode sair do dinheiro do caixa.");
-  const mov = d.doCaixa ? await movimentarCaixa(s, "SANGRIA", d.valorCentavos, `Vale ${p.nome}: ${d.descricao}`) : null;
+  // Chamadas internas antigas ganham ID novo; o endpoint exige chave durável por clique.
+  const id = z.uuid().parse(d.idempotencia ?? randomUUID());
   return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${`folha-lancamento:${id}`}))`;
+    await tx.$queryRaw`SELECT 1 FROM checklist_pessoas WHERE id = ${d.pessoaId} FOR UPDATE`;
+    const existente = await tx.folhaLancamento.findUnique({ where: { id } });
+    if (existente) {
+      if (existente.pessoaId !== d.pessoaId || existente.competencia !== d.competencia || existente.tipo !== d.tipo
+        || existente.valorCentavos !== d.valorCentavos || existente.descricao !== d.descricao
+        || !!existente.movimentoCaixaId !== !!d.doCaixa || existente.porId !== s.usuarioId) {
+        throw new ErroNegocio("A chave deste lançamento já foi usada com outros dados. Atualize a folha antes de continuar.", 409, "lancamento_idempotencia");
+      }
+      return existente;
+    }
+    // Excluir um lançamento sem caixa não libera sua chave para repetir uma ação antiga.
+    if (await tx.auditoria.findFirst({ where: { acao: "rh_lancamento", entidade: "folha_lancamento", entidadeId: id }, select: { id: true } })) {
+      throw new ErroNegocio("Este lançamento já foi registrado e removido. Atualize a folha antes de lançar novamente.", 409, "lancamento_removido");
+    }
+    const p = await tx.checklistPessoa.findUnique({ where: { id: d.pessoaId } });
+    if (!p) throw naoEncontrado("Funcionário");
+    const f = await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: d.competencia, pessoaId: d.pessoaId } } });
+    if (f) throw new ErroNegocio("A folha desse funcionário já foi fechada neste mês. Reabra para lançar.", 409, "folha_fechada");
+    if (d.doCaixa && d.tipo !== "VALE") throw new ErroNegocio("Só o vale pode sair do dinheiro do caixa.");
+    const mov = d.doCaixa ? await movimentarCaixaNaTransacao(tx, s, "SANGRIA", d.valorCentavos, `Vale ${p.nome}: ${d.descricao}`) : null;
     const l = await tx.folhaLancamento.create({
-      data: { pessoaId: p.id, competencia: d.competencia, tipo: d.tipo, valorCentavos: d.valorCentavos, descricao: d.descricao, movimentoCaixaId: mov?.id ?? null, porId: s.usuarioId },
+      data: { id, pessoaId: p.id, competencia: d.competencia, tipo: d.tipo, valorCentavos: d.valorCentavos, descricao: d.descricao, movimentoCaixaId: mov?.id ?? null, porId: s.usuarioId },
     });
     await auditar(tx, s.usuarioId, "rh_lancamento", "folha_lancamento", l.id, { pessoaId: p.id, competencia: d.competencia, tipo: d.tipo, valorCentavos: d.valorCentavos, doCaixa: !!mov });
     return l;
@@ -131,12 +152,13 @@ export async function pagarFolha(s: Sessao, comp: string, pessoaId: string, form
   if (!f) throw new ErroNegocio("Feche a folha antes de marcar como paga.", 409, "nao_fechada");
   if (f.status === "PAGA") throw new ErroNegocio("Essa folha já está paga.", 409, "ja_paga");
   const descricao = `Folha ${comp.slice(5)}/${comp.slice(0, 4)} - ${p.nome}`;
-  const mov = forma === "DINHEIRO_CAIXA" && f.liquidoCentavos > 0 ? await movimentarCaixa(s, "SANGRIA", f.liquidoCentavos, `Folha ${comp.slice(5)}/${comp.slice(0, 4)}`) : null;
   const agora = new Date();
   const hoje = dataLocal(agora, (await configuracao()).fuso);
   return db.$transaction(async (tx) => {
     const ok = await tx.folhaPagamento.updateMany({ where: { id: f.id, status: "FECHADA" }, data: { status: "PAGA", pagoEm: agora } });
     if (!ok.count) throw new ErroNegocio("Essa folha já está paga.", 409, "ja_paga");
+    const mov = forma === "DINHEIRO_CAIXA" && f.liquidoCentavos > 0
+      ? await movimentarCaixaNaTransacao(tx, s, "SANGRIA", f.liquidoCentavos, `Folha ${comp.slice(5)}/${comp.slice(0, 4)}`) : null;
     let despesaId: string | null = null;
     if (f.liquidoCentavos > 0) {
       const d = await tx.despesa.create({

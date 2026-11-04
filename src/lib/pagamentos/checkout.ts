@@ -3,6 +3,7 @@
  * roteamento dos pedidos avulsos que chegam pelo webhook da Pagar.me.
  */
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
 import type { ModoCartao } from "./checkout-regras";
@@ -28,14 +29,40 @@ export function checkoutProprio(p: Provedor = provedorPagamento()) {
 }
 
 // Limite simples contra teste de cartoes em massa: N tentativas por chave por hora.
-const g = globalThis as unknown as { tentativasCheckout?: Map<string, number[]> };
+const g = globalThis as unknown as { tentativasCheckout?: Map<string, number[]>; expiracoesCheckout?: Map<string, number> };
 const tentativas = (g.tentativasCheckout ??= new Map<string, number[]>());
+const expiracoes = (g.expiracoesCheckout ??= new Map<string, number>());
+const JANELA_MAXIMA = 3_600_000;
+const MAX_CHAVES = 10_000;
+let ultimaLimpeza = 0;
 
 export function limitarTentativas(chave: string, max = 5, janelaMs = 3_600_000) {
   const agora = Date.now();
+  if (!chave || chave.length > 256) throw new ErroNegocio("Identificador de pagamento inválido.", 400);
+  // Expira inclusive chaves nunca mais consultadas; saturação não apaga limites ainda ativos.
+  if (agora - ultimaLimpeza >= 60_000 || tentativas.size >= MAX_CHAVES) {
+    ultimaLimpeza = agora;
+    for (const [id, batidas] of tentativas) {
+      if ((expiracoes.get(id) ?? ((batidas.at(-1) ?? 0) + JANELA_MAXIMA)) <= agora) {
+        tentativas.delete(id);
+        expiracoes.delete(id);
+      }
+    }
+  }
+  if (!tentativas.has(chave) && tentativas.size >= MAX_CHAVES) throw new ErroNegocio("Muitas solicitações. Aguarde e tente novamente.", 429, "tentativas");
   const recentes = (tentativas.get(chave) ?? []).filter((t) => agora - t < janelaMs);
   if (recentes.length >= max) throw new ErroNegocio("Muitas tentativas. Aguarde uma hora ou fale com a barbearia.", 429, "tentativas");
   tentativas.set(chave, [...recentes, agora]);
+  expiracoes.set(chave, agora + janelaMs);
+}
+
+/** Limite de acesso anterior ao JSON e ao lookup, inclusive para tokens inexistentes. */
+export function limitarAcessoCheckout(req: Request) {
+  const escrita = req.method === "POST";
+  const ip = (req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "sem-ip").slice(0, 80);
+  const origem = createHash("sha256").update(ip).digest("hex");
+  limitarTentativas(`acesso:${req.method}:global`, escrita ? 600 : 6000, 60_000);
+  limitarTentativas(`acesso:${req.method}:ip:${origem}`, escrita ? 60 : 600, 60_000);
 }
 
 /**
@@ -53,5 +80,5 @@ export async function sincronizarPedidoOnline(pedidoId: string) {
     await (await import("@/lib/links/servico")).sincronizarLink(link.id);
     return true;
   }
-  return false;
+  return (await import("@/lib/links/recuperacao")).recuperarPedidoLink(pedidoId);
 }

@@ -9,6 +9,7 @@
  */
 import type { FormaPagamento } from "@prisma/client";
 import { ehHomologacao } from "@/lib/ambiente";
+import { ErroNegocio } from "@/lib/erros";
 
 export type CobrancaGateway = {
   id: string;
@@ -34,6 +35,11 @@ export type CobrancaGateway = {
 /** Cobranca avulsa (horario pago antes ou link de pagamento). */
 export type CobrancaAvulsa = {
   id: string;
+  /** Prova monetária do provedor. Ausência mantém links em conferência, sem inferir pela etiqueta de status. */
+  valorCentavos?: number;
+  moeda?: string;
+  /** Valor recebido líquido de devoluções; não desconta tarifas do estabelecimento. */
+  liquidadoCentavos?: number;
   /** Cartao recusado vem como ATRASADA, com o motivo em `erro`. */
   status: CobrancaGateway["status"];
   pagaEm: string | null;
@@ -135,6 +141,7 @@ export function provedorPorId(id: string, atual: Provedor = provedorPagamento())
 
 /** Gateway para agir sobre um registro existente (sincronizar, cancelar, webhook). */
 export async function gatewayPorId(id: string): Promise<Gateway> {
+  if (ehHomologacao() && !id.startsWith("sim")) throw new ErroNegocio("Homologação não consulta nem altera cobranças de provedores reais.", 503, "homologacao_pagamento_real");
   return carregar(provedorPorId(id));
 }
 
@@ -143,7 +150,7 @@ export async function gateway(): Promise<Gateway> {
 }
 
 async function carregar(p: Provedor): Promise<Gateway> {
-  // Homologacao com copia da producao: registros com id da Pagar.me/Celcash tambem vao para o simulado.
+  // Novas cobranças são simuladas; gatewayPorId recusa identificadores reais da cópia.
   if (ehHomologacao()) return (await import("./simulado")).simulado;
   switch (p) {
     case "pagarme":

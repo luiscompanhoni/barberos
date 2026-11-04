@@ -13,6 +13,7 @@
  */
 import type { FormaPagamento } from "@prisma/client";
 import type { CobrancaAvulsa, CobrancaGateway, Gateway } from "./gateway";
+import { ehHomologacao } from "@/lib/ambiente";
 
 const BASE = "https://api.pagar.me/core/v5";
 export const PREFIXO_PIX = "pixrec_";
@@ -30,20 +31,26 @@ export function _usarFetch(f: Fetch) {
   fetchImpl = f;
 }
 
-async function chamar<T>(metodo: string, caminho: string, corpo?: unknown): Promise<T> {
+export class ErroPagarme extends Error {
+  constructor(public status: number, mensagem: string) { super(mensagem); }
+}
+
+async function chamar<T>(metodo: string, caminho: string, corpo?: unknown, idempotencia?: string): Promise<T> {
+  if (ehHomologacao()) throw new ErroPagarme(503, "Homologação não acessa a API real de pagamentos.");
   const r = await fetchImpl(`${BASE}${caminho}`, {
     method: metodo,
     headers: {
       Authorization: `Basic ${Buffer.from(`${chave()}:`).toString("base64")}`,
       "Content-Type": "application/json",
       Accept: "application/json",
+      ...(idempotencia ? { "Idempotency-key": idempotencia } : {}),
     },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
   });
   const json = (await r.json().catch(() => ({}))) as T & { message?: string; errors?: Record<string, string[]> };
   if (!r.ok) {
     const detalhes = json.errors ? Object.values(json.errors).flat().join("; ") : "";
-    throw new Error(`Pagar.me ${r.status}: ${json.message ?? "erro"}${detalhes ? ` (${detalhes})` : ""}`);
+    throw new ErroPagarme(r.status, `Pagar.me ${r.status}: ${json.message ?? "erro"}${detalhes ? ` (${detalhes})` : ""}`);
   }
   return json;
 }
@@ -64,6 +71,9 @@ type TransacaoPagarme = {
 export type CobrancaPagarme = {
   id: string;
   amount: number;
+  currency?: string;
+  paid_amount?: number;
+  canceled_amount?: number;
   status: string;
   payment_method?: string;
   due_at?: string | null;
@@ -260,7 +270,7 @@ export const pagarme: Gateway = {
       items: [{ code: "avulso", description: c.descricao.slice(0, 256), quantity: 1, amount: c.valorCentavos }],
       payments: [pagamento],
       metadata: { referencia: c.referencia },
-    });
+    }, c.referencia.startsWith("lk-") ? c.referencia : undefined);
     return converterPedido(r);
   },
 
@@ -278,7 +288,7 @@ export const pagarme: Gateway = {
 
 // ---------------------------------------------------------------- cobranca avulsa (pedido)
 
-export type PedidoPagarme = { id: string; status: string; charges?: CobrancaPagarme[] };
+export type PedidoPagarme = { id: string; status: string; amount?: number; currency?: string; charges?: CobrancaPagarme[] };
 
 /** Texto da recusa do cartao para o cliente (a mensagem do banco quando vier). */
 export function motivoRecusa(t: TransacaoPagarme | null | undefined) {
@@ -295,8 +305,18 @@ export function converterPedido(o: PedidoPagarme): CobrancaAvulsa {
   if (status === "PENDENTE" && o.status === "failed") status = "ATRASADA";
   const t = ch?.last_transaction ?? null;
   const forma = ch?.payment_method ? (FORMA[ch.payment_method] ?? null) : null;
+  const ids = charges.map((c) => c.id);
+  const prova = Array.isArray(o.charges) && new Set(ids).size === ids.length && charges.every((c) =>
+    !!c.id && c.currency === o.currency && Number.isSafeInteger(c.amount) && c.amount >= 0
+    && Number.isSafeInteger(c.paid_amount) && c.paid_amount! >= 0 && c.paid_amount! <= c.amount
+    && Number.isSafeInteger(c.canceled_amount ?? 0) && (c.canceled_amount ?? 0) >= 0 && (c.canceled_amount ?? 0) <= c.paid_amount!
+    && (["paid", "overpaid", "refunded"].includes(c.status) || c.paid_amount === 0));
+  const liquido = prova ? charges.reduce((s, c) => s + c.paid_amount! - (c.canceled_amount ?? 0), 0) : undefined;
   return {
     id: o.id,
+    valorCentavos: o.amount,
+    moeda: o.currency,
+    liquidadoCentavos: Number.isSafeInteger(liquido) ? liquido : undefined,
     status,
     pagaEm: status === "PAGA" ? (ch?.paid_at ?? new Date().toISOString()) : null,
     link: null, // o checkout e o do BarberOS
@@ -359,8 +379,12 @@ export async function estornarCobranca(id: string, valorCentavos?: number): Prom
 export type PedidoPOS = {
   id: string;
   code?: string;
+  amount?: number;
+  currency?: string;
+  metadata?: Record<string, string> | null;
   status: string; // pending | paid | canceled | failed
-  charges?: { id: string; code?: string; status: string; payment_method?: string; metadata?: Record<string, string> | null }[];
+  charges?: { id: string; code?: string; status: string; amount?: number; paid_amount?: number;
+    canceled_amount?: number; canceled_at?: string; paid_at?: string; currency?: string; payment_method?: string; metadata?: Record<string, string> | null }[];
 };
 
 export type TipoPOS = "credit" | "debit" | "pix";
@@ -388,7 +412,7 @@ export async function criarPedidoMaquininha(p: {
       payment_setup: { type: p.tipo, ...(p.tipo === "credit" ? { installments: 1, installment_type: "merchant" } : {}) },
     },
     metadata: p.metadata ?? {},
-  });
+  }, `pos-${p.metadata?.pagamento_id ?? p.referencia}`);
 }
 
 export async function buscarPedido(id: string) {

@@ -165,16 +165,38 @@ async function main() {
     const c3 = await comanda({ total: 4321, pag: [{ forma: "PIX", v: 4321, antecipadoId: ant.id }] });
     const info3 = await infoAlvo(sd, "ANTECIPADO", ag.id);
     ok(info3.referenciaId === ant.id && info3.parcial && info3.limite === 4321, "horário pago antes: acha pelo id do horário, aceita parcial");
-    const p3 = await pedirEstorno(sd, { tipo: "COMANDA", referenciaId: c3.pagamentos[0].id, valorCentavos: 1000, motivo: "Desconto combinado depois" });
-    ok(p3.tipo === "ANTECIPADO" && p3.status === "EXECUTADO" && estornos.at(-1)?.amount === 1000, "dono estorna direto R$ 10,00 (amount=1000 na Pagar.me)");
-    ok(!!p3.instrucao?.includes("processamento"), "Pix: devolução em processamento tratada (pending_refund)");
+    const chamadas3 = estornos.length;
+    const simultaneos3 = await Promise.allSettled([
+      pedirEstorno(sd, { tipo: "COMANDA", referenciaId: c3.pagamentos[0].id, valorCentavos: 1000, motivo: "Desconto combinado depois" }),
+      pedirEstorno(sd, { tipo: "ANTECIPADO", referenciaId: ant.id, valorCentavos: 1000, motivo: "Desconto combinado depois" }),
+    ]);
+    const criado3 = simultaneos3.find((r) => r.status === "fulfilled");
+    if (!criado3 || criado3.status !== "fulfilled") throw new Error("Nenhum pedido parcial foi criado no teste concorrente.");
+    const p3 = criado3.value;
+    ok(simultaneos3.filter(r => r.status === "fulfilled").length === 1
+      && simultaneos3.some(r => r.status === "rejected" && r.reason?.codigo === "estorno_em_conferencia"),
+    "parciais simultâneos por comanda e origem geram apenas um pedido");
+    ok(estornos.length === chamadas3 + 1 && await db.pedidoEstorno.count({ where: { tipo: "ANTECIPADO", referenciaId: ant.id } }) === 1,
+      "concorrência parcial não repete DELETE nem cria outro ID");
+    ok(p3.tipo === "ANTECIPADO" && p3.status === "APROVADO" && estornos.at(-1)?.amount === 1000, "Pix parcial enviado uma vez e aguardando confirmação (amount=1000)");
+    ok(!!p3.instrucao?.includes("conferência"), "pending_refund não comprova devolução nem baixa financeiro");
+    ok((await db.pagamentoComanda.findUniqueOrThrow({ where: { id: c3.pagamentos[0].id } })).estornadoCentavos === 0,
+      "Pix pendente não altera o pagamento da comanda");
+    ok((await falha(() => pedirEstorno(sd, { tipo: "ANTECIPADO", referenciaId: ag.id, valorCentavos: 1000, motivo: "Desconto combinado depois" })))?.codigo === "estorno_em_conferencia"
+      && estornos.length === chamadas3 + 1, "reenvio parcial após retorno pendente não cria nova devolução");
+    // Fonte falsa confirma a devolução; o dono registra o comprovante efetivo, sem outro DELETE.
+    o3.charges[0].last_transaction!.status = "refunded";
+    await decidirEstorno(sd, p3.id, { acao: "manual", motivo: `Comprovante Pix ${o3.charges[0].last_transaction!.id}` });
     const pr3 = await db.pedidoEstorno.findUniqueOrThrow({ where: { id: p3.id } });
     ok(pr3.decididoPorId === dono.id && pr3.pedidoPorId === dono.id, "estorno direto fica registrado como aprovado pelo dono");
     const pg3 = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: c3.pagamentos[0].id } });
     ok(pg3.status === "PAGO" && pg3.estornadoCentavos === 1000 && (await db.pagamentoAntecipado.findUniqueOrThrow({ where: { id: ant.id } })).status === "PAGO", "parcial: pagamento segue PAGO com R$ 10,00 estornado");
     ok((await falha(() => pedirEstorno(sd, { tipo: "ANTECIPADO", referenciaId: ant.id, valorCentavos: 4000, motivo: "mais" })))?.message.includes("máximo") === true, "não estorna mais do que sobrou (R$ 33,21)");
     const p3b = await pedirEstorno(sd, { tipo: "ANTECIPADO", referenciaId: ant.id, valorCentavos: 3321, motivo: "Cliente desistiu" });
-    ok(p3b.status === "EXECUTADO" && (await db.pagamentoAntecipado.findUniqueOrThrow({ where: { id: ant.id } })).status === "ESTORNADO", "resto estornado: horário volta a não pago (ESTORNADO)");
+    ok(p3b.status === "APROVADO", "restante Pix também aguarda prova de devolução");
+    o3.charges[0].status = "refunded"; o3.charges[0].last_transaction!.status = "refunded";
+    const confirmado3b = await decidirEstorno(sd, p3b.id, { acao: "manual", motivo: `Comprovante Pix ${o3.charges[0].last_transaction!.id}` });
+    ok(confirmado3b.status === "MANUAL" && (await db.pagamentoAntecipado.findUniqueOrThrow({ where: { id: ant.id } })).status === "ESTORNADO", "resto comprovado: horário ESTORNADO sem repetir solicitação");
     const d3 = await detalheComanda(c3.id);
     ok(d3.status === "FECHADA" && d3.pagamentos[0].status === "CANCELADO" && !!d3.pagamentos[0].estornadoEm && d3.resumo.estornado === 4321 && d3.estornos.length === 2,
       "comanda fechada continua fechada, com o pagamento estornado visível");
@@ -198,25 +220,32 @@ async function main() {
     const cob = await db.cobranca.create({ data: { assinaturaId: ass.id, gatewayId: `celtx_${Date.now()}`, valorCentavos: 7000, vencimento: new Date(`${hoje}T00:00:00Z`), status: "PAGA", pagaEm: new Date(), forma: "PIX" } });
     ok((await falha(() => pedirEstorno(sd, { tipo: "MENSALIDADE", referenciaId: cob.id, valorCentavos: 3500, motivo: "metade" })))?.message.includes("total") === true, "mensalidade: só estorno total");
     const p5 = await pedirEstorno(sd, { tipo: "MENSALIDADE", referenciaId: cob.id, valorCentavos: 7000, motivo: "Cobrado depois do cancelamento" });
-    ok(p5.status === "MANUAL" && !!p5.instrucao?.includes("Celcash"), "Celcash: fica MANUAL com “estornar manualmente no painel da Celcash”");
+    ok(p5.status === "APROVADO" && !!p5.instrucao?.includes("Celcash"), "Celcash: instrução aguarda comprovante, sem registrar devolução fictícia");
+    ok((await db.cobranca.findUniqueOrThrow({ where: { id: cob.id } })).status === "PAGA", "instrução Celcash mantém mensalidade PAGA");
+    await decidirEstorno(sd, p5.id, { acao: "manual", motivo: "Comprovante Celcash sintético 001" });
     ok((await db.cobranca.findUniqueOrThrow({ where: { id: cob.id } })).status === "ESTORNADA", "mensalidade fica ESTORNADA");
 
-    // ---- 6) maquininha: a API nao cancela -> instrui estornar na maquininha
+    // ---- 6) maquininha: instrução não baixa financeiro, confirmação exige comprovante
     const o6 = pedidoPago(8000, "credit_card", { pos: true });
     const c6 = await comanda({ total: 8000, pag: [{ forma: "CREDITO", v: 8000, gatewayPedidoId: o6.id }] });
     const p6 = await pedirEstorno(sd, { tipo: "COMANDA", referenciaId: c6.pagamentos[0].id, valorCentavos: 8000, motivo: "Cartão errado" });
-    ok(p6.status === "MANUAL" && !!p6.instrucao?.includes("maquininha"), "maquininha: API recusou, instrução para estornar na própria maquininha");
-    ok((await db.pagamentoComanda.findUniqueOrThrow({ where: { id: c6.pagamentos[0].id } })).status === "CANCELADO", "pagamento da maquininha marcado CANCELADO (estornado)");
+    ok(p6.status === "APROVADO" && !!p6.instrucao?.includes("maquininha"), "maquininha: aprovado, aguardando devolução no POS/portal sem API de estorno");
+    ok((await db.pagamentoComanda.findUniqueOrThrow({ where: { id: c6.pagamentos[0].id } })).status === "PAGO", "instrução não desconta o pagamento recebido");
+    ok((await falha(() => decidirEstorno(sd, p6.id, { acao: "manual" })))?.message.includes("comprovante") === true, "confirmação POS sem referência é recusada");
+    const p6confirmado = await decidirEstorno(sd, p6.id, { acao: "manual", motivo: "Comprovante Stone sintético 123" });
+    ok(p6confirmado.status === "MANUAL" && (await db.pagamentoComanda.findUniqueOrThrow({ where: { id: c6.pagamentos[0].id } })).status === "CANCELADO", "somente confirmação com comprovante baixa estorno no financeiro");
 
-    // ---- 7) gateway falha: FALHOU, tentar de novo, registrar por fora
+    // ---- 7) gateway falha: resultado incerto, sem reenvio, depois comprovação externa
     const o7 = pedidoPago(2000, "credit_card", { falhar: true });
     const l7 = await db.linkPagamento.create({
       data: { token: randomBytes(8).toString("hex"), descricao: `${TAG} Sinal`, valorCentavos: 2000, clienteId: cliente.id, nome: cliente.nome, telefone: TEL_CLI,
         status: "PAGO", forma: "CARTAO", gatewayId: o7.id, pagoEm: new Date(), expiraEm: new Date(Date.now() + 86_400_000) },
     });
     const p7 = await pedirEstorno(sd, { tipo: "LINK", referenciaId: l7.id, valorCentavos: 2000, motivo: "Evento cancelado" });
-    ok(p7.status === "FALHOU" && !!p7.erro && (await db.linkPagamento.findUniqueOrThrow({ where: { id: l7.id } })).status === "PAGO", "gateway falhou: FALHOU com o erro e nada muda");
-    ok((await decidirEstorno(sd, p7.id, { acao: "tentar" })).status === "FALHOU", "tentar de novo (ainda falha)");
+    ok(p7.status === "APROVADO" && !!p7.erro && (await db.linkPagamento.findUniqueOrThrow({ where: { id: l7.id } })).status === "PAGO", "gateway sem confirmação: mantém conferência e financeiro intacto");
+    ok((await falha(() => decidirEstorno(sd, p7.id, { acao: "tentar" })))?.codigo === "estorno_em_conferencia", "resultado incerto bloqueia reenvio financeiro");
+    // Representa devolução comprovada pelo dono no provedor falso, fora do endpoint do BarberOS.
+    o7.charges[0].status = "refunded"; o7.charges[0].canceled_amount = 2000;
     const m7 = await decidirEstorno(sd, p7.id, { acao: "manual", motivo: "Devolvido por Pix da conta da barbearia" });
     ok(m7.status === "MANUAL" && (await db.linkPagamento.findUniqueOrThrow({ where: { id: l7.id } })).status === "ESTORNADO", "registrado como devolvido por fora: link ESTORNADO");
 

@@ -8,6 +8,7 @@ import type { Prisma } from "@prisma/client";
 import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { resumoComanda } from "@/lib/comandas/regras";
+import { conferirNovoTotal } from "@/lib/comandas/total-reservado";
 import { avisarComanda } from "@/lib/comandas/servico";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
@@ -120,7 +121,7 @@ export async function validarPremio(s: Sessao, premioId: string, d: { comandaId?
     if (p.tipo === "SERVICO" || p.tipo === "DESCONTO") {
       if (!comandaId) throw new ErroNegocio("Abra a comanda do cliente e valide o prêmio por ela (o desconto entra na comanda).", 422, "precisa_comanda");
       await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${comandaId} FOR UPDATE`;
-      const c = await tx.comanda.findUnique({ where: { id: comandaId }, include: { itens: { include: { agendamento: { select: { servicoId: true } } } }, pagamentos: true } });
+      const c = await tx.comanda.findUnique({ where: { id: comandaId }, include: { itens: { include: { agendamento: { select: { servicoId: true } } } }, pagamentos: true, linksPagamento: { where: { status: "PENDENTE" } } } });
       if (!c) throw naoEncontrado("Comanda");
       if (c.status !== "ABERTA") throw new ErroNegocio("Essa comanda já foi fechada.");
       if (c.clienteId !== p.clienteId) throw new ErroNegocio("Esse prêmio é de outro cliente.", 403, "outro_cliente");
@@ -129,6 +130,7 @@ export async function validarPremio(s: Sessao, premioId: string, d: { comandaId?
       if (p.tipo === "SERVICO" && !item) throw new ErroNegocio("Lance o serviço do prêmio na comanda antes de validar.", 422, "sem_servico");
       desconto = descontoDoPremio(p, { podeDescontar: subtotal - c.descontoCentavos, precoServico: item ? item.precoUnitCentavos * item.quantidade : null });
       if (desconto <= 0) throw new ErroNegocio("A comanda não tem valor para descontar.", 422, "sem_valor");
+      conferirNovoTotal(c, c.itens, c.descontoCentavos + desconto);
       await tx.comanda.update({ where: { id: comandaId }, data: { descontoCentavos: c.descontoCentavos + desconto } });
     } else if (comandaId) {
       const c = await tx.comanda.findUnique({ where: { id: comandaId }, select: { clienteId: true } });

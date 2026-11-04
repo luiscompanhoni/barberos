@@ -58,6 +58,7 @@ export function Checkout(p: {
   const [recusa, setRecusa] = useState<string | null>(null);
   const [trocado, setTrocado] = useState(false);
   const ticks = useRef(0);
+  const pagamentoEmVoo = useRef(false);
 
   const ler = (r: { checkout?: EstadoCheckout | null }) => r.checkout && setEstado(r.checkout);
 
@@ -74,6 +75,8 @@ export function Checkout(p: {
   }, [esperando, conferir]);
 
   async function pagar(corpo: Record<string, unknown>) {
+    if (pagamentoEmVoo.current || ocupado || estado.processando) return;
+    pagamentoEmVoo.current = true;
     setErro("");
     setRecusa(null);
     setOcupado(true);
@@ -89,7 +92,12 @@ export function Checkout(p: {
       if (c === "cartao_recusado") setRecusa((e as Error).message);
       else setErro((e as Error).message);
       if (c === "ja_pago") conferir(true);
+      if (p.alvo.tipo === "link" && (c === "pagamento_incerto" || !c || (e instanceof ErroApi && e.status >= 500))) {
+        setEstado((atual) => ({ ...atual, processando: true, mensagem: "Pagamento em conferência. Aguarde a confirmação antes de tentar outra cobrança." }));
+        await conferir(true);
+      }
     } finally {
+      pagamentoEmVoo.current = false;
       setOcupado(false);
     }
   }
@@ -131,7 +139,7 @@ export function Checkout(p: {
       {p.formas.length > 1 && !p.troca && (
         <div className="mt-8 grid grid-cols-2 gap-1 rounded-2xl border border-zinc-200 p-1" role="tablist">
           {p.formas.map((f) => (
-            <button key={f} type="button" role="tab" aria-selected={aba === f} onClick={() => { setAba(f); setErro(""); }}
+            <button key={f} type="button" role="tab" disabled={ocupado || estado.processando} aria-selected={aba === f} onClick={() => { setAba(f); setErro(""); }}
               className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition ${aba === f ? "bg-ouro text-[#111]" : "text-zinc-500 hover:text-zinc-900"}`}>
               {f === "CARTAO" ? <><CreditCard size={16} /> Cartão</> : <><QrCode size={16} /> Pix</>}
             </button>
@@ -160,7 +168,11 @@ export function Checkout(p: {
           </div>
         )}
 
-        {aba === "PIX" ? (
+        {estado.processando ? (
+          <p className="flex items-center justify-center gap-2 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-600" role="status">
+            <LoaderCircle size={16} className="animate-spin text-ouro" /> {estado.mensagem ?? "Confirmando pagamento… esta página atualiza sozinha."}
+          </p>
+        ) : aba === "PIX" ? (
           pix ? (
             <PixPainel copiaECola={pix.copiaECola} qrUrl={pix.qrUrl} expiraEm={pix.expiraEm} linkTeste={estado.link}
               ocupado={ocupado} onNovoPix={() => pagar({ forma: "PIX" })} />
@@ -172,10 +184,6 @@ export function Checkout(p: {
               </button>
             </div>
           )
-        ) : estado.processando ? (
-          <p className="flex items-center justify-center gap-2 rounded-xl bg-zinc-50 p-4 text-sm text-zinc-600">
-            <LoaderCircle size={16} className="animate-spin text-ouro" /> Cartão em análise… esta página atualiza sozinha.
-          </p>
         ) : recusa ? (
           <div className="space-y-3 text-center">
             <div className="rounded-xl bg-red-50 p-4 text-sm text-red-800">

@@ -23,6 +23,22 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_publicacao_mantem_stone_manual(self):
+        self.assertEqual(CONTROLES_PUBLICACAO["MAQUININHA"], "manual")
+        def app(env):
+            return {"Config": {"Env": [k + "=" + v for k, v in env.items()]}}
+        for valor in ("stone", "simulada", ""):
+            with self.assertRaisesRegex(RuntimeError, "MAQUININHA"):
+                conferir_central_desligada(app({**CONTROLES_PUBLICACAO, "MAQUININHA": valor}))
+
+    def test_publicacao_aceita_pix_link_revisadas_sem_liberar_outras_migracoes(self):
+        revisadas = ["20261103230000_folha_lote_pix_preparacao", "20261103233000_link_intencao_pagamento"]
+        exigir_migracoes_da_publicacao(revisadas)
+        for nome in revisadas:
+            exigir_migracoes_da_publicacao([nome])
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao(revisadas + ["20261103233100_nao_revisada"])
+
     def test_publicacao_aceita_somente_migracoes_agentes_e_templates_revisadas(self):
         exigir_migracoes_da_publicacao([])
         exigir_migracoes_da_publicacao(["20261102030000_central_agentes"])

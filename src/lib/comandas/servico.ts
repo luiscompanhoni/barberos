@@ -14,6 +14,7 @@ import { devolverPremiosDaComanda } from "@/lib/jogos/comanda";
 import { cancelarAdicionalDoItem } from "./adicional";
 import { descricaoServico, erroNoPagamento, resumoComanda, valorCashback } from "./regras";
 import { travarBarbeiro } from "@/lib/agenda/agendamentos";
+import { conferirFechamentoReservado, conferirLinkEmVoo, conferirNovoTotal } from "./total-reservado";
 
 type Tx = Prisma.TransactionClient;
 
@@ -21,7 +22,7 @@ const INCLUIR = {
   cliente: { select: { id: true, nome: true, telefone: true } },
   itens: { orderBy: { criadoEm: "asc" }, include: { produto: { select: { nome: true, categoria: true, estoque: true } } } },
   pagamentos: { orderBy: { criadoEm: "asc" } },
-  linksPagamento: { where: { status: "PENDENTE" }, orderBy: { criadoEm: "asc" }, select: { id: true, token: true, valorCentavos: true, expiraEm: true, criadoEm: true } },
+  linksPagamento: { where: { status: "PENDENTE" }, orderBy: { criadoEm: "asc" }, select: { id: true, token: true, valorCentavos: true, expiraEm: true, criadoEm: true, gatewayId: true, tentativaChave: true } },
 } satisfies Prisma.ComandaInclude;
 
 /** Trava a comanda ate o fim da transacao (dois caixas nao mexem ao mesmo tempo). */
@@ -50,7 +51,7 @@ export async function detalheComanda(id: string) {
       }))._sum.valorCentavos ?? 0)
     : 0;
   // Links de pagamento em aberto (com o endereco publico para copiar).
-  const linksPagamento = c.linksPagamento.map((l) => ({ ...l, url: linkAbsoluto(`/c/link/${l.token}`) }));
+  const linksPagamento = c.linksPagamento.filter((l) => l.expiraEm > new Date() || l.gatewayId || l.tentativaChave).map((l) => ({ ...l, url: linkAbsoluto(`/c/link/${l.token}`) }));
   // Pedidos de estorno dos pagamentos desta comanda (pendentes e feitos).
   const estornos = await estornosDaComanda(id);
   // Premios de jogo: os abertos do cliente (para validar) e os ja usados nesta comanda.
@@ -167,10 +168,15 @@ export async function adicionarAvulso(s: Sessao, comandaId: string, descricao: s
 
 /** Muda a quantidade de um item (0 remove). Servico da agenda so pode ser removido. */
 export async function alterarItem(s: Sessao, itemId: string, quantidade: number) {
-  const item = await db.itemComanda.findUnique({ where: { id: itemId } });
-  if (!item) throw naoEncontrado("Item");
+  const referencia = await db.itemComanda.findUnique({ where: { id: itemId }, select: { comandaId: true } });
+  if (!referencia) throw naoEncontrado("Item");
   await db.$transaction(async (tx) => {
-    await travar(tx, item.comandaId);
+    const c = await travar(tx, referencia.comandaId);
+    const item = c.itens.find(i => i.id === itemId);
+    if (!item) throw naoEncontrado("Item");
+    if (quantidade > 0 && item.agendamentoId) throw new ErroNegocio("Serviço da agenda entra uma vez só.");
+    const itens = c.itens.flatMap(i => i.id !== itemId ? [i] : quantidade <= 0 ? [] : [{ ...i, quantidade }]);
+    conferirNovoTotal(c, itens, c.descontoCentavos);
     if (quantidade <= 0) {
       await tx.itemComanda.delete({ where: { id: itemId } });
       // Servico adicional lancado na comanda: o atendimento adicional sai junto.
@@ -178,10 +184,9 @@ export async function alterarItem(s: Sessao, itemId: string, quantidade: number)
       await auditar(tx, s.usuarioId, "remover_item", "comanda", item.comandaId, { descricao: item.descricao, quantidade: item.quantidade });
       return;
     }
-    if (item.agendamentoId) throw new ErroNegocio("Serviço da agenda entra uma vez só.");
     await tx.itemComanda.update({ where: { id: itemId }, data: { quantidade } });
   });
-  avisar(item.comandaId);
+  avisar(referencia.comandaId);
 }
 
 export async function definirDesconto(s: Sessao, comandaId: string, descontoCentavos: number) {
@@ -190,6 +195,7 @@ export async function definirDesconto(s: Sessao, comandaId: string, descontoCent
     const c = await travar(tx, comandaId);
     const { subtotal } = resumoComanda(c.itens, c.pagamentos, 0);
     if (descontoCentavos < 0 || descontoCentavos > subtotal) throw new ErroNegocio("Desconto maior que o total.");
+    conferirNovoTotal(c, c.itens, descontoCentavos);
     await tx.comanda.update({ where: { id: comandaId }, data: { descontoCentavos } });
     await auditar(tx, s.usuarioId, "desconto", "comanda", comandaId, { comanda: c.numero, antes: { descontoCentavos: c.descontoCentavos }, depois: { descontoCentavos } });
   });
@@ -222,6 +228,7 @@ export async function fecharComanda(s: Sessao, comandaId: string) {
   const r = await db.$transaction(async (tx) => {
     const c = await travar(tx, comandaId);
     if (c.itens.length === 0) throw new ErroNegocio("A comanda está vazia.");
+    conferirFechamentoReservado(c);
     const res = resumoComanda(c.itens, c.pagamentos, c.descontoCentavos);
     if (res.aguardando > 0) throw new ErroNegocio("Tem pagamento esperando na maquininha.");
     if (!res.podeFechar) throw new ErroNegocio(`Ainda falta receber ${(res.falta / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`);
@@ -267,6 +274,7 @@ export async function cancelarComanda(s: Sessao, comandaId: string, motivo: stri
       }
     } else {
       if (!gerente(s)) throw proibido();
+      conferirLinkEmVoo(c);
       if (c.pagamentos.some((p) => p.status !== "CANCELADO")) throw new ErroNegocio("Cancele os pagamentos lançados antes de cancelar a comanda.");
     }
     await tx.comanda.update({ where: { id: comandaId }, data: { status: "CANCELADA" } });

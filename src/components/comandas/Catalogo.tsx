@@ -88,8 +88,8 @@ export function Catalogo({ onProduto, onServico, barbeiroPadrao, onAvulso, podeA
 
       {podeAvulso && (
         <form onSubmit={lancarAvulso} className="flex gap-2 border-t border-zinc-200 pt-3">
-          <input className="campo flex-1" placeholder="Item avulso (ex.: gorjeta)" value={avulso.descricao} onChange={(e) => setAvulso({ ...avulso, descricao: e.target.value })} />
-          <input className="campo w-24" inputMode="decimal" placeholder="R$" value={avulso.preco} onChange={(e) => setAvulso({ ...avulso, preco: e.target.value })} />
+          <input className="campo flex-1" aria-label="Descrição do item avulso" name="descricaoAvulso" autoComplete="off" disabled={desabilitado} placeholder="Item avulso (ex.: gorjeta)" value={avulso.descricao} onChange={(e) => setAvulso({ ...avulso, descricao: e.target.value })} />
+          <input className="campo w-24" aria-label="Valor do item avulso em reais" name="valorAvulso" autoComplete="off" disabled={desabilitado} inputMode="decimal" placeholder="R$" value={avulso.preco} onChange={(e) => setAvulso({ ...avulso, preco: e.target.value })} />
           <button className="btn shrink-0" disabled={desabilitado} aria-label="Lançar item avulso"><Plus size={15} /></button>
         </form>
       )}
@@ -108,7 +108,7 @@ function ServicosAdicionais({ servicos, barbeiros, barbeiro, setBarbeiro, desabi
     <div className="space-y-2">
       <div>
         <label className="rotulo">Quem faz</label>
-        <select className="campo" value={barbeiro} onChange={(e) => setBarbeiro(e.target.value)}>
+        <select className="campo" aria-label="Profissional do serviço adicional" value={barbeiro} onChange={(e) => setBarbeiro(e.target.value)}>
           <option value="">Escolha o barbeiro</option>
           {barbeiros.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
         </select>

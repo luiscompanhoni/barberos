@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Copy, MessageCircle, Search, UserRound, X } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
@@ -43,10 +43,11 @@ export function NovoLinkModal(p: {
   const [valor, setValor] = useState(p.comanda && p.comanda.faltaCentavos > 0 ? centavosParaTexto(p.comanda.faltaCentavos) : "");
   const [validade, setValidade] = useState(p.comanda ? 1 : 3);
   const [parcelas, setParcelas] = useState(1);
-  const [enviar, setEnviar] = useState(true);
+  const [enviar, setEnviar] = useState(false);
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [criado, setCriado] = useState<{ link: LinkPainel; envio: { ok: boolean; erro: string | null } | null } | null>(null);
+  const emVoo = useRef(false);
 
   useEffect(() => {
     if (cliente || busca.trim().length < 2) return;
@@ -58,9 +59,11 @@ export function NovoLinkModal(p: {
 
   async function criar(e: React.FormEvent) {
     e.preventDefault();
+    if (emVoo.current || criado) return;
     setErro("");
     const v = paraCentavos(valor);
     if (!(v > 0)) return setErro("Informe o valor.");
+    emVoo.current = true;
     setOcupado(true);
     try {
       const r = await api<{ link: LinkPainel; envio: { ok: boolean; erro: string | null } | null }>("/api/financeiro/links", {
@@ -75,12 +78,14 @@ export function NovoLinkModal(p: {
     } catch (e) {
       setErro((e as Error).message);
     } finally {
+      emVoo.current = false;
       setOcupado(false);
     }
   }
 
   async function reenviar() {
-    if (!criado) return;
+    if (!criado || emVoo.current) return;
+    emVoo.current = true;
     setOcupado(true);
     setErro("");
     try {
@@ -89,6 +94,7 @@ export function NovoLinkModal(p: {
     } catch (e) {
       setErro((e as Error).message);
     } finally {
+      emVoo.current = false;
       setOcupado(false);
     }
   }
@@ -124,14 +130,14 @@ export function NovoLinkModal(p: {
           {cliente ? (
             <div className="flex items-center gap-2 rounded-xl border border-zinc-200 px-3 py-2 text-sm">
               <UserRound size={15} className="text-ouro" />
-              <span className="flex-1 font-medium">{cliente.nome}</span>
+              <span className="flex-1 font-medium">{cliente.nome}<span className="block text-xs font-normal text-zinc-500">{cliente.telefone}</span></span>
               {!p.comanda?.cliente && <button type="button" className="p-1 text-zinc-500 hover:text-red-600" aria-label="Trocar cliente" onClick={() => setCliente(null)}><X size={14} /></button>}
             </div>
           ) : (
             <>
               <div className="relative">
                 <Search size={15} className="absolute top-2.5 left-3 text-zinc-500" />
-                <input className="campo pl-9" placeholder="Buscar cliente (nome ou telefone)" value={busca} onChange={(e) => setBusca(e.target.value)} />
+                <input className="campo pl-9" aria-label="Buscar cliente para o link" name="buscaClienteLink" autoComplete="off" placeholder="Buscar cliente (nome ou telefone)" value={busca} onChange={(e) => setBusca(e.target.value)} />
               </div>
               {busca.trim().length >= 2 && achados.length > 0 && (
                 <div className="mt-1 space-y-1">
@@ -144,8 +150,8 @@ export function NovoLinkModal(p: {
               )}
               <p className="mt-2 text-[11px] text-zinc-500">Sem cadastro? Preencha nome e celular:</p>
               <div className="mt-1 grid grid-cols-2 gap-2">
-                <input className="campo" placeholder="Nome" value={nome} onChange={(e) => setNome(e.target.value)} />
-                <input className="campo" inputMode="tel" placeholder="Celular com DDD" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
+                <input className="campo" aria-label="Nome de quem vai pagar" name="nomePagador" autoComplete="off" placeholder="Nome" value={nome} onChange={(e) => setNome(e.target.value)} />
+                <input className="campo" aria-label="Celular de quem vai pagar" name="telefonePagador" autoComplete="off" type="tel" inputMode="tel" placeholder="Celular com DDD" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
               </div>
             </>
           )}
@@ -177,7 +183,7 @@ export function NovoLinkModal(p: {
           <input type="checkbox" checked={enviar} onChange={(e) => setEnviar(e.target.checked)} className="accent-[#d3ab45]" /> Enviar no WhatsApp do cliente
         </label>
         {erro && <p className="text-sm text-red-600">{erro}</p>}
-        <button className="btn-primario w-full py-2.5" disabled={ocupado}>{ocupado ? "Criando…" : "Criar link"}</button>
+        <button className="btn-primario w-full py-2.5" disabled={ocupado}>{ocupado ? "Criando…" : enviar ? "Criar e enviar link no WhatsApp" : "Criar link sem enviar"}</button>
       </form>
     </Modal>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Undo2 } from "lucide-react";
 import { useAcesso } from "@/components/AcessoContexto";
 import { Modal } from "@/components/Modal";
@@ -53,6 +53,8 @@ function ModalEstorno({ tipo, id, dono, onFechar }: { tipo: TipoEstorno; id: str
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [feito, setFeito] = useState<EstornoResumo | null>(null);
+  const emVoo = useRef(false);
+  const externa = info && ["MAQUININHA", "CELCASH", "ASAAS", "FORA"].includes(info.meio);
 
   useEffect(() => {
     api<Info>(`/api/estornos/alvo?tipo=${tipo}&id=${encodeURIComponent(id)}`)
@@ -62,10 +64,11 @@ function ModalEstorno({ tipo, id, dono, onFechar }: { tipo: TipoEstorno; id: str
 
   async function enviar(e: React.FormEvent) {
     e.preventDefault();
-    if (!info) return;
+    if (!info || emVoo.current) return;
     const v = info.parcial ? paraCentavos(valor) : info.limite;
     if (Number.isNaN(v) || v <= 0) return setErro("Valor inválido.");
     if (motivo.trim().length < 3) return setErro("Escreva o motivo do estorno.");
+    emVoo.current = true;
     setErro("");
     setOcupado(true);
     try {
@@ -74,6 +77,7 @@ function ModalEstorno({ tipo, id, dono, onFechar }: { tipo: TipoEstorno; id: str
     } catch (x) {
       setErro((x as Error).message);
     } finally {
+      emVoo.current = false;
       setOcupado(false);
     }
   }
@@ -84,10 +88,11 @@ function ModalEstorno({ tipo, id, dono, onFechar }: { tipo: TipoEstorno; id: str
         <div className="space-y-3 text-sm">
           <div className="flex items-center gap-2"><SeloEstorno status={feito.status} /><b>{reais(feito.valorCentavos)}</b></div>
           <p>
-            {feito.status === "PENDENTE" ? "Pedido enviado. O dono foi avisado no WhatsApp e decide pelo painel."
-              : feito.status === "EXECUTADO" ? "Estorno feito. O dinheiro está sendo devolvido ao cliente."
-                : feito.status === "MANUAL" ? "Estorno registrado. Falta devolver por fora:"
-                  : feito.status === "FALHOU" ? "O meio de pagamento não aceitou o estorno:" : "Estorno registrado."}
+            {feito.status === "PENDENTE" ? "Pedido registrado para o dono decidir pelo painel."
+              : feito.status === "EXECUTADO" ? "Devolução confirmada e registrada no financeiro."
+                : feito.status === "APROVADO" ? "Devolução aguardando confirmação. Siga a instrução abaixo e confira o provedor antes de qualquer nova transferência. O financeiro ainda não foi descontado."
+                  : feito.status === "MANUAL" ? "Estorno manual registrado:"
+                  : feito.status === "FALHOU" ? "O resultado da devolução precisa de conferência:" : "Estorno registrado."}
           </p>
           {feito.instrucao && <p className="rounded-lg bg-violet-50 p-2 text-violet-900">{feito.instrucao}</p>}
           {feito.erro && <p className="rounded-lg bg-red-50 p-2 text-red-700">{feito.erro}</p>}
@@ -126,13 +131,14 @@ function ModalEstorno({ tipo, id, dono, onFechar }: { tipo: TipoEstorno; id: str
                 <span className="rotulo">Motivo (obrigatório)</span>
                 <textarea className="campo" rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: cobrado duas vezes, cliente desistiu do produto" />
               </label>
-              {!dono && <p className="text-xs text-zinc-500">O pedido fica aguardando a aprovação do dono, que é avisado no WhatsApp.</p>}
+              {dono && externa && <p className="text-xs text-zinc-500">A aprovação gera uma instrução. O financeiro só será descontado depois de confirmar a devolução com comprovante.</p>}
+              {!dono && <p className="text-xs text-zinc-500">O pedido aguarda a aprovação do dono pelo painel.</p>}
               <button className={dono ? "btn-perigo w-full" : "btn-primario w-full"} disabled={ocupado || (info.exigeCaixa && !info.caixaAberto)}>
-                {ocupado ? "Enviando…" : dono ? "Estornar agora" : "Enviar pedido ao dono"}
+                {ocupado ? "Enviando…" : dono ? externa ? "Aprovar devolução externa" : "Solicitar devolução" : "Enviar pedido ao dono"}
               </button>
             </>
           )}
-          {erro && <p className="text-red-600">{erro}</p>}
+          {erro && <p role="alert" className="text-red-600">{erro}</p>}
         </form>
       )}
     </Modal>

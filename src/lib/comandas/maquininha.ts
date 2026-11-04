@@ -2,17 +2,19 @@
  * Recebimento na maquininha.
  * - "manual": a equipe digita o valor na maquininha e so registra aqui (funciona com qualquer maquininha).
  * - "stone": Stone Connect 2.0 - o BarberOS manda o pedido para a maquininha pela API da Pagar.me
- *   e o webhook confirma o pagamento sozinho. Precisa de S920/Q92 ativada no Connect.
+ *   e o webhook confirma o pagamento. Exige conta, terminal e aplicativo habilitados/homologados.
  * - "simulada": para testar sem maquininha (padrao fora de producao).
  */
 import type { FormaRecebimento } from "@prisma/client";
 import { ehHomologacao } from "@/lib/ambiente";
 import { auditar } from "@/lib/auditoria";
 import { pode } from "@/lib/auth/permissoes";
-import type { Sessao } from "@/lib/auth/sessao";
+import { BALCAO, type Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
-import { buscarPedido, criarPedidoMaquininha, fecharPedido, type TipoPOS } from "@/lib/pagamentos/pagarme";
+import { buscarPedido, criarPedidoMaquininha, ErroPagarme, fecharPedido, type TipoPOS } from "@/lib/pagamentos/pagarme";
+import { conferirValoresPOS, referenciaPOS, ultimoInstantePOS } from "./maquininha-regras";
+import { conciliarEstornoPOS } from "./maquininha-estornos";
 import { avisarComanda, ehGerente, lancarPagamento } from "./servico";
 
 export type ModoMaquininha = "stone" | "simulada" | "manual";
@@ -51,12 +53,26 @@ export async function registrarPagamento(
   comandaId: string,
   p: { forma: FormaRecebimento; valorCentavos: number; naMaquininha: boolean; serial?: string },
 ) {
+  if (!BALCAO.includes(s.papel)) throw proibido();
   const modo = modoMaquininha();
   const integrada = p.naMaquininha && p.forma !== "DINHEIRO" && modo !== "manual";
-
-  const { comanda, pagamento } = await db.$transaction((tx) =>
-    lancarPagamento(tx, s, comandaId, { forma: p.forma, valorCentavos: p.valorCentavos, status: integrada ? "AGUARDANDO" : "PAGO" }),
-  );
+  // Erros locais conhecidos não deixam uma intenção que nunca foi enviada.
+  const serial = integrada && modo === "stone" ? serialDaMaquininha(p.serial) : undefined;
+  if (integrada && modo === "stone" && !process.env.PAGARME_SECRET_KEY) throw new ErroNegocio("Integração da maquininha não configurada.", 503, "config");
+  const { comanda, pagamento, existente } = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${comandaId} FOR UPDATE`;
+    const pendente = await tx.pagamentoComanda.findFirst({ where: { comandaId, status: "AGUARDANDO" } });
+    if (pendente) {
+      if (integrada && pendente.forma === p.forma && pendente.valorCentavos === p.valorCentavos) {
+        return { pagamento: pendente, comanda: null, existente: true };
+      }
+      throw new ErroNegocio("Há uma cobrança aguardando confirmação. Confira ou cancele antes de cobrar novamente.", 409, "pagamento_pendente");
+    }
+    const link = await tx.linkPagamento.findFirst({ where: { comandaId, status: "PENDENTE", OR: [{ expiraEm: { gt: new Date() } }, { gatewayId: { not: null } }, { tentativaChave: { not: null } }] }, select: { id: true } });
+    if (link) throw new ErroNegocio("Há um link de pagamento ativo. Confira ou cancele o link antes de cobrar na comanda.", 409, "link_pendente");
+    return { ...(await lancarPagamento(tx, s, comandaId, { forma: p.forma, valorCentavos: p.valorCentavos, status: integrada ? "AGUARDANDO" : "PAGO" })), existente: false };
+  });
+  if (existente) return pagamento;
   if (!integrada) {
     avisarComanda(comandaId);
     return pagamento;
@@ -68,36 +84,63 @@ export async function registrarPagamento(
     return r;
   }
 
-  // Stone Connect: cria o pedido na maquininha. Se falhar, o pagamento e desfeito.
+  // Timeout não comprova falha: preservar a intenção impede nova cobrança por engano.
   try {
-    const nome = comanda.cliente?.nome || comanda.nomeAvulso || "Cliente";
+    const nome = comanda!.cliente?.nome || comanda!.nomeAvulso || "Cliente";
     const pedido = await criarPedidoMaquininha({
-      referencia: `cmd-${comanda.numero}-${pagamento.id}`,
+      referencia: referenciaPOS(comanda!.numero, pagamento.id),
       valorCentavos: p.valorCentavos,
-      descricao: `Comanda #${comanda.numero}`,
+      descricao: `Comanda #${comanda!.numero}`,
       tipo: TIPO[p.forma]!,
-      serial: serialDaMaquininha(p.serial),
+      serial: serial!,
       cliente: { nome, email: process.env.EMAIL_BALCAO || "balcao@barberos.app" },
       metadata: { comanda_id: comandaId, pagamento_id: pagamento.id },
     });
-    const r = await db.pagamentoComanda.update({ where: { id: pagamento.id }, data: { gatewayPedidoId: pedido.id } });
+    if (!pedido.id?.startsWith("or_")) throw new Error("Pedido sem identificação no retorno.");
+    await db.pagamentoComanda.updateMany({ where: { id: pagamento.id, gatewayPedidoId: null }, data: { gatewayPedidoId: pedido.id } });
+    const r = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: pagamento.id } });
+    if (r.gatewayPedidoId !== pedido.id) throw new Error("Pedido divergente do vínculo recuperado.");
     avisarComanda(comandaId);
     return r;
   } catch (e) {
-    await db.pagamentoComanda.update({ where: { id: pagamento.id }, data: { status: "CANCELADO" } });
+    // Rejeição explícita de entrada/autorização não criou um pedido. 409/5xx/rede são incertos.
+    const recusado = e instanceof ErroPagarme && [400, 401, 403, 404, 422].includes(e.status);
+    if (recusado) await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${comandaId} FOR UPDATE`;
+      const r = await tx.pagamentoComanda.updateMany({ where: { id: pagamento.id, status: "AGUARDANDO", gatewayPedidoId: null }, data: { status: "CANCELADO" } });
+      if (r.count) await auditar(tx, s.usuarioId, "maquininha_pedido_recusado", "comanda", comandaId, { pagamentoId: pagamento.id, httpStatus: e.status });
+    });
     avisarComanda(comandaId);
-    if (e instanceof ErroNegocio) throw e;
-    throw new ErroNegocio(`Não consegui mandar para a maquininha: ${(e as Error).message}`, 502, "maquininha");
+    throw new ErroNegocio(recusado
+      ? "A maquininha recusou a criação da cobrança. Confira a configuração com a gerência."
+      : "Não foi possível confirmar o envio à maquininha. A cobrança continua em conferência; não cobre novamente. Aguarde o retorno ou confira o pedido com a gerência.",
+    502, recusado ? "maquininha" : "maquininha_incerta");
   }
 }
 
-/** Marca como pago (so se ainda estava aguardando: idempotente para webhooks repetidos). */
-async function marcarPago(pagamentoId: string, extra: { nsu?: string | null; bandeira?: string | null }) {
-  const r = await db.pagamentoComanda.updateMany({
-    where: { id: pagamentoId, status: "AGUARDANDO" },
-    data: { status: "PAGO", pagoEm: new Date(), nsu: extra.nsu ?? null, bandeira: extra.bandeira ?? null },
+/** Confirma uma vez; prova autoritativa também pode revelar aprovação após cancelamento local. */
+async function marcarPago(pagamentoId: string, extra: { nsu?: string | null; bandeira?: string | null; gatewaySimulado?: string; pagoEm?: Date }, aceitarTardia = false) {
+  const pg = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: pagamentoId } });
+  const resultado = await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${pg.comandaId} FOR UPDATE`;
+    const atual = await tx.pagamentoComanda.findUniqueOrThrow({ where: { id: pagamentoId } });
+    const pagoEm = atual.pagoEm ?? extra.pagoEm ?? new Date();
+    const r = await tx.pagamentoComanda.updateMany({
+      where: { id: pagamentoId, status: aceitarTardia ? { in: ["AGUARDANDO", "CANCELADO"] } : "AGUARDANDO", estornadoCentavos: 0,
+        ...(extra.gatewaySimulado ? { gatewayPedidoId: extra.gatewaySimulado } : {}) },
+      data: { status: "PAGO", pagoEm, nsu: extra.nsu ?? null, bandeira: extra.bandeira ?? null },
+    });
+    const tardia = r.count > 0 && atual.status === "CANCELADO";
+    if (r.count) await auditar(tx, null, tardia ? "maquininha_aprovacao_tardia" : "maquininha_pagamento_confirmado", "comanda", pg.comandaId,
+      { pagamentoId, valorCentavos: pg.valorCentavos, pagoEm: pagoEm.toISOString(), origemData: atual.pagoEm ? "REGISTRO_EXISTENTE"
+        : extra.gatewaySimulado ? "SIMULACAO" : extra.pagoEm ? "PROVEDOR" : "DATA_CONSULTA" });
+    return { alterou: r.count > 0, tardia };
   });
-  return r.count > 0;
+  if (resultado.tardia) {
+    avisarComanda(pg.comandaId);
+    throw new ErroNegocio("A Stone confirmou uma cobrança após o cancelamento local. O recebimento foi registrado; a gerência precisa conferir se houve outra cobrança e conciliar a comanda.", 409, "maquininha_aprovacao_tardia");
+  }
+  return resultado.alterou;
 }
 
 /**
@@ -105,18 +148,43 @@ async function marcarPago(pagamentoId: string, extra: { nsu?: string | null; ban
  * Devolve true se o pedido era de uma comanda.
  */
 export async function sincronizarPedido(pedidoId: string) {
-  const pg = await db.pagamentoComanda.findUnique({ where: { gatewayPedidoId: pedidoId } });
-  if (!pg) return false;
-  if (pg.status !== "AGUARDANDO" || pedidoId.startsWith(PREFIXO_SIMULADO)) return true;
-
+  if (pedidoId.startsWith(PREFIXO_SIMULADO)) return true;
+  if (ehHomologacao()) throw new ErroNegocio("Homologação não consulta pedidos reais da maquininha.", 409, "homologacao");
+  let pg = await db.pagamentoComanda.findUnique({ where: { gatewayPedidoId: pedidoId } });
   const pedido = await buscarPedido(pedidoId);
-  const pago = pedido.charges?.find((c) => c.status === "paid");
-  if (pedido.status === "paid" || pago) {
-    if (await marcarPago(pg.id, { nsu: pago?.code ?? null, bandeira: pago?.metadata?.schemeName ?? null })) avisarComanda(pg.comandaId);
+  if (pedido.id !== pedidoId) throw new ErroNegocio("Pedido divergente no retorno da maquininha.", 409, "maquininha_divergente");
+  if (pg && ((pedido.metadata?.pagamento_id && pedido.metadata.pagamento_id !== pg.id)
+    || (pedido.metadata?.comanda_id && pedido.metadata.comanda_id !== pg.comandaId))) {
+    throw new ErroNegocio("Pedido vinculado a outra cobrança/comanda.", 409, "maquininha_divergente");
+  }
+  if (!pg) {
+    // Recupera POST aceito cuja resposta/vínculo local falhou, sem confiar no webhook bruto.
+    const id = pedido.metadata?.pagamento_id;
+    if (!id || !pedido.metadata?.comanda_id) return false;
+    const candidato = await db.pagamentoComanda.findUnique({ where: { id }, include: { comanda: { select: { numero: true } } } });
+    if (!candidato || candidato.comandaId !== pedido.metadata.comanda_id || candidato.gatewayPedidoId
+      || candidato.status !== "AGUARDANDO" || pedido.code !== referenciaPOS(candidato.comanda.numero, id)) return false;
+    conferirValoresPOS(pedido, candidato.valorCentavos);
+    const r = await db.pagamentoComanda.updateMany({ where: { id, gatewayPedidoId: null, status: "AGUARDANDO" }, data: { gatewayPedidoId: pedidoId } });
+    if (!r.count) return true;
+    pg = candidato;
+  }
+  const { pago, cancelavel, recebido, estornado, charge } = conferirValoresPOS(pedido, pg.valorCentavos);
+  const recebidoEm = ultimoInstantePOS((pedido.charges ?? []).filter(c => (c.paid_amount ?? 0) > 0).map(c => c.paid_at));
+  if (estornado > 0) {
+    const devolvidoEm = ultimoInstantePOS((pedido.charges ?? []).filter(c => (c.canceled_amount ?? 0) > 0).map(c => c.canceled_at));
+    await conciliarEstornoPOS(pg.id, pg.comandaId, pedidoId, estornado, recebido, devolvidoEm ?? new Date(), recebidoEm);
+    avisarComanda(pg.comandaId);
+  } else if (pago) {
+    if (await marcarPago(pg.id, { nsu: charge?.code ?? null, bandeira: charge?.metadata?.schemeName ?? charge?.metadata?.scheme_name ?? null, pagoEm: recebidoEm }, true)) avisarComanda(pg.comandaId);
     // Sempre fechar: pedido aberto continua ocupando a fila da maquininha (limite de 30).
     await fecharPedido(pedidoId, "paid").catch((e) => console.error("[maquininha] fechar pedido", pedidoId, e));
-  } else if (pedido.status === "canceled" || pedido.status === "failed") {
-    await db.pagamentoComanda.updateMany({ where: { id: pg.id, status: "AGUARDANDO" }, data: { status: "CANCELADO" } });
+  } else if (cancelavel && pg.status === "AGUARDANDO" && (pedido.status === "canceled" || pedido.status === "failed")) {
+    await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${pg!.comandaId} FOR UPDATE`;
+      const r = await tx.pagamentoComanda.updateMany({ where: { id: pg!.id, status: "AGUARDANDO" }, data: { status: "CANCELADO" } });
+      if (r.count) await auditar(tx, null, "maquininha_pagamento_cancelado", "comanda", pg!.comandaId, { pagamentoId: pg!.id, pedidoId });
+    });
     avisarComanda(pg.comandaId);
   }
   return true;
@@ -128,6 +196,7 @@ export async function sincronizarPedido(pedidoId: string) {
  * e estorno (lib/estornos): a recepcao pede e o dono aprova.
  */
 export async function cancelarPagamento(s: Sessao, pagamentoId: string) {
+  if (!BALCAO.includes(s.papel)) throw proibido();
   const pg = await db.pagamentoComanda.findUnique({ where: { id: pagamentoId }, include: { comanda: { select: { status: true } } } });
   if (!pg) throw naoEncontrado("Pagamento");
   if (pg.comanda.status !== "ABERTA") throw new ErroNegocio("A comanda já foi fechada.");
@@ -146,12 +215,23 @@ export async function cancelarPagamento(s: Sessao, pagamentoId: string) {
     throw proibido();
   }
   if (pg.status === "AGUARDANDO" && pg.gatewayPedidoId && !pg.gatewayPedidoId.startsWith(PREFIXO_SIMULADO)) {
+    // Primeiro concilia eventual aprovação; fechar pedido não devolve dinheiro já recebido.
+    await sincronizarPedido(pg.gatewayPedidoId);
+    const antes = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: pagamentoId } });
+    if (antes.status === "PAGO") throw new ErroNegocio("Pagamento aprovado na maquininha: para devolver, use “Pedir estorno”.", 409, "usar_estorno");
     await fecharPedido(pg.gatewayPedidoId, "canceled").catch((e) => {
       throw new ErroNegocio(`A maquininha não confirmou o cancelamento: ${(e as Error).message}`, 502, "maquininha");
     });
+    await sincronizarPedido(pg.gatewayPedidoId);
+    const depois = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: pagamentoId } });
+    if (depois.status !== "CANCELADO") throw new ErroNegocio("Cancelamento ainda não confirmado. Confira a maquininha antes de cobrar novamente.", 409, "maquininha_incerta");
+    return;
   }
+  if (pg.status === "AGUARDANDO" && !pg.gatewayPedidoId) throw new ErroNegocio("O envio à maquininha está em conferência. Verifique o pedido com a gerência antes de cancelar ou cobrar novamente.", 409, "maquininha_incerta");
   await db.$transaction(async (tx) => {
-    await tx.pagamentoComanda.update({ where: { id: pagamentoId }, data: { status: "CANCELADO" } });
+    await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${pg.comandaId} FOR UPDATE`;
+    const atualizado = await tx.pagamentoComanda.updateMany({ where: { id: pagamentoId, status: pg.status, estornadoCentavos: pg.estornadoCentavos }, data: { status: "CANCELADO" } });
+    if (!atualizado.count) throw new ErroNegocio("O pagamento mudou durante o cancelamento. Confira novamente.", 409, "pagamento_alterado");
     await auditar(tx, s.usuarioId, "cancelar_pagamento", "comanda", pg.comandaId, { pagamentoId, estava: pg.status, valorCentavos: pg.valorCentavos });
   });
   avisarComanda(pg.comandaId);
@@ -162,5 +242,9 @@ export async function simularAprovacao(pagamentoId: string) {
   if (modoMaquininha() !== "simulada") throw new ErroNegocio("Simulação desligada.", 403, "proibido");
   const pg = await db.pagamentoComanda.findUnique({ where: { id: pagamentoId } });
   if (!pg) throw naoEncontrado("Pagamento");
-  if (await marcarPago(pg.id, { nsu: String(Date.now()).slice(-6), bandeira: pg.forma === "PIX" ? "Pix" : "Visa" })) avisarComanda(pg.comandaId);
+  const gatewaySimulado = `${PREFIXO_SIMULADO}${pg.id}`;
+  if (pg.gatewayPedidoId !== gatewaySimulado || pg.antecipadoId || pg.linkPagamentoId) {
+    throw new ErroNegocio("Esse pagamento não pertence ao simulador da maquininha. Não é permitido simular uma cobrança real ou sem identificação.", 409, "simulacao_pagamento");
+  }
+  if (await marcarPago(pg.id, { nsu: String(Date.now()).slice(-6), bandeira: pg.forma === "PIX" ? "Pix" : "Visa", gatewaySimulado })) avisarComanda(pg.comandaId);
 }

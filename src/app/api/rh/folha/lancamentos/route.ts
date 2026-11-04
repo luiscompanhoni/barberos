@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { exigirSessaoCom } from "@/lib/auth/permissoes";
-import { rota } from "@/lib/erros";
+import { ErroNegocio, rota } from "@/lib/erros";
 import { excluirLancamento, lancar } from "@/lib/rh/folha";
-import { corpo, parametros, zId } from "@/lib/validacao";
+import { corpoCobrancaEquipe } from "@/lib/pagamentos/http-equipe";
+import { parametros, zId } from "@/lib/validacao";
 
 /** Adicional, bonus, vale (pode sair do caixa) ou desconto na folha do mes. */
 export const POST = rota(async (req: Request) => {
   const s = await exigirSessaoCom("folha");
-  const b = await corpo(req, z.object({
+  const b = await corpoCobrancaEquipe(req, z.object({
+    idempotencia: z.unknown().optional(),
     competencia: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
     pessoaId: zId,
     tipo: z.enum(["ADICIONAL", "BONUS", "VALE", "DESCONTO"]),
@@ -16,7 +18,9 @@ export const POST = rota(async (req: Request) => {
     descricao: z.string().trim().min(2).max(120),
     doCaixa: z.boolean().optional(),
   }));
-  const l = await lancar(s, b);
+  const chave = z.uuid().safeParse(b.idempotencia);
+  if (!chave.success) throw new ErroNegocio("Atualize a página da folha antes de tentar um novo lançamento. A identificação desta tentativa está ausente ou inválida.", 400, "idempotencia_necessaria");
+  const l = await lancar(s, { ...b, idempotencia: chave.data });
   return NextResponse.json({ id: l.id });
 });
 

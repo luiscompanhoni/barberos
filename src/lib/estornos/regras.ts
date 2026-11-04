@@ -10,12 +10,12 @@ export type MeioEstorno = "PAGARME" | "MAQUININHA" | "CELCASH" | "ASAAS" | "SIMU
 export type FormaFinanceira = "DINHEIRO" | "PIX" | "DEBITO" | "CREDITO" | "ONLINE";
 
 /** Ainda "segura" valor do pagamento (nao da para pedir de novo por cima). */
-export const STATUS_ATIVOS: StatusEstorno[] = ["PENDENTE", "APROVADO", "EXECUTADO", "MANUAL"];
-/** Dinheiro ja devolvido (ou mandado devolver por fora): conta no financeiro. */
+export const STATUS_ATIVOS: StatusEstorno[] = ["PENDENTE", "APROVADO", "FALHOU", "EXECUTADO", "MANUAL"];
+/** Só devolução confirmada conta no financeiro; instrução, pendência e falha não comprovam saída. */
 export const STATUS_EFETIVOS: StatusEstorno[] = ["EXECUTADO", "MANUAL"];
 
 export const ROTULO_STATUS: Record<StatusEstorno, string> = {
-  PENDENTE: "Aguardando o dono", APROVADO: "Executando", RECUSADO: "Recusado", EXECUTADO: "Estornado", FALHOU: "Falhou", MANUAL: "Estornar por fora",
+  PENDENTE: "Aguardando o dono", APROVADO: "Aguardando conferência", RECUSADO: "Recusado", EXECUTADO: "Estornado", FALHOU: "Exige conferência", MANUAL: "Estorno manual registrado",
 };
 export const ROTULO_TIPO: Record<TipoEstorno, string> = { COMANDA: "Comanda", ANTECIPADO: "Horário pago antes", LINK: "Link de pagamento", MENSALIDADE: "Mensalidade" };
 export const ROTULO_MEIO: Record<MeioEstorno, string> = {
@@ -41,10 +41,10 @@ export function meioDoEstorno(p: { tipo: TipoEstorno; gatewayId: string | null; 
   return "FORA";
 }
 
-/** Estorno parcial so onde o meio aceita (Pagar.me, maquininha via API, dinheiro, simulado). */
+/** POS fica no total até a habilitação de devolução parcial ser confirmada com a Stone. */
 export function aceitaParcial(meio: MeioEstorno, tipo: TipoEstorno) {
   if (tipo === "MENSALIDADE") return false; // mensalidade: so total (a cobranca vira ESTORNADA)
-  return meio === "PAGARME" || meio === "MAQUININHA" || meio === "DINHEIRO" || meio === "SIMULADO";
+  return meio === "PAGARME" || meio === "DINHEIRO" || meio === "SIMULADO";
 }
 
 /** Forma usada no financeiro (online = horario pago antes, link e mensalidade). */
@@ -72,9 +72,10 @@ export function erroNoPedido(p: { valorCentavos: number; limite: number; motivo:
   return null;
 }
 
-/** Retorno do gateway -> status final. Pendente (Pix em processamento) ja conta como executado. */
-export function statusDoRetorno(r: { pendente: boolean }) {
-  return { status: "EXECUTADO" as const, instrucao: r.pendente ? "Devolução em processamento no meio de pagamento (Pix)." : null };
+/** pending_refund/processing e estados desconhecidos exigem confirmação antes da baixa. */
+export function statusDoRetorno(r: { pendente: boolean; status?: string }) {
+  if (!r.pendente && ["refunded", "canceled"].includes(r.status ?? "")) return { status: "EXECUTADO" as const, instrucao: null };
+  return { status: "APROVADO" as const, instrucao: "Devolução em conferência no provedor. Não repetir a solicitação nem realizar outra transferência; confirme o resultado com comprovante." };
 }
 
 /** Instrucao para o estorno feito por fora (MANUAL). */
@@ -83,7 +84,7 @@ export function instrucaoManual(meio: MeioEstorno, valorCentavos: number, detalh
   switch (meio) {
     case "CELCASH": return `Estornar manualmente no painel da Celcash: ${v}${detalhe ? ` (${detalhe})` : ""}.`;
     case "ASAAS": return `Estornar manualmente no painel do Asaas: ${v}${detalhe ? ` (${detalhe})` : ""}.`;
-    case "MAQUININHA": return `Estornar ${v} na própria maquininha (menu Cancelamento/Estorno)${detalhe ? `: ${detalhe}` : ""}.`;
+    case "MAQUININHA": return `Estornar ${v} na própria maquininha (menu Cancelamento/Estorno) ou no portal Stone${detalhe ? `: ${detalhe}` : ""}. Depois, confirme a devolução no BarberOS com a referência do comprovante.`;
     case "FORA": return `Pagamento lançado sem integração: estornar ${v} na maquininha ou no app do banco${detalhe ? ` (${detalhe})` : ""}.`;
     default: return `Devolver ${v} ao cliente por fora${detalhe ? ` (${detalhe})` : ""}.`;
   }

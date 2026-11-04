@@ -6,6 +6,7 @@ import { auditar } from "@/lib/auditoria";
 import { exigirPermissao } from "@/lib/auth/permissoes";
 import type { Sessao } from "@/lib/auth/sessao";
 import { resumoComanda } from "@/lib/comandas/regras";
+import { conferirNovoTotal } from "@/lib/comandas/total-reservado";
 import { avisarComanda } from "@/lib/comandas/servico";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
@@ -44,7 +45,7 @@ export async function usarSaldo(s: Sessao, comandaId: string) {
   await exigirPermissao(s, "saldo");
   const r = await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${comandaId} FOR UPDATE`;
-    const c = await tx.comanda.findUnique({ where: { id: comandaId }, include: { itens: true, pagamentos: true } });
+    const c = await tx.comanda.findUnique({ where: { id: comandaId }, include: { itens: true, pagamentos: true, linksPagamento: { where: { status: "PENDENTE" } } } });
     if (!c) throw naoEncontrado("Comanda");
     if (c.status !== "ABERTA") throw new ErroNegocio("Essa comanda já foi fechada.");
     if (!c.clienteId) throw new ErroNegocio("Comanda sem cliente cadastrado: não há saldo para usar.");
@@ -55,6 +56,8 @@ export async function usarSaldo(s: Sessao, comandaId: string) {
     if (!creditos.length) throw new ErroNegocio("O cliente não tem saldo.");
 
     const plano = planoDeUso(creditos, podeDescontar);
+    const usado = plano.reduce((t, p) => t + p.usa, 0);
+    conferirNovoTotal(c, c.itens, c.descontoCentavos + usado);
     const agora = new Date();
     for (const p of plano) {
       const b = creditos.find((x) => x.id === p.id)!;
@@ -72,7 +75,6 @@ export async function usarSaldo(s: Sessao, comandaId: string) {
         await tx.beneficio.update({ where: { id: b.id }, data: { status: "USADO", usadoEm: agora, comandaId } });
       }
     }
-    const usado = plano.reduce((t, p) => t + p.usa, 0);
     await tx.comanda.update({ where: { id: comandaId }, data: { descontoCentavos: c.descontoCentavos + usado } });
     await auditar(tx, s.usuarioId, "usar_saldo", "comanda", comandaId, { valorCentavos: usado });
     return { usadoCentavos: usado };
