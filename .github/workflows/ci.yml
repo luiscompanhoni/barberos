@@ -118,10 +118,15 @@ jobs:
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-app-anterior:$GITHUB_SHA" -f "$RUNNER_TEMP/Dockerfile-anterior" .
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-app:$GITHUB_SHA" .
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-backup:$GITHUB_SHA" -f deploy/backup.Dockerfile deploy
+          docker build --target rclone_legado -t "barberos-rclone-legado:$GITHUB_SHA" -f deploy/backup.Dockerfile deploy
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-video-worker-anterior:$GITHUB_SHA" -f "$RUNNER_TEMP/Dockerfile-worker-anterior" workers/video
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-video-worker:$GITHUB_SHA" workers/video
       - name: Verificar permissões da imagem nova
         run: node scripts/publicacao/teste-imagem-app.mjs "barberos-app:$GITHUB_SHA"
+      - name: Verificar backup em banco sintético separado
+        run: |
+          docker tag "barberos-backup:$GITHUB_SHA" "barberos-backup-validacao:$GITHUB_SHA"
+          python3 scripts/publicacao/teste-backup-container.py "barberos-backup-validacao:$GITHUB_SHA" "barberos-rclone-legado:$GITHUB_SHA"
       - name: Verificar worker sem privilégios e render sintético
         run: |
           set -euo pipefail

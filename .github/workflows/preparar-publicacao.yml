@@ -75,7 +75,8 @@ jobs:
       - name: Backup e restauração com dados sintéticos
         run: |
           docker build -t barberos-backup-validacao:teste -f deploy/backup.Dockerfile deploy
-          python3 scripts/publicacao/teste-backup-container.py barberos-backup-validacao:teste
+          docker build --target rclone_legado -t barberos-rclone-legado:teste -f deploy/backup.Dockerfile deploy
+          python3 scripts/publicacao/teste-backup-container.py barberos-backup-validacao:teste barberos-rclone-legado:teste
       - name: Preparar pacote identificado pelo commit
         run: node scripts/publicacao/preparar.mjs "$RUNNER_TEMP/barberos-release"
       - uses: actions/upload-artifact@v4
