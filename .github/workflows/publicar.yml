@@ -59,6 +59,7 @@ jobs:
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-video-worker:$GITHUB_SHA" workers/video
       - name: Conferir restauração e render com dados sintéticos
         run: |
+          node scripts/publicacao/teste-imagem-app.mjs "barberos-app:$GITHUB_SHA"
           docker tag "barberos-backup:$GITHUB_SHA" "barberos-backup-validacao:$GITHUB_SHA"
           python3 scripts/publicacao/teste-backup-container.py "barberos-backup-validacao:$GITHUB_SHA"
           docker run --rm --network none --entrypoint node -v "$PWD/workers/video/tests:/worker/tests:ro" "barberos-video-worker:$GITHUB_SHA" --test tests/render.test.mjs tests/templates.test.mjs

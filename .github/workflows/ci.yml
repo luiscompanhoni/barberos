@@ -102,3 +102,49 @@ jobs:
       - name: Build
         run: npm run build
 
+  comparar-imagens:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Construir versões com o mesmo contexto
+        run: |
+          set -euo pipefail
+          git show d833182db751a74d3ce52017f11a2824fcb6c735:Dockerfile > "$RUNNER_TEMP/Dockerfile-anterior"
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-app-anterior:$GITHUB_SHA" -f "$RUNNER_TEMP/Dockerfile-anterior" .
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-app:$GITHUB_SHA" .
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-backup:$GITHUB_SHA" -f deploy/backup.Dockerfile deploy
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-video-worker:$GITHUB_SHA" workers/video
+      - name: Verificar permissões da imagem nova
+        run: node scripts/publicacao/teste-imagem-app.mjs "barberos-app:$GITHUB_SHA"
+      - name: Verificar inicialização isolada
+        run: |
+          set -euo pipefail
+          id=$(docker run -d --rm --network none -e BARBEROS_QUARENTENA_RESTAURACAO=true --entrypoint node "barberos-app:$GITHUB_SHA" server.js)
+          trap 'docker stop "$id" >/dev/null 2>&1 || true' EXIT
+          for tentativa in $(seq 1 40); do
+            if docker exec "$id" wget -Y off -qO /dev/null http://127.0.0.1:3000/entrar; then exit 0; fi
+            sleep 1
+          done
+          docker logs "$id"
+          exit 1
+      - name: Medir imagens e transporte
+        run: |
+          set -euo pipefail
+          anterior=$(docker image inspect "barberos-app-anterior:$GITHUB_SHA" --format '{{.Size}}')
+          novo=$(docker image inspect "barberos-app:$GITHUB_SHA" --format '{{.Size}}')
+          docker save "barberos-app-anterior:$GITHUB_SHA" "barberos-backup:$GITHUB_SHA" "barberos-video-worker:$GITHUB_SHA" | tee >(wc -c > "$RUNNER_TEMP/anterior-bruto") | gzip -1 | wc -c > "$RUNNER_TEMP/anterior-gzip"
+          wait
+          docker save "barberos-app:$GITHUB_SHA" "barberos-backup:$GITHUB_SHA" "barberos-video-worker:$GITHUB_SHA" | tee >(wc -c > "$RUNNER_TEMP/novo-bruto") | gzip -1 | wc -c > "$RUNNER_TEMP/novo-gzip"
+          wait
+          {
+            echo "### Comparação das imagens (bytes)"
+            echo "- Imagem app descompactada: anterior $anterior; nova $novo."
+            echo "- Exportação das três imagens sem compressão: anterior $(cat "$RUNNER_TEMP/anterior-bruto"); nova $(cat "$RUNNER_TEMP/novo-bruto")."
+            echo "- Transporte gzip -1 das três imagens: anterior $(cat "$RUNNER_TEMP/anterior-gzip"); novo $(cat "$RUNNER_TEMP/novo-gzip")."
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$novo" -lt "$anterior"
+

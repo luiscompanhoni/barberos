@@ -20,4 +20,5 @@ tsconfig.tsbuildinfo
 
 .data
 .test-estudio
+scripts/dados
 docs/estudio-evidencias
