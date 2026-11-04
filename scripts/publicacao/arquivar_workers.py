@@ -11,9 +11,9 @@ import time
 from pathlib import Path
 
 TAGS = ["barberos-video-worker:" + s for s in (
-    "7a7d3e9cfd834ba933e54eadcb63f653b8a236f6",
-    "d2d7af8e56976b81d123c2f08b9c55f3d6dee970",
-    "ea5b5222b488f2aa45f9884e15624f501b7e9250",
+    "38afc027c4826730b5c0328f839a90ea30ed2110",
+    "085fc5b8c85b274e18e9e4b9c4e3ae0a0a63b1c1",
+    "9d170a722ecbc9b48870a2fec1327712fc407a90",
 )]
 
 def cmd(args):
@@ -127,3 +127,4 @@ if __name__ == "__main__":
         elif modo == "concluir" and len(extras) == 2: r = concluir(base, projeto, imagem, *extras)
         else: raise RuntimeError("Operação inválida.")
         print(json.dumps(r))
+
