@@ -45,11 +45,11 @@ def main(image):
                  "--memory", "512m", "--tmpfs", "/var/lib/postgresql/data:rw,size=256m",
                  "-e", "POSTGRES_PASSWORD=" + password, "-e", "POSTGRES_DB=fixture",
                  "postgres:16-alpine"])
-            # Serviço S3 sintético na mesma rede interna, sem portas publicadas ou credenciais reais.
+            # Servidor experimental S3 do próprio rclone em tmpfs e rede interna.
             run(["docker", "run", "-d", "--rm", "--name", s3, "--network", net,
-                 "--memory", "512m", "--tmpfs", "/data:rw,size=64m",
-                 "-e", "MINIO_ROOT_USER=fixtureaccess", "-e", "MINIO_ROOT_PASSWORD=fixturesecretpassword",
-                 "minio/minio:RELEASE.2025-04-22T22-12-26Z", "server", "/data"])
+                 "--memory", "128m", "--tmpfs", "/dados:rw,size=64m", "--entrypoint", "rclone", image,
+                 "serve", "s3", "/dados", "--addr", ":9000", "--auth-key",
+                 "fixtureaccess,fixturesecretpassword"])
             for _ in range(60):
                 p = subprocess.run(["docker", "exec", db, "pg_isready", "-U", "postgres",
                                     "-d", "fixture"], capture_output=True)
@@ -117,8 +117,8 @@ for cmd in pg_dump psql createdb dropdb pg_isready gzip gunzip find stat flock p
             # Exercita os dois uploads S3 e confere o conteúdo após descriptografia.
             s3_env = ["-e", "BACKUP_S3_BUCKET=fixture", "-e", "BACKUP_SENHA=senha-ficticia",
                       "-e", "BACKUP_S3_CHAVE=fixtureaccess", "-e", "BACKUP_S3_SEGREDO=fixturesecretpassword",
-                      "-e", "BACKUP_S3_PROVEDOR=Minio", "-e", "BACKUP_S3_ENDPOINT=http://" + s3 + ":9000"]
-            config = ["-e", "RCLONE_CONFIG_FIX_TYPE=s3", "-e", "RCLONE_CONFIG_FIX_PROVIDER=Minio",
+                      "-e", "BACKUP_S3_PROVEDOR=Rclone", "-e", "BACKUP_S3_ENDPOINT=http://" + s3 + ":9000"]
+            config = ["-e", "RCLONE_CONFIG_FIX_TYPE=s3", "-e", "RCLONE_CONFIG_FIX_PROVIDER=Rclone",
                       "-e", "RCLONE_CONFIG_FIX_ACCESS_KEY_ID=fixtureaccess",
                       "-e", "RCLONE_CONFIG_FIX_SECRET_ACCESS_KEY=fixturesecretpassword",
                       "-e", "RCLONE_CONFIG_FIX_ENDPOINT=http://" + s3 + ":9000"]
