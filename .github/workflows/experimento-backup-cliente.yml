@@ -1,0 +1,34 @@
+name: Experimento isolado imagem backup cliente
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/experimento-backup-cliente.yml'
+      - 'experimentos/backup-cliente/Dockerfile'
+      - 'experimentos/backup-cliente/comparar.sh'
+      - 'experimentos/backup-cliente/teste.py'
+
+permissions:
+  contents: read
+
+jobs:
+  experimento:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Construir app e worker para medir exportação
+        run: |
+          set -euo pipefail
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-app:$GITHUB_SHA" .
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-video-worker:$GITHUB_SHA" workers/video
+      - name: Comparar backup e executar restauração sintética
+        run: |
+          set -euo pipefail
+          bash experimentos/backup-cliente/comparar.sh "$PWD" "$PWD/experimentos/backup-cliente" "barberos-app:$GITHUB_SHA" "barberos-video-worker:$GITHUB_SHA" | tee "$RUNNER_TEMP/backup-experimento.txt"
+          echo '### Experimento isolado do backup' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Os dados abaixo são da imagem, não do servidor de produção.' >> "$GITHUB_STEP_SUMMARY"
+          cat "$RUNNER_TEMP/backup-experimento.txt" >> "$GITHUB_STEP_SUMMARY"
