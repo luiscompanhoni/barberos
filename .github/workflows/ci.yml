@@ -114,12 +114,29 @@ jobs:
         run: |
           set -euo pipefail
           git show d833182db751a74d3ce52017f11a2824fcb6c735:Dockerfile > "$RUNNER_TEMP/Dockerfile-anterior"
+          git show d833182db751a74d3ce52017f11a2824fcb6c735:workers/video/Dockerfile > "$RUNNER_TEMP/Dockerfile-worker-anterior"
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-app-anterior:$GITHUB_SHA" -f "$RUNNER_TEMP/Dockerfile-anterior" .
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-app:$GITHUB_SHA" .
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-backup:$GITHUB_SHA" -f deploy/backup.Dockerfile deploy
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-video-worker-anterior:$GITHUB_SHA" -f "$RUNNER_TEMP/Dockerfile-worker-anterior" workers/video
           docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-video-worker:$GITHUB_SHA" workers/video
       - name: Verificar permissões da imagem nova
         run: node scripts/publicacao/teste-imagem-app.mjs "barberos-app:$GITHUB_SHA"
+      - name: Verificar worker sem privilégios e render sintético
+        run: |
+          set -euo pipefail
+          for imagem in "barberos-video-worker-anterior:$GITHUB_SHA" "barberos-video-worker:$GITHUB_SHA"; do
+            docker run --rm --network none --read-only --tmpfs /worker/jobs:rw,nosuid,size=1536m,uid=1000,gid=1000,mode=0700 --tmpfs /tmp:rw,nosuid,size=256m,mode=1777 --tmpfs /home/node:rw,nosuid,size=64m,uid=1000,gid=1000 --entrypoint node "$imagem" -e '
+              const fs = require("node:fs"), path = require("node:path");
+              const uid = process.getuid(), gid = process.getgid();
+              if (uid !== 1000 || gid !== 1000) throw Error("Usuário do worker inesperado");
+              function conferir(p) { const s = fs.lstatSync(p); if (s.uid !== uid || s.gid !== gid) throw Error("Proprietário inesperado: " + p); if (s.isDirectory()) for (const n of fs.readdirSync(p)) conferir(path.join(p, n)); }
+              conferir("/worker");
+              for (const p of ["/usr/bin/chromium", "/usr/bin/ffmpeg", "/usr/bin/ffprobe", "/worker/node_modules/hyperframes/bin/hyperframes.mjs"]) fs.accessSync(p, fs.constants.R_OK);
+              fs.writeFileSync("/worker/jobs/.teste", "teste"); fs.unlinkSync("/worker/jobs/.teste");'
+          done
+          docker run --rm --network none --entrypoint node -v "$PWD/workers/video/tests:/worker/tests:ro" "barberos-video-worker:$GITHUB_SHA" --test tests/render.test.mjs tests/templates.test.mjs
+          docker run --rm --network none --read-only --memory 2g --cpus 0.75 --pids-limit 256 --cap-drop ALL --security-opt no-new-privileges:true --shm-size 256m --tmpfs /worker/jobs:rw,nosuid,size=1536m,uid=1000,gid=1000,mode=0700 --tmpfs /tmp:rw,nosuid,size=256m,mode=1777 --tmpfs /home/node:rw,nosuid,size=64m,uid=1000,gid=1000 --entrypoint node -v "$PWD/workers/video/tests:/worker/tests:ro" "barberos-video-worker:$GITHUB_SHA" tests/smoke-templates.mjs
       - name: Verificar inicialização isolada
         run: |
           set -euo pipefail
@@ -136,15 +153,19 @@ jobs:
           set -euo pipefail
           anterior=$(docker image inspect "barberos-app-anterior:$GITHUB_SHA" --format '{{.Size}}')
           novo=$(docker image inspect "barberos-app:$GITHUB_SHA" --format '{{.Size}}')
-          docker save "barberos-app-anterior:$GITHUB_SHA" "barberos-backup:$GITHUB_SHA" "barberos-video-worker:$GITHUB_SHA" | tee >(wc -c > "$RUNNER_TEMP/anterior-bruto") | gzip -1 | wc -c > "$RUNNER_TEMP/anterior-gzip"
+          worker_anterior=$(docker image inspect "barberos-video-worker-anterior:$GITHUB_SHA" --format '{{.Size}}')
+          worker_novo=$(docker image inspect "barberos-video-worker:$GITHUB_SHA" --format '{{.Size}}')
+          docker save "barberos-app-anterior:$GITHUB_SHA" "barberos-backup:$GITHUB_SHA" "barberos-video-worker-anterior:$GITHUB_SHA" | tee >(wc -c > "$RUNNER_TEMP/anterior-bruto") | gzip -1 | wc -c > "$RUNNER_TEMP/anterior-gzip"
           wait
           docker save "barberos-app:$GITHUB_SHA" "barberos-backup:$GITHUB_SHA" "barberos-video-worker:$GITHUB_SHA" | tee >(wc -c > "$RUNNER_TEMP/novo-bruto") | gzip -1 | wc -c > "$RUNNER_TEMP/novo-gzip"
           wait
           {
             echo "### Comparação das imagens (bytes)"
             echo "- Imagem app descompactada: anterior $anterior; nova $novo."
+            echo "- Imagem worker descompactada: anterior $worker_anterior; nova $worker_novo."
             echo "- Exportação das três imagens sem compressão: anterior $(cat "$RUNNER_TEMP/anterior-bruto"); nova $(cat "$RUNNER_TEMP/novo-bruto")."
             echo "- Transporte gzip -1 das três imagens: anterior $(cat "$RUNNER_TEMP/anterior-gzip"); novo $(cat "$RUNNER_TEMP/novo-gzip")."
           } >> "$GITHUB_STEP_SUMMARY"
           test "$novo" -lt "$anterior"
+          test "$worker_novo" -lt "$worker_anterior"
 
