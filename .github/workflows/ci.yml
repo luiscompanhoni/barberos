@@ -126,7 +126,7 @@ jobs:
           id=$(docker run -d --rm --network none -e BARBEROS_QUARENTENA_RESTAURACAO=true --entrypoint node "barberos-app:$GITHUB_SHA" server.js)
           trap 'docker stop "$id" >/dev/null 2>&1 || true' EXIT
           for tentativa in $(seq 1 40); do
-            if docker exec "$id" wget -Y off -qO /dev/null http://127.0.0.1:3000/entrar; then exit 0; fi
+            if docker exec "$id" node -e "fetch('http://127.0.0.1:3000/api/saude').then(r=>process.exit(r.status===503?0:1)).catch(()=>process.exit(1))"; then exit 0; fi
             sleep 1
           done
           docker logs "$id"
