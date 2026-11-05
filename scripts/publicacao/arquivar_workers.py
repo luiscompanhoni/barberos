@@ -10,11 +10,9 @@ import sys
 import time
 from pathlib import Path
 
-TAGS = ["barberos-video-worker:" + s for s in (
-    "38afc027c4826730b5c0328f839a90ea30ed2110",
-    "085fc5b8c85b274e18e9e4b9c4e3ae0a0a63b1c1",
-    "9d170a722ecbc9b48870a2fec1327712fc407a90",
-)]
+TAGS = ["barberos-video-worker:f7968a11b1892b07eaad46b659ad7c5d18bb9bd4"]
+# O inventário tem só o ID curto. O preflight precisa obter e preservar os 64 dígitos.
+PREFIXO_ID = "sha256:32855fc2a5d7"
 
 def cmd(args):
     return subprocess.check_output(args, stderr=subprocess.PIPE, timeout=180).decode()
@@ -56,7 +54,9 @@ def candidatos():
     lista = json.loads(cmd(["docker", "image", "inspect", *TAGS]))
     resultado = []
     for tag, img in zip(TAGS, lista, strict=True):
-        if img["Id"] in usados or tag not in img.get("RepoTags", []): raise RuntimeError("Worker histórico em uso ou tag inesperada.")
+        if img["Id"] in usados or img.get("RepoTags") != [tag]: raise RuntimeError("Worker histórico em uso ou tag inesperada.")
+        if not re.fullmatch(r"sha256:[a-f0-9]{64}", img["Id"]) or not img["Id"].startswith(PREFIXO_ID):
+            raise RuntimeError("ID do worker diverge do inventário autorizado.")
         resultado.append({"tag": tag, "id": img["Id"]})
     return resultado
 
