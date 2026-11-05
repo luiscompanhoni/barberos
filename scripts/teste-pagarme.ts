@@ -16,16 +16,17 @@ import { db } from "@/lib/db";
 import { _usarFetch } from "@/lib/pagamentos/pagarme";
 import { assinar, situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { processarEventoGateway, cobrancaEmAberto } from "@/lib/assinaturas/cobrancas";
-import { ativarComCartao } from "@/lib/assinaturas/cartao-pix";
+import { ativarComCartao, checkoutDaAssinatura } from "@/lib/assinaturas/cartao-pix";
 import { gerarPixDoProximoMes, marcarVencidas } from "@/lib/assinaturas/rotina";
 import { ErroNegocio } from "@/lib/erros";
 
 const ok = (c: boolean, msg: string) => { if (!c) process.exitCode = 1; console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); };
 
 // ---- Pagar.me falsa
-type Charge = { id: string; amount: number; status: string; payment_method: string; created_at: string; due_at?: string; invoice?: { id: string; subscriptionId: string }; last_transaction: Record<string, string> };
+type Charge = { id: string; amount: number; currency?: string; paid_amount?: number; status: string; payment_method: string; created_at: string; due_at?: string; invoice?: { id: string; subscriptionId: string }; last_transaction: Record<string, string> };
 const charges = new Map<string, Charge>();
 const invoices: { id: string; sub: string; charge: string }[] = [];
+const tentativas = new Map<string, number>();
 let seq = 0;
 const nid = (p: string) => `${p}_${++seq}`;
 _usarFetch((async (url: string, init?: RequestInit) => {
@@ -41,14 +42,18 @@ _usarFetch((async (url: string, init?: RequestInit) => {
     return json({ id: nid("or"), charges: [ch] });
   }
   if (init?.method === "POST" && caminho === "/subscriptions") {
+    const referencia = corpo.metadata.assinatura_id;
+    tentativas.set(referencia, (tentativas.get(referencia) ?? 0) + 1);
     if (corpo.payment_method === "credit_card" && !corpo.card?.billing_address?.zip_code) return json({ message: "billing value is required" }, 422);
-    if (corpo.card_token === "token_recusado") return json({ message: "Card declined" }, 422);
+    if (corpo.card_token === "token_422") return json({ message: "Card declined" }, 422);
     const sub = nid("sub");
-    const ch: Charge = { id: nid("ch"), amount: corpo.items[0].pricing_scheme.price, status: "paid", payment_method: "credit_card",
+    const status = corpo.card_token === "token_recusado" ? "failed" : corpo.card_token === "token_sem_id" ? "pending" : "paid";
+    const valor = corpo.items[0].pricing_scheme.price;
+    const ch: Charge = { id: nid("ch"), amount: valor, currency: "BRL", paid_amount: status === "paid" ? valor : 0, status, payment_method: "credit_card",
       created_at: new Date().toISOString(), due_at: new Date().toISOString(), invoice: { id: nid("in"), subscriptionId: sub }, last_transaction: {} };
     charges.set(ch.id, ch);
     invoices.push({ id: ch.invoice!.id, sub, charge: ch.id });
-    return json({ id: sub });
+    return json(corpo.card_token === "token_sem_id" ? {} : { id: sub });
   }
   if (caminho === "/invoices") return json({ data: invoices.filter((i) => i.sub === u.searchParams.get("subscription_id")).map((i) => ({ id: i.id, charge: { id: i.charge } })) });
   const m = caminho.match(/^\/charges\/(.+)$/);
@@ -65,9 +70,10 @@ async function limpar(tel: string) {
   await db.cliente.delete({ where: { id: c.id } });
 }
 
+const P = "5511933339001", C = "5511933339002", E = "5511933339003", S = "5511933339004", A = "5511933339005";
+const telefones = [P, C, E, S, A];
 async function main() {
-  const P = "5511933339001", C = "5511933339002";
-  await limpar(P); await limpar(C);
+  for (const tel of telefones) await limpar(tel);
   const cp = await db.cliente.create({ data: { telefone: P, nome: "Pix Teste" } });
   const cc = await db.cliente.create({ data: { telefone: C, nome: "Cartao Teste" } });
   const plano = await db.plano.findFirstOrThrow({ where: { nome: "Plano Corte" } });
@@ -80,7 +86,7 @@ async function main() {
   // ---- PIX
   const rp = await assinar({ clienteId: cp.id, planoId: plano.id, forma: "PIX", cpf: "52998224725", email: "pix@teste.com", origem: "SITE" });
   const cob = await cobrancaEmAberto(rp.assinatura.id);
-  ok(!!rp.link?.includes("/c/pagar/") && !!cob?.tokenPublico && rp.link.endsWith(cob.tokenPublico), `Pix: link da página de pagamento (${rp.link})`);
+  ok(!!rp.link?.includes("/c/pagar/") && !!cob?.tokenPublico && rp.link.endsWith(cob.tokenPublico), "Pix: link da página de pagamento vinculado à cobrança");
   ok(cob?.pixCopiaECola === "00020126PIXFALSO" && cob?.forma === "PIX", "Pix: QR e copia e cola salvos");
   // cliente paga -> webhook
   charges.get(cob!.gatewayId)!.status = "paid";
@@ -122,13 +128,38 @@ async function main() {
   const rc = await assinar({ clienteId: cc.id, planoId: plano.id, forma: "CARTAO", cpf: "52998224725", email: "cartao@teste.com", origem: "SITE" });
   const tokenAss = rc.assinatura.tokenPublico!;
   ok(!!rc.link?.includes(`/c/assinar/${tokenAss}`), "cartão: link para digitar o cartão");
-  e = null;
-  try { await ativarComCartao(tokenAss, "token_recusado"); } catch (x) { e = x; }
-  ok(e instanceof ErroNegocio && e.codigo === "cartao_recusado", "cartão recusado: mensagem amigável");
-  const r = await ativarComCartao(tokenAss, "token_bom");
-  ok(r.status === "ATIVA", "cartão aprovado: ATIVA na hora");
+  const recusada = await ativarComCartao(tokenAss, "token_recusado");
+  const prova = await db.cobranca.findFirst({ where: { assinaturaId: rc.assinatura.id } });
+  const tela = await checkoutDaAssinatura(tokenAss);
+  ok(recusada.status === "PENDENTE" && prova?.status === "ATRASADA" && tela.status === "PENDENTE" && tela.processando === true &&
+    !!tela.mensagem?.includes("primeiro pagamento foi recusado"), "recusa conciliada: mensagem de primeiro pagamento recusado, sem ativar o plano");
+  await conferirBloqueio(tokenAss, rc.assinatura.id);
 
-  await limpar(P); await limpar(C);
-  await db.$disconnect();
+  async function assinaturaTeste(tel: string) {
+    const c = await db.cliente.create({ data: { telefone: tel, nome: "Cartão sintético" } });
+    return (await assinar({ clienteId: c.id, planoId: plano.id, forma: "CARTAO", cpf: "52998224725", email: `${tel}@teste.com`, origem: "SITE" })).assinatura;
+  }
+  for (const [tel, token] of [[E, "token_422"], [S, "token_sem_id"]]) {
+    const a = await assinaturaTeste(tel);
+    let falha: unknown;
+    try { await ativarComCartao(a.tokenPublico!, token); } catch (x) { falha = x; }
+    const local = await db.assinatura.findUniqueOrThrow({ where: { id: a.id } });
+    ok(falha instanceof ErroNegocio && falha.status === 503 && falha.codigo === "assinatura_operacao_revisao" &&
+      local.status === "PENDENTE" && !local.gatewayId && local.operacaoInicial === "INCERTA", `${token}: resposta inconclusiva mantém operação em conferência`);
+    await conferirBloqueio(a.tokenPublico!, a.id);
+  }
+  const aprovada = await assinaturaTeste(A);
+  const r = await ativarComCartao(aprovada.tokenPublico!, "token_bom");
+  ok(r.status === "ATIVA" && tentativas.get(aprovada.id) === 1 && await db.cobranca.count({ where: { assinaturaId: aprovada.id, status: "PAGA" } }) === 1,
+    "cartão aprovado em cadastro independente: uma cobrança paga e plano ativo");
 }
-main().catch((x) => { console.error(x); process.exit(1); });
+
+async function conferirBloqueio(token: string, assinaturaId: string) {
+  let falha: unknown;
+  try { await ativarComCartao(token, "token_bom"); } catch (x) { falha = x; }
+  ok(falha instanceof ErroNegocio && falha.status === 409 && falha.codigo === "assinatura_operacao_revisao" && tentativas.get(assinaturaId) === 1,
+    "repetição bloqueada antes de criar outra assinatura no provedor");
+}
+main().catch(x => { console.error(x); process.exitCode = 1; }).finally(async () => {
+  try { for (const tel of telefones) await limpar(tel); } finally { await db.$disconnect(); }
+});

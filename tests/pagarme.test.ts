@@ -68,6 +68,34 @@ describe("conversoes", () => {
 });
 
 describe("chamadas a API", () => {
+  const mensal = { id: "ch_mensal", amount: 9900, currency: "BRL", status: "canceled", paid_amount: 0, canceled_amount: 9900 };
+
+  it("lê a cobrança da mensalidade e o pedido do link pelos respectivos IDs", async () => {
+    respostas.push(mensal, { id: "or_link", amount: 9900, currency: "BRL", status: "paid", charges: [
+      { ...mensal, status: "paid", paid_amount: 9900, canceled_amount: 0 },
+    ] });
+    const primeira = await pagarme.buscarCobrancaAvulsa!(mensal.id);
+    const link = await pagarme.buscarCobrancaAvulsa!("or_link");
+    expect(primeira).toMatchObject({ id: mensal.id, status: "CANCELADA", liquidadoCentavos: 0, pagaEm: null });
+    expect(link).toMatchObject({ id: "or_link", status: "PAGA", liquidadoCentavos: 9900 });
+    expect(chamadas.map(c => [c.metodo, new URL(c.url).pathname])).toEqual([
+      ["GET", "/core/v5/charges/ch_mensal"], ["GET", "/core/v5/orders/or_link"],
+    ]);
+  });
+
+  it.each([{ paid_amount: undefined }, { paid_amount: 100 }, { paid_at: "2026-11-01T12:00:00Z" },
+    { status: "partial_canceled" }, { canceled_amount: -1 }])("mantém cancelamento sem prova em conferência: %j", async extra => {
+    respostas.push({ ...mensal, ...extra });
+    const cobranca = await pagarme.buscarCobrancaAvulsa!(mensal.id);
+    expect(cobranca.liquidadoCentavos).toBeUndefined();
+  });
+
+  it("confere liquidação da renovação e rejeita uma cobrança com ID divergente", async () => {
+    respostas.push({ ...mensal, status: "paid", paid_amount: 9900, canceled_amount: 0 }, { ...mensal, id: "ch_outra" });
+    expect(await pagarme.buscarCobrancaAvulsa!(mensal.id)).toMatchObject({ status: "PAGA", liquidadoCentavos: 9900 });
+    await expect(pagarme.buscarCobrancaAvulsa!(mensal.id)).rejects.toThrow("outra cobrança");
+  });
+
   it("cria assinatura no cartao com token, mensal, preco em centavos e autenticacao basic", async () => {
     respostas.push({ id: "sub_1" });
     const id = await pagarme.criarAssinatura({

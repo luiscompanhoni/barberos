@@ -275,6 +275,20 @@ export const pagarme: Gateway = {
   },
 
   async buscarCobrancaAvulsa(id) {
+    // O Pix mensal e as faturas guardam o ID da cobrança; links e antecipados guardam o do pedido.
+    if (id.startsWith("ch_")) {
+      const c = await chamar<CobrancaPagarme>("GET", `/charges/${encodeURIComponent(id)}`);
+      if (c.id !== id) throw new Error("A Pagar.me devolveu outra cobrança.");
+      const prova = converterPedido({ id: c.id, amount: c.amount, currency: c.currency, status: c.status, charges: [c] });
+      if (c.status === "partial_canceled") return { ...prova, status: "PENDENTE", liquidadoCentavos: undefined };
+      if (c.status === "canceled") {
+        const cancelado = c.canceled_amount ?? 0;
+        const semRecebimento = c.paid_amount === 0 && !c.paid_at && Number.isSafeInteger(c.amount) && c.amount >= 0 &&
+          Number.isSafeInteger(cancelado) && cancelado >= 0 && cancelado <= c.amount;
+        return { ...prova, pagaEm: c.paid_at ?? null, liquidadoCentavos: semRecebimento ? 0 : undefined };
+      }
+      return { ...prova, pagaEm: c.paid_at ?? null };
+    }
     return converterPedido(await chamar<PedidoPagarme>("GET", `/orders/${encodeURIComponent(id)}`));
   },
 

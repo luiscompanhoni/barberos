@@ -136,6 +136,10 @@ export async function ativarComCartao(tokenPublico: string, cartaoToken: string)
       referencia: a.id,
       cartaoToken,
     });
+    // Uma resposta sem a identidade do contrato não comprova que a criação falhou.
+    if (typeof gatewayId !== "string" || !gatewayId.trim() || (g.nome === "pagarme" && !/^sub_\S+$/.test(gatewayId))) {
+      throw new Error("Contrato de assinatura não identificado.");
+    }
   } catch {
     await marcarPagamentoInicialIncerto(a.id);
     throw new ErroNegocio("Não foi possível confirmar a resposta do cartão. Confira a operação antes de tentar novamente.", 503, "assinatura_operacao_revisao");

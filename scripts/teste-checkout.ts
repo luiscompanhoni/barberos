@@ -13,6 +13,7 @@ process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_
 import type { Sessao } from "@/lib/auth/sessao";
 import { checkoutDoHorario, pagarAntecipado, sincronizarAntecipado } from "@/lib/agenda/antecipado";
 import { ativarComCartao, checkoutDaAssinatura, pagarPlanoComPix } from "@/lib/assinaturas/cartao-pix";
+import { cancelarOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
 import { processarEventoGateway, sincronizarAssinatura } from "@/lib/assinaturas/cobrancas";
 import { rodarRotinaDePagamentos } from "@/lib/assinaturas/rotina";
 import { assinar, cancelar } from "@/lib/assinaturas/servico";
@@ -325,8 +326,33 @@ async function main() {
   const ck = await checkoutDaAssinatura(ap.tokenPublico!);
   ok(ck.status === "PENDENTE" && ck.forma === "PIX" && !!ck.pix?.copiaECola, "aba Pix do plano: 1º mês aparece no checkout");
   const pixPlano = await db.cobranca.findFirstOrThrow({ where: { assinaturaId: ap.id } });
-  const r8 = await ativarComCartao(ap.tokenPublico!, "token_bom");
-  ok(r8.status === "ATIVA" && charges.get(pixPlano.gatewayId)?.status === "canceled", "trocou para cartão: Pix do 1º mês cancelado e plano ATIVO");
+  const inicioTroca = chamadas.length;
+  const contratosCartao = () => chamadas.slice(inicioTroca).filter(c => c.metodo === "POST" && c.caminho === "/subscriptions").length;
+  const trocaDireta = await falha(() => ativarComCartao(ap.tokenPublico!, "token_bom"));
+  ok(trocaDireta?.codigo === "assinatura_operacao_revisao" && contratosCartao() === 0, "Pix aberto impede cartão sem criar outro contrato");
+  const aguarda = await cancelarOperacaoInicial(ap.id, dono.id);
+  const emConferencia = await checkoutDaAssinatura(ap.tokenPublico!);
+  ok(aguarda.emConferencia && !aguarda.cancelada && emConferencia.processando === true && !emConferencia.pix && !emConferencia.link,
+    "Pix ainda pendente exige conferência e oculta o pagamento anterior");
+  const outra = await falha(() => assinar({ clienteId: cliPlano.id, planoId: plano.id, forma: "CARTAO", origem: "SITE" }));
+  ok(outra?.codigo === "assinatura_operacao_revisao" && contratosCartao() === 0, "durante a conferência não há outra adesão ou débito no cartão");
+
+  // Simula o gateway encerrando a cobrança sem recebimento. A aplicação só pode reler essa prova.
+  const chargePix = charges.get(pixPlano.gatewayId)!;
+  chargePix.status = "canceled";
+  const encerrada = await cancelarOperacaoInicial(ap.id, dono.id);
+  ok(encerrada.cancelada && !encerrada.emConferencia && (await checkoutDaAssinatura(ap.tokenPublico!)).status === "CANCELADO" &&
+    (await db.cobranca.findUniqueOrThrow({ where: { id: pixPlano.id } })).status === "CANCELADA",
+    "encerramento confirmado no gateway libera a troca e cancela o Pix local");
+  ok(chargePix.paid_amount === 0 && chargePix.canceled_amount === 0 && !chamadas.slice(inicioTroca).some(c => c.metodo === "DELETE"),
+    "conferência do primeiro Pix não provoca baixa nem estorno");
+  const nova = await assinar({ clienteId: cliPlano.id, planoId: plano.id, forma: "CARTAO", origem: "SITE" });
+  const r8 = await ativarComCartao(nova.assinatura.tokenPublico!, "token_bom");
+  await sincronizarAssinatura(nova.assinatura.id);
+  const pagas = await db.cobranca.findMany({ where: { assinatura: { clienteId: cliPlano.id }, status: "PAGA" } });
+  ok(nova.assinatura.id !== ap.id && r8.status === "ATIVA" && contratosCartao() === 1 && pagas.length === 1 &&
+    pagas[0].assinaturaId === nova.assinatura.id && pagas[0].valorCentavos === plano.precoCentavos,
+    "novo cartão ativa o plano uma vez e a reconciliação preserva uma única mensalidade paga");
 
   // ---- 9) roteamento por prefixo: registros da Celcash continuam na Celcash
   const antesCel = chamadas.length;
