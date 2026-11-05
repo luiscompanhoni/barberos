@@ -21,7 +21,7 @@ jobs:
           POSTGRES_USER: barberos
           POSTGRES_PASSWORD: barberos
           POSTGRES_DB: barberos
-        ports: ["5432:5432", "55439:5432"]
+        ports: ["5432:5432", "55439:5432", "15439:5432"]
         options: >-
           --health-cmd "pg_isready -U barberos"
           --health-interval 5s
@@ -61,6 +61,41 @@ jobs:
           npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Dados de exemplo
         run: npm run db:seed
+      - name: Conferir horários e duração aceita em bancos descartáveis da revisão
+        env:
+          POSTGRES_SERVICO: ${{ job.services.postgres.id }}
+          AMBIENTE: homologacao
+          WHATSAPP_PROVIDER: simulador
+          WHATSAPP_ENVIOS_BLOQUEADOS: "true"
+          PAGAMENTOS_PROVIDER: simulado
+          MAQUININHA: manual
+          OTP_PROVIDER: console
+        run: |
+          set -euo pipefail
+          camp=barberos_camp_hora_integracao_ci
+          cliente=barberos_cliente_teste_20261104
+          for banco in "$camp" "$cliente"; do
+            docker exec "$POSTGRES_SERVICO" createdb -U barberos "$banco"
+            DATABASE_URL="postgresql://barberos:barberos@127.0.0.1:5432/$banco" ./node_modules/.bin/prisma migrate deploy
+          done
+          docker exec "$POSTGRES_SERVICO" psql -X -v ON_ERROR_STOP=1 -U barberos -d "$cliente" \
+            -c 'INSERT INTO configuracao (id, "botAtivo", "agendaExternaAtiva") VALUES (1, false, true)'
+          cat > "$RUNNER_TEMP/c6-sem-http.cjs" <<'JS'
+          const bloquear = () => { throw Error('HTTP bloqueado na revisão sintética'); };
+          globalThis.fetch = async () => bloquear();
+          for (const nome of ['node:http', 'node:https']) {
+            const transporte = require(nome);
+            transporte.request = transporte.get = bloquear;
+          }
+          JS
+          export NODE_OPTIONS="--require=$RUNNER_TEMP/c6-sem-http.cjs"
+          export DATABASE_URL="postgresql://barberos:barberos@127.0.0.1:55439/$camp"
+          TESTE_HORARIO_CAMPANHA_LOCAL=1 ./node_modules/.bin/vitest run tests/horarios-campanhas-banco.test.ts \
+            --maxWorkers=1 --reporter=json --outputFile="$RUNNER_TEMP/c6-horarios.json"
+          node -e 'const r=require(process.argv[1]); if (!r.success || r.numPassedTests < 11 || r.numPendingTests || r.numTotalTests !== r.numPassedTests) process.exit(1); console.log(r.numPassedTests, "cenários de horários aprovados")' "$RUNNER_TEMP/c6-horarios.json"
+          export DATABASE_URL="postgresql://barberos:barberos@127.0.0.1:15439/$cliente"
+          ./node_modules/.bin/tsx scripts/teste-agenda-duracao-confirmada.ts
+          test "$(docker exec "$POSTGRES_SERVICO" psql -XAt -U barberos -d "$cliente" -c 'SELECT "agendaExternaAtiva" FROM configuracao WHERE id=1')" = t
       - name: Preparar banco separado do histórico financeiro
         env:
           DATABASE_URL: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste

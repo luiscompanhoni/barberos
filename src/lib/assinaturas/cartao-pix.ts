@@ -12,9 +12,10 @@ import { dataLocal } from "@/lib/agenda/tempo";
 import type { EstadoCheckout } from "@/lib/pagamentos/checkout-regras";
 import { pixVencido } from "@/lib/pagamentos/checkout-regras";
 import { gateway, gatewayPorId } from "@/lib/pagamentos/gateway";
-import { PREFIXO_PIX } from "@/lib/pagamentos/pagarme";
+import { ErroPagarme, PREFIXO_PIX } from "@/lib/pagamentos/pagarme";
 import { cobrancaEmAberto, sincronizarAssinatura, sincronizarCobranca } from "./cobrancas";
 import { valorComRetencao } from "./retencao-regras";
+import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, reservarPagamentoInicial } from "./operacao-inicial";
 
 /** Gera (e salva) a cobranca Pix de um mes da assinatura. */
 export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
@@ -24,7 +25,9 @@ export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${assinaturaId}`}, 0))`;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal:${assinaturaId}:${vencimento}`}, 0))`;
     const a = await tx.assinatura.findUniqueOrThrow({ where: { id: assinaturaId }, include: { plano: true } });
+    if (a.operacaoInicial && !["CRIANDO", "PIX"].includes(a.operacaoInicial)) throw new ErroNegocio("A operação anterior está em conferência. Não é possível emitir outro Pix.", 409, "assinatura_operacao_revisao");
     if (a.status === "CANCELADA" || a.pausadaEm || a.encerraEm) throw new ErroNegocio("Assinatura cancelada, pausada ou em encerramento; confira antes de emitir Pix.", 409, "pix_revisao");
+    if (await tx.alteracaoPlanoAssinatura.findFirst({ where: { assinaturaId, estado: { in: ["SOLICITADA", "AGENDADA", "EM_CONFERENCIA"] }, efetivaEm: { lte: data } }, select: { id: true } })) throw new ErroNegocio("Há uma troca de plano para esta renovação. A recepção precisa conferir o pedido antes da emissão.", 409, "troca_em_conferencia");
     if (!a.gatewayId || !a.gatewayClienteId) throw new ErroNegocio("Assinatura sem cadastro no meio de pagamento.");
     const intento = await tx.emissaoPixMensal.findUnique({ where: { assinaturaId_vencimento: { assinaturaId, vencimento: data } } });
     if (intento) {
@@ -83,10 +86,11 @@ async function assinaturaPorToken(tokenPublico: string) {
   return a;
 }
 
-/** Mensagem amigavel para recusa de cartao (o erro tecnico fica no log). */
+/** Somente resposta explícita de validação permite corrigir e reenviar o cartão. */
 function erroDeCartao(e: unknown) {
-  console.error("[pagamentos] cartão:", e);
-  return new ErroNegocio("O cartão não foi aceito. Confira os dados ou tente outro cartão.", 422, "cartao_recusado");
+  console.error("[pagamentos] atualização do cartão não confirmada", e instanceof Error ? e.name : "falha");
+  if (e instanceof ErroPagarme && [400, 422].includes(e.status)) return new ErroNegocio("O cartão não foi aceito. Confira os dados ou tente outro cartão.", 422, "cartao_recusado");
+  return new ErroNegocio("Não foi possível confirmar a atualização do cartão. Peça à equipe para conferir antes de tentar novamente.", 503, "cartao_atualizacao_revisao");
 }
 
 /** Assinatura Pix do checkout que ainda nao pagou o 1o mes (pode trocar para cartao). */
@@ -108,44 +112,42 @@ async function conferirPixEmAberto(assinaturaId: string) {
 
 /**
  * Primeiro pagamento no cartao: cria a assinatura na Pagar.me com o token
- * gerado no navegador. A primeira cobranca acontece na hora. Se o cliente tinha
- * escolhido Pix e ainda nao pagou, o Pix e cancelado e a assinatura vira cartao.
+ * gerado no navegador. Outra operação só é permitida depois de confirmar o
+ * cancelamento da anterior, evitando cobrar um Pix ainda válido e um cartão.
  */
 export async function ativarComCartao(tokenPublico: string, cartaoToken: string) {
-  let a = await assinaturaPorToken(tokenPublico);
-  if (a.status === "CANCELADA") throw new ErroNegocio("Essa assinatura foi cancelada.");
-  if (pixPendente(a)) {
-    if (!a.plano.formasPagamento.includes("CARTAO")) throw new ErroNegocio("Esse plano não aceita cartão.");
-    const abertas = await conferirPixEmAberto(a.id);
-    if ((await db.assinatura.findUniqueOrThrow({ where: { id: a.id } })).status !== "PENDENTE") {
-      throw new ErroNegocio("O Pix desse plano acabou de ser pago. ✅", 409, "ja_pago");
-    }
-    const g = await gatewayPorId(a.gatewayId!);
-    for (const c of abertas) await g.cancelarCobranca?.(c.gatewayId).catch((e) => console.error("[assinaturas] cancelar Pix", c.gatewayId, e));
-    await db.cobranca.updateMany({ where: { id: { in: abertas.map((c) => c.id) } }, data: { status: "CANCELADA" } });
-    await db.assinatura.update({ where: { id: a.id }, data: { formaPagamento: "CARTAO", gatewayId: null } });
-    a = await assinaturaPorToken(tokenPublico);
+  const inicial = await assinaturaPorToken(tokenPublico);
+  if (inicial.status !== "PENDENTE") {
+    if (inicial.status === "CANCELADA") throw new ErroNegocio("Essa assinatura foi cancelada.");
+    return trocarCartao(tokenPublico, cartaoToken);
   }
-  if (a.gatewayId) return trocarCartao(tokenPublico, cartaoToken); // ja existe: so troca o cartao
-  if (a.formaPagamento !== "CARTAO" || !a.gatewayClienteId) throw new ErroNegocio("Essa assinatura não é no cartão.");
+  if (inicial.gatewayId) throw new ErroNegocio("Cancele a operação inicial e aguarde a confirmação antes de escolher outro pagamento.", 409, "assinatura_operacao_revisao");
   const g = await gateway();
   const cfg = await configuracao();
+  const a = await reservarPagamentoInicial(inicial.id, "CARTAO");
   let gatewayId: string;
   try {
     gatewayId = await g.criarAssinatura({
-      clienteGatewayId: a.gatewayClienteId,
+      clienteGatewayId: a.gatewayClienteId!,
       valorCentavos: a.precoCentavos,
       forma: "CARTAO",
-      primeiroVencimento: new Date().toISOString().slice(0, 10),
+      primeiroVencimento: dataLocal(Date.now(), cfg.fuso),
       descricao: `${a.plano.nome} - ${cfg.nomeBarbearia}`,
       referencia: a.id,
       cartaoToken,
     });
-  } catch (e) {
-    throw erroDeCartao(e);
+  } catch {
+    await marcarPagamentoInicialIncerto(a.id);
+    throw new ErroNegocio("Não foi possível confirmar a resposta do cartão. Confira a operação antes de tentar novamente.", 503, "assinatura_operacao_revisao");
   }
-  await db.assinatura.update({ where: { id: a.id }, data: { gatewayId } });
-  await sincronizarAssinatura(a.id);
+  try {
+    await db.assinatura.update({ where: { id: a.id }, data: { gatewayId } });
+    await sincronizarAssinatura(a.id);
+    await concluirPagamentoInicial(a.id);
+  } catch {
+    await marcarPagamentoInicialIncerto(a.id);
+    throw new ErroNegocio("Pagamento em conferência. Não faça outra tentativa até atualizar o status.", 503, "assinatura_operacao_revisao");
+  }
   return db.assinatura.findUniqueOrThrow({ where: { id: a.id }, select: { status: true } });
 }
 
@@ -173,6 +175,7 @@ export async function pagarPlanoComPix(tokenPublico: string) {
   if (a.status === "CANCELADA") throw new ErroNegocio("Essa assinatura foi cancelada.");
   if (a.status !== "PENDENTE") throw new ErroNegocio("Essa assinatura já está paga. ✅", 409, "ja_pago");
   if (!a.plano.formasPagamento.includes("PIX")) throw new ErroNegocio("Esse plano não aceita Pix.");
+  if (a.operacaoInicial) throw new ErroNegocio("A operação anterior está em conferência.", 409, "assinatura_operacao_revisao");
   if (pixPendente(a)) {
     const aberta = await cobrancaEmAberto(a.id);
     if (aberta) return renovarPixSeExpirado(aberta.id);
@@ -182,20 +185,22 @@ export async function pagarPlanoComPix(tokenPublico: string) {
   const g = await gateway();
   if (g.pix !== "avulso" || !a.gatewayClienteId) throw new ErroNegocio("Pix indisponível para esse plano agora.", 409, "indisponivel");
   const cfg = await configuracao();
+  await reservarPagamentoInicial(a.id, "PIX");
   try {
     const gatewayId = a.gatewayId ?? (await g.criarAssinatura({
       clienteGatewayId: a.gatewayClienteId, valorCentavos: a.precoCentavos, forma: "PIX",
       primeiroVencimento: dataLocal(Date.now(), cfg.fuso), descricao: `${a.plano.nome} - ${cfg.nomeBarbearia}`, referencia: a.id,
     }));
     await db.assinatura.update({ where: { id: a.id }, data: { formaPagamento: "PIX", gatewayId } });
-    return await gerarPixDoMes(a.id, dataLocal(Date.now(), cfg.fuso));
+    const cobranca = await gerarPixDoMes(a.id, dataLocal(Date.now(), cfg.fuso));
+    await concluirPagamentoInicial(a.id);
+    return cobranca;
   } catch (e) {
+    await marcarPagamentoInicialIncerto(a.id);
     const emissao = await db.emissaoPixMensal.findFirst({ where: { assinaturaId: a.id }, select: { id: true } });
     if (emissao) throw new ErroNegocio("A emissão do Pix precisa ser conferida pela equipe antes de tentar novamente.", 503, "pix_revisao");
-    // Nao gerou o Pix: a assinatura volta a ser como era (o cliente pode tentar o cartao).
-    await db.assinatura.update({ where: { id: a.id }, data: { formaPagamento: a.formaPagamento, gatewayId: a.gatewayId } }).catch(() => {});
-    console.error("[assinaturas] Pix do checkout:", e);
-    throw new ErroNegocio("Não foi possível gerar o Pix agora. Tente de novo em instantes.", 502, "gateway");
+    console.error("[assinaturas] Pix do checkout não confirmado", e instanceof Error ? e.name : "falha");
+    throw new ErroNegocio("Não foi possível confirmar o Pix. A equipe deve conferir antes de outra tentativa.", 502, "assinatura_operacao_revisao");
   }
 }
 
@@ -204,20 +209,30 @@ export async function checkoutDaAssinatura(tokenPublico: string, conferir = true
   const a = await assinaturaPorToken(tokenPublico);
   if (a.status === "CANCELADA") return { status: "CANCELADO", forma: null, pix: null, link: null };
   if (a.status !== "PENDENTE") return { status: "PAGO", forma: a.formaPagamento === "PIX" ? "PIX" : "CARTAO", pix: null, link: null };
+  if (a.operacaoInicial) return { status: "PENDENTE", forma: null, pix: null, link: null, processando: true, mensagem: "Operação em conferência. Aguarde a confirmação antes de escolher outra forma de pagamento." };
   if (!pixPendente(a)) {
-    // Cartao ja enviado e o 1o mes sem resposta ainda (nem pago nem recusado): em analise.
+    // Contrato enviado continua bloqueado até pagamento ou cancelamento comprovado.
     if (conferir && a.gatewayId && a.formaPagamento === "CARTAO") {
       await sincronizarAssinatura(a.id).catch((e) => console.error("[assinaturas] conferir cartão", a.id, e));
-      if ((await db.assinatura.findUniqueOrThrow({ where: { id: a.id } })).status !== "PENDENTE") return { status: "PAGO", forma: "CARTAO", pix: null, link: null };
+      const atual = await db.assinatura.findUniqueOrThrow({ where: { id: a.id } });
+      if (atual.status === "CANCELADA") return { status: "CANCELADO", forma: null, pix: null, link: null };
+      if (atual.status !== "PENDENTE") return { status: "PAGO", forma: "CARTAO", pix: null, link: null };
     }
     const ultima = a.gatewayId ? await db.cobranca.findFirst({ where: { assinaturaId: a.id, vinculosExternos: { none: {} } }, orderBy: { criadaEm: "desc" } }) : null;
-    const processando = a.formaPagamento === "CARTAO" && !!a.gatewayId && ultima?.status !== "ATRASADA";
-    return { status: "PENDENTE", forma: processando ? "CARTAO" : null, pix: null, link: null, processando };
+    const processando = a.formaPagamento === "CARTAO" && !!a.gatewayId;
+    const mensagem = processando && ultima?.status === "ATRASADA"
+      ? "O primeiro pagamento foi recusado. Cancele a operação abaixo e aguarde a confirmação antes de escolher outro cartão ou Pix."
+      : undefined;
+    return { status: "PENDENTE", forma: processando ? "CARTAO" : null, pix: null, link: null, processando, mensagem };
   }
   const abertas = conferir
     ? await conferirPixEmAberto(a.id)
     : await db.cobranca.findMany({ where: { assinaturaId: a.id, status: { in: ["PENDENTE", "ATRASADA"] } } });
-  if (conferir && (await db.assinatura.findUniqueOrThrow({ where: { id: a.id } })).status !== "PENDENTE") return { status: "PAGO", forma: "PIX", pix: null, link: null };
+  if (conferir) {
+    const atual = await db.assinatura.findUniqueOrThrow({ where: { id: a.id } });
+    if (atual.status === "CANCELADA") return { status: "CANCELADO", forma: null, pix: null, link: null };
+    if (atual.status !== "PENDENTE") return { status: "PAGO", forma: "PIX", pix: null, link: null };
+  }
   const c: Cobranca | undefined = abertas.find((x) => x.forma === "PIX" && x.pixCopiaECola && !pixVencido(x.expiraEm));
   return {
     status: "PENDENTE", forma: "PIX", link: null,

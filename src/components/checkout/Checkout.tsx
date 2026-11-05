@@ -7,6 +7,7 @@ import { api, ErroApi } from "@/lib/cliente-api";
 import type { EstadoCheckout, ModoCartao } from "@/lib/pagamentos/checkout-regras";
 import { CartaoForm } from "./CartaoForm";
 import { PixPainel } from "./PixPainel";
+import { controlarConsultasCheckout } from "./consultas";
 
 /** O que esta sendo pago (cada um tem sua API). */
 export type AlvoCheckout = { tipo: "link"; token: string } | { tipo: "horario"; id: string } | { tipo: "assinatura"; token: string };
@@ -57,17 +58,23 @@ export function Checkout(p: {
   const [erro, setErro] = useState("");
   const [recusa, setRecusa] = useState<string | null>(null);
   const [trocado, setTrocado] = useState(false);
+  const [cancelando, setCancelando] = useState(false);
   const ticks = useRef(0);
   const pagamentoEmVoo = useRef(false);
+  const [consultas] = useState(controlarConsultasCheckout);
 
   const ler = (r: { checkout?: EstadoCheckout | null }) => r.checkout && setEstado(r.checkout);
 
   // Polling: enquanto tem Pix na tela ou cartao em analise.
-  const esperando = estado.status === "PENDENTE" && (!!estado.pix || !!estado.processando);
-  const conferir = useCallback(async (completo: boolean) => {
+  const esperando = !p.troca && estado.status === "PENDENTE" && (!!estado.pix || !!estado.processando);
+  const conferir = useCallback(async (completo: boolean, aposRespostaDaMutacao = false) => {
+    // O pagamento antigo não comprova que o cartão da recorrência foi atualizado.
+    if (p.troca) return;
+    const consulta = consultas.iniciarConsulta(aposRespostaDaMutacao);
+    if (!consulta) return;
     const r = await api<{ checkout?: EstadoCheckout }>(`${url}${completo ? "" : "?rapido=1"}`).catch(() => null);
-    if (r) ler(r);
-  }, [url]);
+    if (r && consulta.atual()) ler(r);
+  }, [url, p.troca, consultas]);
   useEffect(() => {
     if (!esperando) return;
     const t = setInterval(() => conferir(++ticks.current % CONFERIR_A_CADA === 0), POLLING_MS);
@@ -77,6 +84,7 @@ export function Checkout(p: {
   async function pagar(corpo: Record<string, unknown>) {
     if (pagamentoEmVoo.current || ocupado || estado.processando) return;
     pagamentoEmVoo.current = true;
+    consultas.iniciarMutacao();
     setErro("");
     setRecusa(null);
     setOcupado(true);
@@ -91,19 +99,40 @@ export function Checkout(p: {
       if (c === "cpf" || c === "email") setPedir((x) => ({ ...x, [c]: true }));
       if (c === "cartao_recusado") setRecusa((e as Error).message);
       else setErro((e as Error).message);
-      if (c === "ja_pago") conferir(true);
-      if (p.alvo.tipo === "link" && (c === "pagamento_incerto" || !c || (e instanceof ErroApi && e.status >= 500))) {
+      if (p.troca && (c === "cartao_atualizacao_revisao" || !c || (e instanceof ErroApi && e.status >= 500))) {
+        setEstado((atual) => ({ ...atual, processando: true, mensagem: "Atualização do cartão em conferência. Peça à equipe para confirmar antes de tentar novamente." }));
+        return;
+      }
+      if (c === "cartao_recusado" && p.alvo.tipo === "assinatura" && !p.troca) {
+        setEstado((atual) => ({ ...atual, processando: true, mensagem: "O primeiro pagamento foi recusado. Cancele a operação abaixo e aguarde a confirmação antes de escolher outro pagamento." }));
+        await conferir(true, true);
+      }
+      if (c === "ja_pago") await conferir(true, true);
+      if ((p.alvo.tipo === "link" || p.alvo.tipo === "assinatura") && (c === "pagamento_incerto" || c === "assinatura_operacao_revisao" || !c || (e instanceof ErroApi && e.status >= 500))) {
         setEstado((atual) => ({ ...atual, processando: true, mensagem: "Pagamento em conferência. Aguarde a confirmação antes de tentar outra cobrança." }));
-        await conferir(true);
+        await conferir(true, true);
       }
     } finally {
       pagamentoEmVoo.current = false;
+      consultas.terminarMutacao();
       setOcupado(false);
     }
   }
 
+  async function cancelarInicial() {
+    if (pagamentoEmVoo.current || ocupado) return;
+    pagamentoEmVoo.current = true; setOcupado(true); setErro("");
+    consultas.iniciarMutacao();
+    try {
+      const r = await api<{ checkout: EstadoCheckout; cancelada: boolean }>(url, { method: "DELETE" });
+      ler(r);
+      if (!r.cancelada) setErro("Cancelamento em conferência. Aguarde o encerramento do pagamento anterior antes de escolher outra forma.");
+    } catch (e) { setErro((e as Error).message); await conferir(false, true); }
+    finally { pagamentoEmVoo.current = false; consultas.terminarMutacao(); setOcupado(false); }
+  }
+
   // ---- telas finais
-  if (estado.status === "PAGO" || trocado) {
+  if ((!p.troca && estado.status === "PAGO") || trocado) {
     return (
       <div className="text-center">
         <div className="mx-auto mt-10 grid h-24 w-24 place-items-center rounded-full border border-ouro bg-ouro/10">
@@ -121,6 +150,7 @@ export function Checkout(p: {
         <XCircle className="mx-auto mt-10 h-16 w-16 text-zinc-400" />
         <h1 className="titulo-marca mt-6 text-2xl">{estado.status === "EXPIRADO" ? "Link expirado" : "Pagamento cancelado"}</h1>
         <p className="mt-3 text-sm text-zinc-500">{estado.mensagem ?? "Esse pagamento não está mais valendo. Fale com a barbearia no WhatsApp."}</p>
+        {p.alvo.tipo === "assinatura" && <Link className="btn-primario mt-6 w-full" href="/c/planos">Escolher plano e forma de pagamento</Link>}
       </div>
     );
   }
@@ -139,7 +169,7 @@ export function Checkout(p: {
       {p.formas.length > 1 && !p.troca && (
         <div className="mt-8 grid grid-cols-2 gap-1 rounded-2xl border border-zinc-200 p-1" role="tablist">
           {p.formas.map((f) => (
-            <button key={f} type="button" role="tab" disabled={ocupado || estado.processando} aria-selected={aba === f} onClick={() => { setAba(f); setErro(""); }}
+            <button key={f} type="button" role="tab" disabled={ocupado || estado.processando || (p.alvo.tipo === "assinatura" && !!estado.forma && estado.forma !== f)} aria-selected={aba === f} onClick={() => { setAba(f); setErro(""); }}
               className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition ${aba === f ? "bg-ouro text-[#111]" : "text-zinc-500 hover:text-zinc-900"}`}>
               {f === "CARTAO" ? <><CreditCard size={16} /> Cartão</> : <><QrCode size={16} /> Pix</>}
             </button>
@@ -205,6 +235,13 @@ export function Checkout(p: {
           </p>
         )}
         {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+        {p.alvo.tipo === "assinatura" && !p.troca && <div className="space-y-2 border-t border-zinc-200 pt-4">
+          {!cancelando ? <button type="button" className="btn w-full" disabled={ocupado} onClick={() => setCancelando(true)}>Cancelar operação ou trocar pagamento</button> : <>
+            <p className="text-sm text-zinc-500">Cancelar este primeiro pagamento? Outra forma será liberada somente após confirmar o cancelamento. Pagamentos recebidos não são estornados por esta ação.</p>
+            <div className="flex gap-2"><button type="button" className="btn" disabled={ocupado} onClick={() => setCancelando(false)}>Manter</button>
+              <button type="button" className="btn-perigo" disabled={ocupado} onClick={cancelarInicial}>{ocupado ? "Conferindo…" : "Confirmar cancelamento"}</button></div>
+          </>}
+        </div>}
       </div>
 
       <p className="mt-10 flex items-center justify-center gap-2 text-[11px] text-zinc-500">

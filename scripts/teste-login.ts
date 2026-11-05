@@ -3,12 +3,22 @@
 import { criarContaCliente, definirSenhaTemporaria, entrarComSenha, trocarPropriaSenha } from "@/lib/auth/acesso";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
+import { createHmac } from "node:crypto";
+import assert from "node:assert/strict";
 
-const ok = (c: boolean, msg: string) => console.log(`${c ? "OK  " : "FALHOU"} ${msg}`);
+const ok = (c: boolean, msg: string) => { console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); assert.ok(c, msg); };
 const erroDe = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as ErroNegocio; } };
 const TELS = ["5511933334001", "5511933334002", "5511933334003"];
+const perfilNovo = { cpf: "52998224725", email: "login@example.test", endereco: "Rua de ensaio local, 123", dataNascimento: new Date("2000-01-01T00:00:00Z") };
+async function codigoLocal(telefone: string) {
+  const codigo = "123456";
+  const codigoHash = createHmac("sha256", process.env.SESSION_SECRET ?? "").update(`${telefone}:${codigo}`).digest("hex");
+  await db.codigoLogin.create({ data: { telefone, codigoHash, expiraEm: new Date(Date.now() + 60000) } });
+  return codigo;
+}
 
 async function limpar() {
+  await db.codigoLogin.deleteMany({ where: { telefone: { in: TELS } } });
   const cs = await db.cliente.findMany({ where: { telefone: { in: TELS } }, select: { id: true } });
   await db.agendamento.deleteMany({ where: { clienteId: { in: cs.map((c) => c.id) } } });
   await db.cliente.deleteMany({ where: { telefone: { in: TELS } } });
@@ -19,9 +29,10 @@ async function main() {
   await limpar();
   try {
     // ---- cliente cria conta e entra
-    const u = await criarContaCliente({ nome: "Login Teste", telefone: "(11) 93333-4001", senha: "navalha-forte-1" });
+    const u = await criarContaCliente({ ...perfilNovo, nome: "Login Teste", telefone: "(11) 93333-4001", senha: "navalha-forte-1", codigo: await codigoLocal(TELS[0]) });
     ok(u.papel === "CLIENTE" && !!u.cliente && !!u.senhaHash, "cliente cria conta (usuário + cadastro ligados)");
-    const e1 = await erroDe(() => criarContaCliente({ nome: "Outro", telefone: "11933334001", senha: "outra-senha-99" }));
+    const codigoDuplicado = await codigoLocal(TELS[0]);
+    const e1 = await erroDe(() => criarContaCliente({ ...perfilNovo, nome: "Outro", telefone: "11933334001", senha: "outra-senha-99", codigo: codigoDuplicado }));
     ok(e1?.codigo === "ja_tem_conta", "mesmo celular não cria conta de novo");
     ok((await entrarComSenha("11 93333-4001", "navalha-forte-1", "cliente")).id === u.id, "entra com celular (qualquer formato) e senha");
     const e2 = await erroDe(() => entrarComSenha("11933334001", "errada-123", "cliente"));
@@ -42,10 +53,10 @@ async function main() {
     const servico = await db.servico.findFirstOrThrow({ where: { ativo: true } });
     const ini = Date.UTC(2032, 0, 5, 9, 0);
     await db.agendamento.create({ data: { barbeiroId: barbeiro.id, servicoId: servico.id, clienteId: existente.id, inicio: new Date(ini), fim: new Date(ini + 30 * 60_000), status: "CONCLUIDO", origem: "BOT", precoCentavos: 5000 } });
-    const e6 = await erroDe(() => criarContaCliente({ nome: "Invasor", telefone: TELS[1], senha: "invasor-123x" }));
+    const e6 = await erroDe(() => criarContaCliente({ nome: "Invasor", telefone: TELS[1], senha: "invasor-123x", codigo: "" }));
     ok(e6?.codigo === "confirmar_celular", "celular com histórico exige confirmação (código ou recepção)");
     const semHistorico = await db.cliente.create({ data: { telefone: TELS[2], nome: "Só conversou" } });
-    const u3 = await criarContaCliente({ nome: "Bruno", telefone: TELS[2], senha: "corte-bom-777" });
+    const u3 = await criarContaCliente({ ...perfilNovo, nome: "Bruno", telefone: TELS[2], senha: "corte-bom-777", codigo: await codigoLocal(TELS[2]) });
     ok(u3.cliente?.id === semHistorico.id, "cadastro sem histórico (ex.: só falou no WhatsApp) é ligado na mesma ficha");
 
     // ---- troca de senha e senha temporaria

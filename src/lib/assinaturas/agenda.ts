@@ -33,7 +33,7 @@ export async function precificar(p: {
   usosExtras?: { id: string; inicio: number; servicoId: string; futuro: boolean }[];
   c?: Cliente;
 }): Promise<Precificacao> {
-  const sit = await situacaoDoCliente(p.clienteId);
+  const sit = await situacaoDoCliente(p.clienteId, p.c);
   if (!sit || !sit.valida) return { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
   // Cancelado com fim do ciclo: horario depois do fim nao entra no plano.
   if (sit.assinatura.encerraEm && p.inicio >= sit.assinatura.encerraEm.getTime()) return { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
@@ -93,25 +93,29 @@ export async function precificar(p: {
  * avulso passam a sair pelo plano, se as regras deixarem (na ordem da agenda).
  */
 export async function aplicarPlanoAosFuturos(clienteId: string, fuso: string) {
-  const futuros = await db.agendamento.findMany({
-    where: { clienteId, assinaturaId: null, inicio: { gt: new Date() }, status: { in: ["MARCADO", "CONFIRMADO"] } },
-    orderBy: { inicio: "asc" },
-    select: { id: true, servicoId: true, barbeiroId: true, inicio: true, precoCentavos: true },
-  });
-  let convertidos = 0;
-  for (const a of futuros) {
-    try {
-      const p = await precificar({
-        clienteId, servicoId: a.servicoId, barbeiroId: a.barbeiroId, inicio: a.inicio.getTime(),
-        precoBase: a.precoCentavos, fuso, ignorarAgendamentoId: a.id,
-      });
-      if (p.assinaturaId) {
-        await db.agendamento.update({ where: { id: a.id }, data: { assinaturaId: p.assinaturaId, precoCentavos: 0 } });
-        convertidos++;
+  return db.$transaction(async tx => {
+    // Mesma trava das reservas e da troca: o uso disponível não pode ser consumido duas vezes.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${clienteId}`}))`;
+    const futuros = await tx.agendamento.findMany({
+      where: { clienteId, assinaturaId: null, inicio: { gt: new Date() }, status: { in: ["MARCADO", "CONFIRMADO"] } },
+      orderBy: { inicio: "asc" },
+      select: { id: true, servicoId: true, barbeiroId: true, inicio: true, precoCentavos: true },
+    });
+    let convertidos = 0;
+    for (const a of futuros) {
+      try {
+        const p = await precificar({
+          clienteId, servicoId: a.servicoId, barbeiroId: a.barbeiroId, inicio: a.inicio.getTime(),
+          precoBase: a.precoCentavos, fuso, ignorarAgendamentoId: a.id, c: tx,
+        });
+        if (p.assinaturaId) {
+          await tx.agendamento.update({ where: { id: a.id }, data: { assinaturaId: p.assinaturaId, precoCentavos: 0 } });
+          convertidos++;
+        }
+      } catch (e) {
+        if (!(e instanceof ErroNegocio)) throw e; // regra do plano nao deixa: continua avulso
       }
-    } catch (e) {
-      if (!(e instanceof ErroNegocio)) throw e; // regra do plano nao deixa: continua avulso
     }
-  }
-  return convertidos;
+    return convertidos;
+  });
 }

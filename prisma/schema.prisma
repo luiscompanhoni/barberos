@@ -49,7 +49,87 @@ enum OrigemAgendamento {
   PAINEL
 }
 
+/// Identidade externa vinculada apenas após prova de acesso à conta local.
+model IdentidadeSocial {
+  id        String   @id @default(cuid())
+  usuarioId String
+  usuario   Usuario  @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  provedor  String
+  subject   String
+  criadoEm  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([provedor, subject])
+  @@unique([usuarioId, provedor])
+  @@map("identidades_sociais")
+}
+
+/// Estado de autenticação com consumo único, inclusive callbacks POST da Apple.
+model FluxoSocial {
+  id            String    @id
+  navegadorHash String
+  provedor      String
+  nonce         String
+  verificador   String?
+  usuarioId     String?
+  expiraEm      DateTime   @db.Timestamptz(3)
+  consumidoEm   DateTime?  @db.Timestamptz(3)
+
+  @@index([expiraEm])
+  @@map("fluxos_sociais")
+}
+
+/// Preferência do cliente; não ocupa agenda antes da conferência da recepção.
+model PedidoAgendamento {
+  id              String    @id @default(cuid())
+  clienteId       String
+  cliente         Cliente   @relation(fields: [clienteId], references: [id])
+  barbeiroId      String?
+  barbeiro        Barbeiro? @relation(fields: [barbeiroId], references: [id])
+  servicoIds      Json
+  dataPreferida   String
+  horaPreferida   String
+  observacao      String?
+  chave           String
+  status          String    @default("PENDENTE")
+  agendamentoIds  Json?
+  decididoPorId   String?
+  decididoEm      DateTime? @db.Timestamptz(3)
+  criadoEm        DateTime  @default(now()) @db.Timestamptz(3)
+  atualizadoEm    DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@unique([clienteId, chave])
+  @@index([status, criadoEm])
+  @@map("pedidos_agendamento")
+}
+
+/// Histórico da mudança solicitada, sem alterar o período já pago.
+model AlteracaoPlanoAssinatura {
+  id                     String     @id @default(cuid())
+  assinaturaId           String
+  assinatura             Assinatura @relation(fields: [assinaturaId], references: [id])
+  planoAnteriorId        String
+  planoDestinoId         String
+  precoAnteriorCentavos  Int
+  precoNovoCentavos      Int
+  efetivaEm              DateTime   @db.Date
+  estado                 String     @default("SOLICITADA")
+  origem                 OrigemAgendamento
+  usuarioId              String?
+  condicoes              Json
+  criadaEm               DateTime   @default(now()) @db.Timestamptz(3)
+  atualizadaEm           DateTime   @updatedAt @db.Timestamptz(3)
+  aplicadaEm             DateTime?  @db.Timestamptz(3)
+  comprovante            String?
+
+  @@index([assinaturaId, estado])
+  @@index([estado, efetivaEm])
+  @@map("alteracoes_plano_assinatura")
+}
+
 model Usuario {
+  identidadesSociais     IdentidadeSocial[]
+  telefoneVerificadoEm   DateTime?             @db.Timestamptz(3)
+  sessaoVersao           Int                   @default(0)
   execucoesAgentes        AgenteExecucao[] @relation("SolicitanteAgente")
   aprovacoesAgentes       AgenteExecucao[] @relation("AprovadorAgente")
   rotinasAgentes          AgenteRotina[]
@@ -241,6 +321,7 @@ model Configuracao {
 }
 
 model Barbeiro {
+  pedidosAgendamento PedidoAgendamento[]
   cadeiraId          String?
   cadeira            Cadeira?            @relation(fields: [cadeiraId], references: [id], onDelete: SetNull)
   convitesAvaliacao  ConviteAvaliacao[]
@@ -371,6 +452,12 @@ model Bloqueio {
 }
 
 model Cliente {
+  pedidosAgendamento PedidoAgendamento[]
+  endereco           String?
+  fotoDados          Bytes?
+  fotoTipo           String?
+  fotoVersao         Int                   @default(0)
+  perfilCompletoEm   DateTime?             @db.Timestamptz(3)
   elegibilidadesMensais AvaliacaoMensalElegibilidade[]
   conviteAvaliacao   ConviteAvaliacao?
   ofertasRecompra    OfertaRecompra[]
@@ -620,6 +707,8 @@ model PlanoBarbeiro {
 }
 
 model Assinatura {
+  operacaoInicial     String?
+  alteracoesPlano     AlteracaoPlanoAssinatura[]
   id                  String               @id @default(cuid())
   clienteId           String
   cliente             Cliente              @relation(fields: [clienteId], references: [id])

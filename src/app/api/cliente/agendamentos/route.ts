@@ -8,7 +8,8 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { premiosParaReservar } from "@/lib/jogos/premios";
-import { corpo, zId, zInstante } from "@/lib/validacao";
+import { zId, zInstante } from "@/lib/validacao";
+import { corpoPedido } from "@/lib/agenda/pedidos-regras";
 
 export const GET = rota(async () => {
   const s = await exigirCliente();
@@ -24,13 +25,14 @@ export const GET = rota(async () => {
 
 export const POST = rota(async (req: Request) => {
   const s = await exigirCliente();
-  const b = await corpo(req, z.object({
+  const b = await corpoPedido(req, z.object({
     barbeiroId: zId, servicoId: zId, inicio: zInstante, semPreferencia: z.boolean().optional(), forcarAvulso: z.boolean().optional(),
     servicosAdicionais: z.array(zId).max(9).optional(),
     precoEsperadoCentavos: z.number().int().nonnegative().optional(),
+    duracaoEsperadaMin: z.number().int().min(5).max(480),
     /** Premio de jogo que o cliente vai usar nesse horario (fica reservado). */
     premioId: zId.optional(),
-  }));
+  }).strict());
   if (b.servicosAdicionais?.length && b.precoEsperadoCentavos === undefined) throw new ErroNegocio("Consulte o valor dos serviços antes de confirmar.", 422, "preco_obrigatorio");
   const cliente = await db.cliente.findUniqueOrThrow({ where: { id: s.clienteId } });
   if (!cliente.nome.trim()) throw new ErroNegocio("Informe seu nome no perfil antes de agendar.", 422, "sem_nome");
@@ -41,6 +43,7 @@ export const POST = rota(async (req: Request) => {
   if (premio?.expiraEm && new Date(premio.expiraEm) < b.inicio) {
     throw new ErroNegocio(`Esse prêmio vale até ${new Date(premio.expiraEm).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}: escolha um horário até lá.`, 422, "premio_validade");
   }
-  const ag = await agendarPeloCliente({ ...dados, premioId, telefone: cliente.telefone, nome: cliente.nome, origem: "SITE" });
+  const ag = await agendarPeloCliente({ ...dados, premioId, clienteId: s.clienteId, usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0,
+    telefone: cliente.telefone, nome: cliente.nome, origem: "SITE" });
   return NextResponse.json(ag, { status: 201 });
 });

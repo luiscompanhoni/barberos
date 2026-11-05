@@ -6,7 +6,7 @@ import { VERSAO_TERMOS } from "@/lib/lgpd/textos";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
-import type { Area } from "./otp";
+import { verificarCodigo, type Area } from "./otp";
 import { conferirSenha, gerarHash, problemaDaSenha, senhaTemporaria } from "./senha";
 
 const MAX_FALHAS = 5;
@@ -56,44 +56,48 @@ export async function entrarComSenha(identificador: string, senha: string, area:
 }
 
 /**
- * Cliente cria a conta no site. Se o celular ja tem historico na barbearia (atendimento,
- * plano) ou ja tem senha, nao deixa: ninguem toma a conta de outra pessoa digitando o numero dela.
+ * Só define credenciais após prova do celular. Uma senha já verificada não é
+ * substituída pelo formulário público de cadastro.
  */
-export async function criarContaCliente(p: { nome: string; telefone: string; senha: string }) {
+export async function criarContaCliente(p: { nome: string; telefone: string; senha: string; codigo: string; cpf?: string; email?: string; endereco?: string; dataNascimento?: Date }) {
   const tel = normalizarTelefone(p.telefone);
   if (!tel) throw new ErroNegocio("Celular inválido. Use DDD + número.", 400);
   const problema = problemaDaSenha(p.senha, tel);
   if (problema) throw new ErroNegocio(problema);
 
-  const [usuario, cliente] = await Promise.all([
-    db.usuario.findUnique({ where: { telefone: tel } }),
-    db.cliente.findUnique({ where: { telefone: tel }, include: { _count: { select: { agendamentos: true, assinaturas: true } } } }),
-  ]);
-  if (usuario?.senhaHash) throw new ErroNegocio("Esse celular já tem conta. É só entrar com a senha.", 409, "ja_tem_conta");
-  if (usuario && usuario.papel !== "CLIENTE") throw new ErroNegocio("Esse número é da equipe. Entre pelo acesso da equipe.", 403);
-  if (cliente && (cliente._count.agendamentos > 0 || cliente._count.assinaturas > 0)) {
-    throw new ErroNegocio("Esse celular já tem cadastro na barbearia. Para criar sua senha, use o primeiro acesso por código ou peça na recepção.", 409, "confirmar_celular");
-  }
-
+  if (!/^\d{6}$/.test(p.codigo ?? "")) throw new ErroNegocio("Confirme seu celular com o código recebido.", 400, "confirmar_celular");
+  const comprovado = await verificarCodigo(tel, p.codigo, "cliente", "acesso", { permitirNovoCadastro: true });
+  if (comprovado.papel !== "CLIENTE") throw new ErroNegocio("Esse número é da equipe. Entre pelo acesso da equipe.", 403);
   const senhaHash = await gerarHash(p.senha);
   const nome = p.nome.trim();
-  const u = usuario
-    ? await db.usuario.update({ where: { id: usuario.id }, data: { senhaHash, nome } })
-    : await db.usuario.create({ data: { telefone: tel, nome, papel: "CLIENTE", senhaHash } });
   const aceite = { termosVersao: VERSAO_TERMOS, termosAceitosEm: new Date() };
-  await db.cliente.upsert({ where: { telefone: tel }, create: { telefone: tel, nome, usuarioId: u.id, ...aceite }, update: { usuarioId: u.id, nome, ...aceite } });
-  return db.usuario.findUniqueOrThrow({ where: { id: u.id }, include: incluir });
+  const perfil = { cpf: p.cpf, email: p.email, endereco: p.endereco, dataNascimento: p.dataNascimento,
+    ...(p.cpf && p.email && p.endereco && p.dataNascimento ? { perfilCompletoEm: new Date() } : {}) };
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`auth-usuario:${comprovado.id}`}))`;
+    const u = await tx.usuario.findUniqueOrThrow({ where: { id: comprovado.id }, include: { ...incluir, cliente: true } });
+    if (!u.ativo || u.papel !== "CLIENTE" || !u.telefoneVerificadoEm || u.sessaoVersao !== comprovado.sessaoVersao || !u.cliente || u.cliente.excluidoEm) throw invalido();
+    if (u.senhaHash) throw new ErroNegocio("Esse celular já tem conta. Entre com a senha ou use o acesso por código.", 409, "ja_tem_conta");
+    await tx.usuario.update({ where: { id: u.id }, data: { nome, senhaHash, trocarSenha: false } });
+    await tx.cliente.update({ where: { id: u.cliente.id }, data: { nome, ...aceite, ...perfil } });
+    return tx.usuario.findUniqueOrThrow({ where: { id: u.id }, include: incluir });
+  });
 }
 
 /** Troca a propria senha. Quem ainda nao tem senha (entrou por codigo) define sem a atual. */
-export async function trocarPropriaSenha(usuarioId: string, p: { atual?: string | null; nova: string }) {
-  const u = await db.usuario.findUnique({ where: { id: usuarioId } });
+export async function trocarPropriaSenha(usuarioId: string, p: { atual?: string | null; nova: string }, versaoSessao = 0) {
+  return db.$transaction(async (tx) => {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`auth-usuario:${usuarioId}`}))`;
+  const u = await tx.usuario.findUnique({ where: { id: usuarioId } });
   if (!u) throw naoEncontrado("Usuário");
+  if (!u.ativo || (u.sessaoVersao ?? 0) !== versaoSessao) throw invalido();
+  if (u.papel === "CLIENTE" && !u.telefoneVerificadoEm) throw new ErroNegocio("Entre por código para confirmar seu celular antes de alterar a senha.", 403, "confirmar_celular");
   if (u.senhaHash && !(await conferirSenha(p.atual ?? "", u.senhaHash))) throw new ErroNegocio("Senha atual incorreta.", 401, "senha_atual");
   const problema = problemaDaSenha(p.nova, u.telefone);
   if (problema) throw new ErroNegocio(problema);
   if (u.senhaHash && (await conferirSenha(p.nova, u.senhaHash))) throw new ErroNegocio("A nova senha precisa ser diferente da atual.");
-  await db.usuario.update({ where: { id: usuarioId }, data: { senhaHash: await gerarHash(p.nova), trocarSenha: false, senhaFalhas: 0, bloqueadoAte: null } });
+  await tx.usuario.update({ where: { id: usuarioId }, data: { senhaHash: await gerarHash(p.nova), trocarSenha: false, senhaFalhas: 0, bloqueadoAte: null } });
+  });
 }
 
 /** Dono define uma senha temporaria para alguem da equipe (troca obrigatoria no 1o acesso). */

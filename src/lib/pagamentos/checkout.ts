@@ -29,24 +29,29 @@ export function checkoutProprio(p: Provedor = provedorPagamento()) {
 }
 
 // Limite simples contra teste de cartoes em massa: N tentativas por chave por hora.
-const g = globalThis as unknown as { tentativasCheckout?: Map<string, number[]>; expiracoesCheckout?: Map<string, number> };
+const g = globalThis as unknown as { tentativasCheckout?: Map<string, number[]>; expiracoesCheckout?: Map<string, number>;
+  limpezaCheckout?: { ultima: number; proximaExpiracao: number } };
 const tentativas = (g.tentativasCheckout ??= new Map<string, number[]>());
 const expiracoes = (g.expiracoesCheckout ??= new Map<string, number>());
 const JANELA_MAXIMA = 3_600_000;
 const MAX_CHAVES = 10_000;
-let ultimaLimpeza = 0;
+const limpeza = (g.limpezaCheckout ??= { ultima: 0, proximaExpiracao: Number.POSITIVE_INFINITY });
 
 export function limitarTentativas(chave: string, max = 5, janelaMs = 3_600_000) {
   const agora = Date.now();
   if (!chave || chave.length > 256) throw new ErroNegocio("Identificador de pagamento inválido.", 400);
   // Expira inclusive chaves nunca mais consultadas; saturação não apaga limites ainda ativos.
-  if (agora - ultimaLimpeza >= 60_000 || tentativas.size >= MAX_CHAVES) {
-    ultimaLimpeza = agora;
+  // Sob saturação, não percorre dez mil chaves a cada tentativa recusada.
+  // Só há espaço recuperável quando alguma chave pode ter expirado.
+  if (agora - limpeza.ultima >= 60_000 || (tentativas.size >= MAX_CHAVES && agora >= limpeza.proximaExpiracao)) {
+    limpeza.ultima = agora;
+    limpeza.proximaExpiracao = Number.POSITIVE_INFINITY;
     for (const [id, batidas] of tentativas) {
-      if ((expiracoes.get(id) ?? ((batidas.at(-1) ?? 0) + JANELA_MAXIMA)) <= agora) {
+      const expira = expiracoes.get(id) ?? ((batidas.at(-1) ?? 0) + JANELA_MAXIMA);
+      if (expira <= agora) {
         tentativas.delete(id);
         expiracoes.delete(id);
-      }
+      } else limpeza.proximaExpiracao = Math.min(limpeza.proximaExpiracao, expira);
     }
   }
   if (!tentativas.has(chave) && tentativas.size >= MAX_CHAVES) throw new ErroNegocio("Muitas solicitações. Aguarde e tente novamente.", 429, "tentativas");
@@ -54,6 +59,7 @@ export function limitarTentativas(chave: string, max = 5, janelaMs = 3_600_000) 
   if (recentes.length >= max) throw new ErroNegocio("Muitas tentativas. Aguarde uma hora ou fale com a barbearia.", 429, "tentativas");
   tentativas.set(chave, [...recentes, agora]);
   expiracoes.set(chave, agora + janelaMs);
+  limpeza.proximaExpiracao = Math.min(limpeza.proximaExpiracao, agora + janelaMs);
 }
 
 /** Limite de acesso anterior ao JSON e ao lookup, inclusive para tokens inexistentes. */

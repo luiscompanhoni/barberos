@@ -4,7 +4,8 @@ import { encerrarSessao, exigirCliente } from "@/lib/auth/sessao";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { confirmouExclusao } from "@/lib/lgpd/regras";
 import { aceitarTermos, excluirConta, mudarMensagens, situacaoPrivacidade } from "@/lib/lgpd/titular";
-import { corpo } from "@/lib/validacao";
+import { exigirOrigemCliente } from "@/lib/auth/http-cliente";
+import { json } from "@/lib/estudio/http";
 
 const SEM_CACHE = { "Cache-Control": "private, no-store" };
 
@@ -17,7 +18,8 @@ export const GET = rota(async () => {
 /** Aceitar os termos, ligar/desligar mensagens de divulgacao ou excluir a conta (digitando EXCLUIR). */
 export const POST = rota(async (req: Request) => {
   const s = await exigirCliente();
-  const b = await corpo(req, z.discriminatedUnion("acao", [
+  exigirOrigemCliente(req);
+  const b = await json(req, z.discriminatedUnion("acao", [
     z.object({ acao: z.literal("aceitar") }).strict(),
     z.object({ acao: z.literal("mensagens"), aceita: z.boolean() }).strict(),
     z.object({ acao: z.literal("excluir"), confirmacao: z.string().max(20) }).strict(),
@@ -26,7 +28,7 @@ export const POST = rota(async (req: Request) => {
   else if (b.acao === "mensagens") await mudarMensagens(s.clienteId, s.usuarioId, b.aceita);
   else {
     if (!confirmouExclusao(b.confirmacao)) throw new ErroNegocio("Digite EXCLUIR para confirmar.", 422, "confirmacao");
-    await excluirConta(s.clienteId, s.usuarioId);
+    await excluirConta(s.clienteId, s.usuarioId, s.sessaoVersao ?? 0);
     await encerrarSessao();
     return NextResponse.json({ excluida: true }, { headers: SEM_CACHE });
   }

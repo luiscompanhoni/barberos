@@ -13,7 +13,7 @@ beforeEach(() => {
 describe("sessão revalidada após editar acesso", () => {
   it("usa função, nome e agenda atuais mesmo quando o token ainda diz dono", async () => {
     mocks.usuario.mockResolvedValue({ id: "pessoa", nome: "Nome novo", papel: "LIDER", ativo: true, barbeiro: { id: "agenda", ativo: true }, cliente: null });
-    expect(await sessaoAtual()).toEqual({ usuarioId: "pessoa", nome: "Nome novo", papel: "LIDER", barbeiroId: "agenda", clienteId: null });
+    expect(await sessaoAtual()).toEqual({ usuarioId: "pessoa", nome: "Nome novo", papel: "LIDER", barbeiroId: "agenda", clienteId: null, sessaoVersao: 0 });
   });
   it("sessão já aberta perde acesso ao desativar o usuário", async () => {
     mocks.usuario.mockResolvedValue({ id: "pessoa", papel: "DONO", ativo: false });

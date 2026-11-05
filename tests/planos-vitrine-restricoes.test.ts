@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({
-  cliente: vi.fn(), plano: vi.fn(), assinaturaAtual: vi.fn(), tx: vi.fn(), planoTx: vi.fn(), lock: vi.fn(),
+  cliente: vi.fn(), clienteTx: vi.fn(), usuario: vi.fn(), criarGateway: vi.fn(), plano: vi.fn(), assinaturaAtual: vi.fn(), tx: vi.fn(), planoTx: vi.fn(), lock: vi.fn(),
   criar: vi.fn(), concorrente: vi.fn(), atualizarCliente: vi.fn(), filaUpsert: vi.fn(), filaCount: vi.fn(), gateway: vi.fn(), cobranca: vi.fn(), emissao: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
@@ -19,11 +19,13 @@ const plano = { id: "p", nome: "Business", ativo: true, visivel: true, compravel
 const dados = { clienteId: "c", planoId: "p", forma: "PIX" as const, origem: "SITE" as const };
 beforeEach(() => {
   vi.clearAllMocks();
-  m.cliente.mockResolvedValue({ id: "c", nome: "Cliente", cpf: "52998224725", email: "", telefone: "5547999990000" });
+  const cliente = { id: "c", nome: "Cliente", cpf: "52998224725", email: "", telefone: "5547999990000", excluidoEm: null, usuarioId: "u" };
+  m.cliente.mockResolvedValue(cliente); m.clienteTx.mockResolvedValue(cliente);
+  m.usuario.mockResolvedValue({ id: "u", ativo: true, papel: "CLIENTE", sessaoVersao: 2 });
   m.plano.mockResolvedValue(plano); m.planoTx.mockResolvedValue(plano); m.assinaturaAtual.mockResolvedValue(null);
-  m.cobranca.mockResolvedValue(null); m.emissao.mockResolvedValue(null); m.gateway.mockResolvedValue({ exigeEmail: false });
+  m.cobranca.mockResolvedValue(null); m.emissao.mockResolvedValue(null); m.gateway.mockResolvedValue({ exigeEmail: false, criarCliente: m.criarGateway });
   m.tx.mockImplementation((fn: (tx: unknown) => unknown) => fn({ $queryRaw: m.lock, $executeRaw: m.lock, plano: { findUnique: m.planoTx },
-    assinatura: { create: m.criar, findFirst: m.concorrente, count: vi.fn().mockResolvedValue(0) }, cliente: { update: m.atualizarCliente }, listaEsperaPlano: { upsert: m.filaUpsert, count: m.filaCount } }));
+    assinatura: { create: m.criar, findFirst: m.concorrente, count: vi.fn().mockResolvedValue(0) }, cliente: { findUnique: m.clienteTx, findUniqueOrThrow: m.clienteTx, update: m.atualizarCliente }, usuario: { findUnique: m.usuario }, listaEsperaPlano: { upsert: m.filaUpsert, count: m.filaCount } }));
   m.concorrente.mockResolvedValue(null);
 });
 
@@ -88,5 +90,23 @@ describe("planos visíveis para consulta", () => {
     expect(schemaPlano.safeParse({ ...base, etiquetas: ["Preferido", "preferido"] }).success).toBe(false);
     expect(schemaPlano.safeParse({ ...base, etiquetas: ["1", "2", "3", "4"] }).success).toBe(false);
     expect(schemaPlano.safeParse({ ...base, etiquetas: ["Preferido da galera"] }).success).toBe(true);
+  });
+  it.each([true, false])("recusa cadastro excluído durante a adesão; titular=%s", async autenticado => {
+    m.plano.mockResolvedValue({ ...plano, compravel: true });
+    m.clienteTx.mockResolvedValue({ id: "c", nome: "Cliente excluído", excluidoEm: new Date(), cpf: null, email: null });
+    await expect(assinar({ ...dados, cpf: "52998224725", email: "qa@example.invalid", ...(autenticado ? { titular: { usuarioId: "u", sessaoVersao: 2 } } : {}) })).rejects.toMatchObject({ status: autenticado ? 401 : 404 });
+    expect(m.criarGateway).not.toHaveBeenCalled(); expect(m.criar).not.toHaveBeenCalled(); expect(m.atualizarCliente).not.toHaveBeenCalled();
+  });
+  it.each([{ sessaoVersao: 3 }, { ativo: false }, { papel: "RECEPCAO" }, { id: "outro" }])("revalida titular sob trava antes de adesão %j", async alteracao => {
+    m.plano.mockResolvedValue({ ...plano, compravel: true });
+    m.usuario.mockResolvedValue({ id: "u", ativo: true, papel: "CLIENTE", sessaoVersao: 2, ...alteracao });
+    await expect(assinar({ ...dados, titular: { usuarioId: "u", sessaoVersao: 2 } })).rejects.toMatchObject({ status: 401, codigo: "sessao_invalida" });
+    expect(m.criarGateway).not.toHaveBeenCalled(); expect(m.criar).not.toHaveBeenCalled(); expect(m.atualizarCliente).not.toHaveBeenCalled();
+  });
+  it("valida os dados atuais, sem restaurar CPF lido antes da trava", async () => {
+    m.plano.mockResolvedValue({ ...plano, compravel: true });
+    m.clienteTx.mockResolvedValue({ id: "c", nome: "Cliente", cpf: null, email: "novo@example.invalid", telefone: "5547999990000", excluidoEm: null });
+    await expect(assinar(dados)).rejects.toMatchObject({ status: 422, codigo: "cpf" });
+    expect(m.criarGateway).not.toHaveBeenCalled(); expect(m.atualizarCliente).not.toHaveBeenCalled(); expect(m.criar).not.toHaveBeenCalled();
   });
 });

@@ -1,14 +1,17 @@
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import tarfile
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
-from deploy_vps_comum import CONTROLES_PUBLICACAO, conferir_migracoes, conferir_pacote, conferir_central_desligada, exigir_migracoes_da_publicacao
+from deploy_vps_comum import (CONTROLES_PUBLICACAO, PROVA_CONTRATO_PIX, conferir_migracoes, conferir_pacote,
+                              conferir_central_desligada, exigir_agenda_equipe, exigir_contrato_pix_imagem, exigir_migracoes_da_publicacao)
 from receber_release import receber
 
 
@@ -23,6 +26,54 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_publicacao_aceita_somente_as_tres_novas_migracoes_de_cliente(self):
+        nomes = ["20261104223000_cliente_pedidos_login_planos", "20261104224000_verificacao_telefone", "20261104224500_versao_sessao"]
+        exigir_migracoes_da_publicacao(nomes)
+        for nome in nomes:
+            exigir_migracoes_da_publicacao([nome])
+            with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+                exigir_migracoes_da_publicacao([*nomes, nome + "_extra"])
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao([*nomes, "20261104224600_outra"])
+
+    def test_agenda_exige_valor_true_do_registro_principal(self):
+        with patch("deploy_vps_comum.consultar_banco", return_value="t") as consulta:
+            self.assertIs(exigir_agenda_equipe("db"), True)
+            consulta.assert_called_once_with("db", 'SELECT "agendaExternaAtiva" FROM configuracao WHERE id = 1')
+            for valor in ("f", "", "t\nf", "1"):
+                consulta.return_value = valor
+                with self.assertRaisesRegex(RuntimeError, "confirmação pela equipe"):
+                    exigir_agenda_equipe("db")
+
+    def test_prova_pix_executa_leitura_isolada_sem_rede_credenciais_ou_volume(self):
+        with patch("deploy_vps_comum.executar", return_value=b"CONTRATO_RH_PIX_BLOQUEADO") as executar:
+            self.assertIs(exigir_contrato_pix_imagem("sha256:fixture"), True)
+            cmd = executar.call_args.args[0]
+            self.assertEqual(cmd[cmd.index("--network") + 1], "none")
+            self.assertEqual(cmd[cmd.index("--entrypoint") + 1], "node")
+            self.assertIn("--read-only", cmd)
+            self.assertFalse({"-v", "--mount", "--env", "--env-file"}.intersection(cmd))
+            executar.return_value = b""
+            with self.assertRaisesRegex(RuntimeError, "contrato compilado"):
+                exigir_contrato_pix_imagem("sha256:fixture")
+
+    def test_verificador_do_bundle_rh_recusa_contrato_ausente_ambiguo_ou_com_envio(self):
+        with tempfile.TemporaryDirectory() as d:
+            servidor = Path(d) / ".next/server"
+            rota = servidor / "app/api/rh/folha/lote-pix/route.js"
+            rota.parent.mkdir(parents=True)
+            rota.write_text("// entrada")
+            chunk = servidor / "chunks/folha.js"
+            chunk.parent.mkdir()
+            Path(str(rota) + ".nft.json").write_text(json.dumps({"files": ["../../../../../chunks/folha.js"]}))
+            seguro = 'const cfg={envioHabilitado:!1,bloqueioEnvio:"bloqueado"};const schema={revisao:r,acao:z.enum(["preparar","conferir"])};'
+            for texto, esperado in ((seguro, True), (seguro.replace("!1", "false"), True), (seguro.replace("!1", "!0"), False),
+                                    (seguro.replace('"conferir"', '"conferir","enviar"'), False), ("", False),
+                                    (seguro + "const outro={envioHabilitado:true};", False)):
+                chunk.write_text(texto)
+                r = subprocess.run(["node", "-e", PROVA_CONTRATO_PIX], cwd=d, capture_output=True, timeout=10)
+                self.assertEqual((r.returncode, r.stdout), (0, b"CONTRATO_RH_PIX_BLOQUEADO") if esperado else (1, b""))
+
     def test_publicacao_mantem_stone_manual(self):
         self.assertEqual(CONTROLES_PUBLICACAO["MAQUININHA"], "manual")
         def app(env):

@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -20,7 +21,7 @@ class RecuperacaoTest(unittest.TestCase):
             codigo.mkdir(parents=True)
             (base / ".env").write_text("sentinela-privada")
             ativo = {"Config": {"Env": ["BARBEROS_QUARENTENA_RESTAURACAO=true"]}}
-            pilha.enter_context(patch.object(deploy.os, "geteuid", return_value=0))
+            pilha.enter_context(patch.object(deploy.os, "geteuid", return_value=0, create=True))
             pilha.enter_context(patch.object(deploy, "conferir_pacote", return_value=codigo))
             pilha.enter_context(patch.object(deploy, "container", return_value=ativo))
             executar = pilha.enter_context(patch.object(deploy, "executar"))
@@ -39,8 +40,9 @@ class RecuperacaoTest(unittest.TestCase):
             (base / "deploy/docker-compose.yml").write_text("original")
             (base / ".env").write_text("sentinela-privada")
             antigo = {"Id": "app", "Image": "sha256:" + "b" * 64,
-                      "Config": {"Env": ["DATABASE_URL=sentinela-db"], "Labels": {"com.docker.compose.project.config_files": str(base / "deploy/docker-compose.yml")}},
+                      "Config": {"Env": ["DATABASE_URL=sentinela-db", "MAQUININHA=manual"], "Labels": {"com.docker.compose.project.config_files": str(base / "deploy/docker-compose.yml")}},
                       "State": {"Status": "running", "Health": {"Status": "healthy"}}, "NetworkSettings": {"Networks": {"barberos_default": {}}}}
+            novo = {**antigo, "Image": "sha256:" + "c" * 64, "Config": {"Env": ["MAQUININHA=" + ("stone" if falha == "stone" else "manual")]}}
             chamadas = []
 
             def comando(args, **_kw):
@@ -48,25 +50,42 @@ class RecuperacaoTest(unittest.TestCase):
                 if args[:3] == ["docker", "image", "inspect"]:
                     if backup_sem_imagem and args[-1] == antigo["Image"]:
                         raise RuntimeError("Imagem antiga de backup ausente")
-                    return json.dumps([{"Config": {"Labels": {"org.opencontainers.image.revision": commit}}}]).encode()
+                    return json.dumps([{"Id": novo["Image"], "Config": {"Labels": {"org.opencontainers.image.revision": commit}}}]).encode()
                 return b""
 
             def simular(nome, **kw):
                 return pilha.enter_context(patch.object(deploy, nome, **kw))
 
-            pilha.enter_context(patch.object(deploy.os, "geteuid", return_value=0))
+            pilha.enter_context(patch.object(deploy.os, "geteuid", return_value=0, create=True))
+            pilha.enter_context(patch.object(deploy.shutil, "disk_usage", return_value=SimpleNamespace(free=12 * 1024**3)))
+            if sys.platform == "win32":
+                pilha.enter_context(patch.object(Path, "symlink_to"))  # symlink real da VPS depende de Linux
+            simular("memoria_disponivel_kib", return_value=3200 * 1024)
             simular("conferir_pacote", return_value=codigo)
-            simular("container", return_value=antigo)
+            simular("container", side_effect=[antigo, antigo, antigo, novo])
             simular("executar", side_effect=comando)
             simular("migracoes", return_value=[])
             simular("conferir_migracoes", return_value=[])
             simular("consultar_banco", return_value="1")
-            simular("aguardar_saude", return_value=antigo)
+            simular("aguardar_saude", side_effect=[antigo, novo, antigo])
+            agenda = simular("exigir_agenda_equipe", return_value=True)
+            pix = simular("exigir_contrato_pix_imagem", return_value=True)
             simular("conferir_central_desligada", return_value={"habilitada": True, "execucaoAtiva": False, "metaTokenConfigurado": False})
             ensaio = simular("ensaiar_schema")
             backup = simular("backup_verificado", return_value={"arquivo": "/backup/fixture.sql.gz", "restaurado": True})
             https = simular("conferir_https")
-            if falha == "backup":
+            if falha in ("agenda_antes", "pix"):
+                (agenda if falha == "agenda_antes" else pix).side_effect = RuntimeError("Controle recusado")
+                with self.assertRaisesRegex(RuntimeError, "Controle recusado"):
+                    deploy.publicar(base, "barberos", commit, antigo["Image"])
+                backup.assert_not_called()
+                self.assertFalse((codigo.parent / "operacao.json").exists())
+                self.assertFalse(any("tag" in a or "up" in a or "migrate" in a for a in chamadas))
+                return
+            if falha in ("agenda_pre_migracao", "agenda_saude", "agenda_final"):
+                consultas_anteriores = {"agenda_pre_migracao": 1, "agenda_saude": 2, "agenda_final": 3}
+                agenda.side_effect = [True] * consultas_anteriores[falha] + [RuntimeError("Agenda alterada")]
+            elif falha == "backup":
                 backup.side_effect = RuntimeError("Backup recusado")
             elif falha == "https":
                 https.side_effect = RuntimeError("Revisão HTTPS divergente")
@@ -74,7 +93,8 @@ class RecuperacaoTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "interrompida"):
                     deploy.publicar(base, "barberos", commit, antigo["Image"])
             else:
-                self.assertTrue(deploy.publicar(base, "barberos", commit, antigo["Image"])["concluido"])
+                resultado = deploy.publicar(base, "barberos", commit, antigo["Image"])
+                self.assertTrue(resultado["concluido"])
             registro = json.loads((codigo.parent / "operacao.json").read_text())
             self.assertFalse((codigo.parent / "backup.env").exists())
             self.assertEqual((base / ".env").read_text(), "sentinela-privada")
@@ -84,12 +104,17 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertFalse(any("up" in a or "migrate" in a for a in chamadas))
                 self.assertIsNone(registro["rollback"])
                 self.assertEqual(registro["etapaFalha"], "backup_e_restauracao")
-            elif falha == "https":
+            elif falha == "agenda_pre_migracao":
+                self.assertTrue(ensaio.called)
+                self.assertFalse(any("up" in a or "migrate" in a for a in chamadas))
+                self.assertIsNone(registro["rollback"])
+            elif falha in ("https", "agenda_saude", "agenda_final", "stone"):
                 self.assertTrue(registro["rollback"])
-                self.assertEqual(registro["etapaFalha"], "troca_aplicacao")
+                self.assertEqual(registro["etapaFalha"], "backup_apos_migracao" if falha == "agenda_final" else "troca_aplicacao")
                 rollback = json.loads((codigo.parent / "rollback.json").read_text())
                 self.assertEqual(rollback["services"]["app"]["image"], antigo["Image"])
                 self.assertEqual(rollback["services"]["app"]["command"], ["node", "server.js"])
+                self.assertEqual(rollback["services"]["app"]["environment"]["MAQUININHA"], "manual")
                 self.assertTrue(any("stop" in a and "video-worker" in a for a in chamadas))
             else:
                 self.assertTrue(ensaio.called)
@@ -100,6 +125,12 @@ class RecuperacaoTest(unittest.TestCase):
                 override = json.loads((codigo / "deploy/versao.json").read_text())
                 self.assertEqual(override["services"]["app"]["environment"], CONTROLES_PUBLICACAO)
                 self.assertFalse(registro["centralAgentes"]["execucaoAtiva"])
+                self.assertTrue(registro["agendaEquipeAntes"])
+                self.assertEqual(agenda.call_count, 4)
+                pix.assert_called_once_with(novo["Image"])
+                self.assertEqual(registro["controlesCliente"], {"agendaEquipeBanco": True, "stoneManualContainer": True,
+                                "modoMaquininhaContainer": "manual", "lotePixContratoBloqueadoNaImagem": True})
+                self.assertEqual(resultado["controlesCliente"], registro["controlesCliente"])
 
     def test_falha_backup_bloqueia_migracao_e_troca(self):
         self.executar_cenario("backup")
@@ -113,6 +144,39 @@ class RecuperacaoTest(unittest.TestCase):
     def test_backup_legado_sem_imagem_so_e_substituido_apos_restauracao_nova(self):
         self.executar_cenario(None, backup_sem_imagem=True)
 
+    def test_cancelamento_quando_agenda_ou_contrato_pix_falham_no_preflight(self):
+        for falha in ("agenda_antes", "pix"):
+            with self.subTest(falha= falha):
+                self.executar_cenario(falha)
+
+    def test_mudanca_da_agenda_e_stone_recusam_conclusao(self):
+        for falha in ("agenda_pre_migracao", "agenda_saude", "agenda_final", "stone"):
+            with self.subTest(falha=falha):
+                self.executar_cenario(falha)
+
+    def test_reutilizar_publicacao_reconfere_controles_atuais(self):
+        commit = "a" * 40
+        with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
+            base = Path(d)
+            pasta = base / "releases" / commit
+            pasta.mkdir(parents=True)
+            (base / ".env").write_text("fixture")
+            (pasta / "operacao.json").write_text(json.dumps({"concluido": True, "imagemNova": "imagem-teste"}))
+            pilha.enter_context(patch.object(deploy.os, "geteuid", return_value=0, create=True))
+            pilha.enter_context(patch.object(deploy, "conferir_pacote", return_value=pasta / "barberos"))
+            app = {"Image": "imagem-teste", "Config": {"Env": [k + "=" + v for k, v in CONTROLES_PUBLICACAO.items()]}}
+            pilha.enter_context(patch.object(deploy, "aguardar_saude", return_value=app))
+            pilha.enter_context(patch.object(deploy, "container", return_value={"Id": "db"}))
+            pilha.enter_context(patch.object(deploy, "conferir_https"))
+            pix = pilha.enter_context(patch.object(deploy, "exigir_contrato_pix_imagem"))
+            agenda = pilha.enter_context(patch.object(deploy, "exigir_agenda_equipe", return_value=True))
+            r = deploy.publicar(base, "barberos", commit, "imagem-anterior")
+            self.assertTrue(r["reutilizado"] and r["controlesCliente"]["agendaEquipeBanco"])
+            pix.assert_called_once_with("imagem-teste")
+            agenda.side_effect = RuntimeError("Agenda alterada")
+            with self.assertRaisesRegex(RuntimeError, "Agenda alterada"):
+                deploy.publicar(base, "barberos", commit, "imagem-anterior")
+            pix.assert_called_once()
 
 if __name__ == "__main__":
     unittest.main()

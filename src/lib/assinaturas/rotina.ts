@@ -73,14 +73,16 @@ export async function marcarVencidas() {
   const vencidas = await db.cobranca.findMany({
     where: { status: "PENDENTE", vencimento: { lt: hoje }, assinatura: { status: { not: "CANCELADA" } } },
   });
+  let marcadas = 0;
   for (const c of vencidas) {
-    await sincronizarCobranca({
+    const alterada = await sincronizarCobranca({
       id: c.gatewayId, assinaturaGatewayId: null, valorCentavos: c.valorCentavos,
       vencimento: c.vencimento.toISOString().slice(0, 10), status: "ATRASADA",
       pagaEm: null, link: null,
-    });
+    }, { apenasPendente: true });
+    if (alterada) marcadas++;
   }
-  return vencidas.length;
+  return marcadas;
 }
 
 /** Celcash: atualiza as cobrancas de cada assinatura feita pelo BarberOS (novas mensalidades e pagamentos). */

@@ -30,13 +30,13 @@ export function linkAbsoluto(link: string | null) {
 export const novoTokenPublico = () => randomBytes(18).toString("base64url");
 
 /** Grava/atualiza a cobranca e recalcula a assinatura. Retorna a transicao de status. */
-export async function sincronizarCobranca(cob: CobrancaGateway) {
+export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenasPendente?: boolean } = {}) {
   const existente = await db.cobranca.findUnique({ where: { gatewayId: cob.id }, select: { assinaturaId: true } });
   const incluir = { cliente: { select: { nome: true, telefone: true } }, plano: { select: { nome: true } } } as const;
-  const assinatura = existente
-    ? await db.assinatura.findUnique({ where: { id: existente.assinaturaId }, include: incluir })
+  const referencia = existente
+    ? { id: existente.assinaturaId }
     : cob.assinaturaGatewayId
-      ? await db.assinatura.findUnique({ where: { gatewayId: cob.assinaturaGatewayId }, include: incluir })
+      ? await db.assinatura.findUnique({ where: { gatewayId: cob.assinaturaGatewayId }, select: { id: true } })
       : null;
 
   // Detalhes de Pix/boleto so sobrescrevem quando o gateway informou.
@@ -47,54 +47,65 @@ export async function sincronizarCobranca(cob: CobrancaGateway) {
     }).filter(([, v]) => v !== undefined && v !== null),
   );
   const token = novoTokenPublico();
-  const salva = await db.$transaction(async (tx) => {
+  const resultado = await db.$transaction(async (tx) => {
     const transacaoId = cob.id.match(/^celtx_(\d+)$/)?.[1];
     if (transacaoId) {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`conciliacao:celcash:${transacaoId}`}))`;
       // Historico conferido tem sua origem preservada; nao recria o mesmo pagamento sob outro gatewayId.
       if (await conferirVinculoSincronizado(tx, transacaoId, cob)) return null;
     }
-    if (!assinatura) return null;
-    return tx.cobranca.upsert({
-    where: { gatewayId: cob.id },
-    create: {
-      gatewayId: cob.id, assinaturaId: assinatura.id, valorCentavos: cob.valorCentavos,
-      vencimento: new Date(`${cob.vencimento}T00:00:00Z`), status: cob.status,
-      pagaEm: cob.pagaEm ? new Date(cob.pagaEm) : null, tokenPublico: token,
-      // Sem fatura externa (Pagar.me): o cliente paga na pagina do BarberOS.
-      link: cob.link ?? `/c/pagar/${token}`, ...detalhes,
-    },
-    // O vencimento fica o da criacao (o Pix gerado pelo BarberOS define o mes).
-    update: {
-      valorCentavos: cob.valorCentavos, status: cob.status, pagaEm: cob.pagaEm ? new Date(cob.pagaEm) : null,
-      ...(cob.link ? { link: cob.link } : {}), ...detalhes,
-    },
+    if (!referencia) return null;
+    // Mesma trava do cancelamento inicial: consulta, conciliação e estado são indivisíveis.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${referencia.id}`}, 0))`;
+    const assinatura = await tx.assinatura.findUniqueOrThrow({ where: { id: referencia.id }, include: incluir });
+    if (opcoes.apenasPendente) {
+      // Vencimento local não é evidência do gateway: nunca apaga um pagamento que chegou depois da leitura.
+      if (assinatura.status === "CANCELADA") return null;
+      const marcada = await tx.cobranca.updateMany({ where: { gatewayId: cob.id, assinaturaId: assinatura.id, status: "PENDENTE" }, data: { status: "ATRASADA" } });
+      if (!marcada.count) return null;
+    }
+    const salva = opcoes.apenasPendente ? await tx.cobranca.findUniqueOrThrow({ where: { gatewayId: cob.id } }) : await tx.cobranca.upsert({
+      where: { gatewayId: cob.id },
+      create: {
+        gatewayId: cob.id, assinaturaId: assinatura.id, valorCentavos: cob.valorCentavos,
+        vencimento: new Date(`${cob.vencimento}T00:00:00Z`), status: cob.status,
+        pagaEm: cob.pagaEm ? new Date(cob.pagaEm) : null, tokenPublico: token,
+        // Sem fatura externa (Pagar.me): o cliente paga na pagina do BarberOS.
+        link: cob.link ?? `/c/pagar/${token}`, ...detalhes,
+      },
+      // O vencimento fica o da criacao (o Pix gerado pelo BarberOS define o mes).
+      update: {
+        valorCentavos: cob.valorCentavos, status: cob.status, pagaEm: cob.pagaEm ? new Date(cob.pagaEm) : null,
+        ...(cob.link ? { link: cob.link } : {}), ...detalhes,
+      },
     });
+    if (assinatura.status === "CANCELADA") return { assinatura, salva, status: "CANCELADA" as const };
+    const cobrancas = await tx.cobranca.findMany({ where: { assinaturaId: assinatura.id, vinculosExternos: { none: {} } }, orderBy: { vencimento: "asc" } });
+    const pagas = cobrancas.filter((c) => c.status === "PAGA");
+    const emAberto = cobrancas.filter((c) => c.status === "ATRASADA" || c.status === "ESTORNADA");
+    let status: StatusAssinatura = assinatura.status;
+    if (emAberto.length) status = pagas.length ? "ATRASADA" : "PENDENTE";
+    else if (pagas.length) status = "ATIVA";
+
+    const ultimaPaga = pagas[pagas.length - 1];
+    const dados: Prisma.AssinaturaUpdateManyMutationInput = { status };
+    if (ultimaPaga) {
+      const venc = ultimaPaga.vencimento.toISOString().slice(0, 10);
+      dados.cicloInicio = ultimaPaga.vencimento;
+      let proximo = somarMes(venc);
+      // Pausa empurrou o vencimento: a sincronizacao nao desfaz.
+      const atual = assinatura.proximoVencimento?.toISOString().slice(0, 10);
+      if (assinatura.pausadaAte && atual && atual > proximo) proximo = atual;
+      dados.proximoVencimento = new Date(`${proximo}T00:00:00Z`);
+    }
+    if (status === "ATIVA" && !assinatura.ativadaEm) dados.ativadaEm = new Date();
+    // Também preserva encerramentos de outros fluxos que ainda não usam a trava.
+    const alterada = await tx.assinatura.updateMany({ where: { id: assinatura.id, status: { not: "CANCELADA" } }, data: dados });
+    return { assinatura, salva, status: alterada.count ? status : "CANCELADA" as const };
   });
-  if (!salva || !assinatura) return null;
-
-  if (assinatura.status === "CANCELADA") return { de: "CANCELADA" as const, para: "CANCELADA" as const };
-
-  const cobrancas = await db.cobranca.findMany({ where: { assinaturaId: assinatura.id, vinculosExternos: { none: {} } }, orderBy: { vencimento: "asc" } });
-  const pagas = cobrancas.filter((c) => c.status === "PAGA");
-  const emAberto = cobrancas.filter((c) => c.status === "ATRASADA" || c.status === "ESTORNADA");
-  let status: StatusAssinatura = assinatura.status;
-  if (emAberto.length) status = pagas.length ? "ATRASADA" : "PENDENTE";
-  else if (pagas.length) status = "ATIVA";
-
-  const ultimaPaga = pagas[pagas.length - 1];
-  const dados: Prisma.AssinaturaUpdateInput = { status };
-  if (ultimaPaga) {
-    const venc = ultimaPaga.vencimento.toISOString().slice(0, 10);
-    dados.cicloInicio = ultimaPaga.vencimento;
-    let proximo = somarMes(venc);
-    // Pausa empurrou o vencimento: a sincronizacao nao desfaz.
-    const atual = assinatura.proximoVencimento?.toISOString().slice(0, 10);
-    if (assinatura.pausadaAte && atual && atual > proximo) proximo = atual;
-    dados.proximoVencimento = new Date(`${proximo}T00:00:00Z`);
-  }
-  if (status === "ATIVA" && !assinatura.ativadaEm) dados.ativadaEm = new Date();
-  await db.assinatura.update({ where: { id: assinatura.id }, data: dados });
+  if (!resultado) return null;
+  const { assinatura, salva, status } = resultado;
+  if (status === "CANCELADA") return { de: "CANCELADA" as const, para: "CANCELADA" as const };
   if (status === "ATIVA" && assinatura.status === "PENDENTE") {
     const { aplicarPlanoAosFuturos } = await import("./agenda");
     const cfg = await (await import("@/lib/agenda/carregar")).configuracao();
@@ -152,8 +163,8 @@ export async function sincronizarAssinatura(assinaturaId: string) {
 }
 
 /** Cobranca em aberto mais antiga (para mandar o link). */
-export async function cobrancaEmAberto(assinaturaId: string) {
-  return db.cobranca.findFirst({
+export async function cobrancaEmAberto(assinaturaId: string, c: typeof db | Prisma.TransactionClient = db) {
+  return c.cobranca.findFirst({
     where: { assinaturaId, status: { in: ["PENDENTE", "ATRASADA", "ESTORNADA"] }, vinculosExternos: { none: {} } },
     orderBy: { vencimento: "asc" },
   });
@@ -166,6 +177,7 @@ export async function cobrarPeloWhatsApp(assinaturaId: string) {
     include: { cliente: true, plano: { select: { nome: true } } },
   });
   if (a.status === "CANCELADA") return { enviado: false, motivo: "A assinatura está cancelada." };
+  if (a.operacaoInicial) return { enviado: false, motivo: "A operação inicial está em conferência. Não envie outro pagamento antes de confirmar o resultado." };
   if (!a.cliente.aceitaMensagens) return { enviado: false, motivo: "O cliente não aceita mensagens. Não foi enviada cobrança." };
   const c = await cobrancaEmAberto(assinaturaId);
   if (!c) return { enviado: false, motivo: "Não há cobrança em aberto." };

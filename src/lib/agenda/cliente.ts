@@ -17,6 +17,7 @@ import { validarCadeira } from "./cadeiras";
 import { grupoTemComanda } from "./grupo-comanda";
 import { dataLocal } from "./tempo";
 import { checarTransicaoNaReserva } from "./transicao";
+import { travarClienteAgenda, type TitularAgenda } from "./cliente-identidade";
 
 const MIN = 60_000;
 const ATIVOS_FUTUROS = ["MARCADO", "CONFIRMADO"] as const;
@@ -79,6 +80,10 @@ export async function checarFaltas(clienteId: string, cfg: { limiteFaltas: numbe
 }
 
 export async function agendarPeloCliente(p: {
+  /** App autenticado usa identidade estável; bot sem sessão resolve pelo celular. */
+  clienteId?: string;
+  usuarioId?: string;
+  sessaoVersao?: number;
   telefone: string;
   nome: string;
   barbeiroId: string;
@@ -86,13 +91,16 @@ export async function agendarPeloCliente(p: {
   servicosAdicionais?: string[];
   premioId?: string;
   precoEsperadoCentavos?: number;
+  duracaoEsperadaMin?: number;
   inicio: Date;
   origem: Extract<OrigemAgendamento, "BOT" | "SITE">;
   semPreferencia?: boolean;
   forcarAvulso?: boolean;
 }) {
   const cfg = await configuracao();
-  const cliente = await db.cliente.findUnique({ where: { telefone: p.telefone } });
+  if (p.usuarioId && !p.clienteId) throw new ErroNegocio("O cadastro da sessão precisa ser informado.", 401);
+  const cliente = await db.cliente.findUnique({ where: p.clienteId ? { id: p.clienteId } : { telefone: p.telefone } });
+  if ((p.clienteId && !cliente) || cliente?.excluidoEm) throw naoEncontrado("Cliente ativo");
   if (cliente) {
     const futuros = await db.agendamento.count({
       where: { clienteId: cliente.id, adicionalDeId: null, status: { in: [...ATIVOS_FUTUROS] }, fim: { gt: new Date() } },
@@ -116,8 +124,10 @@ export async function agendarPeloCliente(p: {
       servicosAdicionais: p.servicosAdicionais,
       premioId: p.premioId,
       precoEsperadoCentavos: p.precoEsperadoCentavos,
+      duracaoEsperadaMin: p.duracaoEsperadaMin,
       inicio: p.inicio,
       cliente: cliente ? { id: cliente.id } : { telefone: p.telefone, nome: p.nome },
+      ...(p.usuarioId ? { titular: { usuarioId: p.usuarioId, sessaoVersao: p.sessaoVersao ?? 0 } } : {}),
       origem: p.origem,
       semPreferencia: p.semPreferencia,
       forcarAvulso: p.forcarAvulso,
@@ -144,9 +154,10 @@ async function doCliente(clienteId: string, agendamentoId: string) {
   return { ag, cfg };
 }
 
-export async function cancelarPeloCliente(clienteId: string, agendamentoId: string) {
+export async function cancelarPeloCliente(clienteId: string, agendamentoId: string, titular?: TitularAgenda) {
   const { ag, cfg } = await doCliente(clienteId, agendamentoId);
   await db.$transaction(async (tx) => {
+    await travarClienteAgenda(tx, clienteId, titular);
     await checarTransicaoNaReserva(tx);
     await travarBarbeiro(tx, ag.barbeiroId);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${clienteId}`}))`;
@@ -163,7 +174,7 @@ export async function cancelarPeloCliente(clienteId: string, agendamentoId: stri
 }
 
 /** Remarca mantendo o servico; pode trocar de barbeiro. */
-export async function remarcarPeloCliente(clienteId: string, agendamentoId: string, novoInicio: Date, barbeiroId?: string, forcarAvulso = false, precoEsperadoCentavos?: number) {
+export async function remarcarPeloCliente(clienteId: string, agendamentoId: string, novoInicio: Date, barbeiroId?: string, forcarAvulso = false, precoEsperadoCentavos?: number, titular?: TitularAgenda, duracaoEsperadaMin?: number) {
   const { ag, cfg } = await doCliente(clienteId, agendamentoId);
   const adicionais = await db.agendamento.findMany({ where: { adicionalDeId: ag.id, origem: "SITE", status: { not: "CANCELADO" } }, orderBy: { inicio: "asc" } });
   if (adicionais.length && precoEsperadoCentavos === undefined) throw new ErroNegocio("Consulte o valor antes de remarcar.", 422, "preco_obrigatorio");
@@ -178,6 +189,7 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
 
   try {
     const novo = await db.$transaction(async (tx) => {
+      await travarClienteAgenda(tx, clienteId, titular);
       await checarTransicaoNaReserva(tx);
       // Trava origem e destino sempre na mesma ordem (evita deadlock entre remarcacoes cruzadas).
       for (const id of [...new Set([ag.barbeiroId, destino])].sort()) await travarBarbeiro(tx, id);
@@ -215,6 +227,7 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
         posicao += item.duracaoMin * MIN;
       }
       if (precoEsperadoCentavos !== undefined && precos.reduce((s, p) => s + p.precoCentavos, 0) !== precoEsperadoCentavos) throw new ErroNegocio("O valor mudou. Consulte o horário novamente.", 409, "preco_alterado");
+      if (duracaoEsperadaMin !== undefined && (posicao - inicio) / MIN !== duracaoEsperadaMin) throw new ErroNegocio("A duração mudou. Consulte o horário e confirme novamente.", 409, "duracao_alterada");
       const n = await tx.agendamento.update({
         where: { id: ag.id },
         data: { cadeiraId, inicio: new Date(inicio), fim: new Date(fim), barbeiroId: destino, precoCentavos: precos[0].precoCentavos, assinaturaId: precos[0].assinaturaId },
@@ -252,6 +265,7 @@ export async function confirmarPeloCliente(clienteId: string, agendamentoId: str
   if (ag.status !== "MARCADO" || ag.inicio.getTime() < Date.now()) throw new ErroNegocio("Esse horário não pode mais ser confirmado.");
   const cfg = await configuracao();
   const novo = await db.$transaction(async (tx) => {
+    await travarClienteAgenda(tx, clienteId);
     await travarBarbeiro(tx, ag.barbeiroId);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${clienteId}`}))`;
     const atual = await tx.agendamento.findUnique({ where: { id: agendamentoId } });

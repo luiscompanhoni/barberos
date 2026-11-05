@@ -10,6 +10,8 @@ export type AgendamentoApi = {
   status: Status;
   origem: string;
   precoCentavos: number;
+  totalServicosCentavos?: number;
+  coberturaPlano?: string;
   observacao: string | null;
   semPreferencia: boolean;
   cliente: { id: string; nome: string; telefone: string; observacoes: string | null };

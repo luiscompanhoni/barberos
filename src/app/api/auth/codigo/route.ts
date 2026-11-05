@@ -3,10 +3,10 @@ import { z } from "zod";
 import { solicitarCodigo } from "@/lib/auth/otp";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
-import { corpo } from "@/lib/validacao";
+import { corpoAutenticacao } from "@/lib/auth/http-cliente";
 
 export const POST = rota(async (req: Request) => {
-  const { telefone, area } = await corpo(
+  const { telefone, area } = await corpoAutenticacao(
     req,
     z.object({ telefone: z.string().max(30), area: z.enum(["equipe", "cliente"]).default("equipe") }),
   );

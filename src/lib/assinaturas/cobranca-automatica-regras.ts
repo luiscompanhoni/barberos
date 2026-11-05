@@ -6,6 +6,7 @@ export type CobrancaParaAviso = {
   link: string | null;
   tokenPublico: string | null;
   assinaturaStatus: string;
+  operacaoInicial?: string | null;
   pausadaEm: Date | null;
   encerraEm: Date | null;
   aceitaMensagens: boolean;
@@ -25,6 +26,7 @@ export function linkPermitido(link: string | null, tokenPublico: string | null, 
 
 export function avaliarCobrancaAutomatica(c: CobrancaParaAviso, hoje: string, agora: Date, dominiosPermitidos: string[] = []) {
   if (c.excluido || !c.aceitaMensagens || c.assinaturaStatus === "CANCELADA") return { estado: "CANCELADA" as const, motivo: "destinatario_indisponivel" };
+  if (c.operacaoInicial) return { estado: "REVISAO" as const, motivo: "operacao_inicial_em_conferencia" };
   // Uma pausa ou cancelamento agendado exige conferir a dívida; não presumir
   // que a fatura foi extinta nem cobrar automaticamente durante essa condição.
   if (c.pausadaEm || c.encerraEm) return { estado: "REVISAO" as const, motivo: "assinatura_pausada_ou_encerrando" };

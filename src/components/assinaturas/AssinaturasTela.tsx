@@ -40,10 +40,10 @@ export const ROTULO: Record<Status, { texto: string; cor: string }> = {
 export const FORMA: Record<string, string> = { CARTAO: "Cartão", PIX: "Pix", BOLETO: "Boleto" };
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
-export function AssinaturasTela({ podeCancelar }: { podeCancelar: boolean }) {
+export function AssinaturasTela({ podeCancelar, buscaInicial = "" }: { podeCancelar: boolean; buscaInicial?: string }) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [status, setStatus] = useState<Status | "TODAS">("TODAS");
-  const [busca, setBusca] = useState("");
+  const [busca, setBusca] = useState(buscaInicial);
   const [aberta, setAberta] = useState<string | null>(null);
   const [nova, setNova] = useState(false);
   const [erro, setErro] = useState("");
@@ -119,7 +119,8 @@ export function AssinaturasTela({ podeCancelar }: { podeCancelar: boolean }) {
               {dados?.assinaturas.map((a) => (
                 <tr key={a.id} className="cursor-pointer hover:bg-zinc-50" onClick={() => setAberta(a.id)}>
                   <td className="px-3 py-2">
-                    <p className="font-medium">{a.cliente.nome}</p>
+                    <button type="button" className="rounded text-left font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ouro" aria-label={`Ver assinatura de ${a.cliente.nome}`}
+                      onClick={(e) => { e.stopPropagation(); setAberta(a.id); }}>{a.cliente.nome}</button>
                     <p className="text-xs text-zinc-500">{formatarTelefone(a.cliente.telefone)}</p>
                   </td>
                   <td className="px-3 py-2">{a.plano.nome}</td>

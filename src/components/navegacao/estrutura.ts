@@ -4,7 +4,7 @@ const GRUPOS = [
   { titulo: "Visão geral", rotas: ["/painel", "/indicadores", "/agentes"], agrupado: false },
   { titulo: "Agenda", rotas: ["/recepcao", "/meu-dia", "/minha-agenda", "/semana"], agrupado: true },
   { titulo: "Operação", rotas: ["/comandas", "/caixa", "/conversas", "/financeiro"], agrupado: false },
-  { titulo: "Relacionamento", rotas: ["/assinaturas", "/planos", "/campanhas", "/recompras", "/jogos"], agrupado: true },
+  { titulo: "Relacionamento", rotas: ["/clientes", "/assinaturas", "/planos", "/campanhas", "/recompras", "/jogos"], agrupado: true },
   { titulo: "Equipe", rotas: ["/reunioes", "/desempenho", "/avaliacoes", "/checklist", "/rh", "/recrutamento", "/expediente", "/campanhas-equipe", "/cultura-black"], agrupado: true },
   { titulo: "Criação e estoque", rotas: ["/estudio", "/estoque"], agrupado: false },
   { titulo: "Configurações", rotas: ["/equipe", "/whatsapp", "/notificacoes", "/auditoria", "/simulador"], agrupado: true },

@@ -19,6 +19,12 @@ CONTROLES_PUBLICACAO = {
     "MAQUININHA": "manual",
 }
 
+MIGRACOES_CLIENTE = {
+    "20261104223000_cliente_pedidos_login_planos",
+    "20261104224000_verificacao_telefone",
+    "20261104224500_versao_sessao",
+}
+
 
 def executar(args, *, entrada=None, ambiente=None, prazo=300):
     r = subprocess.run(args, input=entrada, capture_output=True, env=ambiente, timeout=prazo)
@@ -77,8 +83,46 @@ def conferir_migracoes(aplicadas, pasta):
 
 def exigir_migracoes_da_publicacao(pendentes):
     # Somente as migrações revisadas; executar a publicação ainda exige pedido explícito.
-    if set(pendentes) - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros", "20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto", "20261102210000_recrutamento_entrevistas", "20261102220000_entrevistas_piloto_whatsapp", "20261102221000_piloto_destino_obrigatorio", "20261103143000_agenda_externa_transicao", "20261104120000_campanha_equipe_servicos", "20261104121000_solicitacoes_horario", "20261104121500_solicitacao_horario_periodo", "20261104123000_reunioes_avisos", "20261104130000_planos_vitrine", "20261104131000_avaliacao_mensal_elegibilidade", "20261104132000_cobranca_automatica_tentativas", "20261104133000_webhook_pagamento_entrada", "20261104134000_webhook_pagamento_sequencia", "20261104135000_emissao_pix_mensal", "20261104140000_optout_contato_antes_cadastro", "20261104141000_webhook_pagamento_ordem", "20261103230000_folha_lote_pix_preparacao", "20261103233000_link_intencao_pagamento"}:
+    if set(pendentes) - MIGRACOES_CLIENTE - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros", "20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto", "20261102210000_recrutamento_entrevistas", "20261102220000_entrevistas_piloto_whatsapp", "20261102221000_piloto_destino_obrigatorio", "20261103143000_agenda_externa_transicao", "20261104120000_campanha_equipe_servicos", "20261104121000_solicitacoes_horario", "20261104121500_solicitacao_horario_periodo", "20261104123000_reunioes_avisos", "20261104130000_planos_vitrine", "20261104131000_avaliacao_mensal_elegibilidade", "20261104132000_cobranca_automatica_tentativas", "20261104133000_webhook_pagamento_entrada", "20261104134000_webhook_pagamento_sequencia", "20261104135000_emissao_pix_mensal", "20261104140000_optout_contato_antes_cadastro", "20261104141000_webhook_pagamento_ordem", "20261103230000_folha_lote_pix_preparacao", "20261103233000_link_intencao_pagamento"}:
         raise RuntimeError("Migração pendente fora do escopo aprovado desta publicação.")
+
+
+def exigir_agenda_equipe(banco):
+    valor = consultar_banco(banco, 'SELECT "agendaExternaAtiva" FROM configuracao WHERE id = 1')
+    if valor != "t":
+        raise RuntimeError("Agenda principal do Cash Barber sem confirmação pela equipe.")
+    return True
+
+
+# Lê os artefatos da rota standalone. Nunca importa a rota nem executa código da folha.
+# O teste funcional do mesmo contrato roda no CI. Mudança de formato do bundle exige revisão.
+PROVA_CONTRATO_PIX = r"""
+const fs = require("node:fs"), path = require("node:path");
+const servidor = path.resolve(".next/server");
+const rota = path.join(servidor, "app/api/rh/folha/lote-pix/route.js");
+const manifesto = JSON.parse(fs.readFileSync(rota + ".nft.json", "utf8"));
+const arquivos = new Set([rota, ...manifesto.files.map(f => path.resolve(path.dirname(rota), f))]);
+const valores = [], acoes = [];
+for (const arquivo of arquivos) {
+  if (!arquivo.startsWith(servidor + path.sep) || !arquivo.endsWith(".js")) continue;
+  const texto = fs.readFileSync(arquivo, "utf8");
+  for (const m of texto.matchAll(/\benvioHabilitado\s*:\s*([^,}]+)/g)) valores.push(m[1].trim());
+  for (const m of texto.matchAll(/\brevisao\s*:[^,{}]+,\s*acao\s*:\s*[\w$.]+\.enum\(\s*\[([^\]]*)\]/g))
+    acoes.push(m[1].replace(/\s/g, ""));
+}
+if (valores.length !== 1 || !["false", "!1"].includes(valores[0]) ||
+    acoes.length !== 1 || acoes[0] !== '"preparar","conferir"') process.exit(1);
+process.stdout.write("CONTRATO_RH_PIX_BLOQUEADO");
+"""
+
+
+def exigir_contrato_pix_imagem(imagem):
+    resposta = executar(["docker", "run", "--rm", "--pull=never", "--network", "none", "--read-only",
+                         "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+                         "--workdir", "/app", "--entrypoint", "node", imagem, "-e", PROVA_CONTRATO_PIX], prazo=45)
+    if resposta != b"CONTRATO_RH_PIX_BLOQUEADO":
+        raise RuntimeError("O contrato compilado da folha não confirmou bloqueio de envio do lote Pix.")
+    return True
 
 
 def conferir_central_desligada(app):

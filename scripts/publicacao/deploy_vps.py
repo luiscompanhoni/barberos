@@ -1,6 +1,5 @@
 """Publicação em instalação existente, com ensaio de schema e retorno à imagem anterior."""
 import argparse
-import fcntl
 import json
 import os
 import re
@@ -12,11 +11,25 @@ from pathlib import Path
 
 from deploy_vps_comum import (CONTROLES_PUBLICACAO, aguardar_saude, ambiente_container, arquivo_ambiente, backup_verificado,
     conferir_https, conferir_migracoes, conferir_pacote, conferir_central_desligada, consultar_banco, container, ensaiar_schema,
-    escrever_privado, executar, exigir_migracoes_da_publicacao, migracoes)
+    escrever_privado, executar, exigir_agenda_equipe, exigir_contrato_pix_imagem, exigir_migracoes_da_publicacao, migracoes)
 
 
 def interrompido(_sinal, _frame):
     raise InterruptedError("Publicação interrompida.")
+
+
+def memoria_disponivel_kib():
+    return next(int(l.split()[1]) for l in Path("/proc/meminfo").read_text().splitlines() if l.startswith("MemAvailable:"))
+
+
+def conferir_controles_cliente(app, banco, imagem_com_contrato_verificado):
+    if app["Image"] != imagem_com_contrato_verificado:
+        raise RuntimeError("O aplicativo ativo não usa a imagem cujo contrato Pix foi conferido.")
+    modo = ambiente_container(app).get("MAQUININHA")
+    if modo != "manual":
+        raise RuntimeError("O container em execução não confirmou MAQUININHA manual.")
+    return {"agendaEquipeBanco": exigir_agenda_equipe(banco), "stoneManualContainer": True,
+            "modoMaquininhaContainer": modo, "lotePixContratoBloqueadoNaImagem": True}
 
 
 def publicar(base, projeto, commit, imagem_esperada):
@@ -28,8 +41,16 @@ def publicar(base, projeto, commit, imagem_esperada):
     if registro.exists():
         anterior = json.loads(registro.read_text())
         if anterior.get("concluido"):
+            app = aguardar_saude(projeto, prazo=30)
+            banco = container(projeto, "db")
+            if app["Image"] != anterior.get("imagemNova"):
+                raise RuntimeError("A imagem instalada mudou desde o registro da publicação.")
+            exigir_agenda_equipe(banco["Id"])
+            conferir_central_desligada(app)
+            exigir_contrato_pix_imagem(app["Image"])
+            controles = conferir_controles_cliente(app, banco["Id"], app["Image"])
             conferir_https(commit)
-            return {"concluido": True, "revisao": commit, "reutilizado": True}
+            return {"concluido": True, "revisao": commit, "reutilizado": True, "controlesCliente": controles}
         raise RuntimeError("Execução anterior requer conferência do registro privado antes de continuar.")
     estado = {"revisao": commit, "etapa": "conferencia", "concluido": False, "rollback": None}
 
@@ -48,20 +69,23 @@ def publicar(base, projeto, commit, imagem_esperada):
         raise RuntimeError("Aplicativo em quarentena de restauração; conclua a reconciliação antes de publicar.")
     if app["Image"] != imagem_esperada or banco["State"].get("Health", {}).get("Status") != "healthy":
         raise RuntimeError("Estado instalado mudou desde o inventário ou banco indisponível.")
+    estado["agendaEquipeAntes"] = exigir_agenda_equipe(banco["Id"])
     aguardar_saude(projeto, prazo=30)
     if shutil.disk_usage(base).free < 3 * 1024**3:
         raise RuntimeError("Reserva mínima de disco indisponível após carregar imagens.")
-    memoria = next(int(l.split()[1]) for l in Path("/proc/meminfo").read_text().splitlines() if l.startswith("MemAvailable:"))
-    if memoria < 2400 * 1024:
+    if memoria_disponivel_kib() < 2400 * 1024:
         raise RuntimeError("Memória disponível insuficiente para ativar o worker com reserva para o aplicativo.")
     rede = projeto + "_default"
     if rede not in app["NetworkSettings"]["Networks"] or rede not in banco["NetworkSettings"]["Networks"]:
         raise RuntimeError("Rede esperada não confirmada.")
     novas = {s: f"barberos-{s}:{commit}" for s in ("app", "backup", "video-worker")}
-    for imagem in novas.values():
+    for servico, imagem in novas.items():
         info = json.loads(executar(["docker", "image", "inspect", imagem]))[0]
         if info["Config"].get("Labels", {}).get("org.opencontainers.image.revision") != commit:
             raise RuntimeError("Imagem não corresponde ao commit aprovado.")
+        if servico == "app":
+            imagem_nova = info["Id"]
+            exigir_contrato_pix_imagem(imagem_nova)
     pendentes = conferir_migracoes(migracoes(banco["Id"]), codigo / "prisma/migrations")
     exigir_migracoes_da_publicacao(pendentes)
     configs_antigos = app["Config"]["Labels"]["com.docker.compose.project.config_files"].split(",")
@@ -115,6 +139,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         for arquivo in arquivos:
             compose += ["-f", str(arquivo)]
         executar([*compose, "config", "--quiet"])
+        exigir_agenda_equipe(banco["Id"])
         etapa("migracao_producao")
         executar([*compose, "run", "--rm", "--no-deps", "app", "prisma", "migrate", "deploy"], prazo=180)
         if conferir_migracoes(migracoes(banco["Id"]), codigo / "prisma/migrations"):
@@ -124,6 +149,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         executar([*compose, "up", "-d", "--no-build", "--no-deps", "app", "backup"], prazo=180)
         novo = aguardar_saude(projeto)
         estado["centralAgentes"] = conferir_central_desligada(novo)
+        estado["controlesCliente"] = conferir_controles_cliente(novo, banco["Id"], imagem_nova)
         conferir_https(commit)
         etapa("ativacao_worker")
         executar([*compose, "up", "-d", "--no-build", "--no-deps", "video-worker"], prazo=180)
@@ -137,6 +163,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         etapa("backup_apos_migracao")
         estado["backupDepois"] = backup_verificado(base, novas["backup"], rede, pasta / "backup.env", volume, tipo="MANUAL")
         conferir_https(commit)
+        estado["controlesCliente"] = conferir_controles_cliente(container(projeto, "app"), banco["Id"], imagem_nova)
         estado.update(concluido=True, imagemNova=novo["Image"], composeAtual=[str(p) for p in arquivos], workerAtivo=True)
         etapa("concluido")
         ativa = base / "versao-ativa.json"
@@ -146,7 +173,8 @@ def publicar(base, projeto, commit, imagem_esperada):
         temp.write_text(json.dumps({"revisao": commit, "registro": str(registro), "compose": estado["composeAtual"]}))
         os.chmod(temp, 0o600)
         os.replace(temp, ativa)
-        return {"concluido": True, "revisao": commit, "backupRestaurado": True, "compatibilidadeAnterior": True, "workerAtivo": True}
+        return {"concluido": True, "revisao": commit, "backupRestaurado": True, "compatibilidadeAnterior": True,
+                "workerAtivo": True, "controlesCliente": estado["controlesCliente"]}
     except BaseException as erro:
         estado["concluido"] = False
         estado["etapaFalha"] = estado["etapa"]
@@ -158,7 +186,8 @@ def publicar(base, projeto, commit, imagem_esperada):
             try:
                 executar([*compose, "stop", "video-worker"])
                 rollback = pasta / "rollback.json"
-                escrever_privado(rollback, json.dumps({"services": {"app": {"image": app["Image"], "command": ["node", "server.js"]}}}))
+                escrever_privado(rollback, json.dumps({"services": {"app": {"image": app["Image"], "command": ["node", "server.js"],
+                                                                           "environment": {"MAQUININHA": "manual"}}}}))
                 anterior = ["docker", "compose", "-p", projeto, "--env-file", str(base / ".env")]
                 if (base / ".env.estudio").exists():
                     anterior += ["--env-file", str(base / ".env.estudio")]
@@ -166,7 +195,7 @@ def publicar(base, projeto, commit, imagem_esperada):
                     anterior += ["-f", arquivo]
                 executar([*anterior, "up", "-d", "--no-build", "--no-deps", "app"], prazo=180)
                 recuperado = aguardar_saude(projeto)
-                estado["rollback"] = recuperado["Image"] == app["Image"]
+                estado["rollback"] = recuperado["Image"] == app["Image"] and ambiente_container(recuperado).get("MAQUININHA") == "manual"
             except BaseException:
                 estado["rollback"] = False
         etapa("falhou")
@@ -176,6 +205,7 @@ def publicar(base, projeto, commit, imagem_esperada):
 
 
 if __name__ == "__main__":
+    import fcntl  # A trava de publicação real roda apenas na VPS Linux.
     os.umask(0o077)
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=True)

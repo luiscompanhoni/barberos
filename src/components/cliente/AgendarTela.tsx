@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CalendarCheck, Clock3, Gift, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import type { PremioCliente } from "@/lib/jogos/tipos";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { SemVaga } from "./SemVaga";
 import { ConfirmacaoEquipe } from "./ConfirmacaoEquipe";
+import { SolicitarAgendamento } from "./SolicitarAgendamento";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 
 const FUSO = "America/Sao_Paulo";
@@ -44,11 +45,13 @@ export function AgendarTela() {
   const [barbeiroId, setBarbeiroId] = useState(remarcarId ? (q.get("barbeiro") ?? QUALQUER) : "");
   const [hoje] = useState(() => dataLocal(Date.now(), FUSO));
   const [data, setData] = useState(hoje);
-  const [disp, setDisp] = useState<Disp[] | null>(null);
+  const [respostaDisp, setRespostaDisp] = useState<{ chave: string; itens: Disp[]; erro: string } | null>(null);
   const [escolha, setEscolha] = useState<Opcao | null>(null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [recarregar, setRecarregar] = useState(0);
+  const [recarregarCatalogo, setRecarregarCatalogo] = useState(0);
+  const confirmando = useRef(false);
   const [previa, setPrevia] = useState<{ precoCentavos: number; peloPlano: boolean; nota: string | null; bloqueio: string | null } | null>(null);
 
   // Preco real para este cliente (incluso no plano, desconto de assinante ou avulso).
@@ -61,8 +64,10 @@ export function AgendarTela() {
   }, [escolha, servicoId, remarcarId, adicionais]);
 
   useEffect(() => {
-    api<Catalogo>("/api/cliente/servicos").then(setCatalogo).catch((e) => setErro(e.message));
-  }, []);
+    let ativo = true;
+    api<Catalogo>("/api/cliente/servicos").then(c => { if (ativo) setCatalogo(c); }).catch((e) => { if (ativo) setErro(e.message); });
+    return () => { ativo = false; };
+  }, [recarregarCatalogo]);
   useEffect(() => {
     if (!premioId) return;
     api<PremioCliente[]>("/api/cliente/premios?reservar=1").then((ps) => setPremio(ps.find((p) => p.id === premioId) ?? null)).catch(() => {});
@@ -73,16 +78,18 @@ export function AgendarTela() {
   const servicosEscolhidos = escolhidos.map((id) => catalogo?.servicos.find((s) => s.id === id)).filter((s): s is Servico => !!s);
   const barbeirosCompativeis = servico?.barbeiros.filter((b) => servicosEscolhidos.every((s) => s.barbeiros.some((c) => c.id === b.id))) ?? [];
   const passo = !servico || !servicosConfirmados ? 1 : !barbeiroId ? 2 : !escolha ? 3 : 4;
+  const consulta = new URLSearchParams({ data, servicoId, ...(adicionais.length ? { adicionais: adicionais.join(",") } : {}), ...(barbeiroId !== QUALQUER ? { barbeiroId } : {}), ...(remarcarId ? { remarcar: remarcarId } : {}) }).toString();
+  const resultadoDisp = respostaDisp?.chave === consulta ? respostaDisp : null;
+  const disp = resultadoDisp?.itens ?? null;
 
   useEffect(() => {
-    if (!servicoId || !barbeiroId) return;
+    if (!servicoId || !barbeiroId || catalogo?.confirmacaoEquipe) return;
     let vivo = true;
-    const params = new URLSearchParams({ data, servicoId, ...(adicionais.length ? { adicionais: adicionais.join(",") } : {}), ...(barbeiroId !== QUALQUER ? { barbeiroId } : {}) });
-    api<Disp[]>(`/api/cliente/disponibilidade?${params}`)
-      .then((r) => vivo && setDisp(r))
-      .catch((e) => vivo && setErro(e.message));
+    api<Disp[]>(`/api/cliente/disponibilidade?${consulta}`)
+      .then((r) => vivo && setRespostaDisp({ chave: consulta, itens: r, erro: "" }))
+      .catch((e) => vivo && setRespostaDisp({ chave: consulta, itens: [], erro: e.message }));
     return () => { vivo = false; };
-  }, [servicoId, barbeiroId, data, adicionais, recarregar]);
+  }, [servicoId, barbeiroId, consulta, catalogo?.confirmacaoEquipe, recarregar]);
 
   // Junta os horarios de todos os barbeiros (modo "qualquer um").
   const opcoes = useMemo<Opcao[]>(() => {
@@ -96,33 +103,35 @@ export function AgendarTela() {
   }, [disp]);
 
   async function confirmar() {
-    if (!escolha) return;
+    if (!escolha || !previa || confirmando.current) return;
+    confirmando.current = true;
     setErro("");
     setSalvando(true);
     try {
       if (remarcarId) {
-        await api(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId, forcarAvulso: !!previa?.bloqueio, precoEsperadoCentavos: previa?.precoCentavos } });
+        await api(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId, forcarAvulso: !!previa?.bloqueio, precoEsperadoCentavos: previa?.precoCentavos, duracaoEsperadaMin: escolha.duracaoMin } });
       } else {
-        await api("/api/cliente/agendamentos", { method: "POST", body: { servicoId, servicosAdicionais: adicionais, precoEsperadoCentavos: previa?.precoCentavos, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio, ...(premio ? { premioId: premio.id } : {}) } });
+        await api("/api/cliente/agendamentos", { method: "POST", body: { servicoId, servicosAdicionais: adicionais, precoEsperadoCentavos: previa?.precoCentavos, duracaoEsperadaMin: escolha.duracaoMin, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio, ...(premio ? { premioId: premio.id } : {}) } });
       }
       router.push("/c");
       router.refresh();
     } catch (e) {
       setErro((e as Error).message);
       setSalvando(false);
+      confirmando.current = false;
       setEscolha(null); // horario pode ter sido ocupado: mostra a lista atualizada
-      setDisp(null);
+      setRespostaDisp(null);
       setRecarregar((n) => n + 1);
     }
   }
 
-  if (!catalogo) return <p className="text-sm text-zinc-500">{erro || "Carregando..."}</p>;
-  if (catalogo.confirmacaoEquipe) return <ConfirmacaoEquipe atendimentoUrl={catalogo.atendimentoUrl ?? null} />;
+  if (!catalogo) return <div className="space-y-3"><p role={erro ? "alert" : "status"} className="text-sm text-zinc-500">{erro || "Carregando..."}</p>{erro && <button className="btn" onClick={() => { setErro(""); setRecarregarCatalogo(n => n + 1); }}>Tentar carregar novamente</button>}</div>;
+  if (catalogo.confirmacaoEquipe) return remarcarId ? <ConfirmacaoEquipe atendimentoUrl={catalogo.atendimentoUrl ?? null} /> : <SolicitarAgendamento catalogo={catalogo} />;
   const dias = Array.from({ length: catalogo.janelaDias + 1 }, (_, i) => somarDias(hoje, i));
   const barbeiroEscolhido = barbeiroId === QUALQUER ? null : servico?.barbeiros.find((b) => b.id === barbeiroId);
   const voltarPasso = () => {
     if (passo === 4) setEscolha(null);
-    else if (passo === 3) { setBarbeiroId(""); setDisp(null); }
+    else if (passo === 3) { setBarbeiroId(""); setRespostaDisp(null); }
     else if (passo === 2 && !remarcarId) setServicosConfirmados(false);
   };
 
@@ -164,7 +173,7 @@ export function AgendarTela() {
               </button>
             ))}
           </div>
-          {servicosEscolhidos.length > 0 && <p className="mt-4 text-sm">{servicosEscolhidos.length} selecionado(s) · valor de tabela {reais(servicosEscolhidos.reduce((t, s) => t + s.precoCentavos, 0))}. O valor final pode variar conforme o profissional e o plano.</p>}
+          {servicosEscolhidos.length > 0 && <p className="mt-4 text-sm">{servicosEscolhidos.length} selecionado(s) · {servicosEscolhidos.reduce((t, s) => t + s.duracaoMin, 0)} min · valor de tabela {reais(servicosEscolhidos.reduce((t, s) => t + s.precoCentavos, 0))}. O valor final pode variar conforme o profissional e o plano.</p>}
         </Passo>
       )}
 
@@ -193,7 +202,7 @@ export function AgendarTela() {
               const c = diaCurto(d);
               const sel = d === data;
               return (
-                <button key={d} aria-pressed={sel} onClick={() => { setData(d); setDisp(null); }}
+                <button key={d} aria-pressed={sel} onClick={() => { if (!sel) { setData(d); setRespostaDisp(null); } }}
                   className={`min-w-[68px] shrink-0 rounded-xl border p-3 text-center text-xs font-bold transition ${sel ? "border-ouro bg-ouro text-fundo" : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-400"}`}>
                   <span className="block capitalize">{c.semana}</span>
                   <span className={`mt-0.5 block text-sm ${sel ? "" : "text-zinc-900"}`}>{c.dia}</span>
@@ -202,7 +211,7 @@ export function AgendarTela() {
             })}
           </div>
           <p className="rotulo mt-6">Horários disponíveis</p>
-          {!disp ? (
+          {resultadoDisp?.erro ? <div className="mt-3 space-y-3"><p role="alert" className="text-sm text-red-700">{resultadoDisp.erro}</p><button className="btn" onClick={() => { setRespostaDisp(null); setRecarregar(n => n + 1); }}>Tentar buscar horários novamente</button></div> : !disp ? (
             <p className="mt-3 text-sm text-zinc-500">Buscando horários...</p>
           ) : opcoes.length === 0 ? (
             adicionais.length ? <p className="mt-3 text-sm">Não há horários para todos os serviços neste dia. Tente outra data ou altere os serviços.</p> : <SemVaga key={`${data}|${barbeiroId}`} data={data} servicoId={servico.id} barbeiroId={barbeiroId === QUALQUER ? null : barbeiroId} />

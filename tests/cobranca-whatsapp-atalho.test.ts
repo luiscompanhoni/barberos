@@ -30,6 +30,11 @@ beforeEach(() => {
 });
 
 describe("atalho de cobrança no WhatsApp", () => {
+  it("não convida a pagar durante o cancelamento da operação inicial", async () => {
+    mocks.assinatura.mockResolvedValueOnce({ status: "PENDENTE", operacaoInicial: "CANCELAMENTO_REVISAO" });
+    expect((await cobrarPeloWhatsApp("a1")).enviado).toBe(false);
+    expect(mocks.piloto).not.toHaveBeenCalled(); expect(mocks.buscarGateway).not.toHaveBeenCalled(); expect(mocks.notificar).not.toHaveBeenCalled();
+  });
   it("não renova Pix nem envia quando o piloto bloqueia", async () => {
     mocks.piloto.mockRejectedValueOnce(new Error("Envio bloqueado"));
     await expect(cobrarPeloWhatsApp("a1")).rejects.toThrow("Envio bloqueado");

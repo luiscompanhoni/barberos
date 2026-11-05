@@ -6,6 +6,7 @@ import { revogarAoTrocarConta } from "@/lib/notificacoes/inscricoes";
 
 type UsuarioLogin = {
   id: string; papel: Papel; nome: string; senhaHash: string | null; trocarSenha: boolean;
+  sessaoVersao?: number;
   barbeiro: { id: string; ativo: boolean } | null; cliente: { id: string } | null;
 };
 
@@ -18,6 +19,7 @@ export async function abrirSessao(u: UsuarioLogin) {
     nome: u.nome,
     barbeiroId: u.barbeiro?.ativo ? u.barbeiro.id : null,
     clienteId: u.cliente?.id ?? null,
+    sessaoVersao: u.sessaoVersao ?? 0,
   });
   // Veio por um link de indicacao: liga ao amigo (so vale para cliente novo).
   const jar = await cookies();

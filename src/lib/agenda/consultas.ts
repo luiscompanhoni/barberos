@@ -34,7 +34,7 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
         cadeira: { select: { id: true, nome: true } },
         antecipado: { select: { status: true } },
         premiosGanhos: { where: { status: "RESERVADO" }, select: { rotulo: true, codigo: true } },
-        adicionais: { where: { status: { not: "CANCELADO" } }, select: { servico: { select: { nome: true } } } },
+        adicionais: { where: { status: { not: "CANCELADO" } }, select: { precoCentavos: true, assinaturaId: true, servico: { select: { nome: true } } } },
       },
       orderBy: { inicio: "asc" },
     }),
@@ -61,6 +61,8 @@ export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroB
       status: a.status,
       origem: a.origem,
       precoCentavos: a.precoCentavos,
+      totalServicosCentavos: a.precoCentavos + a.adicionais.reduce((total, item) => total + item.precoCentavos, 0),
+      coberturaPlano: [a, ...a.adicionais].every(item => item.assinaturaId) ? "TOTAL" : [a, ...a.adicionais].some(item => item.assinaturaId) ? "PARCIAL" : "NENHUMA",
       observacao: a.observacao,
       semPreferencia: a.semPreferencia,
       cliente: a.cliente,
@@ -98,6 +100,8 @@ export async function horariosDisponiveis(p: {
   paraCliente: boolean;
   duracaoMin?: number;
   cadeiraId?: string | null;
+  /** Apenas a rota autenticada fornece o ID do próprio atendimento ao remarcar. */
+  ignorarAgendamentoId?: string;
 }) {
   const cfg = await configuracao();
   if (p.paraCliente) checarConfirmacaoAutomatica(cfg);
@@ -106,7 +110,7 @@ export async function horariosDisponiveis(p: {
     orderBy: [{ ordem: "asc" }, { nome: "asc" }],
     select: { id: true, nome: true, cadeiraId: true },
   });
-  const mapa = await carregarDia(p.data, barbeiros.map((b) => b.id), { fuso: cfg.fuso });
+  const mapa = await carregarDia(p.data, barbeiros.map((b) => b.id), { fuso: cfg.fuso, ...(p.ignorarAgendamentoId ? { ignorarAgendamentoId: p.ignorarAgendamentoId } : {}) });
   const agora = Date.now();
   // A equipe também registra atendimentos que já aconteceram. Bot e cliente
   // continuam respeitando a antecedência; expediente e conflitos valem para todos.
@@ -123,7 +127,7 @@ export async function horariosDisponiveis(p: {
     const erro = erroDuracao(duracao, sb.minimoDuracaoMin);
     if (erro) throw new ErroNegocio(erro);
     const cadeiraId = p.paraCliente || p.cadeiraId === undefined ? b.cadeiraId : p.cadeiraId;
-    const cadeira = cadeiraId ? await ocupacaoCadeira(cadeiraId, limitesDoDia(p.data, cfg.fuso)) : [];
+    const cadeira = cadeiraId ? await ocupacaoCadeira(cadeiraId, limitesDoDia(p.data, cfg.fuso), db, p.ignorarAgendamentoId) : [];
     const inicios = horariosLivres({
       janelas: dia.janelas,
       bloqueios: dia.bloqueios,

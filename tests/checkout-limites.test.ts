@@ -8,7 +8,7 @@ beforeEach(() => {
   memoria.tentativasCheckout.clear(); memoria.expiracoesCheckout.clear();
   vi.useFakeTimers(); vi.setSystemTime(new Date(Date.UTC(2030, 0, ++rodada * 3)));
 });
-afterEach(() => { vi.useRealTimers(); memoria.tentativasCheckout.clear(); memoria.expiracoesCheckout.clear(); });
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); memoria.tentativasCheckout.clear(); memoria.expiracoesCheckout.clear(); });
 
 describe("memória e janela dos limites de checkout", () => {
   it("mantém o limite legado por cobrança e libera depois da janela", () => {
@@ -29,6 +29,7 @@ describe("memória e janela dos limites de checkout", () => {
   });
 
   it("satura de forma limitada sem expulsar o bloqueio de uma cobrança ativa", () => {
+    const varreduras = vi.spyOn(memoria.tentativasCheckout, Symbol.iterator);
     limitarTentativas("cobranca-protegida", 1);
     let recusadas = 0;
     for (let i = 0; i < 12_000; i++) {
@@ -37,14 +38,38 @@ describe("memória e janela dos limites de checkout", () => {
     expect(recusadas).toBeGreaterThan(0);
     expect(memoria.tentativasCheckout.size).toBeLessThan(12_000);
     expect(() => limitarTentativas("cobranca-protegida", 1)).toThrow();
+    expect(varreduras.mock.calls.length).toBeLessThan(5);
     vi.advanceTimersByTime(3_600_001);
     expect(() => limitarTentativas("nova-origem", 1)).not.toThrow();
     expect(memoria.tentativasCheckout.size).toBe(1);
     expect(memoria.expiracoesCheckout.size).toBe(1);
   });
 
+  it("recupera capacidade assim que expira uma chave curta, preservando bloqueios longos", () => {
+    limitarTentativas("curta", 1, 1000);
+    for (let i = 0; i < 9999; i++) limitarTentativas(`longa-${i}`, 1);
+    expect(() => limitarTentativas("nova", 1)).toThrow();
+    vi.advanceTimersByTime(1001);
+    expect(() => limitarTentativas("nova", 1)).not.toThrow();
+    expect(() => limitarTentativas("longa-0", 1)).toThrow();
+    expect(memoria.tentativasCheckout.size).toBe(10000);
+  });
+
   it("não guarda identificadores de tamanho arbitrário", () => {
     expect(() => limitarTentativas("x".repeat(100_000))).toThrow();
     expect(memoria.tentativasCheckout.size).toBe(0);
+  });
+
+  it("compartilha expirações entre instâncias do módulo que usam os mesmos limites", async () => {
+    limitarTentativas("longa-original", 1);
+    vi.resetModules();
+    const outraInstancia = await import("@/lib/pagamentos/checkout");
+    outraInstancia.limitarTentativas("curta-outra-instancia", 1, 1000);
+    for (let i = 0; i < 9998; i++) limitarTentativas(`compartilhada-${i}`, 1);
+    expect(() => limitarTentativas("nova-compartilhada", 1)).toThrow();
+    vi.advanceTimersByTime(1001);
+    expect(() => limitarTentativas("nova-compartilhada", 1)).not.toThrow();
+    expect(() => outraInstancia.limitarTentativas("longa-original", 1)).toThrow();
+    expect(memoria.tentativasCheckout.size).toBe(10000);
   });
 });

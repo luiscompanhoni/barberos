@@ -32,12 +32,14 @@ export async function sessaoAtual(): Promise<Sessao | null> {
     include: { barbeiro: { select: { id: true, ativo: true } }, cliente: { select: { id: true } } },
   });
   if (!u || !u.ativo) return null;
+  if ((s.sessaoVersao ?? 0) !== (u.sessaoVersao ?? 0)) return null;
   return {
     usuarioId: u.id,
     papel: u.papel,
     nome: u.nome,
     barbeiroId: u.barbeiro?.ativo ? u.barbeiro.id : null,
     clienteId: u.cliente?.id ?? null,
+    sessaoVersao: u.sessaoVersao ?? 0,
   };
 }
 

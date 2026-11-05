@@ -1,25 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CalendarDays, CalendarPlus, Check, Clock3, Crown, History, Scissors } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { IndiqueEsperas } from "./IndiqueEsperas";
 import { PagarAntes } from "./PagarAntes";
 import { JogosChamada } from "@/components/jogos/JogosChamada";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
-
-type Ag = {
-  id: string;
-  inicio: string;
-  status: string;
-  precoCentavos: number;
-  assinaturaId?: string | null;
-  barbeiro: { id?: string; nome: string; cor?: string; fotoVersao?: number };
-  servico: { id?: string; nome: string };
-  adicionais?: { precoCentavos: number; servico: { id?: string; nome: string } }[];
-  antecipado?: { status: string } | null;
-};
+import { carregarInicioCliente, type AgendaInicio, type PlanoInicio } from "@/lib/clientes/inicio-cliente";
 
 const FUSO = "America/Sao_Paulo";
 const STATUS: Record<string, string> = { CONCLUIDO: "Atendido", FALTOU: "Faltou", CANCELADO: "Cancelado", MARCADO: "Marcado", CONFIRMADO: "Confirmado" };
@@ -29,27 +18,35 @@ const STATUS: Record<string, string> = { CONCLUIDO: "Atendido", FALTOU: "Faltou"
  * proximos horarios (cancelar/remarcar), agendar, saldo e indicacao, plano e historico.
  */
 export function MeusHorarios() {
-  const [dados, setDados] = useState<{ proximos: Ag[]; historico: Ag[]; prazoAlteracaoMin: number; pagarAntes?: boolean; checkout?: boolean } | null>(null);
+  const [dados, setDados] = useState<AgendaInicio | null>(null);
   const [perfil, setPerfil] = useState<{ nome: string } | null>(null);
   const [nome, setNome] = useState("");
   const [confirmar, setConfirmar] = useState<string | null>(null);
   const [erro, setErro] = useState("");
   const [aviso, setAviso] = useState("");
   const [agora] = useState(() => Date.now());
-  const [plano, setPlano] = useState<{ nome: string; valida: boolean; status: string; link: string | null; vencimento: string | null; pausadaAte: string | null; valeAte: string | null } | null | undefined>(undefined);
+  const [plano, setPlano] = useState<PlanoInicio | null | undefined>(undefined);
+  const [carregando, setCarregando] = useState(true);
+  const consulta = useRef(0);
 
-  const carregar = useCallback(() => {
-    api<{ proximos: Ag[]; historico: Ag[]; prazoAlteracaoMin: number; pagarAntes?: boolean; checkout?: boolean }>("/api/cliente/agendamentos").then(setDados).catch((e) => setErro(e.message));
-    api<{ nome: string }>("/api/cliente/perfil").then(setPerfil).catch(() => {});
-    api<{ atual: { plano: { nome: string }; valida: boolean; status: string; proximoVencimento: string | null; cobrancaEmAberto: { link: string | null } | null; pausadaAte: string | null; valeAte: string | null } | null }>("/api/cliente/assinatura")
-      .then((r) => setPlano(r.atual ? {
-        nome: r.atual.plano.nome, valida: r.atual.valida, status: r.atual.status,
-        link: r.atual.cobrancaEmAberto?.link ?? null, vencimento: r.atual.proximoVencimento,
-        pausadaAte: r.atual.pausadaAte, valeAte: r.atual.valeAte,
-      } : null))
-      .catch(() => setPlano(null));
+  const carregar = useCallback(async () => {
+    const id = ++consulta.current;
+    setCarregando(true); setErro("");
+    try {
+      const novo = await carregarInicioCliente();
+      if (id === consulta.current) { setDados(novo.dados); setPerfil(novo.perfil); setPlano(novo.plano); }
+    } catch (e) { if (id === consulta.current) setErro((e as Error).message); }
+    finally { if (id === consulta.current) setCarregando(false); }
   }, []);
-  useEffect(carregar, [carregar]);
+  useEffect(() => {
+    let ativo = true;
+    const id = ++consulta.current;
+    carregarInicioCliente().then(novo => {
+      if (ativo && id === consulta.current) { setDados(novo.dados); setPerfil(novo.perfil); setPlano(novo.plano); }
+    }).catch(e => { if (ativo && id === consulta.current) setErro((e as Error).message); })
+      .finally(() => { if (ativo && id === consulta.current) setCarregando(false); });
+    return () => { ativo = false; };
+  }, []);
 
   async function cancelar(id: string) {
     setErro("");
@@ -75,7 +72,9 @@ export function MeusHorarios() {
     }
   }
 
-  if (!dados || !perfil) return <p className="text-sm text-zinc-500">Carregando...</p>;
+  if (!dados || !perfil) return <section className="cartao space-y-3 text-sm">
+    {erro ? <><p role="alert">Não foi possível carregar seus horários: {erro}</p><button className="btn" disabled={carregando} onClick={() => void carregar()}>Tentar novamente</button></> : <p role="status">Carregando seus horários…</p>}
+  </section>;
 
   if (!perfil.nome.trim()) {
     return (
@@ -118,6 +117,7 @@ export function MeusHorarios() {
               ? <a className="btn-primario" href={plano.link}>Pagar agora</a>
               : <strong>{plano.pausadaAte || plano.valeAte ? new Date((plano.pausadaAte ?? plano.valeAte)!).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }) : plano.vencimento ? new Date(plano.vencimento).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" }) : "—"}</strong>}
           </div>
+          {plano.conferindo && <p role="status" className="mt-3 text-sm text-amber-800">Operação em conferência. Aguarde a confirmação antes de tentar outro pagamento.</p>}
           <div className="mt-3 flex items-center justify-between">
             <Link href="/c/planos" className="inline-flex items-center gap-1 text-xs font-semibold text-ouro">Ver meu plano <ArrowRight size={13} /></Link>
             {!plano.valeAte && <Link href="/c/planos/cancelar" className="text-xs font-semibold text-zinc-500">Cancelar plano</Link>}
@@ -142,7 +142,8 @@ export function MeusHorarios() {
       <JogosChamada />
 
       {aviso && <p className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{aviso}</p>}
-      {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      {erro && <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700"><p>{erro}</p><button className="btn mt-2" disabled={carregando} onClick={() => void carregar()}>Tentar novamente</button></div>}
+      {plano === undefined && <div className="cartao space-y-2 text-sm"><p role="status">Não foi possível consultar seu plano agora.</p><button className="btn" disabled={carregando} onClick={() => void carregar()}>Consultar plano novamente</button></div>}
 
       <section>
         <div className="flex items-center justify-between">

@@ -1,12 +1,13 @@
 /**
  * Assinar, cancelar e consultar a assinatura de um cliente.
  */
-import type { FormaPagamento, OrigemAgendamento, Plano } from "@prisma/client";
+import type { FormaPagamento, OrigemAgendamento, Plano, Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { configuracao, servicoDoBarbeiro } from "@/lib/agenda/carregar";
+import { travarClienteAgenda, type TitularAgenda } from "@/lib/agenda/cliente-identidade";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { gateway, gatewayPorId, provedorPorId } from "@/lib/pagamentos/gateway";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
@@ -15,6 +16,7 @@ import { gerarPixDoMes } from "./cartao-pix";
 import { assinaturaValida, cpfValido } from "./regras";
 import { estaPausada } from "./retencao-regras";
 import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
+import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, cancelarOperacaoInicial } from "./operacao-inicial";
 
 /** Assinaturas que ocupam vaga: ativas, atrasadas e pendentes recentes (link ainda valendo). */
 const PENDENTE_SEGURA_VAGA_MS = 3 * 86_400_000;
@@ -42,19 +44,19 @@ export async function vagasRestantes(plano: Pick<Plano, "id" | "vagas">) {
 }
 
 /** Assinatura atual do cliente (a mais recente que nao foi cancelada) e se ela vale agora. */
-export async function situacaoDoCliente(clienteId: string) {
-  const cfg = await configuracao();
-  const a = await db.assinatura.findFirst({
+export async function situacaoDoCliente(clienteId: string, c: typeof db | Prisma.TransactionClient = db) {
+  const cfg = await configuracao(c);
+  const a = await c.assinatura.findFirst({
     where: { clienteId, status: { not: "CANCELADA" } },
     orderBy: { criadaEm: "desc" },
     include: { plano: { include: { servicos: { include: { servico: true } }, barbeiros: true } } },
   });
   if (!a) return null;
-  const aberta = await cobrancaEmAberto(a.id);
+  const aberta = await cobrancaEmAberto(a.id, c);
   const pausada = estaPausada({
     pausadaEm: a.pausadaEm, pausadaAte: a.pausadaAte?.toISOString().slice(0, 10) ?? null, hoje: dataLocal(Date.now(), cfg.fuso),
   });
-  const vencida = await db.cobranca.findFirst({
+  const vencida = await c.cobranca.findFirst({
     where: { assinaturaId: a.id, status: { in: ["ATRASADA", "ESTORNADA"] }, vinculosExternos: { none: {} } },
     orderBy: { vencimento: "asc" },
   });
@@ -84,10 +86,14 @@ export async function assinar(p: {
   email?: string;
   origem: OrigemAgendamento;
   usuarioId?: string | null;
+  titular?: TitularAgenda;
 }) {
   const cfg = await configuracao();
   const cliente = await db.cliente.findUnique({ where: { id: p.clienteId } });
-  if (!cliente) throw naoEncontrado("Cliente");
+  if (!cliente || cliente.excluidoEm) {
+    if (p.titular) throw new ErroNegocio("Sua sessão mudou. Entre novamente para continuar.", 401, "sessao_invalida");
+    throw naoEncontrado("Cliente ativo");
+  }
   if (!cliente.nome.trim()) throw new ErroNegocio("Informe o nome do cliente antes de assinar.");
   const plano = await db.plano.findUnique({ where: { id: p.planoId } });
   if (!plano || !plano.ativo) throw naoEncontrado("Plano");
@@ -95,6 +101,7 @@ export async function assinar(p: {
 
   const atual = await situacaoDoCliente(cliente.id);
   if (atual) {
+    if (atual.assinatura.operacaoInicial) throw new ErroNegocio("A operação anterior está em conferência. Aguarde a confirmação antes de tentar outra forma de pagamento.", 409, "assinatura_operacao_revisao");
     if (atual.assinatura.status === "PENDENTE" && await db.emissaoPixMensal.findFirst({ where: { assinaturaId: atual.assinatura.id, estado: { in: ["EMITINDO", "INCERTA"] } }, select: { id: true } })) {
       throw new ErroNegocio("A emissão do Pix precisa ser conferida pela equipe antes de tentar novamente.", 409, "pix_revisao");
     }
@@ -119,13 +126,20 @@ export async function assinar(p: {
   }
 
   const g = await gateway();
-  const email = (p.email ?? cliente.email ?? "").trim().toLowerCase();
-  if (g.exigeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-    throw new ErroNegocio("Para assinar precisamos de um e-mail válido (exigência do meio de pagamento).", 422, "email");
-  }
-  const cpf = (p.cpf ?? cliente.cpf ?? "").replace(/\D/g, "");
-  if (!cpfValido(cpf)) throw new ErroNegocio("Para assinar precisamos de um CPF válido (exigência do meio de pagamento).", 422, "cpf");
-  const assinatura = await db.$transaction(async (tx) => {
+  const { assinatura, clienteConfirmado, cpf, email } = await db.$transaction(async (tx) => {
+    // Exclusão e revogação de sessão ganham ou perdem antes de qualquer adesão.
+    try { await travarClienteAgenda(tx, cliente.id, p.titular); }
+    catch (e) {
+      if (p.titular && e instanceof ErroNegocio && [401, 404].includes(e.status)) throw new ErroNegocio("Sua sessão mudou. Entre novamente para continuar.", 401, "sessao_invalida");
+      throw e;
+    }
+    await tx.$queryRaw`SELECT id FROM clientes WHERE id = ${cliente.id} FOR UPDATE`;
+    const clienteConfirmado = await tx.cliente.findUniqueOrThrow({ where: { id: cliente.id } });
+    if (!clienteConfirmado.nome.trim()) throw new ErroNegocio("Informe o nome do cliente antes de assinar.");
+    const email = (p.email ?? clienteConfirmado.email ?? "").trim().toLowerCase();
+    if (g.exigeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new ErroNegocio("Para assinar precisamos de um e-mail válido (exigência do meio de pagamento).", 422, "email");
+    const cpf = (p.cpf ?? clienteConfirmado.cpf ?? "").replace(/\D/g, "");
+    if (!cpfValido(cpf)) throw new ErroNegocio("Para assinar precisamos de um CPF válido (exigência do meio de pagamento).", 422, "cpf");
     // Evita duas adesões concorrentes do mesmo cliente, mesmo em planos diferentes.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`assinatura-cliente:${cliente.id}`}, 0))`;
     // O cadastro de plano também obtém este lock ao alterar as condições de venda.
@@ -145,13 +159,14 @@ export async function assinar(p: {
       ] } });
       if (ocupadas >= corrente.vagas) throw new ErroNegocio(`As vagas do ${corrente.nome} estão esgotadas no momento.`, 409, "sem_vagas");
     }
-    if (cpf !== cliente.cpf || (email && email !== cliente.email)) {
+    if (cpf !== clienteConfirmado.cpf || (email && email !== clienteConfirmado.email)) {
       await tx.cliente.update({ where: { id: cliente.id }, data: { cpf, ...(email ? { email } : {}) } });
     }
-    return tx.assinatura.create({ data: {
+    const assinatura = await tx.assinatura.create({ data: {
       clienteId: cliente.id, planoId: plano.id, formaPagamento: p.forma, precoCentavos: plano.precoCentavos,
-      origem: p.origem, tokenPublico: novoTokenPublico(),
+      origem: p.origem, tokenPublico: novoTokenPublico(), operacaoInicial: "CRIANDO",
     } });
+    return { assinatura, clienteConfirmado, cpf, email };
   });
 
   let linkCartao: string | null = null;
@@ -165,7 +180,7 @@ export async function assinar(p: {
     const anterior = anteriores.find((x) => provedorPorId(x.gatewayClienteId!) === g.nome);
     const gatewayClienteId =
       anterior?.gatewayClienteId ??
-      (await g.criarCliente({ nome: cliente.nome, cpf, telefone: cliente.telefone, email: email || null, referencia: cliente.id }));
+      (await g.criarCliente({ nome: clienteConfirmado.nome, cpf, telefone: clienteConfirmado.telefone, email: email || null, referencia: cliente.id }));
     if (p.forma === "CARTAO" && g.cartao === "token") {
       // O cliente digita o cartao na pagina do BarberOS; a assinatura no gateway nasce la.
       await db.assinatura.update({ where: { id: assinatura.id }, data: { gatewayClienteId } });
@@ -185,12 +200,13 @@ export async function assinar(p: {
       else await sincronizarAssinatura(assinatura.id);
     }
   } catch (e) {
+    await marcarPagamentoInicialIncerto(assinatura.id);
     const emissao = await db.emissaoPixMensal.findFirst({ where: { assinaturaId: assinatura.id }, select: { id: true } });
     if (emissao) throw new ErroNegocio("A emissão do Pix precisa ser conferida pela equipe antes de tentar novamente.", 503, "pix_revisao");
-    await db.assinatura.delete({ where: { id: assinatura.id } });
-    console.error("[assinaturas] falha no gateway:", e);
-    throw new ErroNegocio("Não foi possível gerar a cobrança agora. Tente de novo em instantes.", 502, "gateway");
+    console.error("[assinaturas] resultado da criação não confirmado", e instanceof Error ? e.name : "falha");
+    throw new ErroNegocio("Não foi possível confirmar a criação da cobrança. A equipe deve conferir antes de uma nova tentativa.", 502, "assinatura_operacao_revisao");
   }
+  await concluirPagamentoInicial(assinatura.id);
 
   await db.$transaction(async (tx) => {
     await auditar(tx, p.usuarioId ?? null, "assinar", "assinatura", assinatura.id, { planoId: plano.id, forma: p.forma, origem: p.origem });
@@ -213,6 +229,11 @@ export async function cancelar(
   const a = await db.assinatura.findUnique({ where: { id: assinaturaId }, include: { cliente: true, plano: true } });
   if (!a) throw naoEncontrado("Assinatura");
   if (a.status === "CANCELADA") return a;
+  if (a.status === "PENDENTE" && !a.ativadaEm) {
+    const resultado = await cancelarOperacaoInicial(a.id, usuarioId);
+    if (!resultado.cancelada) throw new ErroNegocio("Cancelamento em conferência. O pagamento anterior precisa ser encerrado no provedor antes de uma nova adesão.", 409, "assinatura_operacao_revisao");
+    return a;
+  }
   // CashBarber cobra por la (a equipe cancela no CashBarber); encerramento agendado ja parou a recorrencia.
   if (a.gatewayId && !opts.semGateway && !a.encerraEm && !ehCashbarber(a.gatewayId)) {
     try {
@@ -222,16 +243,20 @@ export async function cancelar(
       throw new ErroNegocio("Não foi possível cancelar no meio de pagamento. Tente de novo.", 502, "gateway");
     }
   }
-  const futuros = await db.agendamento.findMany({
-    where: { assinaturaId: a.id, inicio: { gt: new Date() }, status: { in: ["MARCADO", "CONFIRMADO"] } },
-  });
-  await db.$transaction(async (tx) => {
-    if (a.gatewayId?.startsWith("pixrec_")) {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${a.id}`}, 0))`;
+  const futuros = await db.$transaction(async (tx) => {
+    // Espera reservas/alterações em voo antes de encerrar a cobertura e recalcular os futuros.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${a.clienteId}`}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${a.id}`}, 0))`;
+    const atual = await tx.assinatura.findUniqueOrThrow({ where: { id: a.id } });
+    if (atual.status === "CANCELADA") return [];
+    if (atual.gatewayId?.startsWith("pixrec_")) {
       const aberto = await tx.cobranca.findFirst({ where: { assinaturaId: a.id, forma: "PIX", status: { in: ["PENDENTE", "ATRASADA"] } } });
       const emissao = await tx.emissaoPixMensal.findFirst({ where: { assinaturaId: a.id, estado: { in: ["EMITINDO", "INCERTA"] } } });
       if (aberto || emissao) throw new ErroNegocio("Há Pix em aberto ou em verificação. A equipe precisa conferir no gateway antes de cancelar.", 409, "pix_revisao");
     }
+    const futuros = await tx.agendamento.findMany({
+      where: { assinaturaId: a.id, inicio: { gt: new Date() }, status: { in: ["MARCADO", "CONFIRMADO"] } },
+    });
     await tx.assinatura.update({ where: { id: a.id }, data: { status: "CANCELADA", canceladaEm: new Date(), motivoCancelamento: motivo } });
     await tx.cobranca.updateMany({ where: { assinaturaId: a.id, status: { in: ["PENDENTE", "ATRASADA"] } }, data: { status: "CANCELADA" } });
     for (const ag of futuros) {
@@ -239,6 +264,7 @@ export async function cancelar(
       await tx.agendamento.update({ where: { id: ag.id }, data: { assinaturaId: null, precoCentavos: sb?.precoCentavos ?? ag.precoCentavos } });
     }
     await auditar(tx, usuarioId, "cancelar", "assinatura", a.id, { motivo });
+    return futuros;
   });
   publicar({ tipo: "agenda", barbeiroIds: [...new Set(futuros.map((f) => f.barbeiroId))], datas: [] });
 

@@ -51,6 +51,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
           { href: "/comandas", rotulo: "Comandas" },
           { href: "/semana", rotulo: "Semana" },
           { href: "/assinaturas", rotulo: "Assinaturas" },
+          { href: "/clientes", rotulo: "Clientes" },
           { href: "/estoque", rotulo: "Estoque" },
           { href: "/financeiro", rotulo: "Financeiro" },
           ...(GESTAO.includes(s.papel) ? [{ href: "/campanhas-equipe", rotulo: "Campanhas da equipe" }] : []),

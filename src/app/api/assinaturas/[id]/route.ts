@@ -12,7 +12,9 @@ import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, rota } from "@/lib/erros";
 import { provedorPagamento } from "@/lib/pagamentos/gateway";
 import { atrasarSimulada, gerarProximaSimulada, pagarSimulada } from "@/lib/pagamentos/simulado";
-import { corpo } from "@/lib/validacao";
+import { alteracaoAtual, aplicarAlteracaoPlano, cancelarAlteracaoPlano, solicitarAlteracaoPlano } from "@/lib/assinaturas/alteracao-plano";
+import { cancelarOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
+import { corpoAssinatura } from "@/lib/assinaturas/http";
 
 export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinaturas/[id]">) => {
   await exigirSessao(BALCAO);
@@ -34,6 +36,8 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinatura
     cobrancas: a.cobrancas.map((c) => ({ ...c, link: linkAbsoluto(c.link) })),
     simulado: provedorPagamento() === "simulado",
     cashbarber: ehCashbarber(a.gatewayId),
+    alteracaoPlano: await alteracaoAtual(a.id),
+    planosDisponiveis: await db.plano.findMany({ where: { ativo: true, compravel: true, formasPagamento: { has: a.formaPagamento } }, orderBy: { precoCentavos: "asc" }, select: { id: true, nome: true, precoCentavos: true } }),
   });
 });
 
@@ -44,17 +48,29 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinatura
 export const POST = rota(async (req: Request, ctx: RouteContext<"/api/assinaturas/[id]">) => {
   const s = await exigirSessao(BALCAO);
   const { id } = await ctx.params;
-  const b = await corpo(
+  const b = await corpoAssinatura(
     req,
     z.object({
-      acao: z.enum(["cobrar", "sincronizar", "cancelar", "simular_pagamento", "simular_atraso", "simular_proximo_mes"]),
+      acao: z.enum(["cobrar", "sincronizar", "cancelar", "simular_pagamento", "simular_atraso", "simular_proximo_mes", "solicitar_troca", "cancelar_troca", "aplicar_troca", "cancelar_operacao"]),
       motivo: z.string().trim().max(200).optional(),
+      planoId: z.string().min(1).max(40).optional(),
     }),
   );
   const a = await db.assinatura.findUnique({ where: { id } });
   if (!a) throw naoEncontrado("Assinatura");
 
   switch (b.acao) {
+    case "solicitar_troca":
+      if (!b.planoId) throw new ErroNegocio("Escolha o novo plano.");
+      await solicitarAlteracaoPlano({ assinaturaId: id, planoId: b.planoId, origem: "RECEPCAO", usuarioId: s.usuarioId });
+      return NextResponse.json({ solicitada: true }, { status: 201 });
+    case "cancelar_troca":
+      return NextResponse.json(await cancelarAlteracaoPlano(id, s.usuarioId));
+    case "aplicar_troca":
+      await exigirPermissao(s, "assinatura");
+      return NextResponse.json(await aplicarAlteracaoPlano(id, s.usuarioId));
+    case "cancelar_operacao":
+      return NextResponse.json(await cancelarOperacaoInicial(id, s.usuarioId));
     case "cobrar":
       return NextResponse.json(await cobrarPeloWhatsApp(id));
     case "sincronizar":

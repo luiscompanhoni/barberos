@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const m = vi.hoisted(() => ({
   piloto: vi.fn(), recentes: vi.fn(), usuario: vi.fn(), criar: vi.fn(),
-  evolution: vi.fn(), fetch: vi.fn(), atualizar: vi.fn(),
+  evolution: vi.fn(), fetch: vi.fn(), atualizar: vi.fn(), invalidar: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
   pilotoEntrevistaWhatsApp: { findUnique: m.piloto },
@@ -10,6 +10,7 @@ vi.mock("@/lib/db", () => ({ db: {
   usuario: { findUnique: m.usuario },
   $transaction: (fn: (tx: unknown) => unknown) => fn({
     $executeRaw: vi.fn(), pilotoEntrevistaWhatsApp: { findUnique: m.piloto, update: m.atualizar },
+    codigoLogin: { findMany: m.recentes, create: m.criar, updateMany: m.invalidar }, usuario: { findUnique: m.usuario },
   }),
 } }));
 vi.mock("@/lib/auditoria", () => ({ auditar: vi.fn() }));
@@ -41,6 +42,7 @@ describe("autenticação solicitada durante a restrição de entrevistas", () =>
     expect(m.criar.mock.calls[0][0].data.codigoHash).toMatch(/^[a-f0-9]{64}$/);
     expect(m.evolution).toHaveBeenCalledWith(telefone, expect.stringMatching(/^Seu código de acesso é \*\d{6}\*\./), 0);
     expect(m.atualizar).not.toHaveBeenCalled(); expect(m.fetch).not.toHaveBeenCalled();
+    expect(m.invalidar).toHaveBeenCalledWith({ where: { telefone, usadoEm: null }, data: { usadoEm: expect.any(Date) } });
   });
   it.each([null, { ...encerrado, telefone: null }, { ...encerrado, telefone: "5547999990001" }, { ...encerrado, ativo: true }])("login independe do cadastro ou estado do piloto %#", async (piloto) => {
     m.piloto.mockResolvedValue(piloto);

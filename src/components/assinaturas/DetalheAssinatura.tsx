@@ -8,6 +8,8 @@ import { formatarTelefone } from "@/lib/telefone";
 import { FORMA, ROTULO } from "./AssinaturasTela";
 import { DESFECHO } from "./RetencaoPainel";
 import { ROTULO_MOTIVO, type Motivo } from "@/lib/assinaturas/retencao-regras";
+import { TrocarPlano, type AlteracaoPlano } from "./TrocarPlano";
+import { CancelarOperacaoInicial } from "./CancelarOperacaoInicial";
 
 type Detalhe = {
   id: string;
@@ -20,7 +22,11 @@ type Detalhe = {
   motivoCancelamento: string | null;
   proximoVencimento: string | null;
   cliente: { nome: string; telefone: string; cpf: string | null };
+  planoId: string;
   plano: { nome: string };
+  alteracaoPlano: AlteracaoPlano;
+  operacaoInicial: string | null;
+  planosDisponiveis: { id: string; nome: string; precoCentavos: number }[];
   cobrancas: { id: string; valorCentavos: number; vencimento: string; status: string; pagaEm: string | null; link: string | null }[];
   agendamentos: { id: string; inicio: string; status: string; servico: { nome: string } }[];
   simulado: boolean;
@@ -88,6 +94,7 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
           {d.cashbarber && (<><dt className="text-zinc-500">Cobrança</dt><dd>no CashBarber (cancelar também por lá)</dd></>)}
           {d.canceladaEm && (<><dt className="text-zinc-500">Cancelada em</dt><dd>{dataBr(d.canceladaEm)} · {d.motivoCancelamento}</dd></>)}
         </dl>
+        {d.operacaoInicial && <p role="status" className="rounded-lg bg-amber-50 p-3 text-amber-900">Operação inicial em conferência. Não envie outro pagamento até confirmar o resultado ou o cancelamento no provedor.</p>}
 
         <div>
           <p className="mb-1 font-medium">Cobranças</p>
@@ -99,7 +106,7 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
                 <span className={c.status === "PAGA" ? "text-emerald-700" : c.status === "ATRASADA" ? "text-red-700" : "text-zinc-500"}>
                   {STATUS_COB[c.status] ?? c.status}{c.pagaEm ? ` em ${dataBr(c.pagaEm)}` : ""}
                 </span>
-                {c.link && (c.status === "PENDENTE" || c.status === "ATRASADA") && (
+                {!d.operacaoInicial && c.link && (c.status === "PENDENTE" || c.status === "ATRASADA") && (
                   <button className="ml-auto text-xs underline" onClick={() => { navigator.clipboard?.writeText(c.link!); setMsg({ texto: "Link copiado." }); }}>copiar link</button>
                 )}
                 {c.status === "PAGA" && <span className="ml-auto"><BotaoEstorno tipo="MENSALIDADE" id={c.id} onFeito={carregar} /></span>}
@@ -131,11 +138,14 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
 
         {d.status !== "CANCELADA" && (
           <div className="flex flex-wrap gap-2">
-            {temAberta && <button className="btn-primario" disabled={cobrando} onClick={() => acao("cobrar", "Cobrança encaminhada ao canal do WhatsApp.")}>{cobrando ? "Enviando…" : "Cobrar no WhatsApp"}</button>}
+            {temAberta && !d.operacaoInicial && <button className="btn-primario" disabled={cobrando} onClick={() => acao("cobrar", "Cobrança encaminhada ao canal do WhatsApp.")}>{cobrando ? "Enviando…" : "Cobrar no WhatsApp"}</button>}
             <button className="btn" onClick={() => acao("sincronizar", "Status atualizado com o meio de pagamento.")}>Atualizar status</button>
-            {p.podeCancelar && !cancelando && <button className="btn-perigo" onClick={() => setCancelando(true)}>Cancelar assinatura</button>}
+            {p.podeCancelar && !cancelando && d.status !== "PENDENTE" && <button className="btn-perigo" onClick={() => setCancelando(true)}>Cancelar assinatura</button>}
           </div>
         )}
+        {d.status === "PENDENTE" && <CancelarOperacaoInicial endpoint={`/api/assinaturas/${d.id}`} equipe onAlterado={async () => { await carregar(); p.onAlterado(); }} />}
+        {d.status === "ATIVA" && !d.pausadaEm && !d.encerraEm && <TrocarPlano endpoint={`/api/assinaturas/${d.id}`} equipe podeAplicar={p.podeCancelar} planoAtualId={d.planoId}
+          valorAtual={d.precoCentavos} renovacao={d.proximoVencimento} pedido={d.alteracaoPlano} planos={d.planosDisponiveis} onAlterado={async () => { await carregar(); p.onAlterado(); }} />}
         {temAberta && <p className="mt-2 text-xs text-zinc-500">Uma tentativa por fatura. Se o resultado for incerto, confira a conversa antes de tentar novamente.</p>}
         {cancelando && (
           <div className="space-y-2 rounded-lg bg-red-50 p-3">

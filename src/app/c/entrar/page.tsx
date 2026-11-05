@@ -1,6 +1,7 @@
 import { FormularioLogin } from "@/components/login/FormularioLogin";
 import { configuracao } from "@/lib/agenda/carregar";
 import { modoCodigoNaTela } from "@/lib/auth/otp";
+import { provedoresDisponiveis } from "@/lib/auth/social-provedores";
 
 // Nome da barbearia vem do banco: nao pode ser gerada no build.
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ export default async function EntrarCliente() {
       titulo={cfg.nomeBarbearia}
       subtitulo="Área do cliente"
       destinoPadrao="/c" codigoDisponivel={modoCodigoNaTela() || process.env.OTP_PROVIDER === "whatsapp"}
+      provedoresSociais={provedoresDisponiveis()}
     />
   );
 }

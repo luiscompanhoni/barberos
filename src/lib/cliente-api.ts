@@ -16,8 +16,9 @@ export async function api<T = unknown>(
   });
   const json = await r.json().catch(() => ({}));
   if (!r.ok) {
-    if (r.status === 401 && typeof window !== "undefined") {
-      window.location.replace(`/entrar?voltar=${encodeURIComponent(window.location.pathname)}`);
+    if (r.status === 401 && !url.startsWith("/api/auth/") && typeof window !== "undefined") {
+      const cliente = window.location.pathname === "/c" || window.location.pathname.startsWith("/c/");
+      window.location.replace(`${cliente ? "/c/entrar" : "/entrar"}?voltar=${encodeURIComponent(window.location.pathname)}`);
     }
     throw new ErroApi(json.erro ?? "Algo deu errado.", r.status, json.codigo, json.detalhes);
   }

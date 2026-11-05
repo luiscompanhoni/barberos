@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/Modal";
 import { api, reais } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
+import { formaSelecionada } from "@/lib/assinaturas/forma-selecionada";
 
 type Plano = { id: string; nome: string; precoCentavos: number; ativo: boolean; compravel: boolean; formasPagamento: string[]; vagasRestantes: number | null };
 type Cliente = { id: string; nome: string; telefone: string };
@@ -40,17 +41,19 @@ export function NovaAssinatura(p: { onFechar: () => void; onCriada: () => void }
   }, [busca, cliente]);
 
   const plano = planos.find((x) => x.id === planoId);
+  const formaEfetiva = formaSelecionada(plano?.formasPagamento ?? [], forma);
 
   async function vender(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
     if (!plano || !plano.compravel || plano.vagasRestantes === 0) return setErro("Escolha um plano disponível para novas assinaturas.");
+    if (!formaEfetiva) return setErro("Este plano não tem uma forma de pagamento disponível.");
     if (!cliente && (nome.trim().length < 2 || telefone.replace(/\D/g, "").length < 10)) return setErro("Escolha um cliente ou informe nome e celular.");
     setSalvando(true);
     try {
       const r = await api<{ link: string | null }>("/api/assinaturas", {
         method: "POST",
-        body: { cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone }, planoId, forma, cpf: cpf || undefined, email: email || undefined, enviarWhatsApp: true },
+        body: { cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone }, planoId, forma: formaEfetiva, cpf: cpf || undefined, email: email || undefined, enviarWhatsApp: true },
       });
       setLink(r.link);
       p.onCriada();
@@ -63,9 +66,9 @@ export function NovaAssinatura(p: { onFechar: () => void; onCriada: () => void }
 
   if (link) {
     return (
-      <Modal titulo="Link de pagamento enviado" onFechar={p.onFechar}>
+      <Modal titulo="Link de pagamento gerado" onFechar={p.onFechar}>
         <div className="space-y-3 text-sm">
-          <p>Mandamos o link no WhatsApp do cliente. Assim que ele pagar, o plano ativa sozinho e ele recebe a confirmação.</p>
+          <p>O link está pronto. Confira a conversa do WhatsApp para verificar o envio ou copie o link abaixo. O plano será ativado após a confirmação do pagamento.</p>
           <div className="flex gap-2">
             <input className="campo" readOnly value={link} />
             <button className="btn" onClick={() => navigator.clipboard?.writeText(link)}>Copiar</button>
@@ -116,8 +119,8 @@ export function NovaAssinatura(p: { onFechar: () => void; onCriada: () => void }
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="rotulo">Forma de pagamento</label>
-            <select className="campo" value={forma} onChange={(e) => setForma(e.target.value)}>
-              {(plano?.formasPagamento ?? ["PIX"]).map((f) => <option key={f} value={f}>{FORMAS[f]}</option>)}
+            <select className="campo" value={formaEfetiva} onChange={(e) => setForma(e.target.value)}>
+              {(plano?.formasPagamento ?? []).map((f) => <option key={f} value={f}>{FORMAS[f]}</option>)}
             </select>
           </div>
           <div>

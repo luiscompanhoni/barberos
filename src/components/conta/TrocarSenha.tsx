@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { api } from "@/lib/cliente-api";
+import Link from "next/link";
 
-type Conta = { login: string | null; temSenha: boolean; trocarSenha: boolean; telefone: string };
+type Conta = { login: string | null; temSenha: boolean; trocarSenha: boolean; telefone: string; confirmarCelular?: boolean };
 
 /** Criar/trocar a propria senha (e o usuario, na equipe). Usado na equipe (/conta) e no perfil do cliente. */
 export function TrocarSenha({ equipe, destaque }: { equipe: boolean; destaque?: boolean }) {
@@ -40,6 +41,7 @@ export function TrocarSenha({ equipe, destaque }: { equipe: boolean; destaque?: 
   }
 
   if (!conta) return null;
+  if (!equipe && conta.confirmarCelular) return <div id="senha" className="cartao space-y-3"><h2 className="font-semibold">Proteja seu acesso</h2><p className="text-sm text-zinc-500">Confirme seu celular pelo acesso por código antes de criar ou alterar a senha.</p><Link href="/c/entrar?confirmar=1" className="btn">Confirmar celular</Link></div>;
   const precisa = !conta.temSenha || conta.trocarSenha;
   const tipo = ver ? "text" : "password";
   return (

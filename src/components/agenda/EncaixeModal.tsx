@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAcesso } from "@/components/AcessoContexto";
 import { Modal } from "@/components/Modal";
 import { api, ErroApi, reais } from "@/lib/cliente-api";
@@ -39,8 +39,9 @@ export function EncaixeModal(p: {
   const [barbeiroId, setBarbeiroId] = useState(p.barbeiroId);
   const servicosDoBarbeiro = p.servicos.filter((s) => s.ativo && s.barbeiros.some((b) => b.barbeiroId === barbeiroId));
   const [servicoId, setServicoId] = useState(p.servicoInicial ?? servicosDoBarbeiro[0]?.id ?? "");
-  const [disp, setDisp] = useState<Disp | null>(null);
-  const [horario, setHorario] = useState<string>("");
+  const [respostaDisp, setRespostaDisp] = useState<{ chave: string; valor: Disp | null; erro?: string } | null>(null);
+  const [escolhaHorario, setEscolhaHorario] = useState<{ chave: string; valor: string } | null>(null);
+  const [revisaoDisp, setRevisaoDisp] = useState(0);
   const [busca, setBusca] = useState("");
   const [sugestoes, setSugestoes] = useState<ClienteApi[]>([]);
   const [cliente, setCliente] = useState<ClienteApi | null>(null);
@@ -51,8 +52,18 @@ export function EncaixeModal(p: {
   const [semPreferencia, setSemPreferencia] = useState(false);
   const [realizado, setRealizado] = useState(false);
   const [limiteRealizado, setLimiteRealizado] = useState(() => Date.now());
-  const [avulso, setAvulso] = useState<{ preco: number } | null>(null);
+  const [ofertaAvulso, setOfertaAvulso] = useState<{ chave: string; preco: number } | null>(null);
   const [planoCliente, setPlanoCliente] = useState<{ nome: string; valida: boolean } | null>(null);
+  const enviando = useRef(false);
+  const consulta = new URLSearchParams({ data: p.data, servicoId, barbeiroId, ...(duracao ? { duracaoMin: duracao } : {}), ...(cadeiraId !== "padrao" ? { cadeiraId } : {}) }).toString();
+  const chaveDisp = `${consulta}&revisao=${revisaoDisp}`;
+  const respostaAtual = respostaDisp?.chave === chaveDisp ? respostaDisp : null;
+  const disp = respostaAtual?.valor ?? null;
+  const horario = escolhaHorario?.chave === chaveDisp ? escolhaHorario.valor : "";
+  const chaveAceite = JSON.stringify([chaveDisp, horario, cliente?.id ?? null, nome, telefone, semPreferencia, realizado]);
+  const avulso = ofertaAvulso?.chave === chaveAceite ? ofertaAvulso : null;
+  function invalidarAceite() { setOfertaAvulso(null); setErro(""); }
+  function invalidarDisponibilidade() { invalidarAceite(); setRespostaDisp(null); setEscolhaHorario(null); }
 
   // Mostra se o cliente escolhido e assinante (o encaixe sai pelo plano).
   useEffect(() => {
@@ -66,23 +77,20 @@ export function EncaixeModal(p: {
 
   // Horarios livres do servico escolhido (ja consideram a duracao do barbeiro).
   useEffect(() => {
+    if (!servicoId) return;
     let vivo = true;
-    if (!servicoId) {
-      Promise.resolve().then(() => vivo && setDisp(null));
-      return () => { vivo = false; };
-    }
-    api<Disp[]>(`/api/disponibilidade?${new URLSearchParams({ data: p.data, servicoId, barbeiroId, ...(duracao ? { duracaoMin: duracao } : {}), ...(cadeiraId !== "padrao" ? { cadeiraId } : {}) })}`)
+    api<Disp[]>(`/api/disponibilidade?${consulta}`)
       .then((r) => {
         if (!vivo) return;
         const d = r[0] ?? null;
-        setDisp(d);
+        setRespostaDisp({ chave: chaveDisp, valor: d });
         setLimiteRealizado(Date.now());
         const alvo = p.inicio ? new Date(p.inicio).toISOString() : "";
-        setHorario(d?.horarios.includes(alvo) ? alvo : "");
+        setEscolhaHorario({ chave: chaveDisp, valor: d?.horarios.includes(alvo) ? alvo : "" });
       })
-      .catch((e) => vivo && setErro(e.message));
+      .catch((e) => vivo && setRespostaDisp({ chave: chaveDisp, valor: null, erro: e.message }));
     return () => { vivo = false; };
-  }, [servicoId, barbeiroId, p.data, p.inicio, duracao, cadeiraId]);
+  }, [servicoId, consulta, chaveDisp, p.inicio]);
 
   useEffect(() => {
     if (cliente || busca.trim().length < 2) return;
@@ -94,30 +102,35 @@ export function EncaixeModal(p: {
 
   async function salvar(e: React.FormEvent, forcarAvulso = false) {
     e.preventDefault();
+    if (enviando.current) return;
     setErro("");
-    setAvulso(null);
     if (!servicoId) return setErro("Escolha o serviço.");
-    if (!horario) return setErro("Escolha um horário livre.");
+    if (!disp || !horario || !disp.horarios.includes(horario)) return setErro("Aguarde a consulta atual e escolha um horário livre.");
+    if (forcarAvulso && !avulso) return setErro("A seleção mudou. Confira novamente o valor antes de aceitar o avulso.");
     if (realizado && disp && Date.parse(horario) + disp.duracaoMin * 60_000 > Date.now()) {
       return setErro("Escolha um horário em que o atendimento já tenha terminado.");
     }
     if (!cliente && (!nome.trim() || telefone.replace(/\D/g, "").length < 10)) {
       return setErro("Informe nome e celular com DDD do cliente (ou escolha um cliente da busca).");
     }
-    setSalvando(true);
+    enviando.current = true; setSalvando(true); setOfertaAvulso(null);
     try {
       await api("/api/agendamentos", {
         method: "POST",
-        body: { barbeiroId, servicoId, ...(duracao ? { duracaoMin: Number(duracao) } : {}), ...(cadeiraId !== "padrao" ? { cadeiraId: cadeiraId || null } : {}), inicio: horario, semPreferencia, forcarAvulso, realizado, cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone } },
+        body: { barbeiroId, servicoId, duracaoEsperadaMin: disp.duracaoMin,
+          ...(forcarAvulso ? { precoEsperadoCentavos: avulso!.preco } : {}),
+          ...(duracao ? { duracaoMin: Number(duracao) } : {}), ...(cadeiraId !== "padrao" ? { cadeiraId: cadeiraId || null } : {}), inicio: horario, semPreferencia, forcarAvulso, realizado, cliente: cliente ? { id: cliente.id } : { nome: nome.trim(), telefone } },
       });
       p.onCriado(`${realizado ? "Atendimento realizado registrado" : "Encaixe criado"} às ${minParaHhmm(minutosLocal(Date.parse(horario), p.fuso))} para ${cliente?.nome ?? nome.trim()}.`);
     } catch (e) {
       setErro((e as Error).message);
       if (e instanceof ErroApi && e.codigo === "regra_plano") {
-        setAvulso({ preco: (e.detalhes as { precoAvulso: number }).precoAvulso });
+        setOfertaAvulso({ chave: chaveAceite, preco: (e.detalhes as { precoAvulso: number }).precoAvulso });
+      } else {
+        setRevisaoDisp(n => n + 1);
       }
       setSalvando(false);
-    }
+    } finally { enviando.current = false; }
   }
 
   const hora = (iso: string) => minParaHhmm(minutosLocal(Date.parse(iso), p.fuso));
@@ -126,7 +139,8 @@ export function EncaixeModal(p: {
   return (
     <Modal titulo="Novo horário" onFechar={p.onFechar}>
       {p.cabecalho}
-      <form onSubmit={salvar} className="space-y-3">
+      <form onSubmit={salvar} onChangeCapture={invalidarAceite}>
+        <fieldset disabled={salvando} className="space-y-3">
         <label className="flex items-start gap-3 rounded-xl border border-ouro/30 bg-ouro/5 p-3 text-sm">
           <input type="checkbox" className="mt-1 h-4 w-4 accent-ouro" checked={realizado} onChange={(e) => { setRealizado(e.target.checked); setLimiteRealizado(Date.now()); }} />
           <span><b className="block">Atendimento já realizado</b><span className="text-xs text-zinc-600">Use o horário real do corte. O registro entra como concluído; o recebimento é conferido na comanda.</span></span>
@@ -134,13 +148,13 @@ export function EncaixeModal(p: {
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="rotulo">Barbeiro</label>
-            <select className="campo" value={barbeiroId} onChange={(e) => { setBarbeiroId(e.target.value); setServicoId(""); }}>
+            <select className="campo" value={barbeiroId} onChange={(e) => { invalidarDisponibilidade(); setBarbeiroId(e.target.value); setServicoId(""); }}>
               {p.barbeiros.map((b) => <option key={b.id} value={b.id}>{b.nome}</option>)}
             </select>
           </div>
           <div>
             <label className="rotulo">Serviço</label>
-            <select className="campo" value={servicoId} onChange={(e) => setServicoId(e.target.value)}>
+            <select className="campo" value={servicoId} onChange={(e) => { invalidarDisponibilidade(); setServicoId(e.target.value); }}>
               <option value="">Escolha...</option>
               {servicosDoBarbeiro.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
             </select>
@@ -148,14 +162,17 @@ export function EncaixeModal(p: {
         </div>
         <div className="grid grid-cols-2 gap-2">
           {permissoes.duracao && <label className="rotulo">Duração deste atendimento (min)
-            <input className="campo" type="number" min={5} max={480} value={duracao} placeholder="Padrão do serviço" onChange={e => setDuracao(e.target.value)} />
+            <input className="campo" type="number" min={5} max={480} value={duracao} placeholder="Padrão do serviço" onChange={e => { invalidarDisponibilidade(); setDuracao(e.target.value); }} />
           </label>}
-          <label className="rotulo">Cadeira<select className="campo" value={cadeiraId} onChange={e => setCadeiraId(e.target.value)}>
+          <label className="rotulo">Cadeira<select className="campo" value={cadeiraId} onChange={e => { invalidarDisponibilidade(); setCadeiraId(e.target.value); }}>
             <option value="padrao">Padrão do profissional</option><option value="">Não informada</option>
             {cadeiras.filter(c => c.ativa).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
           </select></label>
         </div>
         {disp && <p className="text-xs text-zinc-500">{disp.duracaoMin} min · {reais(disp.precoCentavos)}</p>}
+        {servicoId && !respostaAtual && <p role="status" className="text-sm text-zinc-500">Consultando horários, valor e duração…</p>}
+        {respostaAtual?.erro && <div className="space-y-2"><p role="alert" className="text-sm text-red-600">{respostaAtual.erro}</p><button type="button" className="btn" onClick={() => { invalidarAceite(); setRevisaoDisp(n => n + 1); }}>Tentar consultar novamente</button></div>}
+        {respostaAtual && !disp && !respostaAtual.erro && <p className="text-sm text-zinc-500">Não há disponibilidade para esta seleção. Escolha outro serviço ou profissional.</p>}
 
         <div>
           <label className="rotulo">{realizado ? "Horário em que o atendimento começou" : "Horário"}</label>
@@ -164,7 +181,7 @@ export function EncaixeModal(p: {
           ) : (
             <div className="flex max-h-32 flex-wrap gap-1.5 overflow-y-auto">
               {horarios.map((h) => (
-                <button type="button" key={h} onClick={() => setHorario(h)}
+                <button type="button" key={h} onClick={() => { invalidarAceite(); setEscolhaHorario({ chave: chaveDisp, valor: h }); }}
                   className={`rounded-md border px-2 py-1 text-sm ${h === horario ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-300 hover:bg-zinc-50"}`}>
                   {hora(h)}
                 </button>
@@ -185,7 +202,7 @@ export function EncaixeModal(p: {
                   </span>
                 )}
               </span>
-              <button type="button" className="text-zinc-500 underline" onClick={() => { setCliente(null); setBusca(""); setPlanoCliente(null); }}>trocar</button>
+              <button type="button" className="text-zinc-500 underline" onClick={() => { invalidarAceite(); setCliente(null); setBusca(""); setPlanoCliente(null); }}>trocar</button>
             </div>
           ) : (
             <>
@@ -194,7 +211,7 @@ export function EncaixeModal(p: {
                 <ul className="mt-1 divide-y divide-zinc-100 rounded-lg border border-zinc-200">
                   {sugestoes.map((c) => (
                     <li key={c.id}>
-                      <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-50" onClick={() => setCliente(c)}>
+                      <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-zinc-50" onClick={() => { invalidarAceite(); setCliente(c); }}>
                         {c.nome} <span className="text-zinc-500">· {formatarTelefone(c.telefone)}</span>
                       </button>
                     </li>
@@ -215,16 +232,17 @@ export function EncaixeModal(p: {
           Cliente não tem preferência de barbeiro
         </label>
 
-        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
         {avulso && (
-          <button type="button" className="btn w-full" onClick={(e) => salvar(e, true)}>
+          <button type="button" className="btn w-full" disabled={salvando || !disp || !horario} onClick={(e) => salvar(e, true)}>
             Marcar como avulso por {reais(avulso.preco)}
           </button>
         )}
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" className="btn" onClick={p.onFechar}>Voltar</button>
-          <button className="btn-primario" disabled={salvando}>{salvando ? "Salvando..." : realizado ? "Registrar atendimento" : "Agendar"}</button>
+          <button className="btn-primario" disabled={salvando || !disp || !horario}>{salvando ? "Salvando..." : realizado ? "Registrar atendimento" : "Agendar"}</button>
         </div>
+        </fieldset>
       </form>
     </Modal>
   );

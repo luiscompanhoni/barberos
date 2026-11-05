@@ -9,7 +9,8 @@ import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
-import { corpo, parametros } from "@/lib/validacao";
+import { parametros } from "@/lib/validacao";
+import { corpoAssinatura } from "@/lib/assinaturas/http";
 
 /** Lista de assinaturas + numeros do mes (dono e recepcao). */
 export const GET = rota(async (req: Request) => {
@@ -62,16 +63,16 @@ export const GET = rota(async (req: Request) => {
 /** Venda no balcao: gera a assinatura e manda o link de pagamento pelo WhatsApp. */
 export const POST = rota(async (req: Request) => {
   const s = await exigirSessao(BALCAO);
-  const b = await corpo(
+  const b = await corpoAssinatura(
     req,
     z.object({
-      cliente: z.union([z.object({ id: z.string() }), z.object({ telefone: z.string().max(30), nome: z.string().trim().min(2).max(80) })]),
-      planoId: z.string(),
+      cliente: z.union([z.object({ id: z.string().min(1).max(40) }).strict(), z.object({ telefone: z.string().max(30), nome: z.string().trim().min(2).max(80) }).strict()]),
+      planoId: z.string().min(1).max(40),
       forma: z.enum(["CARTAO", "PIX", "BOLETO"]),
       cpf: z.string().max(20).optional(),
       email: z.string().trim().max(120).optional(),
       enviarWhatsApp: z.boolean().default(true),
-    }),
+    }).strict(),
   );
   let clienteId: string;
   if ("id" in b.cliente) clienteId = b.cliente.id;

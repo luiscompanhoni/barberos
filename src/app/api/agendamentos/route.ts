@@ -11,6 +11,8 @@ const schema = z.object({
   inicio: zInstante,
   cadeiraId: zId.nullable().optional(),
   duracaoMin: z.number().int().min(5).max(480).optional(),
+  duracaoEsperadaMin: z.number().int().min(5).max(480).optional(),
+  precoEsperadoCentavos: z.number().int().nonnegative().optional(),
   cliente: z.union([
     z.object({ id: zId }),
     z.object({ telefone: z.string().min(8).max(30), nome: z.string().trim().min(1).max(80) }),
@@ -19,7 +21,7 @@ const schema = z.object({
   semPreferencia: z.boolean().optional(),
   forcarAvulso: z.boolean().optional(),
   realizado: z.boolean().optional(),
-});
+}).refine(b => !b.forcarAvulso || b.precoEsperadoCentavos !== undefined, { message: "Confira o valor antes de aceitar o serviço avulso.", path: ["precoEsperadoCentavos"] });
 
 export const POST = rota(async (req: Request) => {
   const s = await exigirSessao();

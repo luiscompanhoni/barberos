@@ -9,7 +9,7 @@ const ICONES: Record<string, LucideIcon> = {
   "/minha-agenda": CalendarDays, "/semana": CalendarRange, "/comandas": ReceiptText,
   "/caixa": HandCoins, "/conversas": MessageCircle, "/financeiro": Landmark,
   "/estudio": Clapperboard, "/estoque": Package, "/assinaturas": CreditCard,
-  "/planos": ListChecks, "/campanhas": Megaphone, "/recompras": RotateCcw, "/jogos": Dices,
+  "/clientes": UsersRound, "/planos": ListChecks, "/campanhas": Megaphone, "/recompras": RotateCcw, "/jogos": Dices,
   "/reunioes": Presentation, "/desempenho": ChartLine, "/avaliacoes": Star,
   "/checklist": ClipboardCheck, "/rh": BriefcaseBusiness, "/recrutamento": UserRoundPlus,
   "/expediente": Clock3, "/campanhas-equipe": Gift, "/cultura-black": HeartHandshake,

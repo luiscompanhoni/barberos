@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Check, ShieldCheck } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { itensDoPlano, planoEmDestaque, porDia } from "@/lib/assinaturas/itens";
+import { TrocarPlano, type AlteracaoPlano } from "@/components/assinaturas/TrocarPlano";
+import { CancelarOperacaoInicial } from "@/components/assinaturas/CancelarOperacaoInicial";
 
 type Plano = {
   id: string; nome: string; descricao: string | null; precoCentavos: number;
@@ -17,6 +19,7 @@ type Atual = {
   id: string; status: string; valida: boolean; plano: { id: string; nome: string }; precoCentavos: number;
   formaPagamento: string; proximoVencimento: string | null;
   linkPendente: string | null;
+  alteracaoPlano: AlteracaoPlano; operacaoEmConferencia: boolean;
   pausada: boolean; pausadaAte: string | null; valeAte: string | null; desconto: { pct: number; ate: string } | null;
   cobrancaEmAberto: { valorCentavos: number; vencimento: string; status: string; link: string | null } | null;
 } | null;
@@ -67,6 +70,7 @@ export function PlanosCliente() {
       else await carregar();
     } catch (e) {
       setMsg({ texto: (e as Error).message, erro: true });
+    } finally {
       setEnviando(false);
     }
   }
@@ -118,12 +122,17 @@ export function PlanosCliente() {
           ) : atual.pausada || atual.valeAte ? null : (
             <p className="text-sm text-red-700">Mensalidade atrasada: o plano fica suspenso até o pagamento.</p>
           )}
-          {atual.cobrancaEmAberto?.link && (
+          {atual.operacaoEmConferencia && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Operação em conferência. Aguarde a confirmação antes de pagar ou escolher outra forma de pagamento.</p>}
+          {!atual.operacaoEmConferencia && atual.cobrancaEmAberto?.link && (
             <a className="btn-primario w-full py-3" href={atual.cobrancaEmAberto.link}>
               Pagar {reais(atual.cobrancaEmAberto.valorCentavos)} · venc. {dataBr(atual.cobrancaEmAberto.vencimento)}
             </a>
           )}
-          {!atual.cobrancaEmAberto?.link && atual.status === "PENDENTE" && atual.linkPendente && <a className="btn-primario w-full py-3" href={atual.linkPendente}>Continuar pagamento da assinatura</a>}
+          {!atual.operacaoEmConferencia && !atual.cobrancaEmAberto?.link && atual.status === "PENDENTE" && atual.linkPendente && <a className="btn-primario w-full py-3" href={atual.linkPendente}>Continuar pagamento da assinatura</a>}
+          {atual.status === "PENDENTE" && <CancelarOperacaoInicial endpoint="/api/cliente/assinatura" onAlterado={carregar} />}
+          {atual.status === "ATIVA" && !atual.pausada && !atual.valeAte && <TrocarPlano endpoint="/api/cliente/assinatura" planoAtualId={atual.plano.id}
+            valorAtual={atual.precoCentavos} renovacao={atual.proximoVencimento} pedido={atual.alteracaoPlano}
+            planos={d.planos.filter(p => p.compravel && p.formasPagamento.includes(atual.formaPagamento))} onAlterado={carregar} />}
           {atual.pausada && atual.pausadaAte && (
             <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">Plano pausado até {dataBr(atual.pausadaAte)}. Ele volta sozinho e nada é cobrado durante a pausa.</p>
           )}
@@ -133,7 +142,7 @@ export function PlanosCliente() {
           {atual.desconto && !atual.valeAte && (
             <p className="text-xs text-ouro">Desconto de {atual.desconto.pct}% nas mensalidades até {dataBr(atual.desconto.ate)}.</p>
           )}
-          {!atual.valeAte && (
+          {!atual.valeAte && atual.status !== "PENDENTE" && (
             <Link href="/c/planos/cancelar" className="inline-block text-xs font-semibold text-zinc-500 hover:text-zinc-900">Cancelar plano</Link>
           )}
         </section>
@@ -168,7 +177,7 @@ export function PlanosCliente() {
                 ) : atual && atual.status === "PENDENTE" ? (
                   <p className="mt-6 rounded-xl bg-amber-50 p-3 text-sm">Sua assinatura está aguardando pagamento. Use o link acima ou fale com a equipe antes de solicitar uma nova assinatura.</p>
                 ) : atual && atual.status !== "PENDENTE" ? (
-                  <p className="mt-6 rounded-xl bg-zinc-100 p-3 text-sm">Você já possui uma assinatura. Fale com a equipe para alterar seu plano.</p>
+                  <p className="mt-6 rounded-xl bg-zinc-100 p-3 text-sm">{atual.status === "ATIVA" && !atual.pausada && !atual.valeAte ? "Use a opção de upgrade ou downgrade na sua assinatura acima." : "Confira as pendências da assinatura com a recepção antes de trocar de plano."}</p>
                 ) : p.vagasRestantes === 0 ? (
                   p.naListaDeEspera
                     ? <p className="mt-6 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Você está na lista de espera.</p>

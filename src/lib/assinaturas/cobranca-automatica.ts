@@ -50,7 +50,7 @@ export async function confirmarAntesDoEnvio(id: string, anterior: SnapshotCobran
     const duplicatas = await tx.cobranca.count({ where: { assinaturaId: c.assinaturaId, vencimento: c.vencimento, valorCentavos: c.valorCentavos, status: { not: "CANCELADA" } } });
     const s = snapshot(c);
     const valido = JSON.stringify(s) === JSON.stringify(anterior) && ["PENDENTE", "ATRASADA"].includes(c.status) && !c.pagaEm
-      && c.assinatura.status !== "CANCELADA" && !c.assinatura.pausadaEm && !c.assinatura.encerraEm && c.assinatura.cliente.aceitaMensagens && !c.assinatura.cliente.excluidoEm && !c.vinculosExternos.length && duplicatas <= 1
+      && c.assinatura.status !== "CANCELADA" && !c.assinatura.operacaoInicial && !c.assinatura.pausadaEm && !c.assinatura.encerraEm && c.assinatura.cliente.aceitaMensagens && !c.assinatura.cliente.excluidoEm && !c.vinculosExternos.length && duplicatas <= 1
       && linkPermitido(c.link, c.tokenPublico, dominiosPermitidos()) && (c.forma !== "PIX" || (!!c.expiraEm && +c.expiraEm > +agora + 3_600_000))
       && (c.forma !== "BOLETO" || s.vencimento >= dataLocal(+agora, fuso));
     if (!valido) await tx.tentativaCobrancaAutomatica.updateMany({ where: { id, estado: "ENVIANDO" }, data: { estado: "REVISAO", revisaoMotivo: "dados_alterados", versao: { increment: 1 } } });
@@ -67,7 +67,7 @@ export async function prepararCobrancaAutomatica(cobrancaId: string, agora = new
     if (!c) return { ativo: true as const, encontrada: false as const };
     const existente = await tx.tentativaCobrancaAutomatica.findUnique({ where: { cobrancaId_canal_etapa: { cobrancaId, canal: "WHATSAPP", etapa: "PRIMEIRO_AVISO" } } });
     if (existente) return { ativo: true as const, encontrada: true as const, tentativa: existente, repetida: true };
-    const r = avaliarCobrancaAutomatica({ ...c, assinaturaStatus: c.assinatura.status, pausadaEm: c.assinatura.pausadaEm, encerraEm: c.assinatura.encerraEm, aceitaMensagens: c.assinatura.cliente.aceitaMensagens,
+    const r = avaliarCobrancaAutomatica({ ...c, operacaoInicial: c.assinatura.operacaoInicial, assinaturaStatus: c.assinatura.status, pausadaEm: c.assinatura.pausadaEm, encerraEm: c.assinatura.encerraEm, aceitaMensagens: c.assinatura.cliente.aceitaMensagens,
       excluido: !!c.assinatura.cliente.excluidoEm, historicaVinculada: c.vinculosExternos.length > 0 }, dataLocal(+agora, fuso), agora, dominiosPermitidos());
     if (r.estado === "CANCELADA") return { ativo: true as const, encontrada: true as const, semRegistro: true as const, motivo: r.motivo };
     const tentativa = await tx.tentativaCobrancaAutomatica.create({ data: { cobrancaId, estado: r.estado, revisaoMotivo: r.motivo } });
@@ -85,7 +85,7 @@ export async function despacharCobrancaAutomatica(id: string, enviar: Transporte
     const c = await carregar(tx, t.cobrancaId);
     if (!c) return null;
     const duplicatas = await tx.cobranca.count({ where: { assinaturaId: c.assinaturaId, vencimento: c.vencimento, valorCentavos: c.valorCentavos, status: { not: "CANCELADA" } } });
-    const r = avaliarCobrancaAutomatica({ ...c, assinaturaStatus: c.assinatura.status, pausadaEm: c.assinatura.pausadaEm, encerraEm: c.assinatura.encerraEm, aceitaMensagens: c.assinatura.cliente.aceitaMensagens,
+    const r = avaliarCobrancaAutomatica({ ...c, operacaoInicial: c.assinatura.operacaoInicial, assinaturaStatus: c.assinatura.status, pausadaEm: c.assinatura.pausadaEm, encerraEm: c.assinatura.encerraEm, aceitaMensagens: c.assinatura.cliente.aceitaMensagens,
       excluido: !!c.assinatura.cliente.excluidoEm, historicaVinculada: c.vinculosExternos.length > 0 }, dataLocal(+agora, fuso), agora, dominiosPermitidos());
     const estado = duplicatas > 1 ? "REVISAO" : r.estado;
     const claim = await tx.tentativaCobrancaAutomatica.updateMany({ where: { id, estado: "PREPARADA", versao: t.versao }, data: { estado: estado === "PREPARADA" ? "ENVIANDO" : estado, revisaoMotivo: duplicatas > 1 ? "possivel_duplicidade" : r.motivo, versao: { increment: 1 } } });
@@ -128,7 +128,7 @@ export async function marcarEnviosInterrompidosIncertos(antesDe: Date) {
 export async function reservarCobrancaManual(cobrancaId: string) {
   return db.$transaction(async (tx) => {
     const c = await carregar(tx, cobrancaId);
-    if (!c || !["PENDENTE", "ATRASADA"].includes(c.status) || c.pagaEm || c.assinatura.status === "CANCELADA" || c.assinatura.pausadaEm || c.assinatura.encerraEm || !c.assinatura.cliente.aceitaMensagens || c.assinatura.cliente.excluidoEm || !linkPermitido(c.link, c.tokenPublico, dominiosPermitidos())) return null;
+    if (!c || !["PENDENTE", "ATRASADA"].includes(c.status) || c.pagaEm || c.assinatura.status === "CANCELADA" || c.assinatura.operacaoInicial || c.assinatura.pausadaEm || c.assinatura.encerraEm || !c.assinatura.cliente.aceitaMensagens || c.assinatura.cliente.excluidoEm || !linkPermitido(c.link, c.tokenPublico, dominiosPermitidos())) return null;
     const duplicatas = await tx.cobranca.count({ where: { assinaturaId: c.assinaturaId, vencimento: c.vencimento, valorCentavos: c.valorCentavos, status: { not: "CANCELADA" } } });
     if (duplicatas > 1 || c.vinculosExternos.length) return null;
     const atual = await tx.tentativaCobrancaAutomatica.findUnique({ where: { cobrancaId_canal_etapa: { cobrancaId, canal: "WHATSAPP", etapa: "PRIMEIRO_AVISO" } } });

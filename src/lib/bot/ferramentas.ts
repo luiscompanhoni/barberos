@@ -11,6 +11,7 @@ import { executarPagamento, FERRAMENTAS_PAGAMENTO, NOMES_PAGAMENTO } from "./fer
 import { ORIGENS_CLIENTE, zNascimento } from "@/lib/validacao-cliente";
 import { dataLocal, hhmmParaMin, instanteLocal, minParaHhmm, minutosLocal, parseData, somarDias } from "@/lib/agenda/tempo";
 import { atualizarPreferencia, travarPreferencia } from "@/lib/whatsapp/preferencia";
+import { orientarRemarcacaoGrupo } from "./remarcacao-grupo";
 /** Quem esta conversando: o bot so enxerga e altera os dados deste telefone. */
 export type ContextoBot = {
   conversaId: string;
@@ -76,7 +77,7 @@ export const FERRAMENTAS: Ferramenta[] = [
   {
     name: "remarcar_agendamento",
     description:
-      "Muda data/hora (e opcionalmente o barbeiro) de um horário do cliente, mantendo o serviço. Consulte os horários livres antes e confirme com o cliente.",
+      "Muda data/hora (e opcionalmente o barbeiro) de um horário do cliente, mantendo o serviço. Consulte os horários livres antes e confirme com o cliente. Grupos de serviços recebem orientação para conferir o total no app ou com a equipe.",
     input_schema: {
       type: "object",
       properties: {
@@ -172,7 +173,6 @@ function descreverData(data: string) {
 }
 
 export type ResultadoFerramenta = { texto: string; erro?: boolean; passouParaHumano?: boolean };
-
 /** Executa uma ferramenta; erros de regra viram texto para o modelo explicar ao cliente. */
 export async function executarFerramenta(nome: string, entrada: unknown, ctx: ContextoBot): Promise<ResultadoFerramenta> {
   try {
@@ -293,6 +293,8 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
       const e = ENTRADAS.remarcar_agendamento.parse(entrada);
       const cliente = await clienteDaConversa(ctx);
       if (!cliente) return { texto: "Cliente sem horários marcados.", erro: true };
+      const orientacao = await orientarRemarcacaoGrupo(cliente.id, e.agendamento_id, cfg);
+      if (orientacao) return orientacao;
       const inicio = new Date(instanteLocal(e.data, hhmmParaMin(e.horario), cfg.fuso));
       const n = await remarcarPeloCliente(cliente.id, e.agendamento_id, inicio, e.barbeiro_id, e.avulso);
       const b = await db.barbeiro.findUniqueOrThrow({ where: { id: n.barbeiroId }, select: { nome: true } });
@@ -341,7 +343,6 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
       return { texto: `Ferramenta desconhecida: ${nome}`, erro: true };
   }
 }
-
 async function ligarConversaAoCliente(ctx: ContextoBot) {
   const c = await db.cliente.findUnique({ where: { telefone: ctx.telefone }, select: { id: true } });
   if (c) await db.conversa.update({ where: { id: ctx.conversaId }, data: { clienteId: c.id } });

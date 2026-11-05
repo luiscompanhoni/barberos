@@ -11,6 +11,8 @@ export type Sessao = {
   nome: string;
   barbeiroId: string | null;
   clienteId: string | null;
+  /** Tokens anteriores à migração equivalem à versão zero. */
+  sessaoVersao?: number;
 };
 
 function chave() {
