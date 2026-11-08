@@ -53,6 +53,12 @@ Diferenças de CHECK só passam por comparador restrito de associatividade AND/O
 
 O backup mede espaço de dados por montagem somente leitura para `stat/statvfs`, sem copiar PostgreSQL físico vivo nem acessar socket Docker. Reserva dump, clone e criptografia. Dump, manifesto e mídias são criptografados para cópia externa; falha conserva arquivos locais. Senha/configuração precisam de cofre separado. Sem bucket, backup local pode passar, mas não protege contra perda da VPS.
 
+## Arquivos históricos de imagens
+
+O verificador de restauração distingue o digest do índice OCI do digest da configuração. Confere a cadeia autenticada índice → manifest de plataforma → configuração, as atestações previstas e o inventário de layers antes de carregar. Após carregar, aceita somente o ID original ou o digest da configuração comprovada, com plataforma, tags e `RootFS` correspondentes. O arquivo inteiro continua sujeito ao SHA-256 fixo. O comprovante registra ambos os identificadores e o ID observado; uma tag isolada não comprova identidade. Falhas mostram apenas uma etapa de diagnóstico permitida, sem exportar stderr privado.
+
+Conferir os metadados não comprova restauração Docker nem render. Esses testes reais continuam obrigatórios no Linux antes de um descarte especificamente autorizado. O workflow de validação somente lê a VPS.
+
 ## Atualização de folha com versões
 
 As migrações da estabilização têm lista nominal fechada; não liberar por prefixo, quantidade de pastas ou aparência de alteração “aditiva”. Comparar nomes/checksums com o inventário atual, conferir contagens de conflitos sem expor pessoas e aplicar primeiro à restauração isolada. Índices novos podem falhar por duplicatas; não escolher nem apagar registros automaticamente.
