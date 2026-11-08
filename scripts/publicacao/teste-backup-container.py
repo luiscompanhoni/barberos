@@ -18,6 +18,30 @@ def run(args, *, stdin=None, expect_failure=False):
     return p.stdout
 
 
+def psql_fixture(db, password):
+    return ["docker", "exec", "-i", "-e", "PGPASSWORD=" + password,
+            "-e", "PGCONNECT_TIMEOUT=2", db, "psql", "-h", "127.0.0.1", "-p", "5432",
+            "-X", "-w", "-U", "postgres", "-d", "fixture", "-v", "ON_ERROR_STOP=1"]
+
+
+def aguardar_postgres_tcp(psql, limite=60):
+    # O entrypoint do postgres sobe um servidor temporário SOMENTE por socket
+    # durante initdb. Só aceitar SQL autenticado por TCP no servidor definitivo.
+    prazo = time.monotonic() + limite
+    while (restante := prazo - time.monotonic()) > 0:
+        try:
+            p = subprocess.run([*psql, "-At", "-c", "SELECT 1"], text=True,
+                               capture_output=True, timeout=min(3, restante))
+            if p.returncode == 0 and p.stdout.strip() == "1":
+                return
+        except subprocess.TimeoutExpired:
+            pass
+        restante = prazo - time.monotonic()
+        if restante > 0:
+            time.sleep(min(1, restante))
+    raise RuntimeError("PostgreSQL sintético não aceitou SQL autenticado por TCP no prazo.")
+
+
 def main(image, legacy):
     if not re.fullmatch(r"barberos-backup-validacao:[a-zA-Z0-9_.-]+", image):
         raise ValueError("Somente imagem local identificada como experimento é permitida.")
@@ -71,16 +95,9 @@ def main(image, legacy):
                  "--memory", "128m", "--tmpfs", "/dados:rw,size=64m", "--entrypoint", "rclone", image,
                  "serve", "s3", "/dados", "--addr", ":9000", "--auth-key",
                  "fixtureaccess,fixturesecretpassword"])
-            for _ in range(60):
-                p = subprocess.run(["docker", "exec", db, "pg_isready", "-U", "postgres",
-                                    "-d", "fixture"], capture_output=True)
-                if p.returncode == 0:
-                    break
-                time.sleep(1)
-            else:
-                raise RuntimeError("PostgreSQL sintético não iniciou.")
-            run(["docker", "exec", "-i", db, "psql", "-X", "-U", "postgres", "-d", "fixture",
-                 "-v", "ON_ERROR_STOP=1"], stdin=f"""
+            psql = psql_fixture(db, password)
+            aguardar_postgres_tcp(psql)
+            run(psql, stdin=f"""
 CREATE ROLE fixture_user LOGIN CREATEDB PASSWORD '{password}';
 ALTER DATABASE fixture OWNER TO fixture_user;
 GRANT ALL ON SCHEMA public TO fixture_user;
@@ -98,10 +115,8 @@ CREATE TABLE backups(id text, tipo text, arquivo text, bytes bigint, restaurado 
  conferencia text, "foraDoServidor" bool, erro text);
 CREATE DATABASE barberos_teste_restauracao;
 """
-            psql = ["docker", "exec", "-i", db, "psql", "-X", "-U", "postgres", "-d", "fixture",
-                    "-v", "ON_ERROR_STOP=1"]
             run(psql, stdin=sql)
-            consult = ["docker", "exec", db, "psql", "-X", "-U", "postgres", "-d", "fixture", "-At", "-c"]
+            consult = [*psql, "-At", "-c"]
             def conferir_registro(filename, externo):
                 assert re.fullmatch(r"barberos-[0-9-]+\.sql\.gz", filename)
                 query = ("SELECT json_build_object('tipo',tipo,'arquivo',arquivo,'restaurado',restaurado,"
@@ -208,8 +223,7 @@ for cmd in pg_dump psql createdb dropdb pg_isready gzip gunzip find stat flock p
                       "-e", "RCLONE_CONNECT_TIMEOUT=2s", "-e", "RCLONE_LOW_LEVEL_RETRIES=1"]
             run([*common, *s3_env, image, "agora"], expect_failure=True)
             assert old.is_file() and dump.is_file()
-            failure = run(["docker", "exec", db, "psql", "-X", "-U", "postgres", "-d", "fixture",
-                           "-At", "-c", "SELECT count(*) FROM backups WHERE restaurado AND NOT \"foraDoServidor\" AND erro IS NOT NULL"])
+            failure = run([*consult, "SELECT count(*) FROM backups WHERE restaurado AND NOT \"foraDoServidor\" AND erro IS NOT NULL"])
             assert int(failure.strip()) >= 1
             print("OK: falha de cópia externa é registrada e preserva backups anteriores.")
 

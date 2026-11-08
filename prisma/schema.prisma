@@ -782,6 +782,7 @@ model Cobranca {
   vinculosExternos VinculoCobrancaExterna[]
 
   @@index([assinaturaId, vencimento])
+  @@index([recebidoConfirmadoEm], map: "cobrancas_recebido_confirmado_em_idx")
   @@map("cobrancas")
 }
 
@@ -2211,9 +2212,9 @@ model MovimentoExterno {
 model VinculoDespesaExterna {
   id String @id @default(cuid())
   movimentoId String
-  movimento MovimentoExterno @relation(fields: [movimentoId], references: [id], onDelete: Restrict)
+  movimento MovimentoExterno @relation(fields: [movimentoId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   despesaId String
-  despesa Despesa @relation(fields: [despesaId], references: [id], onDelete: Restrict)
+  despesa Despesa @relation(fields: [despesaId], references: [id], onDelete: Restrict, onUpdate: NoAction)
   criadoPorId String
   criadoEm DateTime @default(now()) @db.Timestamptz(3)
   anuladoEm DateTime? @db.Timestamptz(3)
