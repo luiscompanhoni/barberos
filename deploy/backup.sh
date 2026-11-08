@@ -128,7 +128,7 @@ case "${1:-loop}" in
     log "rodando: backup todo dia as ${HORA:0:2}:${HORA:2:2}, $DIAS_LOCAL dias no servidor"
     # Servidor desligado na hora do backup (ou primeira subida): faz agora.
     padrao='barberos-*.sql.gz'; [ -z "$MIDIAS" ] || padrao='barberos-*.studio.tar.gz'
-    if ! find "$PASTA" -name "$padrao" -mtime -1 2>/dev/null | grep -q .; then
+    if [ -z "$(find "$PASTA" -name "$padrao" -mtime -1 -print -quit 2>/dev/null)" ]; then
       until pg_isready -q -d "$BANCO"; do sleep 5; done
       backup DIARIO
     fi

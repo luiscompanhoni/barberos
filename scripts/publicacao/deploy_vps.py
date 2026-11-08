@@ -166,7 +166,7 @@ def publicar(base, projeto, commit, imagem_esperada):
             raise RuntimeError("Migrações não concluídas.")
         etapa("troca_aplicacao")
         ativacao_iniciada = True
-        executar([*compose, "up", "-d", "--no-build", "--no-deps", "app", "backup"], prazo=180)
+        executar([*compose, "up", "-d", "--no-build", "--no-deps", "app"], prazo=180)
         novo = aguardar_saude(projeto)
         estado["centralAgentes"] = conferir_central_desligada(novo)
         estado["controlesCliente"] = conferir_controles_cliente(novo, banco["Id"], imagem_nova)
@@ -185,6 +185,9 @@ def publicar(base, projeto, commit, imagem_esperada):
         estado["backupDepois"] = backup_verificado(base, novas["backup"], rede, pasta / "backup.env", volume, tipo="MANUAL", volume_banco=estado["capacidade"]["volumePostgres"])
         conferir_https(commit)
         estado["controlesCliente"] = conferir_controles_cliente(container(projeto, "app"), banco["Id"], imagem_nova)
+        # O daemon compartilha .backup.lock com o one-shot e só inicia após sua restauração.
+        etapa("ativacao_backup_programado")
+        executar([*compose, "up", "-d", "--no-build", "--no-deps", "backup"], prazo=180)
         retomar_auxiliares(servicos_parados, {"evolution"})
         estado.update(concluido=True, imagemNova=novo["Image"], composeAtual=[str(p) for p in arquivos], workerAtivo=True)
         etapa("concluido")

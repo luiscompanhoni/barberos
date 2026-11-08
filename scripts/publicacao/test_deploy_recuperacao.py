@@ -1,5 +1,6 @@
 import contextlib
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -30,7 +31,7 @@ class RecuperacaoTest(unittest.TestCase):
             executar.assert_not_called()
             self.assertFalse((codigo.parent / "operacao.json").exists())
 
-    def executar_cenario(self, falha, backup_sem_imagem=False, com_migracao=False):
+    def executar_cenario(self, falha, backup_sem_imagem=False, com_migracao=False, simular_concorrencia_backup=False):
         with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
             base = Path(d)
             commit = "a" * 40
@@ -45,9 +46,15 @@ class RecuperacaoTest(unittest.TestCase):
             novo = {**antigo, "Image": "sha256:" + "c" * 64, "Config": {"Env": ["MAQUININHA=" + ("stone" if falha == "stone" else "manual")]}}
             recuperado = {**antigo, "Config": {**antigo["Config"], "Env": [k + "=" + v for k, v in deploy.ambiente_rollback().items()]}}
             chamadas = []
+            lock_backup = base / ".backup-fixture.lock"
+            concorrencia = {"daemonIniciado": 0, "manualDepoisConferido": False}
 
             def comando(args, **_kw):
                 chamadas.append(args)
+                if simular_concorrencia_backup and "up" in args and "backup" in args[args.index("up") + 1:]:
+                    fd = os.open(lock_backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                    os.close(fd)  # O daemon mantém o mutex até a parada dos escritores.
+                    concorrencia["daemonIniciado"] += 1
                 if falha == "migracao" and "migrate" in args:
                     raise RuntimeError("Falha sintética após iniciar a migração")
                 if args[:3] == ["docker", "image", "inspect"]:
@@ -79,7 +86,23 @@ class RecuperacaoTest(unittest.TestCase):
             pix = simular("exigir_contrato_pix_imagem", return_value=True)
             simular("conferir_central_desligada", return_value={"habilitada": True, "execucaoAtiva": False, "metaTokenConfigurado": False})
             ensaio = simular("ensaiar_schema")
-            backup = simular("backup_verificado", return_value={"arquivo": "/backup/fixture.sql.gz", "restaurado": True})
+            def copiar_backup(*_args, **kw):
+                if not simular_concorrencia_backup:
+                    return {"arquivo": "/backup/fixture.sql.gz", "restaurado": True}
+                try:
+                    fd = os.open(lock_backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                except FileExistsError:
+                    raise RuntimeError("Outro backup está em andamento; one-shot não adquiriu mutex.") from None
+                try:
+                    if kw.get("tipo") == "MANUAL":
+                        if falha == "backup_depois":
+                            raise RuntimeError("Restauração pós-migração recusada pela fixture.")
+                        concorrencia["manualDepoisConferido"] = True
+                    return {"arquivo": "/backup/fixture.sql.gz", "restaurado": True}
+                finally:
+                    os.close(fd)
+                    lock_backup.unlink()
+            backup = simular("backup_verificado", side_effect=copiar_backup)
             https = simular("conferir_https")
             if falha in ("agenda_antes", "pix"):
                 (agenda if falha == "agenda_antes" else pix).side_effect = RuntimeError("Controle recusado")
@@ -103,6 +126,9 @@ class RecuperacaoTest(unittest.TestCase):
                 resultado = deploy.publicar(base, "barberos", commit, antigo["Image"])
                 self.assertTrue(resultado["concluido"])
             registro = json.loads((codigo.parent / "operacao.json").read_text())
+            if simular_concorrencia_backup:
+                self.assertEqual(concorrencia["daemonIniciado"], 0 if falha else 1)
+                self.assertEqual(concorrencia["manualDepoisConferido"], not bool(falha))
             self.assertFalse((codigo.parent / "backup.env").exists())
             self.assertEqual((base / ".env").read_text(), "sentinela-privada")
             self.assertEqual((base / "deploy/docker-compose.yml").read_text(), "original")
@@ -163,6 +189,12 @@ class RecuperacaoTest(unittest.TestCase):
 
     def test_sucesso_migrado_remove_marcador_so_apos_controles_e_backup(self):
         self.executar_cenario(None, com_migracao=True)
+
+    def test_daemon_nao_disputa_mutex_com_backup_manual_pos_migracao(self):
+        self.executar_cenario(None, com_migracao=True, simular_concorrencia_backup=True)
+
+    def test_backup_manual_recusado_nao_inicia_daemon_e_preserva_quarentena_migrada(self):
+        self.executar_cenario("backup_depois", com_migracao=True, simular_concorrencia_backup=True)
 
     def test_sucesso_exige_ensaio_e_backups_antes_e_depois(self):
         self.executar_cenario(None)

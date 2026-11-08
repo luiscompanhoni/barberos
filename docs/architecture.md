@@ -244,6 +244,7 @@ Lá não há Evolution nem o backup do compose.
   restaurar banco/manifesto/mídias em destinos novos, validar escrita funcional sem efeitos externos e reconciliar antes de liberação humana.
   Não há troca automática de banco nem retorno de imagem após iniciar migração. O marcador `recuperacao-pendente.json` bloqueia repetição.
   O publicador impõe todos os bloqueios no retorno sem migração. Os comandos antigos de trocar só o banco foram retirados.
+- Na publicação, o daemon de backup permanece parado até o backup posterior à migração passar pela restauração e pelos controles finais; ambos compartilham a mesma trava. A primeira subida procura um backup recente com `find -print -quit`, evitando que um pipe interrompido inicie uma cópia indevida. O HTTPS aguarda até 60 segundos somente para falhas transitórias de conexão e respostas 502/503/504; certificado, revisão e acesso às rotas privadas continuam obrigatórios.
 
 ### Homologação
 
