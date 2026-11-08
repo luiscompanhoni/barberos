@@ -21,7 +21,7 @@ export async function lancarBonusNaFolha(tx: Prisma.TransactionClient, d: { pess
   await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ${d.pessoaId} FOR UPDATE`;
   let competencia = dataLocal(Date.now(), d.fuso).slice(0, 7);
   for (let i = 0; i < 24; i++) {
-    const fechada = await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia, pessoaId: d.pessoaId } }, select: { id: true } });
+    const fechada = await tx.folhaPagamento.findFirst({ where: { competencia, pessoaId: d.pessoaId, ativa: true }, select: { id: true } });
     if (!fechada) break;
     competencia = proximaCompetencia(competencia);
   }

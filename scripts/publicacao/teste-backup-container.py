@@ -9,6 +9,8 @@ import sys
 import tempfile
 import time
 import uuid
+sys.path.insert(0, str(Path(__file__).parent))
+from backup_fixture_recuperacao import provar_restauro, provar_snapshot_concorrente, sql_fixture_recuperacao
 
 
 def run(args, *, stdin=None, expect_failure=False):
@@ -104,6 +106,7 @@ GRANT ALL ON SCHEMA public TO fixture_user;
 """)
             sql = f"""
 SET ROLE fixture_user;
+{sql_fixture_recuperacao()}
 CREATE TABLE clientes(id int); INSERT INTO clientes VALUES (1);
 CREATE TABLE agendamentos(id int); INSERT INTO agendamentos VALUES (1);
 CREATE TABLE _prisma_migrations(migration_name text, finished_at timestamptz);
@@ -141,6 +144,8 @@ CREATE DATABASE barberos_teste_restauracao;
             run([*common, image, "restaurar", "/backups/" + dump.name], expect_failure=True)
             assert (restored / name).read_bytes() == content
             print("OK: dump, conferência, mídia e restauração; destino existente preservado.")
+            provar_restauro(run, common, image, psql, dump.name)
+            provar_snapshot_concorrente(run, common, image, psql)
 
             # O serviço de backup no compose roda como root; o ensaio principal também cobre UID sem privilégios.
             root_backups = base / "backup-root"

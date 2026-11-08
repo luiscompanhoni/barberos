@@ -57,6 +57,35 @@ def arquivos_codigo(base):
     return resultado
 
 
+def checagens_estabilizacao(banco):
+    """Somente contagens de conflitos que fariam índices novos falharem; não retorna identidades."""
+    prefixo = ["docker", "exec", banco, "psql", "-X", "-U", "barberos", "-d", "barberos", "-At", "-v", "ON_ERROR_STOP=1", "-c"]
+    presentes = executar([*prefixo, "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('comissoes_servico','folha_pagamentos')"])
+    if not presentes or presentes.strip() != "2":
+        return None
+    raw_colunas = executar([*prefixo, "SELECT coalesce(json_agg(column_name ORDER BY column_name),'[]') FROM information_schema.columns WHERE table_schema='public' AND table_name='folha_pagamentos' AND column_name IN ('ativa','barbeiroIdCongelado')"])
+    try:
+        colunas = json.loads(raw_colunas) if raw_colunas else None
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(colunas, list) or any(c not in {"ativa", "barbeiroIdCongelado"} for c in colunas):
+        return None
+    identidade = "CASE WHEN jsonb_typeof(detalhe->'barbeiroId')='string' THEN NULLIF(detalhe->>'barbeiroId','') END"
+    if "barbeiroIdCongelado" in colunas:
+        identidade = 'COALESCE(NULLIF("barbeiroIdCongelado",\'\'),' + identidade + ")"
+    apenas_ativas = " WHERE ativa=true" if "ativa" in colunas else ""
+    sql = "SELECT json_build_object('regrasGeraisDuplicadas',(SELECT count(*) FROM (SELECT \"servicoId\" FROM public.comissoes_servico WHERE \"barbeiroId\" IS NULL GROUP BY \"servicoId\" HAVING count(*)>1) r)," \
+          "'identidadesCongeladasDuplicadas',(SELECT count(*) FROM (SELECT competencia,identidade FROM (SELECT competencia," + identidade + " AS identidade FROM public.folha_pagamentos" + apenas_ativas + ") base " \
+          "WHERE identidade IS NOT NULL GROUP BY competencia,identidade HAVING count(*)>1) f))"
+    raw = executar([*prefixo, sql])
+    try:
+        dados = json.loads(raw) if raw else None
+    except (TypeError, ValueError):
+        return None
+    chaves = {"regrasGeraisDuplicadas", "identidadesCongeladasDuplicadas"}
+    return dados if isinstance(dados, dict) and set(dados) == chaves and all(type(v) is int and v >= 0 for v in dados.values()) else None
+
+
 def inspecionar(base, projeto):
     relatorio = {"formato": 1, "somenteLeitura": True, "sistema": platform.system(), "projeto": projeto, "baseExiste": base.is_dir(), "bloqueios": []}
     relatorio["cpuLogicas"] = os.cpu_count()
@@ -112,6 +141,7 @@ def inspecionar(base, projeto):
         relatorio["schemaImagemSha256"] = soma.split()[0] if soma and re.fullmatch(r"[a-f0-9]{64}", soma.split()[0]) else None
     banco = next((c for c in containers if (c.get("Config", {}).get("Labels") or {}).get("com.docker.compose.service") == "db" and c.get("State", {}).get("Running")), None)
     relatorio["migracoes"] = None
+    relatorio["checagensEstabilizacao"] = None
     if banco:
         sql = "SELECT coalesce(json_agg(json_build_object('nome',migration_name,'checksum',checksum,'aplicada',finished_at IS NOT NULL,'revertida',rolled_back_at IS NOT NULL) ORDER BY started_at),'[]'::json) FROM _prisma_migrations"
         raw = executar(["docker", "exec", banco["Id"], "psql", "-X", "-U", "barberos", "-d", "barberos", "-At", "-v", "ON_ERROR_STOP=1", "-c", sql])
@@ -119,6 +149,11 @@ def inspecionar(base, projeto):
             relatorio["migracoes"] = json.loads(raw)
         tamanho = executar(["docker", "exec", banco["Id"], "psql", "-X", "-U", "barberos", "-d", "barberos", "-At", "-c", "SELECT pg_database_size(current_database())"])
         relatorio["bancoBytes"] = int(tamanho.strip()) if tamanho and tamanho.strip().isdigit() else None
+        relatorio["checagensEstabilizacao"] = checagens_estabilizacao(banco["Id"])
+        if relatorio["checagensEstabilizacao"] is None:
+            relatorio["bloqueios"].append("Contagens de conflitos das migrações de estabilização não consultadas.")
+        elif any(relatorio["checagensEstabilizacao"].values()):
+            relatorio["bloqueios"].append("Há conflitos para índices novos; revisar os dados sem apagar ou escolher registros automaticamente.")
     if relatorio["migracoes"] is None:
         relatorio["bloqueios"].append("Migrações não consultadas; não assumir banco vazio.")
     backups = []

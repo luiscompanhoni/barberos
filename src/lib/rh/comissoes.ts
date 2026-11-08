@@ -87,7 +87,7 @@ export async function salvarComissoes(s: Sessao, d: { gerais: Entrada[]; excecoe
     const antes = await regrasEmTexto(atuais, tx);
     const depois = await regrasEmTexto([...d.gerais.map((g) => ({ ...g, barbeiroId: null })), ...d.excecoes], tx);
     const m = mudancas(antes, { ...Object.fromEntries(Object.keys(antes).map((k) => [k, null])), ...depois });
-    if (await tx.folhaPagamento.count({ where: { competencia } })) throw new ErroNegocio("Há folha fechada nesta competência. Escolha uma competência posterior para as regras.", 409, "folha_fechada");
+    if (await tx.folhaPagamento.count({ where: { competencia, ativa: true } })) throw new ErroNegocio("Há folha fechada nesta competência. Escolha uma competência posterior para as regras.", 409, "folha_fechada");
     await garantirBaselineRemuneracao(tx, "servicos", JSON.parse(JSON.stringify(atuais)) as Prisma.InputJsonValue, s.usuarioId);
     for (const g of d.gerais) {
       // Unique com NULL nao impede duplicata no Postgres: procura e atualiza.
@@ -232,8 +232,8 @@ type FolhaBarbeiro = { salario: number; bonus: number; descontos: number; congel
 /** Salario, bonus/adicionais e vales/descontos lancados na folha do mes, por barbeiro (funcionario ligado a ele). */
 async function folhaDoMes(comp: string, c: Prisma.TransactionClient) {
   const pessoas = await c.checklistPessoa.findMany({
-    where: { OR: [{ barbeiroId: { not: null } }, { folhas: { some: { competencia: comp } } }] },
-    select: { id: true, barbeiroId: true, salarioCentavos: true, lancamentosFolha: { where: { competencia: comp }, select: { tipo: true, valorCentavos: true } }, folhas: { where: { competencia: comp } } },
+    where: { OR: [{ barbeiroId: { not: null } }, { folhas: { some: { competencia: comp, ativa: true } } }] },
+    select: { id: true, barbeiroId: true, salarioCentavos: true, lancamentosFolha: { where: { competencia: comp }, select: { tipo: true, valorCentavos: true } }, folhas: { where: { competencia: comp, ativa: true } } },
   });
   const linhas = await Promise.all(pessoas.map(async (p) => {
     const soma = (tipos: string[]) => p.lancamentosFolha.filter((l) => tipos.includes(l.tipo)).reduce((t, l) => t + l.valorCentavos, 0);

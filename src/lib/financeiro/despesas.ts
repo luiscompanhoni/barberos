@@ -32,7 +32,7 @@ export async function listarDespesas(mes: string) {
   const { gte, lt, fuso } = await janelaMes(mes);
   const hoje = dataLocal(Date.now(), fuso);
   const lista = await db.despesa.findMany({
-    where: { OR: [{ status: "PENDENTE" }, { status: "PAGA", pagoEm: { gte, lt } }] },
+    where: { OR: [{ status: "PENDENTE" }, { status: { in: ["PAGA", "ANULADA_TESTE"] }, pagoEm: { gte, lt } }] },
     orderBy: [{ status: "asc" }, { vencimento: "asc" }, { criadoEm: "asc" }],
   });
   const despesas = lista.map((d) => {

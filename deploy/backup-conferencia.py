@@ -1,4 +1,5 @@
 """Manifesto de um snapshot PostgreSQL; sem dados pessoais em arquivos de conferência."""
+import gzip
 import hashlib
 import json
 import re
@@ -177,6 +178,63 @@ def comparar(antes, depois):
                 iguais = False
             if not iguais:
                 raise RuntimeError("Restrição restaurada não equivale à referência.")
+
+
+def sequencias_do_dump(dump):
+    """Lê somente os blocos SEQUENCE SET do pg_dump 16; nunca compara ao estado vivo não transacional."""
+    estados, aguardando, em_copia = {}, False, False
+    padrao = re.compile(r"SELECT pg_catalog\.setval\('((?:[^']|'')*)', (-?\d+), (true|false)\);")
+    with gzip.open(dump, "rt", encoding="utf8") as arquivo:
+        for linha in arquivo:
+            texto = linha.strip()
+            if em_copia:
+                if linha.rstrip("\r\n") == r"\.":
+                    em_copia = False
+                continue
+            if texto.startswith("COPY ") and texto.endswith(" FROM stdin;"):
+                em_copia = True
+                continue
+            if texto.startswith("-- Name: ") and "; Type: SEQUENCE SET; Schema: " in texto:
+                if aguardando:
+                    raise RuntimeError("Estado de sequência do dump não suportado ou incompleto.")
+                aguardando = True
+                continue
+            if not aguardando or not texto or texto.startswith("--"):
+                continue
+            m = padrao.fullmatch(texto)
+            if not m:
+                raise RuntimeError("Estado de sequência do dump não suportado ou incompleto.")
+            nome, valor, chamada = m.groups()
+            nome = nome.replace("''", "'")
+            if nome in estados:
+                raise RuntimeError("Estado de sequência do dump não suportado ou incompleto.")
+            estados[nome] = {"valor": str(int(valor)), "chamada": chamada == "true"}
+            aguardando = False
+    if aguardando or em_copia:
+        raise RuntimeError("Estado de sequência do dump não suportado ou incompleto.")
+    return estados
+
+
+def conferir_sequencias(banco, dump, definicoes):
+    estados, conferidas = sequencias_do_dump(dump), set()
+    esperadas = {d["chave"] for d in definicoes}
+    for regclass, esperado in estados.items():
+        # Hexadecimal evita depender de standard_conforming_strings do destino.
+        literal = "convert_from(decode('" + regclass.encode("utf8").hex() + "','hex'),'UTF8')"
+        nome = json.loads(psql(banco, "SELECT json_build_array(n.nspname,c.relname) FROM pg_class c "
+                              "JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.relkind='S' AND c.oid=" + literal + "::regclass"))
+        if not isinstance(nome, list) or len(nome) != 2 or not all(isinstance(n, str) for n in nome):
+            raise RuntimeError("Sequências restauradas não correspondem ao dump.")
+        chave = nome[0] + "." + nome[1]
+        if chave not in esperadas or chave in conferidas:
+            raise RuntimeError("Sequências restauradas não correspondem ao dump.")
+        atual = json.loads(psql(banco, "SELECT json_build_object('valor',last_value::text,'chamada',is_called) FROM " + ident(nome[0]) + "." + ident(nome[1])))
+        if atual != esperado:
+            raise RuntimeError("Estado de sequência restaurada diverge do dump.")
+        conferidas.add(chave)
+    if conferidas != esperadas:
+        raise RuntimeError("Sequências restauradas não correspondem ao dump.")
+    return len(conferidas)
 
 
 def sql_prova_auditoria():

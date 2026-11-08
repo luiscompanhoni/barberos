@@ -2,7 +2,13 @@
 
 O fluxo atual usa GitHub Actions para testar uma revisão identificada, produzir imagens/pacote sem configuração privada e publicar somente quando autorizado. Conferir novamente a revisão instalada a cada publicação. As seções datadas de31/10–01/11 abaixo preservam o histórico de preparação, não o estado operacional atual.
 
-O procedimento vigente está em [Publicação e recuperação segura](recuperacao-segura.md). A estabilização de08/11 é local: exige validação Linux/Docker da nova revisão e nova autorização de publicação. O publicador isola escritores antes do backup/migração e mantém a instalação parada se uma migração iniciada falhar. Retorno sem migração reaplica todos os bloqueios; nunca restaura banco antigo automaticamente. Planejar indisponibilidade e liberação explícita conforme o runbook.
+O procedimento vigente está em [Publicação e recuperação segura](recuperacao-segura.md). O dono autorizou em08/11 preparar o merge e a publicação da estabilização; o pedido não dispensa CI Linux/Docker da revisão final, inventário atual, espaço e backup restaurado antes da migração. O publicador isola escritores antes do backup/migração e mantém a instalação parada se uma migração iniciada falhar. Retorno sem migração reaplica os bloqueios operacionais e preserva a exceção de OTP solicitado pelo cliente; nunca restaura banco antigo automaticamente. Planejar indisponibilidade e liberação explícita conforme o runbook.
+
+## Consulta atual sem transcrição manual
+
+A sessão local pode consultar a VPS pela chave SSH existente e identidade de host estrita, enviando `inspecionar-vps.py` por stdin e salvando o JSON apenas na pasta privada de evidências. Isso não cria chaves, não lê valores do `.env` e não modifica a instalação. Não publicar o inventário bruto, caminhos operacionais ou dados de configuração em artefato público.
+
+Se for necessário usar Actions, `consultar-vps.yml` recebe a chave RSA **pública** do destinatário, já obtida do arquivo local por automação de navegador ou cliente autenticado; não requer que o dono copie/cole esse campo. O relatório sai cifrado, com retenção de um dia. A chave privada permanece local, fora do pacote/Git e dos logs. Nunca desabilitar `StrictHostKeyChecking`, criar outra chave para contornar autenticação ou recorrer a relatório público em texto claro. Falta de executor/autenticação continua bloqueando somente a consulta dependente.
 
 ## Código atual e preservação
 

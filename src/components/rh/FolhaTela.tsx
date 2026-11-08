@@ -8,6 +8,7 @@ import { ContadorCrm } from "@/components/visual/ContadorCrm";
 import { LotePixFolha } from "./LotePixFolha";
 import { ResumoRateioAssinaturas } from "./ResumoRateioAssinaturas";
 import type { ConciliacaoAssinaturas } from "@/lib/rh/rateio-assinaturas";
+import { RetificarTesteFolha } from "./RetificarTesteFolha";
 
 type Tipo = "ADICIONAL" | "BONUS" | "VALE" | "DESCONTO";
 type Lanc = { id: string; tipo: Tipo; valorCentavos: number; descricao: string; doCaixa: boolean };
@@ -16,6 +17,7 @@ type Linha = {
   pessoaId: string; nome: string; cargo: string | null; chavePix: string | null; barbeiro: string | null; barbeiroId?: string | null; ativo: boolean;
   salario: number; comissao: number; adicionais: number; descontos: number; liquido: number;
   status: "ABERTA" | "FECHADA" | "PAGA"; pagoEm: string | null; mudouDepois: boolean; memoriaDisponivel?: boolean; vinculoPendente?: boolean;
+  folhaId?: string | null; versao?: number | null;
   comissaoDetalhe: {
     avulso: Soma; plano: Soma; semRegra: number;
     assinaturas?: { qtd: number; creditos: number; receitaAtribuida: number; comissao: number } | null; produtos?: { vendido: number; comissao: number } | null;
@@ -25,6 +27,7 @@ type Dados = {
   competencia: string; linhas: Linha[]; revisao: string; recebimentos?: { completo: boolean; pendentes: number };
   pendenciasVinculos?: { barbeiroId: string; nome: string; comissaoCentavos: number; motivo: "SEM_VINCULO" | "INATIVO" | "AMBIGUO" }[];
   conciliacaoAssinaturas?: ConciliacaoAssinaturas | null;
+  historicoRetificado?: { folhaId: string; pessoaId: string; versao: number; statusOriginal: string; liquidoCentavos: number; despesaId: string | null; criadoEm: string }[];
 };
 const MOTIVOS_VINCULO = { SEM_VINCULO: "sem ficha vinculada", INATIVO: "ficha inativa", AMBIGUO: "destinatário sem identificação única" };
 
@@ -161,6 +164,7 @@ export function FolhaTela() {
         ...d.linhas.filter(l => !!l.barbeiroId).map(l => [l.barbeiroId!, l.barbeiro ?? l.nome]),
         ...pendenciasVinculos.map(p => [p.barbeiroId, p.nome]),
       ])} />}
+      {!!d.historicoRetificado?.length && <section className="cartao space-y-2 text-sm"><h2 className="font-semibold">Testes internos retificados</h2><p>Os originais abaixo permanecem no histórico e suas despesas estão anuladas como teste, sem transferência real. Eles não compõem os valores a pagar.</p><ul className="list-inside list-disc">{d.historicoRetificado.map(f => <li key={f.folhaId}>{d.linhas.find(l => l.pessoaId === f.pessoaId)?.nome ?? "Funcionário"} · versão {f.versao} · {reais(f.liquidoCentavos)} · estado original {f.statusOriginal} preservado.</li>)}</ul></section>}
       <LotePixFolha key={d.competencia} competencia={d.competencia} atualizacao={d} />
       {visiveis.length === 0 && <div className="cartao text-sm text-zinc-500">Ninguém na folha. Cadastre os funcionários no checklist e preencha a ficha na aba Funcionários.</div>}
       {visiveis.length > 0 && <section className="cartao space-y-4"><h2 className="font-semibold">Leitura da folha</h2><p className="text-xs text-zinc-500">Líquido por pessoa na competência. O estado de cada folha e a memória de cálculo estão nos cartões abaixo.</p><GraficoBarrasCrm rotulo="Valor líquido da folha por pessoa" formatar={reais} itens={visiveis.map(l => ({ rotulo: l.nome, valor: l.liquido, nota: STATUS[l.status] }))} /></section>}
@@ -185,6 +189,7 @@ export function FolhaTela() {
           </div>
           {l.mudouDepois && <p className="text-xs text-amber-700">O recálculo atual difere do retrato fechado. Os valores históricos foram preservados; confira antes de qualquer ajuste.</p>}
           {l.memoriaDisponivel === false && <p className="text-xs text-amber-700">A memória detalhada desta folha antiga não está disponível. Seus totais congelados foram preservados.</p>}
+          {l.status === "PAGA" && l.folhaId && l.salario === 100 && l.comissao === 0 && l.adicionais === 0 && l.descontos === 0 && l.liquido === 100 && <RetificarTesteFolha folhaId={l.folhaId} aoConcluir={async () => { await carregar(d.competencia); setMsg({ t: "Teste interno retificado. Original e despesa preservados; confira a nova prévia antes de fechar. Nenhum pagamento foi executado." }); }} />}
           <div className="flex flex-wrap items-center gap-2">
             {l.status === "ABERTA" && (l.salario || l.comissao || l.lancamentos.length) > 0 && (
               <button className="btn py-1.5 text-xs" disabled={l.vinculoPendente || (!!d.conciliacaoAssinaturas?.pendente && !!l.comissaoDetalhe?.assinaturas)} aria-describedby={l.vinculoPendente ? "folha-vinculos-pendentes" : undefined} onClick={() => acao({ acao: "fechar", pessoaId: l.pessoaId }, `Folha de ${l.nome} fechada.`)}><Lock size={13} /> Fechar só esta</button>

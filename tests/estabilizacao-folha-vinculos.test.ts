@@ -12,7 +12,7 @@ vi.mock("@/lib/rh/vigencias", () => ({ lerVigenciaRemuneracao: async () => null 
 vi.mock("@/lib/rh/trava-regras-folha", () => ({ tocarPessoasDaFolha: vi.fn() }));
 vi.mock("@/lib/auth/permissoes", () => ({ exigirSessaoCom: m.sessao }));
 vi.mock("@/lib/db", () => {
-  const tx = { $queryRaw: vi.fn(), checklistPessoa: { findMany: async () => m.pessoas }, folhaLancamento: { findMany: async () => [] }, folhaPagamento: { findMany: async () => m.folhas, create: m.criar } };
+  const tx = { $queryRaw: vi.fn(), checklistPessoa: { findMany: async () => m.pessoas }, folhaLancamento: { findMany: async () => [] }, folhaPagamento: { findMany: async () => m.folhas, findFirst: async () => null, create: m.criar } };
   return { db: { ...tx, $transaction: async (f: (leitor: unknown) => unknown) => f(tx) } };
 });
 import { exportarCsv, fecharFolha, previaFolha } from "@/lib/rh/folha";

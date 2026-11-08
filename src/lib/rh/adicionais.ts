@@ -26,7 +26,7 @@ export async function adicionaisDoCalculo(c: Prisma.TransactionClient = db): Pro
 
 /** Competencias com alguma folha fechada ou paga. */
 async function competenciasFechadas(c: Prisma.TransactionClient = db) {
-  const l = await c.folhaPagamento.findMany({ distinct: ["competencia"], select: { competencia: true } });
+  const l = await c.folhaPagamento.findMany({ where: { ativa: true }, distinct: ["competencia"], select: { competencia: true } });
   return l.map((f) => f.competencia);
 }
 

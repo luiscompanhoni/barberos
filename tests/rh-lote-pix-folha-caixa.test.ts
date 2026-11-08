@@ -8,7 +8,7 @@ vi.mock("@/lib/db", () => {
   const pessoa = async () => ({ id: "pessoa", nome: "Pessoa sintética" });
   const folha = async () => ({ id: "folha", status: "FECHADA", liquidoCentavos: 10000, salarioCentavos: 10000, comissaoCentavos: 0, adicionaisCentavos: 0, descontosCentavos: 0 });
   const tx = { $queryRaw: async () => [{ id: "pessoa" }], $executeRaw: async () => { m.passos.push("pessoa"); return 1; },
-    checklistPessoa: { findUnique: pessoa }, folhaPagamento: { findUnique: folha,
+    checklistPessoa: { findUnique: pessoa }, folhaPagamento: { findFirst: folha,
     updateMany: async () => { m.passos.push("claim"); const count = Math.max(0, m.claims); m.claims = 0; return { count }; },
     update: m.atualizar,
   }, despesa: { create: m.despesa } };

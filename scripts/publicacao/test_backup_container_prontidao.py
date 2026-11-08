@@ -62,6 +62,14 @@ class ProntidaoPostgresTest(unittest.TestCase):
         self.assertLessEqual(run.call_args.kwargs["timeout"], 3)
         self.assertNotIn("senha-ficticia", str(erro.exception))
 
+    def test_sondas_de_recuperacao_recusam_banco_ou_imagem_fora_da_fixture(self):
+        with self.assertRaisesRegex(ValueError, "imagem sintética"):
+            m.provar_restauro(None, [], "barberos-backup:producao", self.psql, "barberos-2026-01.sql.gz")
+        nao_fixture = [*self.psql]
+        nao_fixture[nao_fixture.index("-d") + 1] = "barberos"
+        with self.assertRaisesRegex(ValueError, "PostgreSQL Docker"):
+            m.provar_snapshot_concorrente(None, [], "barberos-backup-validacao:fixture", nao_fixture)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -133,11 +133,11 @@ async function main() {
       // O bônus de comp do segundo ainda não foi aprovado: a prévia mostra que ele também mudaria de faixa ali.
       && !!e.detalhes?.mudancas.some((m) => m.nome === segundo.p.nome && m.quando === comp)
       && !e.detalhes?.mudancas.some((m) => m.nome === profissional.p.nome && m.quando === comp));
-    const folhaProfissional = await db.folhaPagamento.findUniqueOrThrow({ where: { competencia_pessoaId: { competencia: comp, pessoaId: profissional.p.id } } });
+    const folhaProfissional = await db.folhaPagamento.findFirstOrThrow({ where: { competencia: comp, pessoaId: profissional.p.id, ativa: true } });
     assert.equal(folhaProfissional.adicionaisCentavos, 20000);
     assert.equal(folhaProfissional.barbeiroIdCongelado, profissional.p.barbeiroId, "O bônus fechado preserva a cadeira fictícia comprovada");
     await Promise.allSettled([aprovarBonus(dono.s, segundo.p.id, comp), fecharFolha(dono.s, comp, segundo.p.id)]);
-    const folhaSegunda = await db.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: comp, pessoaId: segundo.p.id } } });
+    const folhaSegunda = await db.folhaPagamento.findFirst({ where: { competencia: comp, pessoaId: segundo.p.id, ativa: true } });
     const lancsSegunda = await db.folhaLancamento.aggregate({ where: { pessoaId: segundo.p.id, competencia: comp }, _sum: { valorCentavos: true } });
     if (folhaSegunda) assert.equal(folhaSegunda.adicionaisCentavos, lancsSegunda._sum.valorCentavos ?? 0, "Concorrência nunca congela folha sem o bônus registrado");
     else assert.equal(lancsSegunda._sum.valorCentavos, 20000, "O bônus foi registrado e a folha aguarda nova conferência");

@@ -80,7 +80,7 @@ export async function salvarExtras(s: Sessao, d: EntradaExtras) {
     await tocarPessoasDaFolha(tx);
     const antes = await regrasExtras(tx);
     if (d.revisao && d.revisao !== revisaoApuracao(antes)) throw new ErroNegocio("A configuração foi alterada. Recarregue antes de salvar.", 409, "comissoes_mudaram");
-    if (await tx.folhaPagamento.count({ where: { competencia } })) throw new ErroNegocio("Há folha fechada nesta competência. Escolha uma competência posterior.", 409, "folha_fechada");
+    if (await tx.folhaPagamento.count({ where: { competencia, ativa: true } })) throw new ErroNegocio("Há folha fechada nesta competência. Escolha uma competência posterior.", 409, "folha_fechada");
     await garantirBaselineRemuneracao(tx, "extras", JSON.parse(JSON.stringify(antes)) as Prisma.InputJsonValue, s.usuarioId);
     await tx.poteConfig.upsert({
       where: { id: ID },

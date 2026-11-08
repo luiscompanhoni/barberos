@@ -95,7 +95,7 @@ describe.skipIf(!ativo)("vínculos de folha no PostgreSQL descartável", () => {
     expect(await db.folhaPagamento.count({ where: { competencia: comp } })).toBe(0);
     expect(await db.auditoria.count({ where: { acao: "rh_folha_fechar", entidadeId: comp } })).toBe(antes);
     expect(await fecharFolha(s, comp, recepcao.id, previa.revisao)).toBe(1);
-    const f = await db.folhaPagamento.findUniqueOrThrow({ where: { competencia_pessoaId: { competencia: comp, pessoaId: recepcao.id } } });
+    const f = await db.folhaPagamento.findFirstOrThrow({ where: { competencia: comp, pessoaId: recepcao.id, ativa: true } });
     expect(f.comissaoCentavos).toBe(0); expect(f.liquidoCentavos).toBe(10000);
   });
   it("produção de ficha inativa fica explícita e retrato histórico permanece após desvinculação", async () => {
@@ -104,7 +104,7 @@ describe.skipIf(!ativo)("vínculos de folha no PostgreSQL descartável", () => {
     expect((await previaFolha(comp)).pendenciasVinculos).toContainEqual({ barbeiroId: b.id, nome: b.nome, comissaoCentavos: 2000, motivo: "INATIVO" });
     await db.checklistPessoa.update({ where: { id: p.id }, data: { ativo: true } });
     const previa = await previaFolha(comp); await fecharFolha(s, comp, p.id, previa.revisao);
-    const antes = await db.folhaPagamento.findUniqueOrThrow({ where: { competencia_pessoaId: { competencia: comp, pessoaId: p.id } } });
+    const antes = await db.folhaPagamento.findFirstOrThrow({ where: { competencia: comp, pessoaId: p.id, ativa: true } });
     await db.checklistPessoa.update({ where: { id: p.id }, data: { ativo: false, barbeiroId: null, salarioCentavos: 999999 } });
     const atual = await previaFolha(comp);
     expect(atual.pendenciasVinculos).toEqual([]);
@@ -123,7 +123,7 @@ describe.skipIf(!ativo)("vínculos de folha no PostgreSQL descartável", () => {
     const previa = await previaFolha(comp);
     const r = await corrida("rh_folha_fechar", () => fecharFolha(s, comp, p.id, previa.revisao), () => salvarFicha(s, p.id, { cargo: p.cargo, salarioCentavos: p.salarioCentavos, admissao: null, barbeiroId: null }));
     expect(r.map(x => x.status)).toEqual(["fulfilled", "fulfilled"]);
-    const f = await db.folhaPagamento.findUniqueOrThrow({ where: { competencia_pessoaId: { competencia: comp, pessoaId: p.id } } });
+    const f = await db.folhaPagamento.findFirstOrThrow({ where: { competencia: comp, pessoaId: p.id, ativa: true } });
     expect(f.barbeiroIdCongelado).toBe(b.id); expect(f.comissaoCentavos).toBe(2000);
     expect((await db.checklistPessoa.findUniqueOrThrow({ where: { id: p.id } })).barbeiroId).toBeNull();
     expect((await previaFolha(comp)).pendenciasVinculos).toEqual([]);
@@ -145,7 +145,7 @@ describe.skipIf(!ativo)("vínculos de folha no PostgreSQL descartável", () => {
     const rascunhoAntes = await db.poteConfig.findUniqueOrThrow({ where: { id: "pote" } });
     const rejeitada = entradaExtras(mesFechado, (await configExtras()).revisao, 4000);
     await expect(salvarExtras(s, rejeitada)).rejects.toMatchObject({ codigo: "folha_fechada" });
-    await db.folhaPagamento.update({ where: { competencia_pessoaId: { competencia: mesFechado, pessoaId: p.id } }, data: { status: "PAGA" } });
+    await db.folhaPagamento.updateMany({ where: { competencia: mesFechado, pessoaId: p.id, ativa: true }, data: { status: "PAGA" } });
     await expect(salvarExtras(s, rejeitada)).rejects.toMatchObject({ codigo: "folha_fechada" });
     expect(await db.remuneracaoVersao.findMany({ where: { escopo: "extras" }, orderBy: { id: "asc" } })).toEqual(historicoAntes);
     expect(await db.poteConfig.findUniqueOrThrow({ where: { id: "pote" } })).toEqual(rascunhoAntes);

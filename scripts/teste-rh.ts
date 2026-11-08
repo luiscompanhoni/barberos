@@ -175,7 +175,7 @@ async function main() {
     const pago = await pagarFolha(s, COMP, p.id, "PIX");
     if (pago.despesaId) ids.despesas.push(pago.despesaId);
     const desp = pago.despesaId ? await db.despesa.findUnique({ where: { id: pago.despesaId } }) : null;
-    const folha = await db.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: COMP, pessoaId: p.id } } });
+    const folha = await db.folhaPagamento.findFirst({ where: { competencia: COMP, pessoaId: p.id, ativa: true } });
     ok(!!desp && desp.categoria === "FOLHA" && desp.status === "PAGA" && desp.valorCentavos === 211500 && !!desp.pagoEm && desp.formaPagamento === "PIX", "pagar cria a despesa FOLHA paga com o líquido");
     ok(folha?.status === "PAGA" && folha.despesaId === desp?.id && !!folha.pagoEm, "folha fica PAGA ligada à despesa");
     ok((await falha(() => reabrirFolha(s, COMP, p.id)))?.codigo === "ja_paga", "folha paga não reabre");

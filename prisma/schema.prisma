@@ -127,6 +127,7 @@ model AlteracaoPlanoAssinatura {
 }
 
 model Usuario {
+  retificacoesFolhaTeste FolhaRetificacaoTeste[]
   identidadesSociais     IdentidadeSocial[]
   telefoneVerificadoEm   DateTime?             @db.Timestamptz(3)
   sessaoVersao           Int                   @default(0)
@@ -1824,6 +1825,13 @@ enum StatusFolha {
 
 /// Folha fechada de um funcionario num mes (valores congelados).
 model FolhaPagamento {
+  /// Só a versão ativa participa da prévia, fechamento e preparação de pagamento.
+  ativa              Boolean         @default(true)
+  versao             Int             @default(1)
+  substituiId        String?         @unique
+  substitui          FolhaPagamento? @relation("FolhaSubstituicao", fields: [substituiId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  substituta         FolhaPagamento? @relation("FolhaSubstituicao")
+  retificacaoTeste    FolhaRetificacaoTeste?
   /// Identidade da cadeira no fechamento; preservada mesmo após troca da ficha atual.
   barbeiroIdCongelado String?
   id                 String          @id @default(cuid())
@@ -1841,13 +1849,50 @@ model FolhaPagamento {
   despesaId          String?         @unique
   criadoEm           DateTime        @default(now()) @db.Timestamptz(3)
 
-  @@unique([competencia, pessoaId])
-  @@unique([competencia, barbeiroIdCongelado])
+  @@unique([competencia, pessoaId, versao])
+  @@index([competencia, ativa])
   @@map("folha_pagamentos")
+}
+
+/// Anulação interna do teste sem transferência. Original, despesa e declaração são preservados.
+model FolhaRetificacaoTeste {
+  id                         String         @id @default(cuid())
+  idempotencia               String         @unique
+  folhaOriginalId            String         @unique
+  folhaOriginal              FolhaPagamento @relation(fields: [folhaOriginalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  despesaOriginalId          String         @unique
+  despesaOriginal            Despesa        @relation(fields: [despesaOriginalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  atorId                     String
+  ator                       Usuario        @relation(fields: [atorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  atorSessaoVersao            Int
+  motivo                     String
+  declaracao                 String
+  revisaoOrigem               String
+  hashPedido                 String
+  salarioSubstitutivoCentavos Int
+  snapshotFolha               Json
+  snapshotDespesa             Json
+  criadoEm                   DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@map("folha_retificacoes_teste")
+}
+
+enum EstadoLoteFolhaPix {
+  PREPARADO
+  CONFERIDO
+  INVALIDADO
+  ENVIADO
+  PAGO
+  INCERTO
 }
 
 /// Preparação local: conferência não autoriza transferência nem quita a folha.
 model FolhaLotePix {
+  estado          EstadoLoteFolhaPix @default(PREPARADO)
+  enviadoEm       DateTime? @db.Timestamptz(3)
+  referenciaBancaria String?
+  invalidadoEm    DateTime? @db.Timestamptz(3)
+  motivoInvalidacao String?
   id              String   @id @default(cuid())
   competencia     String
   revisao         String
@@ -1867,9 +1912,11 @@ model FolhaLotePix {
 enum StatusDespesa {
   PENDENTE
   PAGA
+  ANULADA_TESTE
 }
 
 model Despesa {
+  retificacaoFolhaTeste FolhaRetificacaoTeste?
   vinculosExternos VinculoDespesaExterna[]
   id               String        @id @default(cuid())
   descricao        String

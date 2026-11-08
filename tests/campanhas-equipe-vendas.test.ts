@@ -11,7 +11,7 @@ it("bônus entra na folha do primeiro mês ainda aberto, com a pessoa travada", 
   const criar = vi.fn(async ({ data }) => ({ id: "l1", ...data }));
   const lock = vi.fn(async () => [{ id: "p1" }]);
   const tocar = vi.fn(async () => 1);
-  const tx = { $queryRaw: lock, $executeRaw: tocar, folhaPagamento: { findUnique: async ({ where }: { where: { competencia_pessoaId: { competencia: string } } }) => fechadas.has(where.competencia_pessoaId.competencia) ? { id: "f" } : null }, folhaLancamento: { create: criar } };
+  const tx = { $queryRaw: lock, $executeRaw: tocar, folhaPagamento: { findFirst: async ({ where }: { where: { competencia: string; ativa: boolean } }) => fechadas.has(where.competencia) && where.ativa ? { id: "f" } : null }, folhaLancamento: { create: criar } };
   const l = await lancarBonusNaFolha(tx as never, { pessoaId: "p1", valorCentavos: 5000, descricao: "Bônus", porId: "u", fuso: "America/Sao_Paulo" });
   vi.useRealTimers();
   expect(lock).toHaveBeenCalledTimes(2);

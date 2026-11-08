@@ -23,14 +23,14 @@ Com escritores parados: backup, restauração isolada, comparação dos dados/sc
 | Durante/depois de iniciar migração | Containers do projeto, exceto banco, parados; marcador permanece | Recuperação manual; sem banco ou imagem anterior automática |
 | Parada/controle não confirmado | Estado incerto registrado, sem sucesso | Conferir host/conexões e impedir ingresso antes de avançar |
 
-Rollback sem migração reaplica todo `CONTROLES_PUBLICACAO`, mesmo se `.env` antigo permitia envios/IA. Mensagens, IA, campanhas, push, cobrança/emissão e Meta permanecem bloqueados, maquininha manual. Exige imagem e flags do container. É retorno restrito, não retomada de todos os serviços. Depois de iniciar uma migração, leitura do Prisma anterior não prova escrita compatível e não autoriza retorno.
+Rollback sem migração reaplica todo `CONTROLES_PUBLICACAO`, mesmo se `.env` antigo permitia envios/IA. Mensagens operacionais, execução de IA, campanhas, push, cobrança/emissão automáticas e Meta permanecem bloqueados, maquininha manual. A exceção já autorizada de códigos de login solicitados pelos próprios clientes permanece conforme `OTP_PROVIDER`; esse controle não significa zero mensagens. O lote Pix continua sem ação de envio no contrato compilado. Pagamentos manuais não são autorizados por uma publicação nem ficam bloqueados apenas pelo flag de emissão automática. Exige imagem e flags do container. É retorno restrito, não retomada de todos os serviços. Depois de iniciar uma migração, leitura do Prisma anterior não prova escrita compatível e não autoriza retorno.
 
 ## Recuperar após migração ou restaurar dados
 
 1. Preservar operação, marcador, imagens/configuração e banco pós-falha. Não editar `_prisma_migrations`, checksums ou usar `migrate resolve` sem diagnóstico específico.
 2. Isolar ingresso e todos os escritores: app, cron/jobs externos, Evolution/webhooks, worker e backup. Rever conexões, redes e portas. Efeitos em voo podem ter concluído no fornecedor depois da parada.
 3. Restaurar **dump + `.manifesto.json` + `.studio.tar.gz`** para banco e volume novos. `backup.sh restaurar` recusa destino existente e não troca produção. Cópias antigas sem manifesto não passam no novo verificador; somente inspeção isolada por plano próprio, sem prova retroativa inventada.
-4. Comparar todas as tabelas/linhas, migrações, colunas, constraints, índices, triggers, funções, privilégios e definições de sequência. Conferir valores de sequência restaurados e novos IDs: valores não transacionais vêm do dump, não de comparação ao snapshot vivo. Sondas UPDATE/DELETE/TRUNCATE da auditoria só no restaurado, com rollback.
+4. Comparar todas as tabelas/linhas, migrações, colunas, constraints, índices, triggers, funções, privilégios, enums e definições de sequência. Conferir `last_value/is_called` restaurados contra os blocos `SEQUENCE SET` do próprio dump autenticado pelo SHA; formato desconhecido ou sequência sem estado falha fechada. Esses valores não transacionais não são comparados ao snapshot ou à fonte viva. Sondas UPDATE/DELETE/TRUNCATE da auditoria só no restaurado, com rollback; o ensaio sintético também confere o próximo ID.
 5. Materializar mídia em volume novo e conferir referência/hash. Não extrair sobre o volume vivo nem trocar só o banco mantendo mídia de outra geração.
 6. Validar app sem ingresso/credenciais externas, com `BARBEROS_QUARENTENA_RESTAURACAO=true`, transportes simulados e rotinas bloqueadas. Quarentena não substitui isolamento. Para escrita funcional, liberar temporariamente só a cópia isolada, sem rede externa e com fornecedores falsos. Testar agenda/comanda/fechamento/estorno/folha; `SELECT 1`/`findFirst` não bastam.
 7. Reconciliar eventos desde o backup: pagamentos, links, estornos, Pix, mensagens e origem. Consultar resultados incertos sem repetir cobrança/transferência. Preservar dados novos e preferir corrigir para frente quando necessário.
@@ -43,11 +43,21 @@ Rollback sem migração reaplica todo `CONTROLES_PUBLICACAO`, mesmo se `.env` an
 
 O grupo estrutural `enums` confere esquema/nome e a sequência dos labels pela ordem semântica do PostgreSQL; OIDs e números internos de ordenação não são persistidos, pois podem mudar no restore. Alterar um label não default deve falhar mesmo com a tabela que usa o enum vazia. A prova local renomeia esse label somente no restauro sintético, exige rejeição, reverte e compara novamente.
 
+O aceite do publicador exige os oito grupos estruturais: colunas, constraints, índices, triggers, funções, sequências, enums e privilégios. O ensaio Linux/Docker usa o verificador empacotado na imagem, com enum não default, tabela vazia, valor trocado sem mudar a contagem, sequência alterada, trigger removido, auditoria imutável, mídia obrigatória e escrita real entre exportação do snapshot e dump. A implementação dos testes não substitui sua execução aprovada no CI da revisão.
+
+A leitura dos estados de sequência reconhece os comandos produzidos por [`dumpSequenceData` do PostgreSQL16](https://github.com/postgres/postgres/blob/REL_16_STABLE/src/bin/pg_dump/pg_dump.c), nos blocos `SEQUENCE SET`. Não executa SQL extraído do arquivo; usa apenas nome escapado, inteiro decimal e booleano para consultas de conferência no banco restaurado.
+
 Manifestos anteriores sem `enums` não certificam essa estrutura. Os conjuntos de grupos precisam corresponder nos dois lados; não há fallback que ignore o grupo. Preserve os backups antigos e use o procedimento/leitor da versão correspondente para inspeção isolada, sem atribuir uma validação que não foi feita. Uma nova publicação exige gerar backup com comparador e manifesto compatíveis e validar sua restauração antes da migração.
 
 Diferenças de CHECK só passam por comparador restrito de associatividade AND/OR, preservando folhas/precedência. Expressão desconhecida falha fechada; não é provador geral SQL. Roles/configuração do cluster não voltam só com dump; validar grants/owners no destino.
 
 O backup mede espaço de dados por montagem somente leitura para `stat/statvfs`, sem copiar PostgreSQL físico vivo nem acessar socket Docker. Reserva dump, clone e criptografia. Dump, manifesto e mídias são criptografados para cópia externa; falha conserva arquivos locais. Senha/configuração precisam de cofre separado. Sem bucket, backup local pode passar, mas não protege contra perda da VPS.
+
+## Atualização de folha com versões
+
+As migrações da estabilização têm lista nominal fechada; não liberar por prefixo, quantidade de pastas ou aparência de alteração “aditiva”. Comparar nomes/checksums com o inventário atual, conferir contagens de conflitos sem expor pessoas e aplicar primeiro à restauração isolada. Índices novos podem falhar por duplicatas; não escolher nem apagar registros automaticamente.
+
+A retificação conserva o fechamento anterior e permite uma substituta ativa. Isso muda a semântica das antigas chaves únicas e pode gravar estados que o binário anterior não conhece. Depois de iniciar a migração, manter a regra de quarentena e recuperação manual, ainda que tabelas/colunas tenham sido apenas acrescentadas. Após uma retificação, não retornar automaticamente ao aplicativo antigo; corrigir para frente com código compatível ou apresentar restauração coerente anterior às novas gravações, com reconciliação e aprovação específicas. Não usar `migrate resolve`, editar checksums ou remover a original para facilitar o retorno.
 
 ## Aceite para futura publicação
 

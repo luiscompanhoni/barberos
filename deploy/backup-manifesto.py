@@ -44,7 +44,7 @@ def criar(banco, dump, manifesto):
                 os.fsync(destino.fileno())
             referencia = {"formato": 1, "dumpSha256": hash_arquivo(dump), "snapshotConsistente": True,
                           **conferencia.capturar(banco, snapshot),
-                          "limites": "Sem valores de dados no manifesto; estado de sequências vem do dump, suas definições são comparadas."}
+                          "limites": "Sem valores de dados no manifesto; definições de sequências são comparadas e estados restaurados são conferidos contra os SETVAL do próprio dump, não contra a fonte viva."}
             with open(manifesto, "x", encoding="utf8", opener=lambda p, f: os.open(p, f | os.O_NOFOLLOW, 0o600)) as f:
                 json.dump(referencia, f, ensure_ascii=False, sort_keys=True)
                 f.flush()
@@ -90,11 +90,12 @@ def verificar(banco, dump, manifesto):
         raise RuntimeError("Manifesto não corresponde ao snapshot do dump.")
     restaurado = conferencia.capturar(banco)
     conferencia.comparar(referencia, restaurado)
+    sequencias = conferencia.conferir_sequencias(banco, dump, referencia["estrutura"].get("sequencias", []))
     auditoria = "public.auditoria" in referencia["tabelas"]
     if auditoria:
         conferencia.testar_auditoria(banco)
     return {"formato": 1, "dumpSha256": referencia["dumpSha256"], "tabelas": len(restaurado["tabelas"]),
-            "linhasIguais": True, "estruturaIgual": True, "auditoriaImutavelTestada": auditoria}
+            "linhasIguais": True, "estruturaIgual": True, "sequenciasConferidasComDump": sequencias, "auditoriaImutavelTestada": auditoria}
 
 
 if __name__ == "__main__":

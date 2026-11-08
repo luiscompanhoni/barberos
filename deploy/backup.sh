@@ -148,6 +148,9 @@ case "${1:-loop}" in
     if [ -n "$MIDIAS" ]; then
       python3 "$SCRIPT_MIDIAS" restaurar "$arq" barberos_restaurado "${arq%.sql.gz}.studio.tar.gz" "${arq%.sql.gz}-midias-restauradas" || exit 1
       log "midias restauradas numa pasta nova ao lado do dump; volume de producao nao foi alterado"
+    elif ! python3 "$SCRIPT_MIDIAS" exigir-vazio "$arq" barberos_restaurado - >/dev/null 2>&1; then
+      log "ERRO: banco possui mídias; configure BACKUP_ESTUDIO_MEDIA e confira o arquivo pareado. Banco parcial preservado."
+      exit 1
     fi
     log "restaurado no banco barberos_restaurado (a producao nao foi tocada). Para trocar, siga o README (Restaurar um backup)." ;;
   *) echo "uso: backup.sh loop | agora | verificar ARQUIVO | restaurar ARQUIVO"; exit 2 ;;

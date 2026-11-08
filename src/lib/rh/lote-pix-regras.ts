@@ -9,6 +9,7 @@ export const zRevisaoPix = z.string().regex(/^[a-f0-9]{64}$/);
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
 export type FolhaParaPix = {
+  ativa?: boolean; versao?: number;
   id: string; pessoaId: string; status: string; criadoEm: Date;
   salarioCentavos: number; comissaoCentavos: number; adicionaisCentavos: number; descontosCentavos: number; liquidoCentavos: number;
   pessoa: { nome: string; ativo: boolean; revisaoPix: number } & CadastroPixProtegido;
@@ -16,9 +17,9 @@ export type FolhaParaPix = {
 
 export function planejarLotePix(competencia: string, folhas: FolhaParaPix[]) {
   zCompetenciaPix.parse(competencia);
-  const ordenadas = [...folhas].sort((a, b) => a.id.localeCompare(b.id));
+  const ordenadas = folhas.filter(f => f.ativa !== false).sort((a, b) => a.id.localeCompare(b.id));
   const estado = ordenadas.map(f => ({
-    id: f.id, pessoaId: f.pessoaId, status: f.status, criadoEm: f.criadoEm.toISOString(),
+    id: f.id, pessoaId: f.pessoaId, versao: f.versao ?? 1, status: f.status, criadoEm: f.criadoEm.toISOString(),
     salario: f.salarioCentavos, comissao: f.comissaoCentavos, adicionais: f.adicionaisCentavos,
     descontos: f.descontosCentavos, liquido: f.liquidoCentavos,
     nome: f.pessoa.nome, ativo: f.pessoa.ativo, revisaoPix: f.pessoa.revisaoPix,

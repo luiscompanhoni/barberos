@@ -1,9 +1,11 @@
 import copy
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import arquivar_workers as a
 
@@ -81,6 +83,139 @@ class ArquivarWorkersTest(unittest.TestCase):
             for nome, checksum in (("../workers-1.tar.gz", "a" * 64), ("workers-1.tar.gz", "x")):
                 with self.assertRaises(RuntimeError): a.concluir(Path("/opt/barberos"), "barberos", self.ids[0], nome, checksum)
             cmd.assert_not_called()
+
+
+class ArquivarAlvoTest(unittest.TestCase):
+    def setUp(self):
+        self.alvo = next(iter(a.ALVOS))
+        self.tag = a.tags_alvo(self.alvo)[0]
+        self.id, self.tamanho = a.ALVOS[self.alvo]
+        self.lista = [{"tag": self.tag, "id": self.id, "bytesImagem": self.tamanho}]
+        self.retrato = {"imagens": [self.id + " " + self.tag, "atual worker:8a5566d", "anterior worker:0367",
+                                    "anterior worker:deb1", "atual app:atual"],
+                        "containers": ["app atual running", "db banco running"], "volumes": ["pg", "media"],
+                        "arquivos": {"backup.sql.gz": "hash", "arquivo-anterior.tar.gz": "hash-archive", ".env": "hash-env"}}
+
+    def registro(self, base):
+        pasta = base / "worker-archives"
+        pasta.mkdir()
+        arquivo = pasta / "workers-123.tar.gz"
+        arquivo.write_bytes(b"arquivo ficticio")
+        r = {"formato": 2, "alvo": self.alvo, "imagemApp": a.APP_ESPERADO, "arquivo": arquivo.name,
+             "sha256": a.soma(arquivo), "bytes": arquivo.stat().st_size, "imagens": self.lista,
+             "antes": self.retrato, "livreAntes": 2 * 1024**3}
+        a.gravar_json(pasta / (arquivo.name + ".json"), r)
+        a.gravar_json(pasta / ("alvo-" + self.alvo + ".json"),
+                      {"alvo": self.alvo, "arquivo": arquivo.name, "sha256": r["sha256"], "concluido": False})
+        return arquivo, r
+
+    def processo(self, dados=b"tar sintetico"):
+        return SimpleNamespace(stdout=io.BytesIO(dados), kill=Mock(), poll=Mock(return_value=0), wait=Mock(return_value=0))
+
+    def test_tres_alvos_exatos_com_ids_completos_e_tamanhos_sem_ampliar_o_legado(self):
+        self.assertEqual(len(a.ALVOS), 3)
+        self.assertEqual(a.tags_alvo(), a.TAGS)
+        for alvo, (id, tamanho) in a.ALVOS.items():
+            imagem = {"Id": id, "Size": tamanho, "RepoTags": a.tags_alvo(alvo)}
+            with self.subTest(alvo=alvo), patch.object(a, "cmd", side_effect=["", json.dumps([imagem])]) as cmd:
+                self.assertEqual(a.candidatos(alvo), [{"tag": a.tags_alvo(alvo)[0], "id": id, "bytesImagem": tamanho}])
+                self.assertEqual(cmd.call_args.args[0], ["docker", "image", "inspect", *a.tags_alvo(alvo)])
+        for invalido in ("8a5566d", self.alvo + "," + list(a.ALVOS)[1], "legado-f7968a11"):
+            with self.assertRaises(RuntimeError):
+                a.tags_alvo(invalido)
+
+    def test_worker_usa_id_completo_tamanho_e_tag_unica_e_recusa_container_parado(self):
+        imagem = {"Id": self.id, "Size": self.tamanho, "RepoTags": [self.tag]}
+        for alteracao in ({"Id": self.id[:-1] + "0"}, {"Size": self.tamanho - 1}, {"RepoTags": [self.tag, "outra:tag"]}):
+            with self.subTest(alteracao=alteracao), patch.object(a, "cmd", side_effect=["", json.dumps([{**imagem, **alteracao}])]), self.assertRaises(RuntimeError):
+                a.candidatos(self.alvo)
+        with patch.object(a, "cmd", side_effect=["parado", json.dumps([{"Image": self.id}]), json.dumps([imagem])]), self.assertRaisesRegex(RuntimeError, "em uso"):
+            a.candidatos(self.alvo)
+
+    def test_app_diferente_do_inventario_bloqueia_antes_de_docker(self):
+        with patch.object(a, "cmd") as cmd, self.assertRaisesRegex(RuntimeError, "Imagem atual"):
+            a.preparar(Path("nao-acessar"), "barberos", "sha256:" + "a" * 64, self.alvo)
+        cmd.assert_not_called()
+
+    def test_retrato_inclui_todos_backups_e_archives_anteriores(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            (base / ".env").write_text("fixture")
+            for nome in ("backups/antigo.enc", "backups/sub/outro.backup", "worker-archives/antigo.tar.gz", "worker-archives/antigo.json"):
+                p = base / nome
+                p.parent.mkdir(exist_ok=True, parents=True)
+                p.write_text("preservar")
+            with patch.object(a, "cmd", return_value=""):
+                r = a.retrato(base)
+            self.assertEqual(len(r["arquivos"]), 5)
+            self.assertIn(str(base / "backups/sub/outro.backup"), r["arquivos"])
+
+    def test_limite_final_inclui_rodape_gzip_e_falha_sem_descarregar_imagem(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            anterior = base / "preservar.tar.gz"
+            anterior.write_bytes(b"anterior")
+            with patch.object(a, "conferir_app"), patch.object(a, "candidatos", return_value=self.lista), \
+                 patch.object(a, "retrato", return_value=self.retrato), patch.object(a.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024**3)), \
+                 patch.object(a.subprocess, "Popen", return_value=self.processo(b"")), patch.object(a, "MAX_ARQUIVO_BYTES", 10), \
+                 patch.object(a, "cmd") as cmd, self.assertRaisesRegex(RuntimeError, "Limite"):
+                a.preparar(base, "barberos", a.APP_ESPERADO, self.alvo)
+            cmd.assert_not_called()
+            self.assertEqual(anterior.read_bytes(), b"anterior")
+            self.assertFalse(list((base / "worker-archives").iterdir()))
+
+    def test_reserva_cai_no_final_do_save_e_impede_conclusao(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            espacos = [SimpleNamespace(free=2 * 1024**3), SimpleNamespace(free=2 * 1024**3), SimpleNamespace(free=0)]
+            with patch.object(a, "conferir_app"), patch.object(a, "candidatos", return_value=self.lista), \
+                 patch.object(a, "retrato", return_value=self.retrato), patch.object(a.shutil, "disk_usage", side_effect=espacos), \
+                 patch.object(a.subprocess, "Popen", return_value=self.processo(b"")), patch.object(a, "cmd") as cmd, self.assertRaisesRegex(RuntimeError, "reserva"):
+                a.preparar(base, "barberos", a.APP_ESPERADO, self.alvo)
+            cmd.assert_not_called()
+            self.assertFalse(list((base / "worker-archives").iterdir()))
+
+    def test_preparo_registrado_impede_novo_preparo_do_mesmo_alvo(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            with patch.object(a, "conferir_app"), patch.object(a, "candidatos", return_value=self.lista), \
+                 patch.object(a, "retrato", return_value=self.retrato), patch.object(a.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024**3)), \
+                 patch.object(a.subprocess, "Popen", return_value=self.processo()) as save:
+                r = a.preparar(base, "barberos", a.APP_ESPERADO, self.alvo)
+                with self.assertRaisesRegex(RuntimeError, "já preparado"):
+                    a.preparar(base, "barberos", a.APP_ESPERADO, self.alvo)
+                save.assert_called_once()
+            self.assertEqual(r["alvo"], self.alvo)
+            self.assertEqual(r["imagens"], self.lista)
+
+    def test_limites_antes_de_remover_preservam_o_arquivo_e_tag(self):
+        for livre, maximo in ((0, a.MAX_ARQUIVO_BYTES), (3 * 1024**3, 1)):
+            with self.subTest(livre=livre), tempfile.TemporaryDirectory() as d:
+                arquivo, r = self.registro(Path(d))
+                with patch.object(a.shutil, "disk_usage", return_value=SimpleNamespace(free=livre)), \
+                     patch.object(a, "MAX_ARQUIVO_BYTES", maximo), patch.object(a, "cmd") as cmd, self.assertRaisesRegex(RuntimeError, "Limite"):
+                    a.concluir(Path(d), "barberos", a.APP_ESPERADO, arquivo.name, r["sha256"], self.alvo)
+                cmd.assert_not_called()
+                self.assertTrue(arquivo.is_file())
+
+    def test_conclusao_remove_so_a_tag_escolhida_preserva_outras_e_recusa_repeticao(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            arquivo, r = self.registro(base)
+            depois = copy.deepcopy(self.retrato)
+            depois["imagens"].remove(self.id + " " + self.tag)
+            with patch.object(a, "conferir_app"), patch.object(a, "candidatos", return_value=self.lista), \
+                 patch.object(a, "retrato", side_effect=[self.retrato, depois]), \
+                 patch.object(a.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024**3)), patch.object(a, "cmd") as cmd:
+                resultado = a.concluir(base, "barberos", a.APP_ESPERADO, arquivo.name, r["sha256"], self.alvo)
+                cmd.assert_called_once_with(["docker", "image", "rm", self.tag])
+                with self.assertRaisesRegex(RuntimeError, "já concluído"):
+                    a.concluir(base, "barberos", a.APP_ESPERADO, arquivo.name, r["sha256"], self.alvo)
+                cmd.assert_called_once()
+            self.assertTrue(arquivo.is_file())
+            self.assertTrue(resultado["concluido"])
+            self.assertFalse(resultado["espacoRecuperadoPrometido"])
+            self.assertTrue(json.loads((base / "worker-archives" / ("alvo-" + self.alvo + ".json")).read_text())["concluido"])
 
 
 if __name__ == "__main__": unittest.main()

@@ -64,7 +64,7 @@ export async function salvarFicha(s: Sessao, id: string, d: FichaEntrada) {
     let vigencia: string | undefined;
     if (p.salarioCentavos !== d.salarioCentavos || d.competenciaSalario !== undefined) {
       vigencia = competenciaSalario(d.competenciaSalario);
-      if (await tx.folhaPagamento.count({ where: { pessoaId: id, competencia: vigencia, status: { in: ["FECHADA", "PAGA"] } } })) {
+      if (await tx.folhaPagamento.count({ where: { pessoaId: id, competencia: vigencia, ativa: true, status: { in: ["FECHADA", "PAGA"] } } })) {
         throw new ErroNegocio("Essa competência já tem folha fechada. Escolha uma competência posterior.", 409, "folha_fechada");
       }
       await garantirBaselineRemuneracao(tx, `salario:${id}`, { salarioCentavos: p.salarioCentavos }, s.usuarioId);

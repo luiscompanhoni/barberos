@@ -19,7 +19,7 @@ export async function aprovarBonus(s: Sessao, pessoaId: string, competencia: str
     await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ${pessoaId} FOR UPDATE`;
     const anterior = await tx.desempenhoBonus.findUnique({ where: { pessoaId_competencia: { pessoaId, competencia } } });
     if (anterior) return { id: anterior.id, jaAprovado: true };
-    if (await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia, pessoaId } } })) throw new ErroNegocio("A folha já foi fechada. Nenhum bônus será acrescentado ao histórico fechado.", 409);
+    if (await tx.folhaPagamento.findFirst({ where: { competencia, pessoaId, ativa: true } })) throw new ErroNegocio("A folha já foi fechada. Nenhum bônus será acrescentado ao histórico fechado.", 409);
     const r = await resumoPessoa(pessoaId, competencia, tx);
     if (!r.regraId || !r.resultado.elegivel) throw new ErroNegocio("O bônus ainda não está elegível. Confira os critérios e pendências.", 409, "bonus_pendente", { pendencias: r.resultado.pendencias, criterios: r.resultado.criterios });
     if (!r.resultado.bonusCentavos && !r.resultado.pontos) throw new ErroNegocio("A faixa não tem bônus ou pontos configurados.");

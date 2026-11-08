@@ -5,7 +5,7 @@ const m = vi.hoisted(() => ({ registros: new Map<string, Registro>(), caixa: vi.
 vi.mock("@/lib/auditoria", () => ({ auditar: m.auditoria }));
 vi.mock("@/lib/financeiro/caixa", () => ({ movimentarCaixaNaTransacao: m.caixa }));
 vi.mock("@/lib/db", () => {
-  const tx = { $queryRaw: async () => [{ id: "pessoa1" }], $executeRaw: m.toque, auditoria: { findFirst: m.historico }, checklistPessoa: { findUnique: async () => ({ id: "pessoa1", nome: "Pessoa sintética" }) }, folhaPagamento: { findUnique: m.fechada }, folhaLancamento: { findUnique: async ({ where }: { where: { id: string } }) => m.registros.get(where.id) ?? null, create: m.criar } };
+  const tx = { $queryRaw: async () => [{ id: "pessoa1" }], $executeRaw: m.toque, auditoria: { findFirst: m.historico }, checklistPessoa: { findUnique: async () => ({ id: "pessoa1", nome: "Pessoa sintética" }) }, folhaPagamento: { findFirst: m.fechada }, folhaLancamento: { findUnique: async ({ where }: { where: { id: string } }) => m.registros.get(where.id) ?? null, create: m.criar } };
   return { db: { $transaction: async (f: (t: typeof tx) => unknown) => f(tx) } };
 });
 import { lancar } from "@/lib/rh/folha";

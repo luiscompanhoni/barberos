@@ -94,3 +94,27 @@ process.stdout.write(JSON.stringify(corpos));
         self.assertEqual(r["migracoes"], [])
         self.assertTrue(r["somenteLeitura"])
         self.assertFalse(any(a in {"stop", "start", "up", "down", "cp", "build", "pull", "prune"} for args in consultas for a in args))
+
+    def test_conflitos_de_migracao_retornam_so_contagens_em_consultas_somente_leitura(self):
+        with patch.object(inspecao, "executar", side_effect=["2", "[]", '{"regrasGeraisDuplicadas":1,"identidadesCongeladasDuplicadas":0}']) as executar:
+            r = inspecao.checagens_estabilizacao("db-fixture")
+        self.assertEqual(r, {"regrasGeraisDuplicadas": 1, "identidadesCongeladasDuplicadas": 0})
+        self.assertTrue(all(call.args[0][-1].startswith("SELECT ") for call in executar.call_args_list))
+        self.assertNotIn("WHERE ativa=true", executar.call_args.args[0][-1])
+        self.assertIn("jsonb_typeof", executar.call_args.args[0][-1])
+        self.assertNotIn("barbeiroId", json.dumps(r))
+        with patch.object(inspecao, "executar", side_effect=["2", "[]", '{"nome":"privado"}']):
+            self.assertIsNone(inspecao.checagens_estabilizacao("db-fixture"))
+        with patch.object(inspecao, "executar", return_value=None):
+            self.assertIsNone(inspecao.checagens_estabilizacao("db-fixture"))
+
+    def test_pos_retificacao_considera_so_ativas_e_prioriza_identidade_congelada(self):
+        colunas = '["ativa","barbeiroIdCongelado"]'
+        with patch.object(inspecao, "executar", side_effect=["2", colunas, '{"regrasGeraisDuplicadas":0,"identidadesCongeladasDuplicadas":0}']) as executar:
+            self.assertEqual(inspecao.checagens_estabilizacao("db-fixture"), {"regrasGeraisDuplicadas": 0, "identidadesCongeladasDuplicadas": 0})
+        sql = executar.call_args.args[0][-1]
+        self.assertIn("FROM public.folha_pagamentos WHERE ativa=true", sql)
+        self.assertIn('COALESCE(NULLIF("barbeiroIdCongelado",\'\'),CASE WHEN jsonb_typeof', sql)
+        with patch.object(inspecao, "executar", side_effect=["2", '["campo_nao_permitido"]']) as executar:
+            self.assertIsNone(inspecao.checagens_estabilizacao("db-fixture"))
+            self.assertEqual(executar.call_count, 2)

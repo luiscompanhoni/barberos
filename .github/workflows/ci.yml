@@ -87,7 +87,7 @@ jobs:
         run: |
           set -euo pipefail
           # Mesma role restrita dos fluxos; somente o superusuário do serviço cria bancos.
-          for banco in barberos_ci_local_seguranca_estabilizacao barberos_estabilizacao_agenda_ci_20261108 barberos_estabilizacao_despesas_ci_20261108 barberos_ci_local_estabilizacao_ci_20261108 barberos_ci_local_estabilizacao_vinculos_ci_20261108; do
+          for banco in barberos_ci_local_seguranca_estabilizacao barberos_estabilizacao_agenda_ci_20261108 barberos_estabilizacao_despesas_ci_20261108 barberos_ci_local_estabilizacao_ci_20261108 barberos_ci_local_estabilizacao_vinculos_ci_20261108 barberos_ci_local_estabilizacao_retificacao_ci_20261108; do
             docker exec "$POSTGRES_SERVICO" createdb -U barberos --owner=auditoria_teste "$banco"
             DATABASE_URL="postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/$banco" ./node_modules/.bin/prisma migrate deploy
           done
@@ -136,6 +136,10 @@ jobs:
           TESTE_ESTABILIZACAO_FINANCEIRO_LOCAL=1 ./node_modules/.bin/vitest run tests/estabilizacao-folha-vinculos-banco.test.ts \
             --maxWorkers=1 --reporter=json --outputFile="$RUNNER_TEMP/estabilizacao-folha-vinculos.json"
           conferir_resultado "$RUNNER_TEMP/estabilizacao-folha-vinculos.json" 6
+          export DATABASE_URL="postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_estabilizacao_retificacao_ci_20261108"
+          TESTE_ESTABILIZACAO_FINANCEIRO_LOCAL=1 ./node_modules/.bin/vitest run tests/estabilizacao-folha-retificacao-banco.test.ts \
+            --maxWorkers=1 --reporter=json --outputFile="$RUNNER_TEMP/estabilizacao-folha-retificacao.json"
+          conferir_resultado "$RUNNER_TEMP/estabilizacao-folha-retificacao.json" 10
           export DATABASE_URL="postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_seguranca_estabilizacao"
           ./node_modules/.bin/tsx scripts/teste-seguranca-estabilizacao.ts
           ./node_modules/.bin/tsx scripts/teste-seguranca-pix-estabilizacao.ts

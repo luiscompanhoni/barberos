@@ -188,7 +188,7 @@ describe.skipIf(!ativo)("estabilização financeira no PostgreSQL sintético", (
     const r = await corridaPausada("rh_lancamento_excluir", () => excluirLancamento(s, l.id), () => fecharFolha(s, "2026-11", p.id, previa.revisao), "pessoa");
     expect(r[0].status).toBe("fulfilled");
     expect(r[1]).toMatchObject({ status: "rejected", reason: { codigo: "folha_mudou", status: 409 } });
-    const f = await db.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: "2026-11", pessoaId: p.id } } });
+    const f = await db.folhaPagamento.findFirst({ where: { competencia: "2026-11", pessoaId: p.id, ativa: true } });
     const permanece = !!await db.folhaLancamento.findUnique({ where: { id: l.id } });
     expect(f).toBeNull(); expect(permanece).toBe(false);
     expect((await db.checklistPessoa.findUniqueOrThrow({ where: { id: p.id } })).revisaoPix).toBe(p.revisaoPix);
@@ -198,7 +198,7 @@ describe.skipIf(!ativo)("estabilização financeira no PostgreSQL sintético", (
     await fecharFolha(s, "2026-11", p.id, previa.revisao);
     const r = await corridaPausada("rh_folha_paga", () => pagarFolha(s, "2026-11", p.id, "PIX"), () => reabrirFolha(s, "2026-11", p.id), "pessoa");
     expect(r[0].status).toBe("fulfilled"); expect(r[1]).toMatchObject({ status: "rejected", reason: { codigo: "ja_paga" } });
-    const f = await db.folhaPagamento.findUniqueOrThrow({ where: { competencia_pessoaId: { competencia: "2026-11", pessoaId: p.id } } });
+    const f = await db.folhaPagamento.findFirstOrThrow({ where: { competencia: "2026-11", pessoaId: p.id, ativa: true } });
     expect(f.status).toBe("PAGA"); expect(f.despesaId).not.toBeNull();
     expect(await db.despesa.count({ where: { id: f.despesaId! } })).toBe(1);
   });
