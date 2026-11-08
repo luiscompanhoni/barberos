@@ -14,18 +14,20 @@ import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { noAr } from "@/lib/jogos/motor";
 import { notificarCliente } from "@/lib/whatsapp/conversas";
 import { CHAVES_SEGMENTO, montarMensagem, segmentosDoCliente, SEGMENTOS, type Segmento } from "./regras";
+import { impedimentoCampanha } from "./contato";
+import { INTERVALO_CAMPANHAS_MS, migracaoDoCliente, reservarContatoCampanha } from "./reservar-contato";
 
 /** Quantas mensagens de campanha saem por rodada da rotina (a cada 5 min), somando todas: espalha o envio. */
 const MAX_POR_RODADA = 20;
 /** Marcou ate X dias depois de receber = conta como resultado da campanha. */
 const JANELA_RESULTADO_DIAS = 14;
 
-type ClienteBase = { id: string; aceitaMensagens: boolean; temFuturo: boolean; ultima: number | null; segmentos: Segmento[] };
+type ClienteBase = { id: string; aceitaMensagens: boolean; bloqueado: boolean; temFuturo: boolean; ultima: number | null; segmentos: Segmento[] };
 
 /** Cada cliente com os segmentos em que esta, se aceita mensagens e se ja tem horario marcado. */
 async function base(agora: number): Promise<ClienteBase[]> {
   const [clientes, visitas, assinaturas, futuros] = await Promise.all([
-    db.cliente.findMany({ select: { id: true, aceitaMensagens: true } }),
+    db.cliente.findMany({ select: { id: true, aceitaMensagens: true, excluidoEm: true, conversa: { select: { estado: true, recusaAutomaticas: true } }, assinaturas: migracaoDoCliente } }),
     db.agendamento.groupBy({ by: ["clienteId"], where: { status: "CONCLUIDO" }, _max: { inicio: true }, _min: { inicio: true } }),
     db.assinatura.findMany({ select: { clienteId: true, status: true } }),
     db.agendamento.findMany({ where: { status: { in: ["MARCADO", "CONFIRMADO"] }, inicio: { gt: new Date(agora) } }, select: { clienteId: true }, distinct: ["clienteId"] }),
@@ -40,11 +42,11 @@ async function base(agora: number): Promise<ClienteBase[]> {
   return clientes.map((c) => {
     const ultima = v.get(c.id)?._max.inicio?.getTime() ?? null;
     const primeira = v.get(c.id)?._min.inicio?.getTime() ?? null;
-    return { id: c.id, aceitaMensagens: c.aceitaMensagens, temFuturo: comFuturo.has(c.id), ultima, segmentos: segmentosDoCliente({ ultima, primeira, assinatura: plano.get(c.id) ?? null }, agora) };
+    return { id: c.id, aceitaMensagens: c.aceitaMensagens, bloqueado: !!impedimentoCampanha(c), temFuturo: comFuturo.has(c.id), ultima, segmentos: segmentosDoCliente({ ultima, primeira, assinatura: plano.get(c.id) ?? null }, agora) };
   });
 }
 
-const podeReceber = (c: ClienteBase) => c.aceitaMensagens && !c.temFuturo;
+const podeReceber = (c: ClienteBase) => !c.bloqueado && !c.temFuturo;
 
 /** Tamanho de cada segmento e quantos podem receber agora (aceitam mensagens e nao tem horario marcado). */
 export async function resumoSegmentos(agora = Date.now()) {
@@ -174,24 +176,17 @@ export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?
     const vez = Math.min(c.limiteDiario - hoje, MAX_POR_RODADA - total);
     if (vez <= 0) continue;
     const fila = await db.campanhaEnvio.findMany({
-      where: { campanhaId: c.id, status: "FILA", ...(opts.clienteIds ? { clienteId: { in: opts.clienteIds } } : {}) },
+      where: { campanhaId: c.id, status: "FILA", cliente: { enviosCampanha: { none: { status: "ENVIADO", enviadoEm: { gte: new Date(agora - INTERVALO_CAMPANHAS_MS) } } } }, ...(opts.clienteIds ? { clienteId: { in: opts.clienteIds } } : {}) },
       orderBy: [{ lote: "asc" }, { liberadoEm: "asc" }], take: vez,
-      include: { cliente: { select: { nome: true, telefone: true, aceitaMensagens: true } } },
+      include: { cliente: { select: { nome: true, telefone: true, aceitaMensagens: true, excluidoEm: true, conversa: { select: { estado: true, recusaAutomaticas: true } } } } },
     });
     for (const e of fila) {
-      // Pode ter mudado desde que o lote foi liberado.
-      const marcou = await db.agendamento.count({ where: { clienteId: e.clienteId, status: { in: ["MARCADO", "CONFIRMADO"] }, inicio: { gt: new Date(agora) } } });
-      const pular = !e.cliente.aceitaMensagens ? "Pediu para não receber mensagens." : marcou ? "Já tem horário marcado." : null;
-      // Reserva a linha antes de mandar: duas rodadas ao mesmo tempo nao mandam duas vezes.
-      const ok = await db.campanhaEnvio.updateMany({
-        where: { id: e.id, status: "FILA" },
-        data: pular ? { status: "PULADO", erro: pular } : { status: "ENVIADO", enviadoEm: new Date(agora) },
-      });
-      if (!ok.count || pular) continue;
+      const destino = await reservarContatoCampanha(e.id, e.clienteId, agora);
+      if (!destino) continue;
       total++;
       try {
         const link = e.token ? `${urlSite()}/c/r/${e.token}` : `${urlSite()}/c/agendar`;
-        const r = await notificarCliente(e.cliente.telefone, montarMensagem(c.mensagem, { nome: e.cliente.nome, barbearia: cfg.nomeBarbearia, link }));
+        const r = await notificarCliente(destino.telefone, montarMensagem(c.mensagem, { nome: destino.nome, barbearia: cfg.nomeBarbearia, link }));
         await db.campanhaEnvio.update({
           where: { id: e.id },
           data: { mensagemId: r.mensagemId, ...(r.erro ? { status: "FALHOU" as const, erro: r.erro.slice(0, 300) } : {}) },

@@ -21,6 +21,13 @@ beforeEach(() => {
   m.remarcar.mockResolvedValue({ id: "ag", barbeiroId: "b", assinaturaId: null, precoCentavos: 5000 });
 });
 describe("bot preserva aceite de preço em remarcações de grupo", () => {
+  it("entrega contexto interno com a transferência sem incluir link individual", async () => {
+    const r = await executarFerramenta("chamar_atendente", { motivo: "Conferir mensalidade", resumo: "Cliente relata pagamento. Link https://exemplo.test/secreto. Falta conciliar no gateway." }, { conversaId: "conversa", telefone: "teste", nomePerfil: null });
+    expect(r.passouParaHumano).toBe(true);
+    expect(m.humano).toHaveBeenCalledWith({ where: { id: "conversa" }, data: { estado: "HUMANO" } });
+    expect(m.nota).toHaveBeenCalledWith({ data: { conversaId: "conversa", autor: "NOTA", texto: expect.stringContaining("Falta conciliar no gateway.") } });
+    expect(m.nota.mock.calls[0][0].data.texto).not.toContain("https://");
+  });
   it("encaminha ao app sem inventar aceite ou alterar serviços", async () => {
     const r = await executar();
     expect(r.texto).toContain("conferir o valor total"); expect(r.texto).toContain("https://cliente.example.test/c");

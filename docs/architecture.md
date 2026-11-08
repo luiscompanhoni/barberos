@@ -43,6 +43,8 @@ Asaas, simulado, checkout), `comandas` (estoque, comanda, serviço adicional, ma
 despesas, extrato, conciliação, resumo), `conciliacao` (extratos Celcash e Stone, regras, resultado do mês),
 `estornos`, `crescimento` (espera, indicação, saldo, cashback), `campanhas`, `clientes` (segmentos), `jogos` (motor
 de recompensas), `links` (links de pagamento), `checklist`, `rh`, `indicadores`, `automacoes` (mensagens e `.ics`).
+
+Crescimento preparado em 08/11: `migracao-assinaturas` mantém conferência gerencial versionada; `/crescimento` calcula projeções sem aprovar orçamento; `/calendario-conteudo` usa JSON editorial estático, com sincronização manual. Indicação `ASSINATURA_V2` preserva V1 e reserva crédito de mensalidade sob trava de cliente/ciclo, sem marcar pagamento pela emissão. Flags desligadas por padrão; [ativação, evidências e rollback](implantacao-crescimento-2026-11-08.md).
 Arquivos `regras.ts` guardam lógica pura (testada em `tests/`); `servico.ts`/demais fazem I/O.
 
 ## Fronteiras e fluxo
@@ -410,3 +412,8 @@ O inventário de capacidade também coleta tamanhos agregados de caches do siste
 ### Arquivo reversível de workers históricos
 
 Quando não há cache descartável suficiente, `arquivar-workers-vps.yml` pode conservar em `worker-archives/*.tar.gz` três imagens antigas específicas do worker (55ee09e, 44ef999 e df76e4f), sem containers associados. O procedimento trava a publicação e exige a imagem atual saudável. Exporta com Docker Save, confere SHA-256 do transporte, restaura com Docker Load em executor isolado e confirma IDs e inicialização de Node sem rede antes de descarregar somente essas tags do Docker da VPS, sem force. O arquivo permanece no servidor, com acesso restrito, para recuperar as mesmas imagens. Conserva todas as outras imagens, containers, volumes, configurações e backups de banco/mídia e verifica a preservação. Não usa system/image/volume prune, não muda a reserva do publicador e não publica a aplicação. O relatório pequeno comprova a restauração; o arquivo grande não é enviado como artifact do GitHub.
+## Recepção multimodal — preparação local
+
+Os ajustes de atendimento, consulta de cobrança e presentes, transferência e planos de 08/11 estão em [implantacao-atendimento-2026-11-08.md](implantacao-atendimento-2026-11-08.md). A contratação exclusiva da recepção usa `Plano.vendaSomenteEquipe`, independente da visibilidade, com migração expansiva e ativação individual após publicar todos os processos. Cadência de migração e piloto estão descritos separadamente; não são rotinas já ativadas.
+
+Entrada de mídia autenticada por ID, transcrição local opcional e visão no cliente Anthropic existente estão descritas em [atendimento-black.md](atendimento-black.md). `WHATSAPP_MIDIA_ATIVA` começa desligada e não altera os bloqueios de envio/IA/piloto. Nenhuma publicação foi feita. O manual de 18 procedimentos entra no prompt; cancelamento no CashBarber exige confirmação da equipe e não promete encerramento da cobrança. A revisão direta do WhatsApp ampliou exemplos de conciliação, acesso e remarcação, com cobertura parcial registrada no guia.

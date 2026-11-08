@@ -105,6 +105,18 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
   });
   if (!resultado) return null;
   const { assinatura, salva, status } = resultado;
+  // O pagamento já foi persistido. Divergência no crédito vai para revisão,
+  // sem transformar uma emissão conhecida em nova tentativa de cobrança.
+  try {
+    const { confirmarCreditoNaCobranca } = await import("@/lib/crescimento/credito-assinatura");
+    await confirmarCreditoNaCobranca(salva);
+  } catch (e) {
+    console.error("[assinaturas] crédito da mensalidade em conferência", e instanceof Error ? e.name : "falha");
+  }
+  if (cob.status === "ESTORNADA") {
+    const { revisarIndicacaoEstornada } = await import("@/lib/crescimento/indicacao-assinatura");
+    await revisarIndicacaoEstornada(salva.id);
+  }
   if (status === "CANCELADA") return { de: "CANCELADA" as const, para: "CANCELADA" as const };
   if (status === "ATIVA" && assinatura.status === "PENDENTE") {
     const { aplicarPlanoAosFuturos } = await import("./agenda");

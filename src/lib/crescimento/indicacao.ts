@@ -12,6 +12,8 @@ import { urlSite } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { gerarCodigoIndicacao, normalizarCodigo, TEXTOS } from "./regras";
 import { disponiveis } from "./saldo";
+import { converterIndicacoesAssinatura, registrarIndicacaoAssinatura } from "./indicacao-assinatura";
+import { indicacaoAssinaturaHabilitada, limiteIndicacaoAssinatura, PREMIO_INDICADO, PREMIO_INDICADOR, REGRA_INDICACAO_ASSINATURA, VALIDADE_INDICACAO_DIAS } from "./indicacao-assinatura-regras";
 
 export const COOKIE_INDICACAO = "barberos_indicacao";
 
@@ -35,6 +37,10 @@ export async function codigoDoCliente(clienteId: string) {
 export async function painelDeIndicacao(clienteId: string) {
   const cfg = await configuracao();
   if (!cfg.indicacaoAtiva) return { ativa: false as const };
+  const assinatura = indicacaoAssinaturaHabilitada();
+  if (assinatura && !limiteIndicacaoAssinatura()) return { ativa: false as const };
+  const premioIndicadorCentavos = assinatura ? PREMIO_INDICADOR : cfg.premioIndicadorCentavos;
+  const premioIndicadoCentavos = assinatura ? PREMIO_INDICADO : cfg.premioIndicadoCentavos;
   const codigo = await codigoDoCliente(clienteId);
   const link = `${urlSite()}/i/${codigo}`;
   const [cliente, indicacoes, beneficios] = await Promise.all([
@@ -46,9 +52,11 @@ export async function painelDeIndicacao(clienteId: string) {
     ativa: true as const,
     codigo,
     link,
-    convite: TEXTOS.CONVITE({ nome: cliente.nome, barbearia: cfg.nomeBarbearia, link, codigo, premioIndicado: cfg.premioIndicadoCentavos }),
-    premioIndicadorCentavos: cfg.premioIndicadorCentavos,
-    premioIndicadoCentavos: cfg.premioIndicadoCentavos,
+    convite: TEXTOS.CONVITE({ nome: cliente.nome, barbearia: cfg.nomeBarbearia, link, codigo, premioIndicado: premioIndicadoCentavos, assinatura }),
+    premioIndicadorCentavos,
+    premioIndicadoCentavos,
+    regra: assinatura ? REGRA_INDICACAO_ASSINATURA : "ATENDIMENTO_V1",
+    validadeDias: assinatura ? VALIDADE_INDICACAO_DIAS : null,
     indicados: indicacoes.length,
     convertidos: indicacoes.filter((i) => i.convertidaEm).length,
     beneficios,
@@ -74,6 +82,7 @@ export async function registrarIndicacao(indicadoId: string, codigoTexto: string
   const indicador = await db.cliente.findUnique({ where: { codigoIndicacao: codigo }, select: { id: true, nome: true, telefone: true } });
   if (!indicador) throw new ErroNegocio("Não achei esse código de indicação.");
   if (indicador.id === indicadoId) throw new ErroNegocio("Não dá para usar o próprio código.");
+  if (indicacaoAssinaturaHabilitada()) return registrarIndicacaoAssinatura(indicadoId, indicador, origem);
   const [jaIndicado, atendido] = await Promise.all([
     db.indicacao.findUnique({ where: { indicadoId } }),
     db.agendamento.count({ where: { clienteId: indicadoId, status: "CONCLUIDO" } }),
@@ -90,7 +99,7 @@ export async function registrarIndicacao(indicadoId: string, codigoTexto: string
       });
     }
     await auditar(tx, null, "indicacao", "cliente", indicadoId, { indicadorId: indicador.id, origem });
-    return { indicacao: ind, indicador, premioCentavos: cfg.premioIndicadoCentavos };
+    return { indicacao: ind, indicador, premioCentavos: cfg.premioIndicadoCentavos, aguardandoPagamento: false };
   });
 }
 
@@ -98,10 +107,10 @@ export async function registrarIndicacao(indicadoId: string, codigoTexto: string
 export async function converterIndicacoes(opts: { clienteIds?: string[] } = {}) {
   const cfg = await configuracao();
   const pendentes = await db.indicacao.findMany({
-    where: { convertidaEm: null, indicado: { agendamentos: { some: { status: "CONCLUIDO" } } }, ...(opts.clienteIds ? { indicadorId: { in: opts.clienteIds } } : {}) },
+    where: { regra: "ATENDIMENTO_V1", convertidaEm: null, indicado: { agendamentos: { some: { status: "CONCLUIDO" } } }, ...(opts.clienteIds ? { indicadorId: { in: opts.clienteIds } } : {}) },
     include: { indicador: { select: { id: true, nome: true, telefone: true } }, indicado: { select: { nome: true } } },
   });
-  const premiados: { indicacaoId: string; indicador: { id: string; nome: string; telefone: string }; amigo: string; premio: number }[] = [];
+  const premiados: { indicacaoId: string; indicador: { id: string; nome: string; telefone: string }; amigo: string; premio: number; assinatura?: boolean }[] = [];
   for (const p of pendentes) {
     const r = await db.$transaction(async (tx) => {
       const marcou = await tx.indicacao.updateMany({ where: { id: p.id, convertidaEm: null }, data: { convertidaEm: new Date() } });
@@ -113,5 +122,6 @@ export async function converterIndicacoes(opts: { clienteIds?: string[] } = {}) 
     });
     if (r) premiados.push({ indicacaoId: p.id, indicador: p.indicador, amigo: p.indicado.nome, premio: cfg.premioIndicadorCentavos });
   }
+  if (indicacaoAssinaturaHabilitada()) premiados.push(...await converterIndicacoesAssinatura(opts));
   return premiados;
 }

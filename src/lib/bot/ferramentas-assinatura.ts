@@ -8,6 +8,7 @@ import { MOTIVOS, ROTULO_MOTIVO } from "@/lib/assinaturas/retencao-regras";
 import { assinar, entrarNaListaDeEspera, situacaoDoCliente, vagasRestantes, verificarNovaAdesao } from "@/lib/assinaturas/servico";
 import { executarCancelamento } from "./ferramentas-cancelamento";
 import type { ContextoBot, ResultadoFerramenta } from "./ferramentas";
+import { linkDaMensalidadeParaAtendimento } from "@/lib/assinaturas/link-atendimento";
 
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
@@ -56,7 +57,7 @@ export const FERRAMENTAS_ASSINATURA: Anthropic.Beta.BetaTool[] = [
   {
     name: "oferta_cancelamento",
     description:
-      "Cliente quer cancelar o plano: depois de perguntar o motivo, chame esta ferramenta. Ela devolve a oferta da barbearia para esse motivo (desconto, pausa, falar com o gerente ou nenhuma) e até quando o plano vale se ele cancelar.",
+      "Cliente quer cancelar o plano: use o motivo informado ou OUTRO se não informar/recusar; motivo não é obrigatório para atender ao pedido. Devolve a oferta da barbearia (desconto, pausa, falar com o gerente ou nenhuma) e até quando o plano vale. Não insista em retenção já recusada nem em cobrança após pedido anterior.",
     input_schema: {
       type: "object",
       properties: { motivo: { type: "string", enum: [...MOTIVOS], description: MOTIVOS_DESCRICAO } },
@@ -132,8 +133,9 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
               nome: p.nome,
               preco_mensal: reais(p.precoCentavos),
               descricao: p.descricao,
-              disponivel_para_compra: p.compravel,
-              condicoes: p.compravel ? null : "Consulte as condições com a equipe; não está disponível para compra ou lista de espera.",
+              disponivel_para_compra: p.compravel && !p.vendaSomenteEquipe,
+              venda_somente_equipe: p.vendaSomenteEquipe,
+              condicoes: p.vendaSomenteEquipe ? "Visível para consulta; contratação somente pela recepção. Chame a equipe se o cliente quiser contratar." : p.compravel ? null : "Consulte as condições com a equipe; não está disponível para compra ou lista de espera.",
               inclui: p.servicos.map((s) => s.servico.nome + (s.usosPorCiclo ? ` (${s.usosPorCiclo}x por mês)` : " (à vontade)")),
               intervalo_entre_visitas_dias: p.intervaloMinDias,
               dias_validos: p.diasSemana.length && p.diasSemana.length < 7 ? [...p.diasSemana].sort().map((d) => DIAS[d]) : "todos os dias de funcionamento",
@@ -150,6 +152,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
       const sit = c ? await situacaoDoCliente(c.id) : null;
       if (!sit) return { texto: "O cliente não tem plano de assinatura." };
       const a = sit.assinatura;
+      const pagamento = sit.cobrancaEmAberto && c ? await linkDaMensalidadeParaAtendimento(c.id, sit.cobrancaEmAberto.id) : null;
       return {
         texto: JSON.stringify({
           plano: a.plano.nome,
@@ -160,7 +163,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
           pagamento_em_aberto: sit.cobrancaEmAberto && {
             valor: reais(sit.cobrancaEmAberto.valorCentavos),
             vencimento: dataBr(sit.cobrancaEmAberto.vencimento),
-            link: sit.cobrancaEmAberto.link,
+            ...pagamento,
           },
         }),
       };

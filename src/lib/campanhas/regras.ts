@@ -2,14 +2,20 @@
  * Campanhas: segmentos da base, vagas livres da agenda e tamanho do lote (regras puras, testadas em
  * tests/campanhas.test.ts).
  */
-import { diasDesde } from "@/lib/clientes/segmentos";
+import { diasDesde, temperaturaDoCliente } from "@/lib/clientes/segmentos";
 
 export const SEGMENTOS = [
+  { chave: "quente", rotulo: "Quente · até 30 dias" },
+  { chave: "morno", rotulo: "Morno · 31 a 90 dias" },
+  { chave: "frio", rotulo: "Frio · 91 a 365 dias" },
+  { chave: "muitoFrio", rotulo: "Muito frio · mais de 365 dias" },
   { chave: "ate30", rotulo: "Veio nos últimos 30 dias" },
   { chave: "d31a60", rotulo: "31 a 60 dias" },
   { chave: "d61a90", rotulo: "61 a 90 dias" },
   { chave: "d91a180", rotulo: "91 a 180 dias" },
   { chave: "mais180", rotulo: "Mais de 180 dias" },
+  { chave: "d181a365", rotulo: "181 a 365 dias" },
+  { chave: "mais365", rotulo: "Mais de um ano (365 dias)" },
   { chave: "assinante", rotulo: "Assinantes" },
   { chave: "exAssinante", rotulo: "Ex-assinantes" },
   { chave: "perdido", rotulo: "Perdidos (mais de 90 dias)" },
@@ -34,13 +40,15 @@ export type DadosCliente = {
 /** Em quais segmentos o cliente esta (um cliente pode estar em varios: ex. assinante e 0–30 dias). */
 export function segmentosDoCliente(c: DadosCliente, agora: number): Segmento[] {
   const out: Segmento[] = [];
+  const temperatura = temperaturaDoCliente(c.ultima, agora);
+  if (temperatura === "quente" || temperatura === "morno" || temperatura === "frio" || temperatura === "muitoFrio") out.push(temperatura);
   const dias = diasDesde(c.ultima, agora);
   if (dias === null) out.push("nunca");
   else if (dias <= 30) out.push("ate30");
   else if (dias <= 60) out.push("d31a60");
   else if (dias <= 90) out.push("d61a90");
   else if (dias <= 180) out.push("d91a180");
-  else out.push("mais180");
+  else out.push("mais180", dias <= 365 ? "d181a365" : "mais365");
   if (dias !== null && dias > PERDIDO_DIAS) out.push("perdido");
   const desdePrimeira = diasDesde(c.primeira, agora);
   if (desdePrimeira !== null && desdePrimeira <= NOVO_DIAS) out.push("novo");
@@ -76,7 +84,7 @@ export function montarMensagem(modelo: string, v: { nome: string; barbearia: str
 }
 
 export const MENSAGEM_PADRAO_ROLETA =
-  "Oi, {nome}! A {barbearia} te deu um presente 🎁 Uma jogada valendo dinheiro para o corte, descontos e brindes. Jogue aqui: {link}";
+  "Oi, {nome}! É da {barbearia}. Liberamos uma jogada de presente para você. Veja os prêmios disponíveis e as condições aqui: {link}";
 
 export const MENSAGEM_PADRAO =
   "Oi, {nome}! Aqui é da {barbearia}. Abrimos horários nos próximos dias e lembramos de você. Quer garantir o seu? Marque por aqui: {link}";

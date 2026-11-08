@@ -40,6 +40,20 @@ export async function saldoDoCliente(clienteId: string) {
   return r._sum.valorCentavos ?? 0;
 }
 
+/** Totais não podem depender das últimas 60 linhas exibidas no extrato. */
+export async function resumoSaldoDoCliente(clienteId: string, agora = new Date()) {
+  const [saldo, ganhos, vencendo] = await Promise.all([
+    db.beneficio.aggregate({ where: { clienteId, ...disponiveis(agora) }, _sum: { valorCentavos: true } }),
+    db.beneficio.aggregate({ where: { clienteId, status: { not: "CANCELADO" } }, _sum: { valorCentavos: true } }),
+    db.beneficio.aggregate({ where: { clienteId, status: "DISPONIVEL", expiraEm: { gt: agora, lte: new Date(+agora + 30 * 86_400_000) } }, _sum: { valorCentavos: true }, _min: { expiraEm: true } }),
+  ]);
+  return {
+    saldoCentavos: saldo._sum.valorCentavos ?? 0,
+    ganhoTotalCentavos: ganhos._sum.valorCentavos ?? 0,
+    vencendo: vencendo._min.expiraEm ? { valorCentavos: vencendo._sum.valorCentavos ?? 0, data: vencendo._min.expiraEm } : null,
+  };
+}
+
 /** Usa o saldo do cliente na comanda aberta (vira desconto, ate o valor que ainda tem para descontar). */
 export async function usarSaldo(s: Sessao, comandaId: string) {
   await exigirPermissao(s, "saldo");
@@ -49,6 +63,8 @@ export async function usarSaldo(s: Sessao, comandaId: string) {
     if (!c) throw naoEncontrado("Comanda");
     if (c.status !== "ABERTA") throw new ErroNegocio("Essa comanda já foi fechada.");
     if (!c.clienteId) throw new ErroNegocio("Comanda sem cliente cadastrado: não há saldo para usar.");
+    // Carteira única: duas comandas e a mensalidade não podem consumir o mesmo crédito.
+    await tx.$queryRaw`SELECT 1 FROM clientes WHERE id = ${c.clienteId} FOR UPDATE`;
     const { subtotal } = resumoComanda(c.itens, c.pagamentos, 0);
     const podeDescontar = subtotal - c.descontoCentavos;
     if (podeDescontar <= 0) throw new ErroNegocio("A comanda não tem valor para descontar.");
@@ -99,7 +115,7 @@ export async function extratoDoCliente(clienteId: string) {
     origem: ORIGEM[b.motivo] ?? b.motivo,
     descricao: b.descricao,
     valorCentavos: b.valorCentavos,
-    situacao: b.status === "USADO" ? "usado" : b.status === "CANCELADO" ? "cancelado" : b.expiraEm && b.expiraEm <= agora ? "vencido" : "disponivel",
+    situacao: b.reservaCreditoId && !b.usadoEm ? "reservado" : b.status === "USADO" ? "usado" : b.status === "CANCELADO" ? "cancelado" : b.expiraEm && b.expiraEm <= agora ? "vencido" : "disponivel",
     criadoEm: b.criadoEm,
     usadoEm: b.usadoEm,
     expiraEm: b.expiraEm,
@@ -127,6 +143,8 @@ export async function indicadosDoCliente(clienteId: string) {
       nome: i.indicado.nome.trim().split(/\s+/)[0] || "Amigo",
       desde: i.criadoEm,
       veio: !!i.convertidaEm,
+      regra: i.regra,
+      estornada: !!i.estornadaEm,
       ganhouCentavos:
         i.beneficios.reduce((t, b) => t + b.valorCentavos, 0) +
         partes.filter((p) => ids.has(p.origemBeneficioId!)).reduce((t, p) => t + p.valorCentavos, 0),

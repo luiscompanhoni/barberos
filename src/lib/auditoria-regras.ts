@@ -64,6 +64,7 @@ export function descreverAcao(acao: string, entidade: string) {
 }
 
 const CAMPOS: Record<string, string> = {
+  vendaSomenteEquipe: "contratação somente pela recepção",
   precoCentavos: "preço", valorCentavos: "valor", descontoCentavos: "desconto", salarioCentavos: "salário", custoCentavos: "custo",
   duracaoMin: "duração (min)", nome: "nome", ativo: "ativo", papel: "papel", percentualBps: "percentual", pontosBps: "pontos", fim: "fim", inicio: "início",
 };

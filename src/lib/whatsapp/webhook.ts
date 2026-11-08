@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { midiaCloud, midiaEvolution, type ConteudoMidiaEvolution, type MidiaRecebida } from "./midia-tipos";
 
 /**
  * Partes puras do webhook do WhatsApp Cloud API (assinatura e leitura do payload),
@@ -19,6 +20,7 @@ export type MensagemRecebida = {
   nomePerfil: string | null;
   /** Texto digitado, ou titulo do botao/lista clicado. null = tipo nao suportado (audio, foto...). */
   texto: string | null;
+  midia?: MidiaRecebida;
   tipo: string;
   timestamp: number;
 };
@@ -35,6 +37,9 @@ type Payload = {
           timestamp?: string;
           type?: string;
           text?: { body?: string };
+          audio?: { id?: string; mime_type?: string };
+          image?: { id?: string; mime_type?: string; caption?: string };
+          sticker?: { id?: string; mime_type?: string };
           button?: { text?: string };
           interactive?: { button_reply?: { title?: string }; list_reply?: { title?: string } };
         }[];
@@ -56,12 +61,14 @@ export function lerMensagens(payload: unknown): MensagemRecebida[] {
           m.type === "text" ? (m.text?.body ?? null)
           : m.type === "button" ? (m.button?.text ?? null)
           : m.type === "interactive" ? (m.interactive?.button_reply?.title ?? m.interactive?.list_reply?.title ?? null)
-          : null;
+          : m.type === "image" ? (m.image?.caption ?? null) : null;
+        const midia = midiaCloud(m.type, m.audio ?? m.image ?? m.sticker);
         out.push({
           wamid: m.id,
           waId: m.from,
           nomePerfil: contato?.profile?.name ?? null,
           texto: texto?.trim() || null,
+          ...(midia ? { midia } : {}),
           tipo: m.type ?? "desconhecido",
           timestamp: Number(m.timestamp ?? 0) * 1000,
         });
@@ -81,7 +88,7 @@ export function telefoneCanonico(waId: string): string {
   return d;
 }
 
-type ConteudoEvolution = {
+type ConteudoEvolution = ConteudoMidiaEvolution & {
   conversation?: string;
   extendedTextMessage?: { text?: string };
   buttonsResponseMessage?: { selectedDisplayText?: string };
@@ -112,14 +119,16 @@ export function lerMensagensEvolution(payload: unknown): MensagemRecebida[] {
     if (jid.endsWith("@lid")) jid = k.remoteJidAlt ?? k.senderPn ?? "";
     if (!jid.endsWith("@s.whatsapp.net")) continue;
     const m = d.message ?? {};
+    const arquivo = midiaEvolution(m, k.id);
     const texto =
       m.conversation ?? m.extendedTextMessage?.text ?? m.buttonsResponseMessage?.selectedDisplayText ??
-      m.listResponseMessage?.title ?? m.templateButtonReplyMessage?.selectedDisplayText ?? null;
+      m.listResponseMessage?.title ?? m.templateButtonReplyMessage?.selectedDisplayText ?? arquivo?.legenda ?? null;
     out.push({
       wamid: k.id,
       waId: jid.split("@")[0].split(":")[0],
       nomePerfil: d.pushName?.trim() || null,
       texto: texto?.trim() || null,
+      ...(arquivo ? { midia: arquivo.midia } : {}),
       tipo: d.messageType ?? "desconhecido",
       timestamp: Number(d.messageTimestamp ?? 0) * 1000,
     });

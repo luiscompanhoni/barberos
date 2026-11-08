@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowDownLeft, ArrowUpRight, Check, Clock3, Copy, Gift, Percent, Share2, UserPlus, Wallet } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import { CreditoAssinatura } from "./CreditoAssinatura";
 
 type Item = {
   id: string; origem: string; descricao: string; valorCentavos: number;
-  situacao: "disponivel" | "usado" | "vencido" | "cancelado";
+  situacao: "disponivel" | "usado" | "vencido" | "cancelado" | "reservado";
   criadoEm: string; usadoEm: string | null; expiraEm: string | null; usadoNaComanda: number | null; geradoNaComanda: number | null;
 };
 type Dados = {
@@ -14,13 +15,13 @@ type Dados = {
   vencendo: { valorCentavos: number; data: string } | null;
   ganhoTotalCentavos: number;
   cashback: { ativo: boolean; pct: number; validadeDias: number };
-  indicacao: { ativa: false } | { ativa: true; codigo: string; link: string; convite: string; premioIndicadorCentavos: number; premioIndicadoCentavos: number; indicados: number; convertidos: number };
-  indicados: { id: string; nome: string; desde: string; veio: boolean; ganhouCentavos: number }[];
+  indicacao: { ativa: false } | { ativa: true; codigo: string; link: string; convite: string; premioIndicadorCentavos: number; premioIndicadoCentavos: number; indicados: number; convertidos: number; regra?: string; validadeDias?: number | null };
+  indicados: { id: string; nome: string; desde: string; veio: boolean; ganhouCentavos: number; regra?: string; estornada?: boolean }[];
   extrato: Item[];
 };
 
 const data = (iso: string) => new Date(iso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "America/Sao_Paulo" });
-const SITUACAO: Record<Item["situacao"], string> = { disponivel: "Disponível", usado: "Usado", vencido: "Venceu", cancelado: "Cancelado" };
+const SITUACAO: Record<Item["situacao"], string> = { disponivel: "Disponível", usado: "Usado", vencido: "Venceu", cancelado: "Cancelado", reservado: "Reservado para mensalidade" };
 
 /** Saldo do cliente: cashback, premios de indicacao e o extrato. */
 export function SaldoTela() {
@@ -29,7 +30,8 @@ export function SaldoTela() {
   const [aba, setAba] = useState<"extrato" | "indicacoes">("extrato");
   const [copiado, setCopiado] = useState(false);
 
-  useEffect(() => { api<Dados>("/api/cliente/saldo").then(setD).catch((e) => setErro(e.message)); }, []);
+  const carregar = useCallback(() => { api<Dados>("/api/cliente/saldo").then(setD).catch((e) => setErro(e.message)); }, []);
+  useEffect(carregar, [carregar]);
   if (!d) return <p className="text-sm text-zinc-500">{erro || "Carregando..."}</p>;
   const ind = d.indicacao.ativa ? d.indicacao : null;
 
@@ -51,12 +53,14 @@ export function SaldoTela() {
         <p className="mt-3 text-sm text-zinc-500">Vira desconto na sua próxima visita. É só avisar na hora de pagar.</p>
         {d.vencendo && (
           <p className="mt-3 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            <Clock3 size={14} /> {reais(d.vencendo.valorCentavos)} vence em {data(d.vencendo.data)}. Use antes!
+            <Clock3 size={14} /> {reais(d.vencendo.valorCentavos)} vencem nos próximos 30 dias. Primeiro vencimento: {data(d.vencendo.data)}.
           </p>
         )}
         <div className="mt-4 h-px bg-zinc-200" />
         <p className="mt-3 text-xs text-zinc-500">Você já ganhou <b className="text-zinc-900">{reais(d.ganhoTotalCentavos)}</b> no total.</p>
       </section>
+
+      <CreditoAssinatura aoReservar={carregar} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         {d.cashback.ativo && (
@@ -73,7 +77,7 @@ export function SaldoTela() {
             <Gift size={20} className="shrink-0 text-ouro" />
             <div className="text-sm">
               <p className="font-bold">{reais(ind.premioIndicadorCentavos)} por amigo indicado</p>
-              <p className="text-zinc-500">Quando ele fizer o primeiro corte.{ind.premioIndicadoCentavos > 0 && ` Ele ganha ${reais(ind.premioIndicadoCentavos)}.`}</p>
+              <p className="text-zinc-500">{ind.regra === "ASSINATURA_V2" ? "Após o primeiro pagamento confirmado da assinatura elegível. Novos assinantes ou ex há pelo menos 90 dias sem plano; uma vez por indicado. Créditos válidos por 30 dias, sem saque." : "Quando ele fizer o primeiro corte."}{ind.premioIndicadoCentavos > 0 && ` Ele ganha ${reais(ind.premioIndicadoCentavos)}.`}</p>
             </div>
           </div>
         )}
@@ -110,7 +114,7 @@ export function SaldoTela() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className={`font-bold ${e.situacao === "disponivel" ? "text-ouro" : e.situacao === "usado" ? "" : "text-zinc-400 line-through"}`}>
+                    <p className={`font-bold ${e.situacao === "disponivel" ? "text-ouro" : ["usado", "reservado"].includes(e.situacao) ? "" : "text-zinc-400 line-through"}`}>
                       {entrada ? "+" : "−"} {reais(e.valorCentavos)}
                     </p>
                     <p className="text-[10px] text-zinc-500 uppercase">{SITUACAO[e.situacao]}</p>
@@ -147,7 +151,7 @@ export function SaldoTela() {
                     <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-zinc-100 font-bold text-ouro">{i.nome[0]}</span>
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold">{i.nome}</p>
-                      <p className="text-xs text-zinc-500">Indicado em {data(i.desde)} · {i.veio ? "já cortou aqui" : "ainda não veio"}</p>
+                      <p className="text-xs text-zinc-500">Indicado em {data(i.desde)} · {i.estornada ? "pagamento estornado; em conferência" : i.regra === "ASSINATURA_V2" ? i.veio ? "primeiro pagamento confirmado" : "aguardando assinatura e pagamento" : i.veio ? "já cortou aqui" : "ainda não veio"}</p>
                     </div>
                     {i.veio ? <b className="text-ouro">+ {reais(i.ganhouCentavos)}</b> : <span className="text-xs text-zinc-500">aguardando</span>}
                   </li>

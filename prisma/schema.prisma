@@ -661,6 +661,8 @@ model Plano {
   ativo                  Boolean            @default(true)
   visivel                Boolean            @default(true)
   compravel              Boolean            @default(true)
+  /// Pode aparecer na vitrine, mas a adesao/troca e iniciada pela recepcao ou gestao.
+  vendaSomenteEquipe     Boolean            @default(false)
   etiquetas              String[]           @default([])
   ordem                  Int                @default(0)
   /// Limite de assinantes (null = sem limite).
@@ -707,6 +709,8 @@ model PlanoBarbeiro {
 }
 
 model Assinatura {
+  migracao            MigracaoAssinatura?
+  reservasCredito     ReservaCreditoAssinatura[]
   operacaoInicial     String?
   alteracoesPlano     AlteracaoPlanoAssinatura[]
   id                  String               @id @default(cuid())
@@ -1120,6 +1124,12 @@ model Indicacao {
   indicadoId   String            @unique
   indicado     Cliente           @relation("indicado", fields: [indicadoId], references: [id], onDelete: Cascade)
   origem       OrigemAgendamento
+  /// ATENDIMENTO_V1 preserva concessões antigas; novos convites podem usar ASSINATURA_V2.
+  regra        String            @default("ATENDIMENTO_V1")
+  premioIndicadorCentavos Int?
+  premioIndicadoCentavos Int?
+  cobrancaConversaoId String?     @unique
+  estornadaEm  DateTime?          @db.Timestamptz(3)
   /// Quando o indicado fez o 1o atendimento (e o indicador ganhou o premio).
   convertidaEm DateTime?         @db.Timestamptz(3)
   criadoEm     DateTime          @default(now()) @db.Timestamptz(3)
@@ -1154,6 +1164,9 @@ model Beneficio {
   expiraEm          DateTime?       @db.Timestamptz(3)
   /// Parte usada de um credito maior: aponta para o credito de origem (que fica com o que sobrou).
   origemBeneficioId String?
+  /// Reservas ficam USADO/sem usadoEm até a cobrança ser comprovada; leitores antigos não gastam de novo.
+  reservaCreditoId String?
+  reservaCredito ReservaCreditoAssinatura? @relation(fields: [reservaCreditoId], references: [id], onDelete: Restrict)
   criadoEm          DateTime        @default(now()) @db.Timestamptz(3)
   usadoEm           DateTime?       @db.Timestamptz(3)
 
@@ -1161,6 +1174,44 @@ model Beneficio {
   @@unique([comandaOrigemId, motivo])
   @@index([clienteId, status])
   @@map("beneficios")
+}
+
+/// Controle de migração: conferência humana auditada, sem executar pagamentos.
+model MigracaoAssinatura {
+  id String @id @default(cuid())
+  assinaturaId String @unique
+  assinatura Assinatura @relation(fields: [assinaturaId], references: [id], onDelete: Restrict)
+  estado String @default("A_CONFERIR")
+  versao Int @default(0)
+  fonteGatewayId String?
+  destinoGatewayId String?
+  responsavelId String?
+  evidencias Json @default("{}")
+  adiadoAte DateTime? @db.Date
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
+  @@index([estado, atualizadoEm])
+  @@index([responsavelId])
+  @@map("migracoes_assinaturas")
+}
+
+/// Crédito separado da carteira antes de qualquer efeito externo na mensalidade.
+model ReservaCreditoAssinatura {
+  id String @id
+  assinaturaId String
+  assinatura Assinatura @relation(fields: [assinaturaId], references: [id], onDelete: Restrict)
+  vencimento DateTime @db.Date
+  valorCentavos Int
+  valorMensalidadeCentavos Int
+  estado String @default("RESERVADA")
+  gatewayDescontoId String? @unique
+  cobrancaId String? @unique
+  beneficios Beneficio[]
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  atualizadoEm DateTime @updatedAt @db.Timestamptz(3)
+  @@unique([assinaturaId, vencimento])
+  @@index([estado, atualizadoEm])
+  @@map("reservas_credito_assinatura")
 }
 
 enum StatusAntecipado {
