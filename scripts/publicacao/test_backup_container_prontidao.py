@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 from types import SimpleNamespace
@@ -69,6 +70,30 @@ class ProntidaoPostgresTest(unittest.TestCase):
         nao_fixture[nao_fixture.index("-d") + 1] = "barberos"
         with self.assertRaisesRegex(ValueError, "PostgreSQL Docker"):
             m.provar_snapshot_concorrente(None, [], "barberos-backup-validacao:fixture", nao_fixture)
+
+    def test_estado_restaurado_usa_json_tipado_e_recusa_valor_ou_is_called_divergente(self):
+        def executar(estado, chamadas):
+            def run(args, **_kwargs):
+                chamadas.append(args)
+                sql = args[-1]
+                if sql.startswith("SELECT json_build_object('valor',last_value::text,'chamada',is_called)"):
+                    return json.dumps(estado)
+                if sql == "SELECT nextval('public.prova_backup_ci_id_seq')":
+                    return "3\n"
+                if sql == "SELECT count(*) FROM pg_database WHERE datname='barberos_restaurado'":
+                    return "1\n"
+                return ""
+            return run
+
+        for estado in ({"valor": "1", "chamada": True}, {"valor": "2", "chamada": False}):
+            chamadas = []
+            with self.subTest(estado=estado), self.assertRaises(AssertionError):
+                m.provar_restauro(executar(estado, chamadas), [], "barberos-backup-validacao:fixture", self.psql, "barberos-2026-01.sql.gz")
+            self.assertFalse(any("UPDATE public.prova_backup_ci" in args[-1] for args in chamadas))
+        chamadas = []
+        m.provar_restauro(executar({"valor": "2", "chamada": True}, chamadas), [], "barberos-backup-validacao:fixture", self.psql, "barberos-2026-01.sql.gz")
+        self.assertTrue(any("SELECT json_build_object" in args[-1] for args in chamadas))
+        self.assertFalse(any("last_value||" in args[-1] for args in chamadas))
 
 
 if __name__ == "__main__":

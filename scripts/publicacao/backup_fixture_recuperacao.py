@@ -1,4 +1,5 @@
 """Sondas reais na rede descartável do teste Docker; nunca recebe destino de produção."""
+import json
 import re
 
 
@@ -36,7 +37,8 @@ def provar_restauro(run, common, image, psql, arquivo):
     # A fonte avança depois do dump. A cópia deve manter o estado gravado no dump, não o vivo.
     run([*psql, "-At", "-c", "SELECT pg_catalog.setval('public.prova_backup_ci_id_seq',100,true)"])
     run(conferir)
-    assert run([*consulta, "SELECT last_value||'|'||is_called FROM public.prova_backup_ci_id_seq"]).strip() == "2|t"
+    estado = json.loads(run([*consulta, "SELECT json_build_object('valor',last_value::text,'chamada',is_called) FROM public.prova_backup_ci_id_seq"]))
+    assert estado == {"valor": "2", "chamada": True}
     negativos = [
         ("valor", "UPDATE public.prova_backup_ci SET valor_centavos=1001 WHERE id=1", "UPDATE public.prova_backup_ci SET valor_centavos=1000 WHERE id=1"),
         ("enum não default", 'ALTER TYPE public."ArredondamentoPote" RENAME VALUE \'MAIORES_RESTOS_V1\' TO \'__PROVA_ALTERADO__\'', 'ALTER TYPE public."ArredondamentoPote" RENAME VALUE \'__PROVA_ALTERADO__\' TO \'MAIORES_RESTOS_V1\''),
