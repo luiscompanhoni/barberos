@@ -108,7 +108,7 @@ export function RoletaBlack({ jogo, jogar, campanha = false, aoTerminar }: { jog
             <h1 className="jogo-titulo text-[30px] sm:text-[36px]">{jogo.nome}</h1>
           </div>
           <div className="flex items-center gap-2">
-            {!!jogo.multiplicador && jogo.multiplicador > 100 && <span className="jogo-selo" title="Bônus de assinante nos prêmios em dinheiro">VIP x{(jogo.multiplicador / 100).toFixed(1)}</span>}
+            {!!jogo.multiplicador && jogo.multiplicador > 100 && <span className="jogo-selo" title="Bônus de assinante nos prêmios em dinheiro">VIP +{jogo.multiplicador - 100}%</span>}
             <BotaoSom />
           </div>
         </div>

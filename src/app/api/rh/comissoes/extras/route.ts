@@ -18,6 +18,8 @@ export const GET = rota(async () => {
 export const PUT = rota(async (req: Request) => {
   const s = await exigirSessaoCom("comissao");
   const b = await corpo(req, z.object({
+    competencia: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+    revisao: z.string().regex(/^[a-f0-9]{64}$/),
     assinaturas: z.object({
       ativo: z.boolean(),
       percentualBps: zPct,

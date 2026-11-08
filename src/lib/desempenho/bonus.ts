@@ -5,6 +5,7 @@ import { ErroNegocio } from "@/lib/erros";
 import { exigirDono, exigirPessoa } from "./acesso";
 import { jsonSeguro } from "./configuracao";
 import { resumoPessoa } from "./consultas";
+import { tocarPessoasDaFolha } from "@/lib/rh/trava-regras-folha";
 
 /** Aprovação mensal única, junto ao lançamento e pontos; não paga nem altera comissão. */
 export async function aprovarBonus(s: Sessao, pessoaId: string, competencia: string) {
@@ -22,6 +23,7 @@ export async function aprovarBonus(s: Sessao, pessoaId: string, competencia: str
     const r = await resumoPessoa(pessoaId, competencia, tx);
     if (!r.regraId || !r.resultado.elegivel) throw new ErroNegocio("O bônus ainda não está elegível. Confira os critérios e pendências.", 409, "bonus_pendente", { pendencias: r.resultado.pendencias, criterios: r.resultado.criterios });
     if (!r.resultado.bonusCentavos && !r.resultado.pontos) throw new ErroNegocio("A faixa não tem bônus ou pontos configurados.");
+    await tocarPessoasDaFolha(tx, [pessoaId]);
     const folha = r.resultado.bonusCentavos > 0 ? await tx.folhaLancamento.create({ data: { pessoaId, competencia, tipo: "BONUS", valorCentavos: r.resultado.bonusCentavos, descricao: `Desempenho ${competencia} · BLACK ${r.nivel}`, porId: s.usuarioId } }) : null;
     const pontos = r.resultado.pontos > 0 ? await tx.checklistPonto.create({ data: { pessoaId, pontos: r.resultado.pontos, descricao: `Desempenho ${competencia}: presença ${r.programa.pontosPresenca}, liderança ${r.programa.faixas[r.nivel].liderMin !== null ? r.programa.pontosLider : 0}, clientes ${r.programa.faixas[r.nivel].clientesMin !== null ? r.programa.pontosClientes : 0}`, porNome: s.nome } }) : null;
     const snapshot = jsonSeguro({ competencia, regra: r.programa, nivel: r.nivel, pontosAnteriores: r.pontos, presenca: r.presenca, checklist: r.checklist, lider: r.lider, clientes: r.clientes, resultado: r.resultado });

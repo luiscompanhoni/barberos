@@ -4,7 +4,7 @@ import Link from "next/link";
 import { reais } from "@/lib/cliente-api";
 import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
-export type FinanceiroPainel = { mes: string; faturamento: number; despesas: number; taxas: number; lucro: number; alertas: string[] };
+export type FinanceiroPainel = { mes: string; faturamento: number; despesas: number; taxas: number; lucro: number; status?: "PREVIA" | "CONFERIDO"; alertas: string[] };
 
 /** Visao financeira do mes no painel (so com a permissao "lucro"). */
 export function PainelFinanceiro({ financeiro: f }: { financeiro: FinanceiroPainel | null }) {
@@ -23,7 +23,7 @@ export function PainelFinanceiro({ financeiro: f }: { financeiro: FinanceiroPain
             <Metrica rotulo="Despesas + taxas" valor={reais(f.despesas + f.taxas)}
               detalhe={`${reais(f.despesas)} de despesas · ${reais(f.taxas)} de taxas`}
               link="/financeiro?aba=resultado" />
-            <Metrica rotulo="Resultado provisório" valor={reais(f.lucro)}
+            <Metrica rotulo={f.status === "CONFERIDO" ? "Resultado conciliado" : "Resultado provisório"} valor={reais(f.lucro)}
               detalhe="Faturamento menos despesas e taxas registradas"
               tom={f.lucro >= 0 ? "bom" : "ruim"} destaque={f.lucro >= 0 ? "ouro" : "ruim"} link="/financeiro?aba=resultado" />
             <Metrica rotulo="Margem provisória"

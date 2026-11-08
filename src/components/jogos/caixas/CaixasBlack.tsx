@@ -62,6 +62,7 @@ export function CaixasBlack({ jogos, aoAtualizar }: { jogos: JogoCliente[]; aoAt
               <h3 className="jogo-titulo relative z-10 mt-2 text-2xl">{j.nome}</h3>
               <p className="jogo-subtitulo relative z-10 mt-1.5">{n} {n === 1 ? "prêmio garantido" : "prêmios garantidos"}</p>
               {j.descricao && <p className="relative z-10 mt-2 text-xs leading-snug text-[#a39d95]">{j.descricao}</p>}
+              {j.multiplicador > 100 && <p className="relative z-10 mt-2 text-xs text-[#a39d95]">Assinante: +{j.multiplicador - 100}% nos prêmios em dinheiro.</p>}
 
               {j.vitrine.length > 0 && (
                 <ul className="relative z-10 mt-4 flex flex-wrap justify-center gap-2" aria-label="Prêmios possíveis">

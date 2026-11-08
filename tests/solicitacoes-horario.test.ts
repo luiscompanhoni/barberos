@@ -2,9 +2,9 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { conflitosSemana, decidirSemana, solicitarSemana } from "@/lib/agenda/solicitacoes-horario";
 import { solicitarPeriodo } from "@/lib/agenda/solicitacoes-periodo";
 
-const m = vi.hoisted(() => ({ pedido: vi.fn(), pendente: vi.fn(), criar: vi.fn(), atualizar: vi.fn(), semana: vi.fn(), apagar: vi.fn(), inserir: vi.fn(), bloquear: vi.fn(), agendamentos: vi.fn(), excecoes: vi.fn(), lock: vi.fn(), auditar: vi.fn(), permissao: vi.fn() }));
+const m = vi.hoisted(() => ({ pedido: vi.fn(), pendente: vi.fn(), criar: vi.fn(), atualizar: vi.fn(), semana: vi.fn(), apagar: vi.fn(), inserir: vi.fn(), bloquear: vi.fn(), agendamentos: vi.fn(), excecoes: vi.fn(), lock: vi.fn(), auditar: vi.fn(), permissao: vi.fn(), profissional: vi.fn(), entrevista: vi.fn() }));
 vi.mock("@/lib/db", () => {
-  const tx = { $queryRaw: vi.fn(), expedientePadrao: { findMany: m.semana, deleteMany: m.apagar, createMany: m.inserir }, solicitacaoHorario: { findUnique: m.pedido, findFirst: m.pendente, create: m.criar, update: m.atualizar }, agendamento: { findMany: m.agendamentos }, excecaoAgenda: { findMany: m.excecoes }, bloqueio: { create: m.bloquear } };
+  const tx = { $queryRaw: vi.fn(), barbeiro: { findUnique: m.profissional }, entrevistaRecrutamento: { findFirst: m.entrevista }, expedientePadrao: { findMany: m.semana, deleteMany: m.apagar, createMany: m.inserir }, solicitacaoHorario: { findUnique: m.pedido, findFirst: m.pendente, create: m.criar, update: m.atualizar }, agendamento: { findMany: m.agendamentos }, excecaoAgenda: { findMany: m.excecoes }, bloqueio: { create: m.bloquear } };
   return { db: { ...tx, $transaction: (f: (t: typeof tx) => unknown) => f(tx) } };
 });
 vi.mock("@/lib/auditoria", () => ({ auditar: m.auditar }));
@@ -18,7 +18,7 @@ const barber = { usuarioId: "u", papel: "BARBEIRO", barbeiroId: "b" } as never;
 const dono = { usuarioId: "d", papel: "DONO", barbeiroId: null } as never;
 const original = [{ diaSemana: 1, inicioMin: 540, fimMin: 1080 }];
 const proposto = [{ diaSemana: 1, inicioMin: 600, fimMin: 1080 }];
-beforeEach(() => { vi.clearAllMocks(); m.semana.mockResolvedValue(original); m.pendente.mockResolvedValue(null); m.agendamentos.mockResolvedValue([]); m.excecoes.mockResolvedValue([]); m.criar.mockResolvedValue({ id: "p" }); m.atualizar.mockResolvedValue({ id: "p", status: "APROVADA" }); m.pedido.mockResolvedValue({ id: "p", barbeiroId: "b", tipo: "SEMANA", status: "PENDENTE", original, proposto }); });
+beforeEach(() => { vi.clearAllMocks(); m.profissional.mockResolvedValue({ usuarioId: "d" }); m.entrevista.mockResolvedValue(null); m.semana.mockResolvedValue(original); m.pendente.mockResolvedValue(null); m.agendamentos.mockResolvedValue([]); m.excecoes.mockResolvedValue([]); m.criar.mockResolvedValue({ id: "p" }); m.atualizar.mockResolvedValue({ id: "p", status: "APROVADA" }); m.pedido.mockResolvedValue({ id: "p", barbeiroId: "b", tipo: "SEMANA", status: "PENDENTE", original, proposto }); });
 it("barbeiro só solicita para si, sem aplicar a alteração", async () => {
   await expect(solicitarSemana("outro", proposto, barber)).rejects.toMatchObject({ status: 403 });
   await solicitarSemana("b", proposto, barber);
@@ -77,4 +77,10 @@ it("solicitação de bloqueio não é aplicada se houver atendimento no período
   m.agendamentos.mockResolvedValue([{ id: "a" }]);
   await expect(decidirSemana("b", "p", "aprovar", undefined, dono)).rejects.toMatchObject({ status: 409, codigo: "conflitos_pendentes" });
   expect(m.bloquear).not.toHaveBeenCalled();
+});
+it("aprovação não bloqueia entrevista confirmada do dono e preserva a solicitação", async () => {
+  m.pedido.mockResolvedValue({ id: "p", barbeiroId: "b", tipo: "BLOQUEIO", status: "PENDENTE", proposto: { data: "2099-01-01", inicioMin: 600, fimMin: 660, motivo: "Teste" } });
+  m.entrevista.mockResolvedValue({ id: "entrevista" });
+  await expect(decidirSemana("b", "p", "aprovar", undefined, dono)).rejects.toMatchObject({ codigo: "conflito_entrevista" });
+  expect(m.bloquear).not.toHaveBeenCalled(); expect(m.atualizar).not.toHaveBeenCalled(); expect(m.auditar).not.toHaveBeenCalled();
 });

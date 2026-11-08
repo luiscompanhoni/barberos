@@ -1,6 +1,8 @@
 # Preparação de atualizações sem PowerShell
 
-O fluxo preparado usa GitHub Actions para testar uma versão identificada por commit, produzir um pacote sem configuração privada e, quando houver acesso autorizado, consultar a VPS. A publicação em produção **ainda não está habilitada**: faltam acesso efetivo, inspeção da instalação e validação do backup/rollback. Não há um botão de deploy funcional nesta entrega parcial.
+O fluxo atual usa GitHub Actions para testar uma revisão identificada, produzir imagens/pacote sem configuração privada e publicar somente quando autorizado. Conferir novamente a revisão instalada a cada publicação. As seções datadas de31/10–01/11 abaixo preservam o histórico de preparação, não o estado operacional atual.
+
+O procedimento vigente está em [Publicação e recuperação segura](recuperacao-segura.md). A estabilização de08/11 é local: exige validação Linux/Docker da nova revisão e nova autorização de publicação. O publicador isola escritores antes do backup/migração e mantém a instalação parada se uma migração iniciada falhar. Retorno sem migração reaplica todos os bloqueios; nunca restaura banco antigo automaticamente. Planejar indisponibilidade e liberação explícita conforme o runbook.
 
 ## Código atual e preservação
 

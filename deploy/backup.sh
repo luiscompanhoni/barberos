@@ -20,6 +20,7 @@ export PGHOST=${PGHOST:-db} PGUSER=${PGUSER:-barberos}
 BANCO=${PGDATABASE:-barberos}
 MIDIAS=${BACKUP_ESTUDIO_MEDIA:-}
 SCRIPT_MIDIAS="$(dirname "${BASH_SOURCE[0]}")/backup-estudio.py"
+SCRIPT_MANIFESTO="$(dirname "${BASH_SOURCE[0]}")/backup-manifesto.py"
 
 log() { echo "[backup] $(date '+%Y-%m-%d %H:%M:%S') $*"; }
 contar() { psql -d "$1" -tAc "$2" 2>/dev/null | tr -d '[:space:]'; }
@@ -34,26 +35,18 @@ VALUES (:'id', :'tipo', :'arquivo', :'bytes', :'restaurado', NULLIF(:'conferenci
 SQL
 }
 
-# Restaura num banco descartavel e confere: mesmas tabelas, mesma ultima migracao e nada a menos do que
-# o banco tinha logo antes da copia. Imprime o resumo; volta 1 se algo nao bater.
-verificar() { # arquivo [clientes_antes] [atendimentos_antes] [criar|verificar]
-  local arq=$1 cli_antes=${2:-0} ag_antes=${3:-0} modo=${4:-verificar} midias=""
+# Restaura num banco descartável e compara todas as linhas/schema ao snapshot do dump.
+# Nunca compara um backup antigo ao banco vivo atual.
+verificar() { # arquivo [criar|verificar]
+  local arq=$1 modo=${2:-verificar} midias="" resumo=""
   local TESTE="barberos_teste_$(date +%s)_$RANDOM"
   createdb "$TESTE" || { echo "nao criou o banco de teste"; return 1; }
   if ! gunzip -c "$arq" | psql -X -d "$TESTE" -q -v ON_ERROR_STOP=1 >/dev/null 2>&1; then
     echo "a restauracao do banco falhou; detalhes privados nao foram exibidos"
     dropdb --if-exists "$TESTE"; return 1
   fi
-  local sql_tabelas="select count(*) from information_schema.tables where table_schema = 'public'"
-  local sql_migracao="select migration_name from _prisma_migrations where finished_at is not null order by migration_name desc limit 1"
-  local tabelas clientes atendimentos migracao tabelas_vivo migracao_vivo
-  tabelas=$(contar "$TESTE" "$sql_tabelas"); migracao=$(contar "$TESTE" "$sql_migracao")
-  clientes=$(contar "$TESTE" "select count(*) from clientes"); atendimentos=$(contar "$TESTE" "select count(*) from agendamentos")
-  tabelas_vivo=$(contar "$BANCO" "$sql_tabelas"); migracao_vivo=$(contar "$BANCO" "$sql_migracao")
-  local resumo="${tabelas:-0} tabelas · ${clientes:-0} clientes · ${atendimentos:-0} atendimentos · migração ${migracao:-?}"
-  if [ "${tabelas:-0}" != "${tabelas_vivo:-x}" ] || [ "${migracao:-}" != "${migracao_vivo:-x}" ] \
-    || [ "${clientes:-0}" -lt "$cli_antes" ] || [ "${atendimentos:-0}" -lt "$ag_antes" ]; then
-    echo "nao bateu com o banco ($resumo; banco: ${tabelas_vivo} tabelas, ${cli_antes} clientes, ${ag_antes} atendimentos, ${migracao_vivo})"
+  if ! resumo=$(python3 "$SCRIPT_MANIFESTO" verificar "$TESTE" "$arq" "${arq%.sql.gz}.manifesto.json" 2>/dev/null); then
+    echo "conteúdo, schema ou auditoria não correspondem ao snapshot; manifesto obrigatório"
     dropdb --if-exists "$TESTE" >/dev/null
     return 1
   fi
@@ -97,12 +90,12 @@ backup() { # tipo
   exec 9>"$PASTA/.backup.lock"
   flock -n 9 || { log "outro backup esta em andamento"; return 1; }
   nome="barberos-$(date +%Y%m%d-%H%M%S)-$RANDOM.sql.gz"; arq="$PASTA/$nome"
-  # O que o banco tem agora: a copia restaurada nao pode ter menos.
-  local cli_antes ag_antes
-  cli_antes=$(contar "$BANCO" "select count(*) from clientes"); ag_antes=$(contar "$BANCO" "select count(*) from agendamentos")
-  if pg_dump -d "$BANCO" | gzip > "$arq.tmp" && gzip -t "$arq.tmp"; then
-    mv "$arq.tmp" "$arq"; bytes=$(stat -c %s "$arq")
-    if conferencia=$(verificar "$arq" "${cli_antes:-0}" "${ag_antes:-0}" criar); then
+  local manifesto="${arq%.sql.gz}.manifesto.json"
+  # pg_dump e hashes de todas as tabelas compartilham um snapshot exportado.
+  if python3 "$SCRIPT_MANIFESTO" criar "$BANCO" "$arq.tmp" "$manifesto.tmp" 2>/dev/null && gzip -t "$arq.tmp"; then
+    mv "$arq.tmp" "$arq"; mv "$manifesto.tmp" "$manifesto"
+    bytes=$(($(stat -c %s "$arq") + $(stat -c %s "$manifesto")))
+    if conferencia=$(verificar "$arq" criar); then
       if [ -n "$MIDIAS" ]; then bytes=$((bytes + $(stat -c %s "${arq%.sql.gz}.studio.tar.gz"))); fi
       restaurado=true; log "ok: $nome ($bytes bytes) · restaurado e conferido: $conferencia"
     else
@@ -110,6 +103,7 @@ backup() { # tipo
     fi
     if [ "$restaurado" = true ]; then
       fora "$arq"; local enviado=$?
+      if [ "$enviado" -eq 0 ]; then fora "$manifesto"; enviado=$?; fi
       if [ "$enviado" -eq 0 ] && [ -n "$MIDIAS" ]; then fora "${arq%.sql.gz}.studio.tar.gz"; enviado=$?; fi
       case $enviado in
         0) foraok=true; log "copia criptografada enviada para fora do servidor" ;;
@@ -117,12 +111,12 @@ backup() { # tipo
       esac
     fi
   else
-    rm -f "$arq.tmp"; erro="pg_dump falhou"; log "ERRO: pg_dump falhou"
+    rm -f "$arq.tmp" "$manifesto.tmp"; erro="pg_dump ou manifesto consistente falhou"; log "ERRO: pg_dump ou manifesto falhou"
   fi
   registrar "$tipo" "$nome" "$bytes" "$restaurado" "$conferencia" "$foraok" "$erro"
   if [ -z "$erro" ] && [ "$restaurado" = true ]; then
     while IFS= read -r -d '' antigo; do
-      rm -f -- "$antigo" "${antigo%.sql.gz}.studio.tar.gz"
+      rm -f -- "$antigo" "${antigo%.sql.gz}.studio.tar.gz" "${antigo%.sql.gz}.manifesto.json"
     done < <(find "$PASTA" -type f -name "barberos-*.sql.gz" -mtime +"$DIAS_LOCAL" -print0)
   fi
   flock -u 9
@@ -150,6 +144,7 @@ case "${1:-loop}" in
     arq=${2:?informe o arquivo}
     createdb barberos_restaurado || { log "banco de destino indisponivel ou ja existe; nada foi apagado"; exit 1; }
     gunzip -c "$arq" | psql -X -d barberos_restaurado -q -v ON_ERROR_STOP=1 >/dev/null 2>&1 || { log "ERRO na restauracao; banco parcial preservado para inspecao"; exit 1; }
+    python3 "$SCRIPT_MANIFESTO" verificar barberos_restaurado "$arq" "${arq%.sql.gz}.manifesto.json" || exit 1
     if [ -n "$MIDIAS" ]; then
       python3 "$SCRIPT_MIDIAS" restaurar "$arq" barberos_restaurado "${arq%.sql.gz}.studio.tar.gz" "${arq%.sql.gz}-midias-restauradas" || exit 1
       log "midias restauradas numa pasta nova ao lado do dump; volume de producao nao foi alterado"

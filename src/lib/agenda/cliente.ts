@@ -18,6 +18,7 @@ import { grupoTemComanda } from "./grupo-comanda";
 import { dataLocal } from "./tempo";
 import { checarTransicaoNaReserva } from "./transicao";
 import { travarClienteAgenda, type TitularAgenda } from "./cliente-identidade";
+import { conferirSemReservaAdicional } from "./reservas-adicionais";
 
 const MIN = 60_000;
 const ATIVOS_FUTUROS = ["MARCADO", "CONFIRMADO"] as const;
@@ -44,7 +45,7 @@ async function checarChoqueDoCliente(clienteId: string, inicio: number, fim: num
   const choque = await db.agendamento.findFirst({
     where: {
       clienteId,
-      adicionalDeId: null,
+      OR: [{ adicionalDeId: null }, { ocupaAgenda: true }],
       status: { in: [...ATIVOS_FUTUROS] },
       inicio: { lt: new Date(fim) },
       fim: { gt: new Date(inicio) },
@@ -196,6 +197,7 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${clienteId}`}))`;
       const atual = await tx.agendamento.findUniqueOrThrow({ where: { id: ag.id } });
       if (atual.status !== ag.status || +atual.inicio !== +ag.inicio || +atual.fim !== +ag.fim || atual.barbeiroId !== ag.barbeiroId) throw conflitoHorario();
+      await conferirSemReservaAdicional(tx, ag.id);
       const adicionaisAtuais = await tx.agendamento.findMany({ where: { adicionalDeId: ag.id, origem: "SITE", status: { not: "CANCELADO" } }, orderBy: { inicio: "asc" } });
       if (adicionaisAtuais.length !== adicionais.length || adicionaisAtuais.some((a, i) => a.id !== adicionais[i].id || a.status !== adicionais[i].status || +a.inicio !== +adicionais[i].inicio || a.barbeiroId !== adicionais[i].barbeiroId)) throw conflitoHorario();
       if (adicionais.length && await tx.itemComanda.findFirst({ where: { agendamentoId: { in: [ag.id, ...adicionais.map((a) => a.id)] } } })) throw new ErroNegocio("Este atendimento já tem comanda. Fale com a barbearia para alterar.", 409);
@@ -203,7 +205,7 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
       await tx.$queryRaw`SELECT id FROM premios_ganhos WHERE "agendamentoId" = ${ag.id} AND status = 'RESERVADO' ORDER BY id FOR UPDATE`;
       const premios = await tx.premioGanho.findMany({ where: { agendamentoId: ag.id, status: "RESERVADO" }, select: { expiraEm: true } });
       if (premios.some((p) => p.expiraEm && +p.expiraEm < inicio)) throw new ErroNegocio("O novo horário ultrapassa a validade do prêmio reservado. Escolha uma data dentro da validade.", 422, "premio_validade");
-      const choque = await tx.agendamento.findFirst({ where: { clienteId, adicionalDeId: null, id: { not: ag.id }, status: { in: [...ATIVOS_FUTUROS] }, inicio: { lt: new Date(fim) }, fim: { gt: new Date(inicio) } } });
+      const choque = await tx.agendamento.findFirst({ where: { clienteId, OR: [{ adicionalDeId: null }, { ocupaAgenda: true }], id: { not: ag.id }, status: { in: ["MARCADO", "CONFIRMADO", "CHEGOU", "EM_ATENDIMENTO", "CONCLUIDO"] }, inicio: { lt: new Date(fim) }, fim: { gt: new Date(inicio) } } });
       if (choque) throw new ErroNegocio("Você já tem um horário marcado nesse período.", 409, "choque_cliente");
       await validarEncaixe(tx, destino, { inicio, fim }, {
         fuso: cfg.fuso,
@@ -274,7 +276,7 @@ export async function confirmarPeloCliente(clienteId: string, agendamentoId: str
     if (atual.status === "CONFIRMADO") return atual;
     if (atual.status !== "MARCADO" || atual.inicio.getTime() < Date.now()) throw new ErroNegocio("Esse horário não pode mais ser confirmado.");
     const n = await tx.agendamento.update({ where: { id: agendamentoId }, data: { status: "CONFIRMADO" } });
-    await tx.agendamento.updateMany({ where: { adicionalDeId: agendamentoId, status: "MARCADO" }, data: { status: "CONFIRMADO" } });
+    await tx.agendamento.updateMany({ where: { adicionalDeId: agendamentoId, ocupaAgenda: false, status: "MARCADO" }, data: { status: "CONFIRMADO" } });
     await auditar(tx, null, "confirmar_cliente", "agendamento", agendamentoId, {});
     return n;
   });

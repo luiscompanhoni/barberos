@@ -2,7 +2,7 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { instanteLocal, somarDias } from "@/lib/agenda/tempo";
 import { resumoComanda } from "@/lib/comandas/regras";
 import { db } from "@/lib/db";
-import { mensalidadesEstornadas } from "@/lib/estornos/financeiro";
+import { recebimentosMensalidades } from "@/lib/financeiro/recebimentos";
 import { STATUS_EFETIVOS } from "@/lib/estornos/regras";
 import { ocupacaoDosDias } from "@/lib/indicadores/ocupacao";
 import { relatorioComissoes } from "@/lib/rh/comissoes";
@@ -33,17 +33,16 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
   const janela = { gte: new Date(instanteLocal(inicio, 0, cfg.fuso)), lt: new Date(instanteLocal(somarDias(fim, 1), 0, cfg.fuso)) };
   const dias: string[] = [];
   for (let d = inicio; d <= fim; d = somarDias(d, 1)) dias.push(d);
-  const estornadas = await mensalidadesEstornadas();
-  const [ags, comandas, recebidas, estornos, ocupacao, comissoes, regrasPote] = await Promise.all([
+  const [ags, comandas, recebidas, estornos, ocupacao, comissoes] = await Promise.all([
     db.agendamento.findMany({ where: { inicio: janela }, select: { id: true, clienteId: true, barbeiroId: true, servicoId: true, cadeiraId: true,
       status: true, assinaturaId: true, precoCentavos: true, inicio: true, barbeiro: { select: { nome: true } }, cadeira: { select: { nome: true } },
       servico: { select: { nome: true, custoCentavos: true } }, itemComanda: { select: { comanda: { select: { status: true, fechadaEm: true } } } } } }),
     db.comanda.findMany({ where: { status: "FECHADA", fechadaEm: janela }, include: { pagamentos: true,
       itens: { include: { produto: { select: { custoCentavos: true, categoria: true } },
         agendamento: { select: { id: true, inicio: true, barbeiroId: true, cadeiraId: true, servicoId: true, assinaturaId: true, cadeira: { select: { nome: true } }, servico: { select: { nome: true } }, barbeiro: { select: { nome: true } } } } } } } }),
-    db.cobranca.aggregate({ where: { OR: [{ status: "PAGA" }, { status: "ESTORNADA", id: { in: estornadas } }], pagaEm: janela }, _sum: { valorCentavos: true } }),
+    recebimentosMensalidades(janela),
     db.pedidoEstorno.findMany({ where: { status: { in: STATUS_EFETIVOS }, executadoEm: janela }, select: { tipo: true, valorCentavos: true } }),
-    ocupacaoDosDias(dias), relatorioComissoes(inicio, fim), db.poteFicha.findMany(),
+    ocupacaoDosDias(dias), relatorioComissoes(inicio, fim),
   ]);
   const feitos = ags.filter((a) => a.status === "CONCLUIDO");
   const feitosIds = new Set(feitos.map((a) => a.id));
@@ -99,7 +98,7 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
       }
     });
   }
-  const fichas = new Map(regrasPote.map((f) => [f.servicoId, f.fichas]));
+  const fichas = new Map(Object.entries(comissoes.assinaturas?.creditosPorServico ?? {}));
   for (const b of comissoes.barbeiros) {
     const g = linha(bs, b.barbeiroId, b.nome);
     if (b.semRegra) { g.comissaoPendente = true; total.comissaoPendente = true; }
@@ -123,7 +122,7 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
       linha(cs, "sem-cadeira", "Cadeira não informada").comissaoCentavos! += b.produtos.comissao;
     }
   }
-  const mensalidades = (recebidas._sum.valorCentavos ?? 0) - estornos.filter((e) => e.tipo === "MENSALIDADE").reduce((s, e) => s + e.valorCentavos, 0);
+  const mensalidades = recebidas.total - estornos.filter((e) => e.tipo === "MENSALIDADE").reduce((s, e) => s + e.valorCentavos, 0);
   total.receitaAssinaturasCentavos = mensalidades;
   const grupos = (mapa: Map<string, Grupo>) => [...mapa.values()].map(finalizar).sort((a, b) => b.vendasCentavos + b.receitaAssinaturasCentavos - a.vendasCentavos - a.receitaAssinaturasCentavos);
   const t = finalizar(total);
@@ -135,5 +134,5 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
     comissaoCentavos: t.comissaoCentavos, margemCentavos: t.margemCentavos, custosPendentes: total.custosPendentes };
   const servicosAvulsos = comissoes.barbeiros.reduce((s, b) => s + b.avulso.base, 0);
   atual.ticketAvulsoCentavos = atual.avulsos ? Math.round(servicosAvulsos / atual.avulsos) : null;
-  return { atual, barbeiros: grupos(bs), servicos: grupos(ss), cadeiras: grupos(cs), semFechamento, datasDiferentes, poteLigado };
+  return { atual, barbeiros: grupos(bs), servicos: grupos(ss), cadeiras: grupos(cs), semFechamento, datasDiferentes, poteLigado, recebimentosPendentes: recebidas.pendentes.length };
 }

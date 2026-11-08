@@ -13,13 +13,13 @@ type Soma = { qtd: number; base: number; comissao: number };
 type Linha = {
   pessoaId: string; nome: string; cargo: string | null; chavePix: string | null; barbeiro: string | null; ativo: boolean;
   salario: number; comissao: number; adicionais: number; descontos: number; liquido: number;
-  status: "ABERTA" | "FECHADA" | "PAGA"; pagoEm: string | null; mudouDepois: boolean;
+  status: "ABERTA" | "FECHADA" | "PAGA"; pagoEm: string | null; mudouDepois: boolean; memoriaDisponivel?: boolean;
   comissaoDetalhe: {
     avulso: Soma; plano: Soma; semRegra: number;
     assinaturas?: { qtd: number; creditos: number; receitaAtribuida: number; comissao: number } | null; produtos?: { vendido: number; comissao: number } | null;
   } | null; lancamentos: Lanc[];
 };
-type Dados = { competencia: string; linhas: Linha[] };
+type Dados = { competencia: string; linhas: Linha[]; revisao: string; recebimentos?: { completo: boolean; pendentes: number } };
 
 const TIPOS: { v: Tipo; r: string; soma: boolean }[] = [
   { v: "ADICIONAL", r: "Adicional", soma: true }, { v: "BONUS", r: "Bônus", soma: true },
@@ -76,7 +76,7 @@ export function FolhaTela() {
     setOcupado(true);
     setMsg(null);
     try {
-      const dados = await api<Dados>("/api/rh/folha", { method: "POST", body: { competencia: d.competencia, ...body } });
+      const dados = await api<Dados>("/api/rh/folha", { method: "POST", body: { competencia: d.competencia, revisao: d.revisao, ...body } });
       if (geracao.current !== atual) return;
       setD(dados);
       setMsg({ t: ok });
@@ -135,6 +135,7 @@ export function FolhaTela() {
         <div className="ml-auto text-right"><p className="text-xs text-zinc-500">Líquido total</p><p className="text-xl font-normal text-ouro"><ContadorCrm valor={total} formatar={reais} /></p></div>
       </div>
       {msg && <p role={msg.erro ? "alert" : "status"} className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
+      {d.recebimentos && !d.recebimentos.completo && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{d.recebimentos.pendentes} mensalidade(s) aguardam comprovação do recebido. As comissões de assinaturas são prévias e precisam de conciliação antes do fechamento.</p>}
       <LotePixFolha key={d.competencia} competencia={d.competencia} atualizacao={d} />
       {visiveis.length === 0 && <div className="cartao text-sm text-zinc-500">Ninguém na folha. Cadastre os funcionários no checklist e preencha a ficha na aba Funcionários.</div>}
       {visiveis.length > 0 && <section className="cartao space-y-4"><h2 className="font-semibold">Leitura da folha</h2><p className="text-xs text-zinc-500">Líquido por pessoa na competência. O estado de cada folha e a memória de cálculo estão nos cartões abaixo.</p><GraficoBarrasCrm rotulo="Valor líquido da folha por pessoa" formatar={reais} itens={visiveis.map(l => ({ rotulo: l.nome, valor: l.liquido, nota: STATUS[l.status] }))} /></section>}
@@ -152,12 +153,13 @@ export function FolhaTela() {
             <span className="w-28 text-right text-lg font-black">{reais(l.liquido)}</span>
           </div>
           <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs sm:grid-cols-4">
-            <span>Salário <b>{reais(l.salario)}</b></span>
+            <span>Fixo mensal <b>{reais(l.salario)}</b></span>
             <span>Comissão <b>{reais(l.comissao)}</b></span>
             <span className="text-emerald-700">+ Adicionais <b>{reais(l.adicionais)}</b></span>
             <span className="text-red-600">− Vales/descontos <b>{reais(l.descontos)}</b></span>
           </div>
-          {l.mudouDepois && <p className="text-xs text-amber-700">Os valores mudaram depois do fechamento (ex.: atendimento concluído depois). Reabra e feche de novo para atualizar.</p>}
+          {l.mudouDepois && <p className="text-xs text-amber-700">O recálculo atual difere do retrato fechado. Os valores históricos foram preservados; confira antes de qualquer ajuste.</p>}
+          {l.memoriaDisponivel === false && <p className="text-xs text-amber-700">A memória detalhada desta folha antiga não está disponível. Seus totais congelados foram preservados.</p>}
           <div className="flex flex-wrap items-center gap-2">
             {l.status === "ABERTA" && (l.salario || l.comissao || l.lancamentos.length) > 0 && (
               <button className="btn py-1.5 text-xs" onClick={() => acao({ acao: "fechar", pessoaId: l.pessoaId }, `Folha de ${l.nome} fechada.`)}><Lock size={13} /> Fechar só esta</button>
@@ -165,7 +167,7 @@ export function FolhaTela() {
             {l.status === "FECHADA" && (
               <>
                 <select aria-label={`Forma de pagamento de ${l.nome}`} className="campo w-44 py-1.5 text-sm" value={forma} onChange={(e) => setForma(e.target.value)}>{FORMAS.map((f) => <option key={f.v} value={f.v}>{f.r}</option>)}</select>
-                <button className="btn" onClick={() => acao({ acao: "pagar", pessoaId: l.pessoaId, forma }, `Folha de ${l.nome} paga e lançada nas despesas.`, `Marcar ${reais(l.liquido)} como pago para ${l.nome}?${l.chavePix ? `\nPix: ${l.chavePix}` : ""}`)}><Wallet size={15} /> Marcar como paga</button>
+                <button className="btn" onClick={() => acao({ acao: "pagar", pessoaId: l.pessoaId, forma }, `Pagamento externo de ${l.nome} registrado nas despesas.`, `Você já realizou o pagamento de ${reais(l.liquido)} para ${l.nome}? Confirme para registrar na folha.`)}><Wallet size={15} /> Registrar pagamento realizado</button>
                 <button className="btn" onClick={() => acao({ acao: "reabrir", pessoaId: l.pessoaId }, `Folha de ${l.nome} reaberta.`)}><RotateCcw size={15} /> Reabrir</button>
               </>
             )}

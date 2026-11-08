@@ -1,0 +1,6 @@
+BEGIN;
+ALTER TABLE eventos_pagamento ADD COLUMN estado TEXT NOT NULL DEFAULT 'LEGADO',
+  ADD COLUMN "tentativaToken" TEXT, ADD COLUMN tentativas INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN "atualizadoEm" TIMESTAMPTZ(3), ADD COLUMN "concluidoEm" TIMESTAMPTZ(3);
+ALTER TABLE eventos_pagamento ADD CONSTRAINT evento_pagamento_estado CHECK (estado IN ('LEGADO','PROCESSANDO','FALHOU','CONCLUIDO'));
+COMMIT;

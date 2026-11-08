@@ -16,7 +16,7 @@ beforeEach(() => {
   m.upsert.mockResolvedValue({ id: "cobranca", link: null }); m.atualizar.mockResolvedValue({ count: 1 });
   m.cobrancas.mockResolvedValue([{ status: "PAGA", vencimento: new Date("2030-02-01") }]);
   m.marcar.mockResolvedValue({ count: 0 }); m.salva.mockResolvedValue({ id: "cobranca", link: null });
-  m.tx.mockImplementation(cb => cb({ $executeRaw: vi.fn(), assinatura: { findUniqueOrThrow: m.atual, updateMany: m.atualizar }, cobranca: { upsert: m.upsert, findMany: m.cobrancas, updateMany: m.marcar, findUniqueOrThrow: m.salva } }));
+  m.tx.mockImplementation(cb => cb({ $executeRaw: vi.fn(), assinatura: { findUniqueOrThrow: m.atual, updateMany: m.atualizar }, cobranca: { findUnique: async () => null, upsert: m.upsert, findMany: m.cobrancas, updateMany: m.marcar, findUniqueOrThrow: m.salva } }));
 });
 
 describe("vencimento local condicional", () => {

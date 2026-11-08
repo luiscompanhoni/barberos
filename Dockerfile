@@ -9,6 +9,13 @@ COPY package.json package-lock.json ./
 COPY prisma ./prisma
 RUN --mount=type=secret,id=build_ca,target=/etc/ssl/certs/ca-certificates.crt NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt npm ci
 
+# CLI isolada: o lock dedicado também fixa a correção transitiva usada nas migrações.
+# Uma instalação global do Prisma ignoraria os overrides do aplicativo.
+FROM base AS prisma-cli
+COPY deploy/prisma-cli/package.json deploy/prisma-cli/package-lock.json ./
+RUN --mount=type=secret,id=build_ca,target=/etc/ssl/certs/ca-certificates.crt \
+    NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt npm ci --omit=dev --audit=false --fund=false && npm cache clean --force
+
 FROM base AS build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -25,9 +32,9 @@ COPY --chown=app:app --from=build /app/.next/standalone ./
 COPY --chown=app:app --from=build /app/.next/static ./.next/static
 COPY --chown=app:app --from=build /app/public ./public
 COPY --chown=app:app --from=build /app/prisma ./prisma
-# CLI do Prisma (mesma versao do projeto) para aplicar as migracoes na subida
-RUN --mount=type=secret,id=build_ca,target=/etc/ssl/certs/ca-certificates.crt \
-    NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-certificates.crt npm install -g prisma@6.19.3 && npm cache clean --force
+# A CLI de migração usa somente sua árvore bloqueada, sem dependências de desenvolvimento.
+COPY --from=prisma-cli /app/node_modules /opt/prisma/node_modules
+ENV PATH="/opt/prisma/node_modules/.bin:${PATH}"
 COPY --chown=app:app --from=build /app/node_modules/.prisma ./node_modules/.prisma
 # O standalone local pode carregar .env; a imagem recebe segredos apenas em runtime.
 RUN rm -f /app/.env /app/.env.* && mkdir -p /app/media && chown app:app /app /app/media

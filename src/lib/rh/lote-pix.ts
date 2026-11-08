@@ -11,7 +11,7 @@ type Tx = Prisma.TransactionClient;
 async function contexto(tx: Tx, competencia: string) {
   const folhas = await tx.folhaPagamento.findMany({
     where: { competencia }, orderBy: { id: "asc" },
-    include: { pessoa: { select: { nome: true, chavePix: true, ativo: true, revisaoPix: true } } },
+    include: { pessoa: { select: { nome: true, chavePix: true, chavePixCifrada: true, chavePixMascarada: true, chavePixTipo: true, chavePixHash: true, ativo: true, revisaoPix: true } } },
   });
   return planejarLotePix(competencia, folhas);
 }

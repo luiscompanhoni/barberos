@@ -39,12 +39,14 @@ def main(image, legacy):
          "ldd /usr/bin/rclone || /usr/bin/rclone version >/dev/null"])
     suffix = uuid.uuid4().hex[:12]
     net, db, s3 = "backup-fixture-" + suffix, "backup-db-" + suffix, "backup-s3-" + suffix
+    pg_volume = "backup-pg-" + suffix
     user = f"{os.getuid()}:{os.getgid()}"
     password = "fixture-descartavel-sem-valor"
     env = ["-e", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
            "-e", "PGHOST=" + db, "-e", "PGUSER=fixture_user",
            "-e", "PGPASSWORD=" + password, "-e", "PGDATABASE=fixture",
-           "-e", "BACKUP_ESTUDIO_MEDIA=/media-estudio"]
+           "-e", "BACKUP_ESTUDIO_MEDIA=/media-estudio", "-e", "BACKUP_PG_DATA=/capacidade-postgres",
+           "--mount", f"type=volume,src={pg_volume},dst=/capacidade-postgres,readonly"]
     with tempfile.TemporaryDirectory(prefix="backup-cliente-fixture-") as tmp:
         base = Path(tmp)
         media, backups = base / "media", base / "backups"
@@ -59,8 +61,9 @@ def main(image, legacy):
                   "--mount", f"type=bind,src={backups},dst=/backups", *env]
         try:
             run(["docker", "network", "create", "--internal", net])
+            run(["docker", "volume", "create", pg_volume])
             run(["docker", "run", "-d", "--rm", "--name", db, "--network", net,
-                 "--memory", "512m", "--tmpfs", "/var/lib/postgresql/data:rw,size=256m",
+                 "--memory", "512m", "--mount", f"type=volume,src={pg_volume},dst=/var/lib/postgresql/data",
                  "-e", "POSTGRES_PASSWORD=" + password, "-e", "POSTGRES_DB=fixture",
                  "postgres:16-alpine"])
             # Servidor experimental S3 do próprio rclone em tmpfs e rede interna.
@@ -181,7 +184,9 @@ for cmd in pg_dump psql createdb dropdb pg_isready gzip gunzip find stat flock p
             s3_dump = next(iter(novos))
             conferir_registro(s3_dump.name, True)
             s3_media = backups / (s3_dump.name.removesuffix(".sql.gz") + ".studio.tar.gz")
-            for item in (s3_dump, s3_media):
+            s3_manifesto = backups / (s3_dump.name.removesuffix(".sql.gz") + ".manifesto.json")
+            assert json.loads(s3_manifesto.read_text())["snapshotConsistente"] is True
+            for item in (s3_dump, s3_media, s3_manifesto):
                 remote = "fix:fixture/barberos/" + item.name + ".enc"
                 dest = "/backups/" + item.name + ".baixado.enc"
                 run([*common, *config, "--entrypoint", "rclone", image, "copyto", remote, dest])
@@ -244,6 +249,7 @@ else: raise AssertionError('tmpfs sem limite')
             subprocess.run(["docker", "rm", "-fv", db], capture_output=True)
             subprocess.run(["docker", "rm", "-fv", s3], capture_output=True)
             subprocess.run(["docker", "network", "rm", net], capture_output=True)
+            subprocess.run(["docker", "volume", "rm", pg_volume], capture_output=True)
 
 
 if __name__ == "__main__":

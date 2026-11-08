@@ -15,6 +15,7 @@ import { cancelarAdicionalDoItem } from "./adicional";
 import { descricaoServico, erroNoPagamento, resumoComanda, valorCashback } from "./regras";
 import { travarBarbeiro } from "@/lib/agenda/agendamentos";
 import { conferirFechamentoReservado, conferirLinkEmVoo, conferirNovoTotal } from "./total-reservado";
+import { cancelarPendentesAgendados, publicarMudancasAgenda, travarAgendaComanda, validarConclusaoAgendada, validarRemocaoAgendada } from "./agenda-comanda";
 
 type Tx = Prisma.TransactionClient;
 
@@ -91,7 +92,7 @@ export async function atendimentosSemComanda(desde: Date) {
  * se o cliente ja tem comanda aberta, o atendimento entra nela (ex.: corte + barba).
  */
 export async function abrirComanda(s: Sessao, a: { clienteId?: string | null; nomeAvulso?: string | null; agendamentoId?: string | null }) {
-  const referencia = a.agendamentoId ? await db.agendamento.findUnique({ where: { id: a.agendamentoId }, select: { barbeiroId: true } }) : null;
+  const referencia = a.agendamentoId ? await db.agendamento.findUnique({ where: { id: a.agendamentoId }, select: { barbeiroId: true, clienteId: true } }) : null;
   if (a.agendamentoId && !referencia) throw naoEncontrado("Atendimento");
   // Pagou antes pelo link e o aviso ainda nao chegou: confere agora.
   if (a.agendamentoId) {
@@ -99,22 +100,29 @@ export async function abrirComanda(s: Sessao, a: { clienteId?: string | null; no
     if (ant?.status === "PENDENTE") await sincronizarAntecipado(ant.id);
   }
   const r = await db.$transaction(async (tx) => {
+    const titular = referencia?.clienteId ?? a.clienteId;
+    if (titular) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente-ciclo:${titular}`}))`;
     if (referencia) await travarBarbeiro(tx, referencia.barbeiroId);
     let clienteId = a.clienteId ?? null;
     let ag: Prisma.AgendamentoGetPayload<{ include: { servico: true; barbeiro: true; itemComanda: true } }> | null = null;
     if (a.agendamentoId) {
       ag = await tx.agendamento.findUnique({ where: { id: a.agendamentoId }, include: { servico: true, barbeiro: true, itemComanda: true } });
       if (!ag) throw naoEncontrado("Atendimento");
-      if (ag.barbeiroId !== referencia?.barbeiroId) throw new ErroNegocio("O atendimento mudou. Confira novamente antes de abrir a comanda.", 409);
+      if (ag.barbeiroId !== referencia?.barbeiroId || ag.clienteId !== referencia?.clienteId) throw new ErroNegocio("O atendimento mudou. Confira novamente antes de abrir a comanda.", 409);
       if (ag.adicionalDeId && ag.origem === "SITE") throw new ErroNegocio("Abra a comanda pelo atendimento principal do grupo.", 422, "alteracao_multiplos");
       if (ag.status === "CANCELADO" || ag.status === "FALTOU") throw new ErroNegocio("Esse atendimento foi cancelado ou o cliente faltou.");
-      if (ag.itemComanda) return { id: ag.itemComanda.comandaId, nova: false };
+      if (ag.itemComanda) {
+        const vinculada = await tx.comanda.findUniqueOrThrow({ where: { id: ag.itemComanda.comandaId }, select: { status: true } });
+        if (vinculada.status === "CANCELADA") throw new ErroNegocio("Este atendimento está ligado a uma comanda cancelada. Revise esse histórico antes de gerar outra cobrança.", 409, "comanda_cancelada");
+        return { id: ag.itemComanda.comandaId, nova: false };
+      }
       clienteId = ag.clienteId;
     }
     if (!clienteId && !a.nomeAvulso?.trim()) throw new ErroNegocio("Escolha o cliente ou digite um nome.");
 
     const existente = clienteId ? await tx.comanda.findFirst({ where: { clienteId, status: "ABERTA" }, orderBy: { abertaEm: "desc" } }) : null;
     const comanda = existente ?? (await tx.comanda.create({ data: { clienteId, nomeAvulso: clienteId ? null : a.nomeAvulso!.trim(), abertaPorId: s.usuarioId } }));
+    if (existente) await travar(tx, existente.id);
     if (ag) {
       await tx.itemComanda.create({
         data: {
@@ -168,13 +176,15 @@ export async function adicionarAvulso(s: Sessao, comandaId: string, descricao: s
 
 /** Muda a quantidade de um item (0 remove). Servico da agenda so pode ser removido. */
 export async function alterarItem(s: Sessao, itemId: string, quantidade: number) {
-  const referencia = await db.itemComanda.findUnique({ where: { id: itemId }, select: { comandaId: true } });
+  const referencia = await db.itemComanda.findUnique({ where: { id: itemId }, select: { comandaId: true, agendamento: { select: { barbeiroId: true, inicio: true } } } });
   if (!referencia) throw naoEncontrado("Item");
   await db.$transaction(async (tx) => {
+    await travarAgendaComanda(tx, referencia.comandaId);
     const c = await travar(tx, referencia.comandaId);
     const item = c.itens.find(i => i.id === itemId);
     if (!item) throw naoEncontrado("Item");
     if (quantidade > 0 && item.agendamentoId) throw new ErroNegocio("Serviço da agenda entra uma vez só.");
+    if (quantidade <= 0) await validarRemocaoAgendada(tx, item.agendamentoId, c.pagamentos.some(p => p.status !== "CANCELADO"));
     const itens = c.itens.flatMap(i => i.id !== itemId ? [i] : quantidade <= 0 ? [] : [{ ...i, quantidade }]);
     conferirNovoTotal(c, itens, c.descontoCentavos);
     if (quantidade <= 0) {
@@ -187,6 +197,7 @@ export async function alterarItem(s: Sessao, itemId: string, quantidade: number)
     await tx.itemComanda.update({ where: { id: itemId }, data: { quantidade } });
   });
   avisar(referencia.comandaId);
+  if (referencia.agendamento) await publicarMudancasAgenda([referencia.agendamento]);
 }
 
 export async function definirDesconto(s: Sessao, comandaId: string, descontoCentavos: number) {
@@ -226,9 +237,11 @@ export async function lancarPagamento(
 /** Fecha: baixa o estoque dos produtos vendidos. Precisa estar paga (ou total zero). */
 export async function fecharComanda(s: Sessao, comandaId: string) {
   const r = await db.$transaction(async (tx) => {
+    await travarAgendaComanda(tx, comandaId);
     const c = await travar(tx, comandaId);
     if (c.itens.length === 0) throw new ErroNegocio("A comanda está vazia.");
     conferirFechamentoReservado(c);
+    await validarConclusaoAgendada(tx, c.itens.flatMap(i => i.agendamentoId ? [i.agendamentoId] : []));
     const res = resumoComanda(c.itens, c.pagamentos, c.descontoCentavos);
     if (res.aguardando > 0) throw new ErroNegocio("Tem pagamento esperando na maquininha.");
     if (!res.podeFechar) throw new ErroNegocio(`Ainda falta receber ${(res.falta / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`);
@@ -264,9 +277,10 @@ export async function fecharComanda(s: Sessao, comandaId: string) {
  */
 export async function cancelarComanda(s: Sessao, comandaId: string, motivo: string) {
   const podeFechada = (await permissoesDoUsuario(s)).excluir;
-  await db.$transaction(async (tx) => {
+  const cancelados = await db.$transaction(async (tx) => {
+    await travarAgendaComanda(tx, comandaId);
     const c = await travar(tx, comandaId, false);
-    if (c.status === "CANCELADA") return;
+    if (c.status === "CANCELADA") return [];
     if (c.status === "FECHADA") {
       if (!podeFechada) throw new ErroNegocio("Só o dono (ou quem tem a permissão de excluir) cancela comanda já fechada.", 403, "proibido");
       for (const i of c.itens) {
@@ -277,6 +291,7 @@ export async function cancelarComanda(s: Sessao, comandaId: string, motivo: stri
       conferirLinkEmVoo(c);
       if (c.pagamentos.some((p) => p.status !== "CANCELADO")) throw new ErroNegocio("Cancele os pagamentos lançados antes de cancelar a comanda.");
     }
+    const adicionaisCancelados = await cancelarPendentesAgendados(tx, comandaId, c.itens.flatMap(i => i.agendamentoId ? [i.agendamentoId] : []), c.status === "FECHADA");
     await tx.comanda.update({ where: { id: comandaId }, data: { status: "CANCELADA" } });
     // Desconto de indicacao usado nessa comanda volta para o cliente.
     await tx.beneficio.updateMany({ where: { comandaId, status: "USADO" }, data: { status: "DISPONIVEL", usadoEm: null, comandaId: null } });
@@ -288,9 +303,11 @@ export async function cancelarComanda(s: Sessao, comandaId: string, motivo: stri
       const ids = gerados.map((g) => g.id);
       await tx.beneficio.updateMany({ where: { status: "DISPONIVEL", OR: [{ id: { in: ids } }, { origemBeneficioId: { in: ids } }] }, data: { status: "CANCELADO" } });
     }
-    await auditar(tx, s.usuarioId, "cancelar", "comanda", comandaId, { motivo, estavaFechada: c.status === "FECHADA" });
+    await auditar(tx, s.usuarioId, "cancelar", "comanda", comandaId, { motivo, estavaFechada: c.status === "FECHADA", reservasCanceladas: adicionaisCancelados.map(a => a.id) });
+    return adicionaisCancelados;
   });
   avisar(comandaId);
+  await publicarMudancasAgenda(cancelados);
   encerrarLinks(comandaId);
 }
 

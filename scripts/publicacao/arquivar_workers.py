@@ -27,7 +27,7 @@ def imagens():
     return set(cmd(["docker", "image", "ls", "--no-trunc", "--format", "{{.ID}} {{.Repository}}:{{.Tag}}"]).splitlines())
 
 def retrato(base):
-    arquivos = [base / ".env", *base.joinpath("backups").glob("*.sql.gz"), *base.joinpath("backups").glob("*.studio.tar.gz")]
+    arquivos = [base / ".env", *base.joinpath("backups").glob("*.sql.gz"), *base.joinpath("backups").glob("*.studio.tar.gz"), *base.joinpath("backups").glob("*.manifesto.json")]
     if base.joinpath(".env.estudio").exists(): arquivos.append(base / ".env.estudio")
     if any(p.is_symlink() or not p.is_file() for p in arquivos): raise RuntimeError("Arquivo preservado inesperado.")
     return {"imagens": sorted(imagens()),

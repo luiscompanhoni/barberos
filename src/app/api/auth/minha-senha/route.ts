@@ -5,6 +5,7 @@ import { EQUIPE, exigirSessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { corpoAutenticacao } from "@/lib/auth/http-cliente";
+import { abrirSessao } from "@/lib/auth/abrir-sessao";
 
 // Toda a equipe (inclusive líder) e o cliente cuidam da própria senha.
 const TODOS = [...EQUIPE, "CLIENTE" as const];
@@ -30,6 +31,9 @@ export const PATCH = rota(async (req: Request) => {
     if (login && (await db.usuario.findFirst({ where: { login, id: { not: s.usuarioId } } }))) throw new ErroNegocio("Esse usuário já existe.", 409);
     await db.usuario.update({ where: { id: s.usuarioId }, data: { login } });
   }
-  if (b.nova) await trocarPropriaSenha(s.usuarioId, { atual: b.atual, nova: b.nova }, s.sessaoVersao ?? 0);
+  if (b.nova) {
+    const u = await trocarPropriaSenha(s.usuarioId, { atual: b.atual, nova: b.nova }, s.sessaoVersao ?? 0);
+    await abrirSessao(u); // Mantém somente este navegador autenticado na versão nova.
+  }
   return NextResponse.json({ ok: true });
 });

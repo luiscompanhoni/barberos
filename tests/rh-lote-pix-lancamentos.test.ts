@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Sessao } from "@/lib/auth/sessao";
 type Registro = { id: string; pessoaId: string; competencia: string; tipo: string; valorCentavos: number; descricao: string; movimentoCaixaId: string | null; porId: string };
-const m = vi.hoisted(() => ({ registros: new Map<string, Registro>(), caixa: vi.fn(), auditoria: vi.fn(), historico: vi.fn(), fechada: vi.fn(), criar: vi.fn() }));
+const m = vi.hoisted(() => ({ registros: new Map<string, Registro>(), caixa: vi.fn(), auditoria: vi.fn(), historico: vi.fn(), fechada: vi.fn(), criar: vi.fn(), toque: vi.fn() }));
 vi.mock("@/lib/auditoria", () => ({ auditar: m.auditoria }));
 vi.mock("@/lib/financeiro/caixa", () => ({ movimentarCaixaNaTransacao: m.caixa }));
 vi.mock("@/lib/db", () => {
-  const tx = { $queryRaw: async () => [], auditoria: { findFirst: m.historico }, checklistPessoa: { findUnique: async () => ({ id: "pessoa1", nome: "Pessoa sintética" }) }, folhaPagamento: { findUnique: m.fechada }, folhaLancamento: { findUnique: async ({ where }: { where: { id: string } }) => m.registros.get(where.id) ?? null, create: m.criar } };
+  const tx = { $queryRaw: async () => [{ id: "pessoa1" }], $executeRaw: m.toque, auditoria: { findFirst: m.historico }, checklistPessoa: { findUnique: async () => ({ id: "pessoa1", nome: "Pessoa sintética" }) }, folhaPagamento: { findUnique: m.fechada }, folhaLancamento: { findUnique: async ({ where }: { where: { id: string } }) => m.registros.get(where.id) ?? null, create: m.criar } };
   return { db: { $transaction: async (f: (t: typeof tx) => unknown) => f(tx) } };
 });
 import { lancar } from "@/lib/rh/folha";
@@ -13,12 +13,14 @@ const s = { usuarioId: "dono1", papel: "DONO", nome: "Dono", barbeiroId: null, c
 const d = { competencia: "2039-11", pessoaId: "pessoa1", tipo: "VALE" as const, valorCentavos: 10000, descricao: "Vale sintético", doCaixa: true, idempotencia: "173d07ec-335b-4d11-9af6-680cb8afc86d" };
 beforeEach(() => {
   vi.clearAllMocks(); m.registros.clear(); m.fechada.mockResolvedValue(null); m.historico.mockResolvedValue(null); m.caixa.mockResolvedValue({ id: "movimento1" });
+  m.toque.mockResolvedValue(1);
   m.criar.mockImplementation(async ({ data }) => { m.registros.set(data.id, data); return data; });
 });
 describe("lançamento manual com chave durável", () => {
   it("replay exato retorna o mesmo registro sem outra sangria ou auditoria", async () => {
     const a = await lancar(s, d), b = await lancar(s, d);
     expect(a.id).toBe(d.idempotencia); expect(b.id).toBe(a.id); expect(m.criar).toHaveBeenCalledTimes(1); expect(m.caixa).toHaveBeenCalledTimes(1); expect(m.auditoria).toHaveBeenCalledTimes(1);
+    expect(m.toque).toHaveBeenCalledOnce();
     expect(m.caixa.mock.calls[0][0].folhaLancamento.create).toBe(m.criar);
   });
   it("resposta perdida pode ser recuperada depois do fechamento da folha", async () => {

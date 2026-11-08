@@ -7,6 +7,7 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { vendasDoPeriodo } from "@/lib/comandas/relatorio";
 import { db } from "@/lib/db";
+import { recebimentosMensalidades } from "@/lib/financeiro/recebimentos";
 import {
   FAIXAS_ETARIAS, FAIXAS_FREQUENCIA, faixaEtaria, faixaFrequencia, idade, intervalosPorCliente, media, mediana,
   situacaoPelaUltimaVisita, taxaDeRetorno,
@@ -20,14 +21,14 @@ const intervalo = (de: number, ate: number) => ({ gte: new Date(de), lt: new Dat
 async function numerosDoIntervalo(de: number, ate: number) {
   const [ags, assin, vendas] = await Promise.all([
     db.agendamento.findMany({ where: { inicio: intervalo(de, ate), status: { in: ["CONCLUIDO", "FALTOU"] } }, select: { clienteId: true, status: true, precoCentavos: true, assinaturaId: true } }),
-    db.cobranca.aggregate({ where: { status: "PAGA", pagaEm: intervalo(de, ate) }, _sum: { valorCentavos: true } }),
+    recebimentosMensalidades(intervalo(de, ate)),
     vendasDoPeriodo(new Date(de), new Date(ate)),
   ]);
   const feitos = ags.filter((a) => a.status === "CONCLUIDO");
   const avulsos = feitos.filter((a) => !a.assinaturaId);
   const receita = {
     servicos: avulsos.reduce((s, a) => s + a.precoCentavos, 0),
-    assinaturas: assin._sum.valorCentavos ?? 0,
+    assinaturas: assin.total,
     bar: vendas.porTipo.bar,
     loja: vendas.porTipo.loja,
     outros: vendas.porTipo.outros,
@@ -36,6 +37,7 @@ async function numerosDoIntervalo(de: number, ate: number) {
   const clientes = new Set(feitos.map((a) => a.clienteId)).size;
   return {
     receita: { ...receita, total },
+    recebimentoCompleto: assin.completo, recebimentosPendentes: assin.pendentes.length,
     atendimentos: feitos.length,
     peloPlano: feitos.length - avulsos.length,
     avulsos: avulsos.length,
@@ -101,13 +103,13 @@ export async function indicadoresDoNegocio(p: Periodo, agora = Date.now()) {
   const [gastoServ, gastoCom, gastoAss] = await Promise.all([
     db.agendamento.groupBy({ by: ["clienteId"], where: { status: "CONCLUIDO", assinaturaId: null, inicio: intervalo(p.de, p.ate) }, _sum: { precoCentavos: true }, _count: true }),
     db.itemComanda.findMany({ where: { produtoId: { not: null }, comanda: { status: "FECHADA", fechadaEm: intervalo(p.de, p.ate), clienteId: { not: null } } }, select: { quantidade: true, precoUnitCentavos: true, comanda: { select: { clienteId: true } } } }),
-    db.cobranca.findMany({ where: { status: "PAGA", pagaEm: intervalo(p.de, p.ate) }, select: { valorCentavos: true, assinatura: { select: { clienteId: true } } } }),
+    recebimentosMensalidades(intervalo(p.de, p.ate)),
   ]);
   const gasto = new Map<string, number>();
   const somar = (id: string | null | undefined, v: number) => id && gasto.set(id, (gasto.get(id) ?? 0) + v);
   for (const g of gastoServ) somar(g.clienteId, g._sum.precoCentavos ?? 0);
   for (const i of gastoCom) somar(i.comanda.clienteId, i.quantidade * i.precoUnitCentavos);
-  for (const c of gastoAss) somar(c.assinatura.clienteId, c.valorCentavos);
+  for (const c of gastoAss.registros) somar(c.clienteId, c.valorCentavos);
   const topIds = [...gasto.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10);
   const topNomes = await db.cliente.findMany({ where: { id: { in: topIds.map(([id]) => id) } }, select: { id: true, nome: true } });
   const visitasNoPeriodo = new Map<string, number>();

@@ -104,6 +104,8 @@ export async function buscarPremios(q: { codigo?: string; clienteId?: string; co
  */
 export async function validarPremio(s: Sessao, premioId: string, d: { comandaId?: string | null; codigo?: string | null }) {
   const r = await db.$transaction(async (tx) => {
+    // Cancelar a comanda também segue comanda → prêmio. Não inverter essa ordem.
+    if (d.comandaId) await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${d.comandaId} FOR UPDATE`;
     await tx.$queryRaw`SELECT 1 FROM premios_ganhos WHERE id = ${premioId} FOR UPDATE`;
     const p = await tx.premioGanho.findUnique({ where: { id: premioId } });
     if (!p) throw naoEncontrado("Prêmio");
@@ -120,7 +122,6 @@ export async function validarPremio(s: Sessao, premioId: string, d: { comandaId?
     let comandaId: string | null = d.comandaId ?? null;
     if (p.tipo === "SERVICO" || p.tipo === "DESCONTO") {
       if (!comandaId) throw new ErroNegocio("Abra a comanda do cliente e valide o prêmio por ela (o desconto entra na comanda).", 422, "precisa_comanda");
-      await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${comandaId} FOR UPDATE`;
       const c = await tx.comanda.findUnique({ where: { id: comandaId }, include: { itens: { include: { agendamento: { select: { servicoId: true } } } }, pagamentos: true, linksPagamento: { where: { status: "PENDENTE" } } } });
       if (!c) throw naoEncontrado("Comanda");
       if (c.status !== "ABERTA") throw new ErroNegocio("Essa comanda já foi fechada.");
@@ -153,9 +154,13 @@ export async function validarPremio(s: Sessao, premioId: string, d: { comandaId?
 /** Desfaz a validacao enquanto a comanda esta aberta (validou no cliente errado, desistiu do servico...). */
 export async function desfazerValidacao(s: Sessao, premioId: string) {
   const r = await db.$transaction(async (tx) => {
+    const antes = await tx.premioGanho.findUnique({ where: { id: premioId }, select: { comandaId: true } });
+    if (!antes) throw naoEncontrado("Prêmio");
+    if (antes.comandaId) await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${antes.comandaId} FOR UPDATE`;
     await tx.$queryRaw`SELECT 1 FROM premios_ganhos WHERE id = ${premioId} FOR UPDATE`;
     const p = await tx.premioGanho.findUnique({ where: { id: premioId } });
     if (!p) throw naoEncontrado("Prêmio");
+    if (p.comandaId !== antes.comandaId) throw new ErroNegocio("O vínculo do prêmio mudou durante a conferência. Atualize a comanda e tente novamente.", 409, "premio_alterado");
     if (p.status !== "UTILIZADO" || p.tipo === "CREDITO") throw new ErroNegocio("Esse prêmio não está validado.", 409);
     if (p.comandaId) {
       const c = await tx.comanda.findUnique({ where: { id: p.comandaId } });

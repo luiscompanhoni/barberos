@@ -9,6 +9,7 @@ import urllib.error
 from pathlib import Path
 
 CONTROLES_PUBLICACAO = {
+    "BARBEROS_QUARENTENA_RESTAURACAO": "false",
     "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "",
     "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO": "true",
     "WHATSAPP_ATENDIMENTO_APOS_PILOTO": "false", "WHATSAPP_ATENDIMENTO_IA_PAGA": "false",
@@ -169,9 +170,12 @@ def conferir_https(revisao):
         raise RuntimeError("Uma rota privada não recusou acesso anônimo.")
 
 
-def backup_verificado(base, imagem, rede, ambiente, volume, tipo="DEPLOY"):
+def backup_verificado(base, imagem, rede, ambiente, volume, tipo="DEPLOY", volume_banco=None):
+    if not volume_banco:
+        raise RuntimeError("Volume do PostgreSQL deve ser identificado antes do backup.")
     antes = set((base / "backups").glob("barberos-*.sql.gz"))
     executar(["docker", "run", "--rm", "--network", rede, "--env-file", str(ambiente),
+              "-e", "BACKUP_PG_DATA=/capacidade-postgres", "-v", volume_banco + ":/capacidade-postgres:ro",
               "-v", str(base / "backups") + ":/backups", "-v", volume + ":/media-estudio:ro",
               imagem, "agora", tipo], prazo=600)
     novos = set((base / "backups").glob("barberos-*.sql.gz")) - antes
@@ -179,10 +183,16 @@ def backup_verificado(base, imagem, rede, ambiente, volume, tipo="DEPLOY"):
         raise RuntimeError("Backup da execução não foi identificado inequivocamente.")
     arquivo = novos.pop()
     midia = arquivo.with_name(arquivo.name.removesuffix(".sql.gz") + ".studio.tar.gz")
-    if not midia.is_file() or arquivo.stat().st_size == 0:
-        raise RuntimeError("Par de backup do banco e mídia incompleto.")
-    return {"arquivo": str(arquivo), "sha256": hashlib.sha256(arquivo.read_bytes()).hexdigest(),
-            "midia": str(midia), "restaurado": True}
+    manifesto = arquivo.with_name(arquivo.name.removesuffix(".sql.gz") + ".manifesto.json")
+    if not midia.is_file() or not manifesto.is_file() or any(p.is_symlink() for p in (arquivo, midia, manifesto)) or arquivo.stat().st_size == 0:
+        raise RuntimeError("Backup sem banco, mídia ou manifesto consistente.")
+    referencia = json.loads(manifesto.read_text(encoding="utf8"))
+    with arquivo.open("rb") as f:
+        digest = hashlib.file_digest(f, "sha256").hexdigest()
+    if referencia.get("formato") != 1 or referencia.get("snapshotConsistente") is not True or referencia.get("dumpSha256") != digest:
+        raise RuntimeError("Manifesto de recuperação não corresponde ao dump.")
+    return {"arquivo": str(arquivo), "sha256": digest,
+            "midia": str(midia), "manifesto": str(manifesto), "tabelasConferidas": len(referencia["tabelas"]), "restaurado": True}
 
 
 def ensaiar_schema(banco, backup, nome, rede, env, nova, anterior, pasta):

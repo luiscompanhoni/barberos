@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ErroNegocio } from "@/lib/erros";
+import { instanteRecebimento } from "@/lib/pagamentos/recebimento";
 import { zTransacaoId, type TransacaoHistorica } from "./schemas";
 
 const zCliente = z.object({
@@ -9,6 +10,7 @@ const zCliente = z.object({
 const zTransacao = z.object({
   galaxPayId: z.number().int().positive().safe(), value: z.number().int().positive().max(2_147_483_647),
   payday: z.iso.date(), status: z.string(), subscriptionGalaxPayId: z.number().int().positive().nullish(),
+  paydayDateDateTime: z.string().nullish(), payedOutsideGalaxPay: z.boolean().optional(),
   Subscription: z.object({ galaxPayId: z.number().int().positive(), Customer: zCliente.nullish() }).nullish(),
   Charge: z.object({ Customer: zCliente.nullish() }).nullish(),
 });
@@ -26,6 +28,8 @@ export function lerTransacaoHistorica(json: unknown, id: string): TransacaoHisto
   const contrato = t.Subscription?.galaxPayId ?? t.subscriptionGalaxPayId;
   return {
     id, contratoId: contrato ? String(contrato) : null, valorCentavos: t.value, vencimento: t.payday, status: t.status,
+    pagamentoEfetivoEm: /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(t.paydayDateDateTime ?? "") ? instanteRecebimento(t.paydayDateDateTime) : null,
+    pagoForaDoGateway: t.payedOutsideGalaxPay ?? false,
     cliente: { nome: c?.name ?? "", cpf: c?.document ?? "", telefones: (c?.phones ?? []).map(String) },
   };
 }

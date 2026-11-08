@@ -122,7 +122,8 @@ export function DetalheModal(p: {
         </div>
       )}
 
-      {p.podeEditar && <AjustarHorario ag={ag} fuso={p.fuso} onAlterado={p.onAlterado} />}
+      {ag.ocupaAgenda && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Serviço adicional com horário reservado. Registre o andamento e a conclusão aqui. Para remover um serviço não realizado, use a comanda.</p>}
+      {p.podeEditar && !ag.ocupaAgenda && <AjustarHorario ag={ag} fuso={p.fuso} onAlterado={p.onAlterado} />}
       {ag.pagoAntes && (p.papel === "DONO" || p.papel === "GERENTE" || p.papel === "RECEPCAO") && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 p-3 text-sm">
           <span className="flex-1">Pago online antes: {reais(ag.precoCentavos)}</span>
@@ -142,8 +143,8 @@ export function DetalheModal(p: {
               <button className="btn" disabled={ocupado} onClick={comanda}><Receipt size={14} /> Comanda</button>
             )}
           </div>
-          <p className="text-xs text-zinc-500">Para mudar horário, barbeiro ou duração, arraste o cartão na agenda.</p>
-          {ag.status !== "CONCLUIDO" && (
+          {!ag.ocupaAgenda && <p className="text-xs text-zinc-500">Para mudar horário, barbeiro ou duração, arraste o cartão na agenda.</p>}
+          {!ag.ocupaAgenda && ag.status !== "CONCLUIDO" && (
             confirmarCancel ? (
               <div className="flex items-center gap-2 rounded-lg bg-red-50 p-2 text-sm">
                 <span className="flex-1 text-red-800">Cancelar o atendimento de {ag.cliente.nome}?</span>

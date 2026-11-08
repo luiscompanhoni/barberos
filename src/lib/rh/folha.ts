@@ -3,7 +3,7 @@
  * caixa como sangria), fechar (congela), marcar como paga (gera Despesa FOLHA) e reabrir.
  */
 import { randomUUID } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, dataParaColuna } from "@/lib/agenda/tempo";
@@ -14,6 +14,11 @@ import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { movimentarCaixaNaTransacao } from "@/lib/financeiro/caixa";
 import { relatorioComissoes } from "./comissoes";
 import { csvFolha, intervaloCompetencia, totaisFolha, type TipoLancamento } from "./regras";
+import { lerMemoriaFolha } from "./memoria-folha";
+import { revisaoApuracao } from "./revisao";
+import { lerVigenciaRemuneracao } from "./vigencias";
+import { salarioVigente } from "./vigencia-regras";
+import { tocarPessoasDaFolha } from "./trava-regras-folha";
 
 export const FORMAS_PAGAMENTO = ["PIX", "TRANSFERENCIA", "DINHEIRO_CAIXA"] as const;
 export type FormaPagamentoFolha = (typeof FORMAS_PAGAMENTO)[number];
@@ -21,49 +26,56 @@ export type FormaPagamentoFolha = (typeof FORMAS_PAGAMENTO)[number];
 const reaisTexto = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
 
 /** Previa por funcionario: congelada se a folha ja foi fechada, senao calculada agora. */
-export async function previaFolha(comp: string) {
+async function calcularPreviaFolha(comp: string, leitor: Prisma.TransactionClient) {
   const { inicio, fim } = intervaloCompetencia(comp);
   const [pessoas, lancs, folhas, comissoes] = await Promise.all([
-    db.checklistPessoa.findMany({
+    leitor.checklistPessoa.findMany({
       where: { OR: [{ ativo: true }, { lancamentosFolha: { some: { competencia: comp } } }, { folhas: { some: { competencia: comp } } }] },
       orderBy: [{ nome: "asc" }],
       include: { barbeiro: { select: { nome: true } } },
     }),
-    db.folhaLancamento.findMany({ where: { competencia: comp }, orderBy: { criadoEm: "asc" } }),
-    db.folhaPagamento.findMany({ where: { competencia: comp } }),
-    relatorioComissoes(inicio, fim),
+    leitor.folhaLancamento.findMany({ where: { competencia: comp }, orderBy: [{ criadoEm: "asc" }, { id: "asc" }] }),
+    leitor.folhaPagamento.findMany({ where: { competencia: comp } }),
+    relatorioComissoes(inicio, fim, undefined, leitor),
   ]);
-  const linhas = pessoas.map((p) => {
+  const linhas = await Promise.all(pessoas.map(async (p) => {
     const ls = lancs.filter((l) => l.pessoaId === p.id);
     const com = p.barbeiroId ? comissoes.barbeiros.find((b) => b.barbeiroId === p.barbeiroId) : undefined;
-    const t = totaisFolha({ salario: p.salarioCentavos, comissao: com?.total ?? 0, lancamentos: ls });
+    const salario = await lerVigenciaRemuneracao<{ salarioCentavos: number }>(leitor, `salario:${p.id}`, comp);
+    const t = totaisFolha({ salario: salario ? salarioVigente(salario.conteudo) : p.salarioCentavos, comissao: com?.recalculoAtual.total ?? com?.total ?? 0, lancamentos: ls });
     const f = folhas.find((x) => x.pessoaId === p.id);
     const congelado = f ? { salario: f.salarioCentavos, comissao: f.comissaoCentavos, adicionais: f.adicionaisCentavos, descontos: f.descontosCentavos, liquido: f.liquidoCentavos } : null;
+    const memoria = f ? lerMemoriaFolha(f.detalhe) : null;
     return {
-      pessoaId: p.id, nome: p.nome, cargo: p.cargo, chavePix: p.chavePix, barbeiro: p.barbeiro?.nome ?? null, ativo: p.ativo,
+      pessoaId: p.id, nome: memoria?.nome ?? p.nome, cargo: f ? memoria?.cargo ?? null : p.cargo, chavePix: null, barbeiroId: p.barbeiroId, revisaoPix: p.revisaoPix, barbeiro: f ? memoria?.barbeiro ?? null : p.barbeiro?.nome ?? null, ativo: p.ativo,
       ...(congelado ?? t),
       status: (f?.status ?? "ABERTA") as "ABERTA" | "FECHADA" | "PAGA",
       pagoEm: f?.pagoEm ?? null, despesaId: f?.despesaId ?? null,
       // Diferenca entre o congelado e o calculado agora (ex.: atendimento concluido depois de fechar).
-      mudouDepois: !!congelado && congelado.liquido !== t.liquido,
-      comissaoDetalhe: com ? {
+      mudouDepois: !!congelado && Object.keys(congelado).some(k => congelado[k as keyof typeof congelado] !== t[k as keyof typeof t]),
+      memoriaDisponivel: !f || !!memoria,
+      comissaoDetalhe: f ? memoria?.comissao ?? null : com ? {
         avulso: com.avulso, plano: com.plano, semRegra: com.semRegra,
-        assinaturas: com.assinaturas ? {
-          qtd: com.assinaturas.qtd, creditos: com.assinaturas.creditos, receitaAtribuida: com.assinaturas.receitaAtribuida,
-          percentualBaseBps: com.assinaturas.percentualBaseBps, adicionalBps: com.assinaturas.adicionalBps, comissao: com.assinaturas.comissao,
-        } : null,
+        assinaturas: com.assinaturas ?? null,
         produtos: com.produtos ? { vendido: com.produtos.vendido, comissao: com.produtos.comissao } : null,
       } : null,
-      lancamentos: ls.map((l) => ({ id: l.id, tipo: l.tipo, valorCentavos: l.valorCentavos, descricao: l.descricao, doCaixa: !!l.movimentoCaixaId, criadoEm: l.criadoEm })),
+      lancamentos: f ? memoria?.lancamentos ?? [] : ls.map((l) => ({ id: l.id, tipo: l.tipo, valorCentavos: l.valorCentavos, descricao: l.descricao, doCaixa: !!l.movimentoCaixaId, criadoEm: l.criadoEm })),
     };
-  });
-  return { competencia: comp, linhas };
+  }));
+  const recebimentos = comissoes.recebimentos;
+  const revisao = revisaoApuracao({ comp, linhas, recebimentos, comissoes: comissoes.revisao });
+  return { competencia: comp, linhas, revisao, recebimentos };
 }
 
-async function pessoaComFolha(comp: string, pessoaId: string) {
-  const p = await db.checklistPessoa.findUnique({ where: { id: pessoaId } });
+export async function previaFolha(comp: string, leitor?: Prisma.TransactionClient) {
+  if (leitor) return calcularPreviaFolha(comp, leitor);
+  return db.$transaction(tx => calcularPreviaFolha(comp, tx), { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+}
+
+async function pessoaComFolha(comp: string, pessoaId: string, tx: Prisma.TransactionClient) {
+  const p = await tx.checklistPessoa.findUnique({ where: { id: pessoaId } });
   if (!p) throw naoEncontrado("Funcionário");
-  const f = await db.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: comp, pessoaId } } });
+  const f = await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: comp, pessoaId } } });
   return { p, f };
 }
 
@@ -93,6 +105,7 @@ export async function lancar(s: Sessao, d: { competencia: string; pessoaId: stri
     const f = await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: d.competencia, pessoaId: d.pessoaId } } });
     if (f) throw new ErroNegocio("A folha desse funcionário já foi fechada neste mês. Reabra para lançar.", 409, "folha_fechada");
     if (d.doCaixa && d.tipo !== "VALE") throw new ErroNegocio("Só o vale pode sair do dinheiro do caixa.");
+    await tocarPessoasDaFolha(tx, [d.pessoaId]);
     const mov = d.doCaixa ? await movimentarCaixaNaTransacao(tx, s, "SANGRIA", d.valorCentavos, `Vale ${p.nome}: ${d.descricao}`) : null;
     const l = await tx.folhaLancamento.create({
       data: { id, pessoaId: p.id, competencia: d.competencia, tipo: d.tipo, valorCentavos: d.valorCentavos, descricao: d.descricao, movimentoCaixaId: mov?.id ?? null, porId: s.usuarioId },
@@ -103,58 +116,72 @@ export async function lancar(s: Sessao, d: { competencia: string; pessoaId: stri
 }
 
 export async function excluirLancamento(s: Sessao, id: string) {
-  const l = await db.folhaLancamento.findUnique({ where: { id } });
-  if (!l) throw naoEncontrado("Lançamento");
-  if (await db.desempenhoBonus.findUnique({ where: { folhaLancamentoId: id }, select: { id: true } })) {
-    throw new ErroNegocio("Este lançamento pertence a um bônus de desempenho aprovado. Preserve o histórico e registre um ajuste separado.", 409, "bonus_vinculado");
-  }
-  const { f } = await pessoaComFolha(l.competencia, l.pessoaId);
-  if (f) throw new ErroNegocio("A folha desse funcionário já foi fechada. Reabra para mexer.", 409, "folha_fechada");
-  // O dinheiro ja saiu da gaveta: corrigir com suprimento no caixa e um lancamento novo.
-  if (l.movimentoCaixaId) throw new ErroNegocio("Esse vale saiu do caixa (sangria) e não pode ser apagado. Lance um adicional para compensar e, se o dinheiro voltou, registre um suprimento no caixa.", 409, "vale_do_caixa");
+  const referencia = await db.folhaLancamento.findUnique({ where: { id }, select: { pessoaId: true } });
+  if (!referencia) throw naoEncontrado("Lançamento");
   await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM checklist_pessoas WHERE id = ${referencia.pessoaId} FOR UPDATE`;
+    const l = await tx.folhaLancamento.findUnique({ where: { id } });
+    if (!l) throw naoEncontrado("Lançamento");
+    if (l.pessoaId !== referencia.pessoaId) throw new ErroNegocio("O destinatário do lançamento mudou. Atualize a folha.", 409, "lancamento_mudou");
+    if (await tx.desempenhoBonus.findUnique({ where: { folhaLancamentoId: id }, select: { id: true } })) throw new ErroNegocio("Este lançamento pertence a um bônus de desempenho aprovado. Preserve o histórico e registre um ajuste separado.", 409, "bonus_vinculado");
+    if (await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: l.competencia, pessoaId: l.pessoaId } } })) throw new ErroNegocio("A folha desse funcionário já foi fechada. Reabra para mexer.", 409, "folha_fechada");
+    if (l.movimentoCaixaId) throw new ErroNegocio("Esse vale saiu do caixa (sangria) e não pode ser apagado. Lance um adicional para compensar e, se o dinheiro voltou, registre um suprimento no caixa.", 409, "vale_do_caixa");
+    await tocarPessoasDaFolha(tx, [l.pessoaId]);
     await tx.folhaLancamento.delete({ where: { id } });
     await auditar(tx, s.usuarioId, "rh_lancamento_excluir", "folha_lancamento", id, { pessoaId: l.pessoaId, tipo: l.tipo, valorCentavos: l.valorCentavos });
   });
 }
 
 /** Congela os valores de quem ainda nao foi fechado (so quem tem algo a receber ou lancamento). */
-export async function fecharFolha(s: Sessao, comp: string, pessoaId?: string) {
-  const { linhas } = await previaFolha(comp);
-  const abertas = linhas.filter((l) => l.status === "ABERTA" && (!pessoaId || l.pessoaId === pessoaId) && (l.salario || l.comissao || l.lancamentos.length));
-  if (!abertas.length) throw new ErroNegocio("Nada para fechar nesta competência.", 409, "nada_para_fechar");
-  await db.$transaction(async (tx) => {
-    // A previa foi calculada fora da transacao: trava as pessoas e confere se entrou lancamento novo nesse meio
-    // tempo (ex.: bonus de campanha), para nao congelar uma folha sem ele.
-    const ids = abertas.map((l) => l.pessoaId).sort();
-    await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ANY(${ids}) ORDER BY id FOR UPDATE`;
-    const agora = await tx.folhaLancamento.groupBy({ by: ["pessoaId"], where: { competencia: comp, pessoaId: { in: ids } }, _count: true });
-    if (abertas.some((l) => (agora.find((a) => a.pessoaId === l.pessoaId)?._count ?? 0) !== l.lancamentos.length)) {
-      throw new ErroNegocio("Entrou um lançamento novo enquanto a folha fechava. Confira a prévia e feche de novo.", 409, "folha_mudou");
-    }
+export async function fecharFolha(s: Sessao, comp: string, pessoaId?: string, revisao?: string) {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext(${`folha-fechar:${comp}`}))`;
+    if (pessoaId) await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ${pessoaId} FOR UPDATE`;
+    else await tx.$queryRaw`SELECT id FROM checklist_pessoas ORDER BY id FOR UPDATE`;
+    const previa = await previaFolha(comp, tx);
+    if (revisao && revisao !== previa.revisao) throw new ErroNegocio("A apuração mudou desde a prévia. Recarregue e confira os valores antes de fechar.", 409, "folha_mudou");
+    const abertas = previa.linhas.filter((l) => l.status === "ABERTA" && (!pessoaId || l.pessoaId === pessoaId) && (l.salario || l.comissao || l.lancamentos.length));
+    if (!abertas.length) throw new ErroNegocio("Nada para fechar nesta competência.", 409, "nada_para_fechar");
+    if (!previa.recebimentos.completo && abertas.some(l => !!l.comissaoDetalhe?.assinaturas)) throw new ErroNegocio("Existem mensalidades sem valor/data de recebimento comprovados. Concilie antes de fechar comissões de assinaturas.", 409, "recebimento_pendente");
+    if (abertas.some(l => (l.comissaoDetalhe?.semRegra ?? 0) > 0)) throw new ErroNegocio("Há atendimentos sem regra de comissão. Confira antes de fechar a folha.", 409, "comissao_sem_regra");
+    const historicas = await tx.folhaPagamento.findMany({ where: { competencia: comp }, select: { pessoaId: true, barbeiroIdCongelado: true, comissaoCentavos: true } });
+    const cadeiras = new Set<string>();
     for (const l of abertas) {
-      const detalhe = { cargo: l.cargo, barbeiro: l.barbeiro, comissao: l.comissaoDetalhe, lancamentos: l.lancamentos } as unknown as Prisma.InputJsonValue;
+      if (!l.barbeiroId) continue;
+      if (cadeiras.has(l.barbeiroId) || historicas.some(f => f.pessoaId !== l.pessoaId && (f.barbeiroIdCongelado === l.barbeiroId || (!f.barbeiroIdCongelado && f.comissaoCentavos > 0)))) throw new ErroNegocio("Esta cadeira já aparece em outra folha da competência, ou há uma identidade histórica sem comprovação. Confira os destinatários antes de fechar; nenhuma comissão foi duplicada.", 409, "cadeira_folha_duplicada");
+      cadeiras.add(l.barbeiroId);
+    }
+    const ids = abertas.map((l) => l.pessoaId).sort();
+    await tocarPessoasDaFolha(tx, ids);
+    for (const l of abertas) {
+      const detalhe = JSON.parse(JSON.stringify({ versao: 2, revisao: previa.revisao, nome: l.nome, cargo: l.cargo, barbeiro: l.barbeiro, barbeiroId: l.barbeiroId, comissao: l.comissaoDetalhe, lancamentos: l.lancamentos })) as Prisma.InputJsonValue;
       await tx.folhaPagamento.create({
         data: {
-          competencia: comp, pessoaId: l.pessoaId, salarioCentavos: l.salario, comissaoCentavos: l.comissao,
+          competencia: comp, pessoaId: l.pessoaId, barbeiroIdCongelado: l.barbeiroId, salarioCentavos: l.salario, comissaoCentavos: l.comissao,
           adicionaisCentavos: l.adicionais, descontosCentavos: l.descontos, liquidoCentavos: l.liquido, detalhe, status: "FECHADA",
         },
       });
     }
-    await auditar(tx, s.usuarioId, "rh_folha_fechar", "folha", comp, { pessoas: abertas.length, liquido: abertas.reduce((t, l) => t + l.liquido, 0) });
+    await auditar(tx, s.usuarioId, "rh_folha_fechar", "folha", comp, { revisao: previa.revisao, pessoas: abertas.length, liquido: abertas.reduce((t, l) => t + l.liquido, 0) });
+    return abertas.length;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }).catch((e: unknown) => {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && (["P2034", "P2002"].includes(e.code)
+      || (e.code === "P2010" && ["40001", "40P01"].includes(String(e.meta?.code))))) throw new ErroNegocio("Houve outra alteração durante o fechamento. Recarregue a prévia e confira antes de tentar novamente.", 409, "folha_mudou");
+    throw e;
   });
-  return abertas.length;
 }
 
 /** Marca a folha de uma pessoa como paga e cria a Despesa FOLHA (paga). */
 export async function pagarFolha(s: Sessao, comp: string, pessoaId: string, forma: FormaPagamentoFolha = "PIX") {
-  const { p, f } = await pessoaComFolha(comp, pessoaId);
-  if (!f) throw new ErroNegocio("Feche a folha antes de marcar como paga.", 409, "nao_fechada");
-  if (f.status === "PAGA") throw new ErroNegocio("Essa folha já está paga.", 409, "ja_paga");
-  const descricao = `Folha ${comp.slice(5)}/${comp.slice(0, 4)} - ${p.nome}`;
-  const agora = new Date();
-  const hoje = dataLocal(agora, (await configuracao()).fuso);
+  intervaloCompetencia(comp);
   return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ${pessoaId} FOR UPDATE`;
+    const { p, f } = await pessoaComFolha(comp, pessoaId, tx);
+    if (!f) throw new ErroNegocio("Feche a folha antes de marcar como paga.", 409, "nao_fechada");
+    if (f.status === "PAGA") throw new ErroNegocio("Essa folha já está paga.", 409, "ja_paga");
+    await tocarPessoasDaFolha(tx, [pessoaId]);
+    const descricao = `Folha ${comp.slice(5)}/${comp.slice(0, 4)} - ${p.nome}`;
+    const agora = new Date(), hoje = dataLocal(agora, (await configuracao(tx)).fuso);
     const ok = await tx.folhaPagamento.updateMany({ where: { id: f.id, status: "FECHADA" }, data: { status: "PAGA", pagoEm: agora } });
     if (!ok.count) throw new ErroNegocio("Essa folha já está paga.", 409, "ja_paga");
     const mov = forma === "DINHEIRO_CAIXA" && f.liquidoCentavos > 0
@@ -178,13 +205,16 @@ export async function pagarFolha(s: Sessao, comp: string, pessoaId: string, form
 
 /** Reabre (apaga o congelado) se ainda nao foi paga. */
 export async function reabrirFolha(s: Sessao, comp: string, pessoaId: string) {
-  const { f } = await pessoaComFolha(comp, pessoaId);
-  if (!f) throw new ErroNegocio("Essa folha não está fechada.", 409, "nao_fechada");
-  if (f.status === "PAGA") throw new ErroNegocio("Folha paga não pode ser reaberta.", 409, "ja_paga");
+  intervaloCompetencia(comp);
   await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ${pessoaId} FOR UPDATE`;
+    const { f } = await pessoaComFolha(comp, pessoaId, tx);
+    if (!f) throw new ErroNegocio("Essa folha não está fechada.", 409, "nao_fechada");
+    if (f.status === "PAGA") throw new ErroNegocio("Folha paga não pode ser reaberta.", 409, "ja_paga");
+    await tocarPessoasDaFolha(tx, [pessoaId]);
     const r = await tx.folhaPagamento.deleteMany({ where: { id: f.id, status: "FECHADA" } });
     if (!r.count) throw new ErroNegocio("Folha paga não pode ser reaberta.", 409, "ja_paga");
-    await auditar(tx, s.usuarioId, "rh_folha_reabrir", "folha_pagamento", f.id, { competencia: comp, pessoaId });
+    await auditar(tx, s.usuarioId, "rh_folha_reabrir", "folha_pagamento", f.id, { competencia: comp, pessoaId, retratoAnterior: JSON.parse(JSON.stringify(f)) as Prisma.InputJsonValue });
   });
 }
 

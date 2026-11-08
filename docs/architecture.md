@@ -102,7 +102,10 @@ webhooks / rotinas ─────────┘
 - Confirmação/cancelamento de atendimento pelo cliente, abertura de comanda, status e solicitação de horário
   compartilham a trava de agenda do barbeiro. Cancelamento de cliente é recusado quando algum serviço do grupo
   já consta em comanda. A equipe também não cancela um grupo com item de comanda vinculado; é necessário
-  resolver a comanda antes. Serviços adicionais criados pela comanda também verificam bloqueios sob essa trava.
+  resolver a comanda antes. Novos serviços adicionais da comanda reservam sua duração após o grupo vigente,
+  verificando profissional, cadeira, cliente e bloqueios sob as mesmas travas; `ocupaAgenda` preserva a distinção
+  dos adicionais legados que não reservavam tempo. Remover o adicional ou cancelar a comanda libera somente a
+  reserva elegível, sem apagar atendimento já concluído nem estornar valores automaticamente.
   Serviços SITE ligados ao principal não podem ser remarcados nem ter o status alterado isoladamente; mudanças
   do principal não reativam filhos cancelados. A confirmação de fechamento de agenda com serviços em grupo
   fica bloqueada até existir resolução integral do grupo.
@@ -131,6 +134,7 @@ webhooks / rotinas ─────────┘
   Extrato do saldo para a conciliação via API v2 com token só de leitura (`src/lib/conciliacao/celcash.ts`).
 - **Stone (extrato bancário)**: sem API aberta; o dono sobe o CSV do extrato (`src/lib/conciliacao/stone.ts`).
 - **Asaas**: alternativa de cobrança (`PAGAMENTOS_PROVIDER="asaas"`).
+- **Recepção de eventos de assinatura**: `assinaturas/eventos.ts` reserva uma tentativa durável antes da consulta canônica, com token de finalização, lease de dois minutos e limite de cinco tentativas. Conclusão exige sincronização local comprovada. Eventos antigos permanecem `LEGADO`, deduplicados sem homologação retroativa. Falha tipada de reconciliação exclusiva de assinatura pode retornar à fila; pedidos, cancelamento externo e falhas ambíguas permanecem em revisão. Retomada reconsulta assinatura/cobrança e pode concluir a conversão idempotente da agenda, sem nova cobrança, transferência ou repetição do aviso de ativação. Registros que atingem o limite exigem conferência humana; não apagar o evento para liberar nova ação.
 
 ## Decisões
 
@@ -217,10 +221,11 @@ Lá não há Evolution nem o backup do compose.
 ### Backups e restauração
 
 - Container `backup` (`deploy/backup.sh`): todo dia às 03h (`BACKUP_HORA`; e ao subir, se passou da hora) copia o
-  banco, **restaura num banco separado** e confere tabelas, última migração e contagens. Falha aparece como erro.
+  banco e manifesto do mesmo snapshot, **restaura num banco separado** e compara SHA-256/contagens de todas as tabelas,
+  estrutura, constraints, triggers, funções e privilégios. Prova imutabilidade da auditoria apenas no restaurado. Falha aparece como erro.
   Cópias ficam 14 dias (`BACKUP_DIAS_LOCAL`) em `/opt/barberos/backups`.
 - Com Studio, o override monta as mídias no backup somente para leitura. O dump restaurado determina os
-  arquivos que entram no par `.sql.gz` + `.studio.tar.gz`, vinculado por SHA-256. Ambos precisam ser guardados.
+  arquivos que entram no conjunto `.sql.gz` + `.manifesto.json` + `.studio.tar.gz`, vinculado por SHA-256. Guardar os três.
   Referência sem arquivo, tamanho/hash divergente ou espaço insuficiente impede marcar sucesso e impede
   remover backups antigos. Sem o volume configurado, banco com referências de mídia também é recusado.
   Os nomes UUID são imutáveis; exclusão concorrente pode fazer a cópia falhar, nunca ser declarada íntegra.
@@ -233,17 +238,10 @@ Lá não há Evolution nem o backup do compose.
 - Comandos no servidor, em `/opt/barberos`, com o prefixo `dc = docker compose --env-file .env -f deploy/docker-compose.yml`:
   - backup agora: `dc exec backup backup.sh agora`
   - testar um arquivo: `dc exec backup backup.sh verificar /backups/barberos-AAAAMMDD-HHMM.sql.gz`
-- **Restaurar** (a produção só muda no passo 2):
-  1. `dc exec backup backup.sh restaurar /backups/<arquivo>.sql.gz` cria `barberos_restaurado` sem tocar na produção.
-     Recusa esse banco se já existir. Com Studio, exige o par e cria `<arquivo>-midias-restauradas` ao lado do dump.
-     Antes de qualquer troca, preparar um volume novo a partir dessa pasta e validar a app contra banco e mídia
-     restaurados. Os comandos abaixo são a referência antiga de banco; não bastam para restaurar o Studio.
-  2. `dc stop app evolution backup`; depois
-     `dc exec db psql -U barberos -d postgres -c 'ALTER DATABASE barberos RENAME TO barberos_antigo' -c 'ALTER DATABASE barberos_restaurado RENAME TO barberos'`
-     e `dc start app evolution backup`. O anterior fica como `barberos_antigo` até ser apagado.
-  3. Cópia de fora: baixe o `.enc`, abra com
-     `openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in arquivo.sql.gz.enc -out arquivo.sql.gz` (pede a
-     `BACKUP_SENHA`), copie para `/opt/barberos/backups` e siga o passo 1.
+- **Recuperação:** seguir [o runbook vigente](recuperacao-segura.md). Isolar todos os escritores, preservar o banco pós-falha,
+  restaurar banco/manifesto/mídias em destinos novos, validar escrita funcional sem efeitos externos e reconciliar antes de liberação humana.
+  Não há troca automática de banco nem retorno de imagem após iniciar migração. O marcador `recuperacao-pendente.json` bloqueia repetição.
+  O publicador impõe todos os bloqueios no retorno sem migração. Os comandos antigos de trocar só o banco foram retirados.
 
 ### Homologação
 
@@ -330,7 +328,7 @@ incompletos; com os CSVs, quem ficou de fora; com `--saida`, grava CSVs (fora da
 
 - `src/lib/reunioes/`: agrega vendas, produção e comissões, salva snapshots imutáveis e protege a apresentação por permissão. Edição de conteúdo/ações usa controle de versão.
 - `src/lib/desempenho/`: adesão, marcações imutáveis, ajustes revisados, notas e regras por competência. Bônus compartilha a trava de `checklist_pessoas` com a folha, grava prêmio/pontos atomicamente e conserva a memória de cálculo.
-- `src/lib/avaliacoes/`: primeiro atendimento elegível, convite único, resposta e ficha transacionais. Resumos públicos só avançam em lotes de cinco; identidade é exclusiva do dono, auditada.
+- `src/lib/avaliacoes/`: primeiro atendimento elegível, convite único, resposta e ficha transacionais. Resumos públicos só avançam em lotes de cinco; identidade é exclusiva do dono, auditada. Respostas ainda privadas acumulam entre meses e o lote entra na competência da quinta resposta (America/Sao_Paulo), sem recálculo de períodos já publicados, bônus, folha ou pontos congelados. O legado já publicado sem competência mantém essa lacuna, exigindo conferência separada em vez de redistribuição retroativa.
 - `src/lib/recompras/`: histórico realizado/pago, recomendações, aceite com reserva real, desconto limitado e fila de avisos. Reserva por cliente e índice parcial impedem envios concorrentes; resultado incerto não recebe retry automático.
 - `src/lib/auth/equipe*` e `PermissaoUsuario`: edição atômica preserva identidade e vínculos. O papel LIDER não concede folha ou configurações gerais. Consultas usam permissões da pessoa, lidas por requisição.
 - `Cadeira` e exclusão SQL em `Agendamento`: a cadeira física também impede sobreposição. As novas colunas opcionais preservam registros antigos. `ChecklistPessoa.usuarioId` recebe vínculo demonstrável pelo barbeiro; os demais são confirmados pelo dono.
@@ -379,7 +377,7 @@ A ponte em src/lib/estudio/roteiros.ts copia somente resultados aprovados de Con
 
 ### Agenda de entrevistas (local)
 
-`src/lib/recrutamento/entrevistas*` centraliza convites, disponibilidade e confirmação. Portal e adaptador `src/lib/bot/entrevistas.ts` reutilizam a mesma transação e auditoria. `recrutamento_entrevistas` mantém reserva separada de agendamentos de serviços. A trava PostgreSQL por dono serializa confirmações; índice parcial protege início duplicado. O transporte WhatsApp fica desativado por padrão. Regras operacionais e recuperação de convites: `docs/recrutamento.md`.
+`src/lib/recrutamento/entrevistas*` centraliza convites, disponibilidade e confirmação. Portal e adaptador `src/lib/bot/entrevistas.ts` reutilizam a mesma transação e auditoria. A reserva permanece em `recrutamento_entrevistas`, mas participa da disponibilidade profissional: quando o dono também atende, a confirmação compartilha a trava de sua agenda e considera atendimentos, novos adicionais que ocupam tempo, bloqueios e folgas. O caminho inverso também recusa reservas e bloqueios sobre uma entrevista confirmada. A trava por dono e o índice parcial de início continuam protegendo confirmações entre entrevistas. Escolher ainda não reserva; é necessária a confirmação do candidato. O transporte WhatsApp fica desativado por padrão. Regras operacionais e recuperação de convites: `docs/recrutamento.md`.
 
 
 ### Reserva de cache na publicação

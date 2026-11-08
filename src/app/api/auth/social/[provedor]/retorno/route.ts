@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { urlSite } from "@/lib/dominios";
 import { retornarSocial } from "@/lib/auth/social";
 import { zProvedorSocial } from "@/lib/auth/social-provedores";
+import { limitarOrigemAutenticacao } from "@/lib/auth/limites";
 
 /** Apple usa form_post; os demais provedores devolvem query. O state substitui o CSRF de mesma origem. */
 async function retorno(req: Request, ctx: RouteContext<"/api/auth/social/[provedor]/retorno">) {
   try {
+    limitarOrigemAutenticacao(req);
     const { provedor } = await ctx.params;
     const p = zProvedorSocial.parse(provedor);
     if (req.method === "POST" && p !== "apple") throw new Error("Método inválido");

@@ -8,6 +8,7 @@ import { ComissaoDiferenciada, type AdicionalLinha } from "./ComissaoDiferenciad
 type Categoria = "BAR" | "LOJA";
 type Adicionais = { hoje: string; fechadas: string[]; adicionais: AdicionalLinha[] };
 type Dados = Adicionais & {
+  revisao: string; vigenciaPadrao: string;
   assinaturas: { ativo: boolean; percentualBps: number; creditos: { servicoId: string; nome: string; creditos: number }[] };
   faixas: { categoria: Categoria; minimoCentavos: number; percentualBps: number }[];
   barbeiros: { id: string; nome: string }[];
@@ -38,13 +39,15 @@ export function ComissoesExtras() {
   const [f, setF] = useState<Form | null>(null);
   const [msg, setMsg] = useState<{ t: string; erro?: boolean } | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [competencia, setCompetencia] = useState("");
 
-  const aplicar = (x: Dados) => { setD(x); setF(paraForm(x)); };
+  const aplicar = (x: Dados) => { setD(x); setF(paraForm(x)); setCompetencia(x.vigenciaPadrao); };
   useEffect(() => { api<Dados>("/api/rh/comissoes/extras").then(aplicar).catch((e) => setMsg({ t: e.message, erro: true })); }, []);
 
   async function salvar() {
     if (!d || !f) return;
     const body = {
+      competencia, revisao: d.revisao,
       assinaturas: {
         ativo: f.ativo, percentualBps: pctValor(f.percentual),
         creditos: d.assinaturas.creditos.map((s) => ({ servicoId: s.servicoId, creditos: Math.round(Number(f.creditos[s.servicoId] || "0")) })),
@@ -69,6 +72,7 @@ export function ComissoesExtras() {
   const muda = (x: Partial<Form>) => setF({ ...f, ...x });
   return (
     <div className="space-y-4">
+      <div className="cartao space-y-1"><label className="rotulo" htmlFor="vigencia-comissao-extras">Aplicar estas regras a partir de</label><input id="vigencia-comissao-extras" type="month" className="campo w-48" value={competencia} onChange={e => setCompetencia(e.target.value)} /><p className="text-xs text-zinc-500">O padrão é o próximo mês. Créditos, faixas e percentuais anteriores permanecem no histórico.</p></div>
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
 
       <section className="cartao space-y-3">

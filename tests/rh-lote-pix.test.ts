@@ -1,10 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { analisarChavePix, planejarLotePix, type FolhaParaPix } from "@/lib/rh/lote-pix-regras";
+import { protegerChavePix } from "@/lib/rh/pix-protegido";
+beforeEach(() => vi.stubEnv("RH_PIX_ENCRYPTION_KEY", Buffer.alloc(32, 71).toString("base64")));
+afterEach(() => vi.unstubAllEnvs());
 
 const folha = (id = "a", extras: Partial<FolhaParaPix> = {}): FolhaParaPix => ({
   id, pessoaId: `pessoa-${id}`, criadoEm: new Date("2026-11-01T12:00:00Z"), status: "FECHADA",
   salarioCentavos: 10000, comissaoCentavos: 1000, adicionaisCentavos: 0, descontosCentavos: 500, liquidoCentavos: 10500,
-  pessoa: { nome: `Pessoa ${id}`, chavePix: `${id}@example.com`, ativo: true, revisaoPix: 0 }, ...extras,
+  pessoa: { nome: `Pessoa ${id}`, ...protegerChavePix(`pessoa-${id}`, `${id}@example.com`), ativo: true, revisaoPix: 0 }, ...extras,
 });
 describe("preparação da folha Pix", () => {
   it.each([
@@ -27,19 +30,19 @@ describe("preparação da folha Pix", () => {
     expect(planejarLotePix("2026-11", [folha(), folha("b")]).revisao).toBe(planejarLotePix("2026-11", [folha("b"), folha()]).revisao);
   });
   it("duplicatas normalizadas bloqueiam a conferência, sem esconder o total", () => {
-    const a = folha(), b = folha("b"); b.pessoa.chavePix = "A@example.com";
+    const a = folha(), b = folha("b"); Object.assign(b.pessoa, protegerChavePix(b.pessoaId, "A@example.com"));
     const p = planejarLotePix("2026-11", [a, b]);
     expect(p.podeConferir).toBe(false); expect(p.totalCentavos).toBe(21000);
     expect(p.itens.every(i => i.problemas.some(x => x.includes("compartilhada")))).toBe(true);
   });
   it("troca de chave, revisão cadastral, status, valor e fechamento invalidam a revisão", () => {
     const original = planejarLotePix("2026-11", [folha()]).revisao;
-    for (const alterada of [folha("a", { status: "PAGA" }), folha("a", { liquidoCentavos: 10600 }), folha("a", { id: "novo-fechamento" }), folha("a", { pessoa: { ...folha().pessoa, chavePix: "outra@example.com" } }), folha("a", { pessoa: { ...folha().pessoa, revisaoPix: 2 } })]) {
+    for (const alterada of [folha("a", { status: "PAGA" }), folha("a", { liquidoCentavos: 10600 }), folha("a", { id: "novo-fechamento" }), folha("a", { pessoa: { ...folha().pessoa, ...protegerChavePix("pessoa-a", "outra@example.com") } }), folha("a", { pessoa: { ...folha().pessoa, revisaoPix: 2 } })]) {
       expect(planejarLotePix("2026-11", [alterada]).revisao).not.toBe(original);
     }
   });
   it("cadastro inválido impede conferência e lote vazio não é conferível", () => {
-    expect(planejarLotePix("2026-11", [folha("a", { pessoa: { ...folha().pessoa, chavePix: null } })]).podeConferir).toBe(false);
+    expect(planejarLotePix("2026-11", [folha("a", { pessoa: { ...folha().pessoa, ...protegerChavePix("pessoa-a", null) } })]).podeConferir).toBe(false);
     expect(planejarLotePix("2026-11", []).podeConferir).toBe(false);
   });
   it("recusa competência inválida e total fora do inteiro PostgreSQL", () => {

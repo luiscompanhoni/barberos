@@ -5,11 +5,14 @@ vi.mock("@/lib/auditoria", () => ({ auditar: m.auditar }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: async () => ({ fuso: "America/Sao_Paulo" }) }));
 vi.mock("@/lib/financeiro/caixa", () => ({ movimentarCaixa: m.caixaAntigo, movimentarCaixaNaTransacao: m.caixa }));
 vi.mock("@/lib/db", () => {
-  const tx = { folhaPagamento: {
+  const pessoa = async () => ({ id: "pessoa", nome: "Pessoa sintética" });
+  const folha = async () => ({ id: "folha", status: "FECHADA", liquidoCentavos: 10000, salarioCentavos: 10000, comissaoCentavos: 0, adicionaisCentavos: 0, descontosCentavos: 0 });
+  const tx = { $queryRaw: async () => [{ id: "pessoa" }], $executeRaw: async () => { m.passos.push("pessoa"); return 1; },
+    checklistPessoa: { findUnique: pessoa }, folhaPagamento: { findUnique: folha,
     updateMany: async () => { m.passos.push("claim"); const count = Math.max(0, m.claims); m.claims = 0; return { count }; },
     update: m.atualizar,
   }, despesa: { create: m.despesa } };
-  return { db: { checklistPessoa: { findUnique: async () => ({ id: "pessoa", nome: "Pessoa sintética" }) }, folhaPagamento: { findUnique: async () => ({ id: "folha", status: "FECHADA", liquidoCentavos: 10000, salarioCentavos: 10000, comissaoCentavos: 0, adicionaisCentavos: 0, descontosCentavos: 0 }) }, $transaction: m.transacao.mockImplementation(async f => f(tx)) } };
+  return { db: { $transaction: m.transacao.mockImplementation(async f => f(tx)) } };
 });
 import { pagarFolha } from "@/lib/rh/folha";
 const s = { usuarioId: "dono", papel: "DONO", nome: "Dono", barbeiroId: null, clienteId: null } as Sessao;
@@ -21,7 +24,7 @@ beforeEach(() => {
 describe("folha: registro em dinheiro atômico", () => {
   it("reserva a folha antes da sangria e usa a transação da despesa", async () => {
     await pagarFolha(s, "2039-11", "pessoa", "DINHEIRO_CAIXA");
-    expect(m.passos).toEqual(["claim", "caixa", "despesa"]);
+    expect(m.passos).toEqual(["pessoa", "claim", "caixa", "despesa"]);
     const tx = m.caixa.mock.calls[0][0]; expect(tx.despesa.create).toBe(m.despesa);
     expect(m.caixa).toHaveBeenCalledWith(tx, s, "SANGRIA", 10000, "Folha 11/2039");
     expect(m.despesa.mock.calls[0][0].data.movimentoCaixaId).toBe("movimento"); expect(m.caixaAntigo).not.toHaveBeenCalled();

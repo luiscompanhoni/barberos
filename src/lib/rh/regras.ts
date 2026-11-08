@@ -212,14 +212,18 @@ export function intervaloCompetencia(comp: string) {
 
 const celula = (v: string | number) => {
   const s = String(v);
-  return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 const dinheiro = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+const textoCsv = (v: string | null) => {
+  const s = v ?? "";
+  return /^[\s\u0000-\u001f]*[=+\-@]/u.test(s) || /^[\t\r\n]/.test(s) ? `'${s}` : s;
+};
 
 /** CSV (separador ;, padrao do Excel em portugues) da folha do mes. */
 export function csvFolha(comp: string, linhas: { nome: string; cargo: string | null; salario: number; comissao: number; adicionais: number; descontos: number; liquido: number; status: string; chavePix: string | null }[]) {
   const cab = ["Competência", "Funcionário", "Cargo", "Salário", "Comissão", "Adicionais", "Descontos", "Líquido", "Situação", "Chave Pix"];
-  const corpo = linhas.map((l) => [comp, l.nome, l.cargo ?? "", dinheiro(l.salario), dinheiro(l.comissao), dinheiro(l.adicionais), dinheiro(l.descontos), dinheiro(l.liquido), l.status, l.chavePix ?? ""]);
+  const corpo = linhas.map((l) => [comp, textoCsv(l.nome), textoCsv(l.cargo), dinheiro(l.salario), dinheiro(l.comissao), dinheiro(l.adicionais), dinheiro(l.descontos), dinheiro(l.liquido), textoCsv(l.status), textoCsv(l.chavePix)]);
   const t = totaisLinhas(linhas);
   corpo.push([comp, "TOTAL", "", dinheiro(t.salario), dinheiro(t.comissao), dinheiro(t.adicionais), dinheiro(t.descontos), dinheiro(t.liquido), "", ""]);
   return [cab, ...corpo].map((r) => r.map(celula).join(";")).join("\r\n");

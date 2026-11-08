@@ -28,4 +28,10 @@ describe("detalhe da Celcash somente leitura", () => {
     await expect(buscarTransacaoHistorica("91001")).rejects.toThrow("não está configurada"); expect(fetch).not.toHaveBeenCalled();
     expect(() => lerTransacaoHistorica({ Transactions: [transacao] }, "91002")).toThrow();
   });
+  it("retém data efetiva e marca externa sem inferir data de crédito, status ou vencimento", () => {
+    const r = lerTransacaoHistorica({ Transactions: [{ ...transacao, paydayDateDateTime: "2026-10-22 10:30:00", payedOutsideGalaxPay: true }] }, "91001");
+    expect(r.pagamentoEfetivoEm).toBe("2026-10-22T13:30:00.000Z"); expect(r.pagoForaDoGateway).toBe(true);
+    const semData = lerTransacaoHistorica({ Transactions: [{ ...transacao, statusDate: "2026-10-23", paydayDateDateTime: "2026-02-31" }] }, "91001");
+    expect(semData.pagamentoEfetivoEm).toBeNull();
+  });
 });

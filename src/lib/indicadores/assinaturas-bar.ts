@@ -2,6 +2,7 @@
  * Indicadores de assinaturas e do bar/loja num periodo.
  */
 import { db } from "@/lib/db";
+import { recebimentosMensalidades } from "@/lib/financeiro/recebimentos";
 import { churnMensal, ltv } from "./calculos";
 import type { Periodo } from "./periodo";
 
@@ -15,7 +16,7 @@ export async function indicadoresDeAssinaturas(p: Periodo) {
     db.assinatura.count({ where: { ativadaEm: intervalo(p.de, p.ate) } }),
     db.assinatura.findMany({ where: { canceladaEm: intervalo(p.de, p.ate), ativadaEm: { not: null } }, select: { motivoCancelamento: true } }),
     db.assinatura.count({ where: { ativadaEm: { lt: new Date(p.de) }, OR: [{ canceladaEm: null }, { canceladaEm: { gte: new Date(p.de) } }] } }),
-    db.cobranca.aggregate({ where: { status: "PAGA", pagaEm: intervalo(p.de, p.ate) }, _sum: { valorCentavos: true } }),
+    recebimentosMensalidades(intervalo(p.de, p.ate)),
     db.agendamento.findMany({ where: { status: "CONCLUIDO", assinaturaId: { not: null }, inicio: intervalo(p.de, p.ate) }, select: { assinaturaId: true, servico: { select: { precoCentavos: true } } } }),
     db.assinatura.groupBy({ by: ["planoId"], where: { status: { in: ["ATIVA", "ATRASADA"] } }, _count: true, _sum: { precoCentavos: true } }),
     db.plano.findMany({ select: { id: true, nome: true } }),
@@ -28,7 +29,7 @@ export async function indicadoresDeAssinaturas(p: Periodo) {
     motivos[m] = (motivos[m] ?? 0) + 1;
   }
   const assinantesQueUsaram = new Set(usos.map((u) => u.assinaturaId)).size;
-  const receitaPeriodo = recebido._sum.valorCentavos ?? 0;
+  const receitaPeriodo = recebido.total;
   // Quanto o assinante "economizou": preco de tabela dos servicos usados menos o que pagou.
   const valorDeTabela = usos.reduce((s, u) => s + u.servico.precoCentavos, 0);
   return {
@@ -42,6 +43,7 @@ export async function indicadoresDeAssinaturas(p: Periodo) {
     ltvCentavos: ativas.length ? ltv(mrr / ativas.length, churn) : null,
     motivos: Object.entries(motivos).sort((a, b) => b[1] - a[1]).map(([motivo, qtd]) => ({ motivo, qtd })),
     recebidoCentavos: receitaPeriodo,
+    recebimentoCompleto: recebido.completo, recebimentosPendentes: recebido.pendentes.length,
     usos: usos.length,
     usoMedioPorAssinante: assinantesQueUsaram ? usos.length / assinantesQueUsaram : null,
     // Valor efetivo de cada corte do plano (receita / usos) comparado ao preco de tabela

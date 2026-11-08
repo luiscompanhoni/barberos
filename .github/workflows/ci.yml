@@ -6,6 +6,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -35,7 +38,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: npm
       - name: Instalar
         run: |
           npm ci
@@ -61,6 +63,79 @@ jobs:
           npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Dados de exemplo
         run: npm run db:seed
+      - name: Preparar bancos exclusivos de RH e comandas
+        env:
+          POSTGRES_SERVICO: ${{ job.services.postgres.id }}
+          # Credencial fictícia exclusiva do serviço efêmero deste job; sem permissão de criar bancos.
+          DATABASE_URL_RH: postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_regr_rh_20261108
+          DATABASE_URL_COMANDAS: postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_regr_comandas_20261108
+        run: |
+          set -euo pipefail
+          docker exec -i "$POSTGRES_SERVICO" psql -X -v ON_ERROR_STOP=1 -U barberos -d barberos <<'SQL'
+          CREATE ROLE auditoria_teste LOGIN PASSWORD 'fixture_ci_descartavel_20261108';
+          SQL
+          for banco in barberos_ci_local_regr_rh_20261108 barberos_ci_local_regr_comandas_20261108; do
+            docker exec "$POSTGRES_SERVICO" createdb -U barberos --owner=auditoria_teste "$banco"
+          done
+          for destino in "$DATABASE_URL_RH" "$DATABASE_URL_COMANDAS"; do
+            DATABASE_URL="$destino" ./node_modules/.bin/prisma migrate deploy
+            DATABASE_URL="$destino" npm run db:seed
+          done
+      - name: Preparar bancos separados da estabilização
+        env:
+          POSTGRES_SERVICO: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          # Mesma role restrita dos fluxos; somente o superusuário do serviço cria bancos.
+          for banco in barberos_ci_local_seguranca_estabilizacao barberos_estabilizacao_agenda_ci_20261108 barberos_estabilizacao_despesas_ci_20261108 barberos_ci_local_estabilizacao_ci_20261108; do
+            docker exec "$POSTGRES_SERVICO" createdb -U barberos --owner=auditoria_teste "$banco"
+            DATABASE_URL="postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/$banco" ./node_modules/.bin/prisma migrate deploy
+          done
+      - name: Conferir estabilização, concorrência, Pix e vigências no PostgreSQL
+        env:
+          AMBIENTE: homologacao
+          TZ: America/Sao_Paulo
+          SESSION_SECRET: fixture-estabilizacao-ci-sem-credenciais-reais-20261108
+          WHATSAPP_PROVIDER: simulador
+          WHATSAPP_ENVIOS_BLOQUEADOS: "true"
+          WHATSAPP_ATENDIMENTO_IA_PAGA: "false"
+          PAGAMENTOS_PROVIDER: simulado
+          PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA: "false"
+          COBRANCA_AUTOMATICA_WHATSAPP_ATIVA: "false"
+          AGENTES_EXECUCAO_ATIVA: "false"
+          MAQUININHA: manual
+          OTP_PROVIDER: console
+          PUSH_PROVIDER: simulado
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/estabilizacao-sem-http.cjs" <<'JS'
+          const bloquear = () => { throw Error('HTTP externo bloqueado na estabilização sintética'); };
+          globalThis.fetch = async () => bloquear();
+          for (const nome of ['node:http', 'node:https']) {
+            const transporte = require(nome);
+            transporte.request = transporte.get = bloquear;
+          }
+          JS
+          export NODE_OPTIONS="--require=$RUNNER_TEMP/estabilizacao-sem-http.cjs"
+          conferir_resultado() {
+            node -e 'const r=require(process.argv[1]); if (!r.success || r.numPassedTests < Number(process.argv[2]) || r.numPendingTests || r.numTotalTests !== r.numPassedTests) process.exit(1); console.log(r.numPassedTests, "cenários PostgreSQL aprovados sem skips")' "$1" "$2"
+          }
+          export DATABASE_URL="postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_estabilizacao_agenda_ci_20261108"
+          TESTE_ESTABILIZACAO_AGENDA_LOCAL=1 ./node_modules/.bin/vitest run tests/estabilizacao-agenda-banco.test.ts \
+            --maxWorkers=1 --reporter=json --outputFile="$RUNNER_TEMP/estabilizacao-agenda.json"
+          conferir_resultado "$RUNNER_TEMP/estabilizacao-agenda.json" 14
+          export DATABASE_URL="postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_estabilizacao_despesas_ci_20261108"
+          TESTE_ESTABILIZACAO_DESPESAS_LOCAL=1 ./node_modules/.bin/vitest run tests/estabilizacao-despesas-banco.test.ts \
+            --maxWorkers=1 --reporter=json --outputFile="$RUNNER_TEMP/estabilizacao-despesas.json"
+          conferir_resultado "$RUNNER_TEMP/estabilizacao-despesas.json" 12
+          export DATABASE_URL="postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_estabilizacao_ci_20261108"
+          TESTE_ESTABILIZACAO_FINANCEIRO_LOCAL=1 ./node_modules/.bin/vitest run tests/estabilizacao-financeiro-banco.test.ts tests/estabilizacao-adicionais-banco.test.ts \
+            --maxWorkers=1 --reporter=json --outputFile="$RUNNER_TEMP/estabilizacao-financeiro.json"
+          conferir_resultado "$RUNNER_TEMP/estabilizacao-financeiro.json" 18
+          export DATABASE_URL="postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_seguranca_estabilizacao"
+          ./node_modules/.bin/tsx scripts/teste-seguranca-estabilizacao.ts
+          ./node_modules/.bin/tsx scripts/teste-seguranca-pix-estabilizacao.ts
+          ./node_modules/.bin/tsx scripts/teste-seguranca-vigencias-estabilizacao.ts
       - name: Conferir horários e duração aceita em bancos descartáveis da revisão
         env:
           POSTGRES_SERVICO: ${{ job.services.postgres.id }}
@@ -126,8 +201,10 @@ jobs:
         run: |
           docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_recrutamento_entrevistas_teste
           npx prisma migrate deploy
-      - name: Testes de fluxo (histórico, agentes e Estúdio em bancos separados)
+      - name: Testes de fluxo (destinos exclusivos por área)
         env:
+          DATABASE_URL_RH: postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_regr_rh_20261108
+          DATABASE_URL_COMANDAS: postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_regr_comandas_20261108
           DATABASE_URL_HISTORICO: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste
           DATABASE_URL_AGENTES: postgresql://barberos:barberos@localhost:5432/barberos_agentes_teste
           DATABASE_URL_ESTUDIO: postgresql://barberos:barberos@localhost:5432/barberos_estudio_templates_teste

@@ -14,6 +14,7 @@
 import type { FormaPagamento } from "@prisma/client";
 import type { CobrancaAvulsa, CobrancaGateway, Gateway } from "./gateway";
 import { ehHomologacao } from "@/lib/ambiente";
+import { centavosValidos, instanteRecebimento } from "./recebimento";
 
 const BASE = "https://api.pagar.me/core/v5";
 export const PREFIXO_PIX = "pixrec_";
@@ -109,6 +110,8 @@ const FORMA: Record<string, FormaPagamento> = { credit_card: "CARTAO", boleto: "
 
 export function converterCobranca(c: CobrancaPagarme, assinaturaGatewayId?: string | null): CobrancaGateway {
   const t = c.last_transaction ?? {};
+  const recebidoEm = c.paid_at && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(c.paid_at) ? instanteRecebimento(c.paid_at) : null;
+  const comprovado = ["paid", "overpaid", "underpaid", "refunded", "chargedback"].includes(c.status) && centavosValidos(c.paid_amount) && !!recebidoEm;
   const sub = c.invoice?.subscription_id ?? c.invoice?.subscriptionId ?? c.invoice?.subscription?.id ?? c.metadata?.assinatura_gateway_id ?? null;
   return {
     id: c.id,
@@ -118,7 +121,9 @@ export function converterCobranca(c: CobrancaPagarme, assinaturaGatewayId?: stri
     vencimentoConfirmado: !!c.due_at && Number.isFinite(Date.parse(c.due_at)),
     status: traduzirStatus(c.status),
     abertaConfirmada: c.status === "pending",
-    pagaEm: c.paid_at ?? null,
+    pagaEm: recebidoEm,
+    ...(comprovado ? { recebimento: { valorCentavos: c.paid_amount!, em: recebidoEm!, fonte: "pagarme", referencia: c.id, status: c.status, campoValor: "charge.paid_amount", campoData: "charge.paid_at" } }
+      : ["paid", "overpaid", "underpaid", "refunded", "chargedback"].includes(c.status) ? { pendenciaRecebimento: "A cobrança não informou valor e data de pagamento comprovados." } : {}),
     link: null, // a pagina de pagamento e a do BarberOS (/c/pagar/...)
     forma: c.payment_method ? (FORMA[c.payment_method] ?? null) : null,
     pixCopiaECola: t.qr_code ?? null,

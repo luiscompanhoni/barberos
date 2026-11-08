@@ -83,6 +83,23 @@ describe("comissão diferenciada", () => {
 describe("comissão das assinaturas", () => {
   const cfg = { percentualBps: 3500, creditos: { corte: 40, barba: 20 } };
   const at = (barbeiroId: string, servicoId: string, dia = "2026-10-10") => ({ barbeiroId, servicoId, dia });
+  it("pote de 35%: participação 35/25/20/20 reparte R$ 3.500 e não fixa 1% por corte", () => {
+    for (const fator of [1, 2]) {
+      const ags = [35, 25, 20, 20].flatMap((qtd, i) =>
+        Array.from({ length: qtd * fator }, () => at(`barbeiro-${i + 1}`, "corte")));
+      const r = calcularAssinaturas(cfg, { recebidoCentavos: 1000000, estornosCentavos: 0 }, ags);
+      expect(r.barbeiros.map(b => ({ id: b.barbeiroId, participacao: b.creditos * 100 / r.creditosTotal, comissao: b.comissao }))).toEqual([
+        { id: "barbeiro-1", participacao: 35, comissao: 122500 },
+        { id: "barbeiro-2", participacao: 25, comissao: 87500 },
+        { id: "barbeiro-3", participacao: 20, comissao: 70000 },
+        { id: "barbeiro-4", participacao: 20, comissao: 70000 },
+      ]);
+      const pote = r.barbeiros.reduce((total, b) => total + b.comissao, 0);
+      expect(pote).toBe(350000);
+      expect(r.recebidoCentavos - pote).toBe(650000);
+      expect(r.barbeiros.reduce((total, b) => total + b.qtd, 0)).toBe(100 * fator);
+    }
+  });
   it("exemplo do dono: R$ 20.000 distribuíveis, 400 créditos, barbeiro com 80 créditos e 35%", () => {
     // 10 atendimentos de 40 créditos = 400; o barbeiro fez 2 (80 créditos)
     const ags = [...Array(8)].map(() => at("outro", "corte")).concat([at("pedro", "corte"), at("pedro", "corte")]);
