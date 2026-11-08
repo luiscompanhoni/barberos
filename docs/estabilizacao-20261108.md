@@ -19,7 +19,7 @@ O trabalho preserva o histórico, separa valores cobrados de recebimentos compro
 
 Os 24 achados originais estão discriminados em `outputs/estabilizacao-2026-11-08/matriz-correcoes.md`, na raiz real do workspace. DEP-01 e GAP-01 a GAP-05 ficam fora dessa contagem, separando vulnerabilidades, regressões e funcionalidades incompletas.
 
-## Evidência e rodada final
+## Evidências da preparação anterior
 
 | Camada | Resultado conhecido | Alcance |
 | --- | --- | --- |
@@ -56,3 +56,7 @@ O [runbook de recuperação](recuperacao-segura.md), a [homologação de recebim
 A migração `20261108020000_pote_arredondamento_versionado` é a 83ª e não ativa maiores restos. O schema real migrado ficou sem diferenças para o Prisma. A prova de backup local repetida com as 83 migrations conservou 122 tabelas, hashes, sequências e imutabilidade, com controles negativos. O comparador estrutural inclui os valores ordenados dos enums e o harness exige rejeitar um label não default adulterado com a tabela vazia. A prova sintética não é um backup nem uma restauração de produção.
 
 O [guia do rateio](rateio-assinaturas.md) descreve o método, desempate, adicionais, valores não rateados e bloqueios. Dados de profissionais reais e a homologação da folha ficam em artefatos privados fora do repositório público. A leitura de produção não aplicou associações, salários ou correções contábeis.
+
+O CI Linux #100, de `c6e9908`, aprovou os 1.781 unitários, 61 cenários PostgreSQL sem skips, 84 testes Python e as 83 migrations, mas encontrou duas falhas antes de aprovar a revisão inteira: a fixture de desempenho criava barbeiros sem cadeira vinculada e a imagem falhou no carregamento de Google Fonts pelo Turbopack. A fixture foi corrigida preservando a guarda financeira e passou separadamente no PostgreSQL local. As mesmas famílias tipográficas passaram a usar [arquivos oficiais locais com licença e origem preservadas](fontes-locais.md), sem alterar dependências ou desabilitar TLS.
+
+A repetição completa `1794124534731` de `npm run check` passou com rede externa bloqueada, incluindo build com as fontes locais. A prova final `1794123172269` do backup também passou: 83 migrations, 122 tabelas, oito grupos estruturais, snapshot concorrente, sequências e quatro controles negativos, incluindo enum adulterado com tabela vazia. O resultado Linux da revisão final deve ser conferido no SHA do PR; o CI #100, isoladamente, não foi uma aprovação final.
