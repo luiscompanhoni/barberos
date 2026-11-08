@@ -4,18 +4,19 @@ import { useEffect, useState } from "react";
 import { Plus, Save, Trash2 } from "lucide-react";
 import { api, centavosParaTexto, paraCentavos } from "@/lib/cliente-api";
 import { ComissaoDiferenciada, type AdicionalLinha } from "./ComissaoDiferenciada";
+import type { ArredondamentoPote } from "@/lib/rh/rateio-assinaturas";
 
 type Categoria = "BAR" | "LOJA";
 type Adicionais = { hoje: string; fechadas: string[]; adicionais: AdicionalLinha[] };
 type Dados = Adicionais & {
   revisao: string; vigenciaPadrao: string;
-  assinaturas: { ativo: boolean; percentualBps: number; creditos: { servicoId: string; nome: string; creditos: number }[] };
+  assinaturas: { ativo: boolean; percentualBps: number; arredondamento: ArredondamentoPote; creditos: { servicoId: string; nome: string; creditos: number }[] };
   faixas: { categoria: Categoria; minimoCentavos: number; percentualBps: number }[];
   barbeiros: { id: string; nome: string }[];
 };
 // No formulario: percentuais como texto ("35", "5,5") e valores em reais ("100,00").
 type Form = {
-  ativo: boolean; percentual: string;
+  ativo: boolean; percentual: string; arredondamento: ArredondamentoPote;
   creditos: Record<string, string>;
   faixas: { chave: number; categoria: Categoria; minimo: string; percentual: string }[];
 };
@@ -28,6 +29,7 @@ let seq = 0;
 function paraForm(d: Dados): Form {
   return {
     ativo: d.assinaturas.ativo, percentual: pctTexto(d.assinaturas.percentualBps),
+    arredondamento: d.assinaturas.arredondamento ?? "LEGADO",
     creditos: Object.fromEntries(d.assinaturas.creditos.map((f) => [f.servicoId, String(f.creditos)])),
     faixas: d.faixas.map((f) => ({ chave: ++seq, categoria: f.categoria, minimo: centavosParaTexto(f.minimoCentavos), percentual: pctTexto(f.percentualBps) })),
   };
@@ -50,6 +52,7 @@ export function ComissoesExtras() {
       competencia, revisao: d.revisao,
       assinaturas: {
         ativo: f.ativo, percentualBps: pctValor(f.percentual),
+        arredondamento: f.arredondamento,
         creditos: d.assinaturas.creditos.map((s) => ({ servicoId: s.servicoId, creditos: Math.round(Number(f.creditos[s.servicoId] || "0")) })),
       },
       faixas: f.faixas.map((x) => ({ categoria: x.categoria, minimoCentavos: paraCentavos(x.minimo || "0"), percentualBps: pctValor(x.percentual) })),
@@ -73,7 +76,7 @@ export function ComissoesExtras() {
   return (
     <div className="space-y-4">
       <div className="cartao space-y-1"><label className="rotulo" htmlFor="vigencia-comissao-extras">Aplicar estas regras a partir de</label><input id="vigencia-comissao-extras" type="month" className="campo w-48" value={competencia} onChange={e => setCompetencia(e.target.value)} /><p className="text-xs text-zinc-500">O padrão é o próximo mês. Créditos, faixas e percentuais anteriores permanecem no histórico.</p></div>
-      {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
+      {msg && <p role={msg.erro ? "alert" : "status"} className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
 
       <section className="cartao space-y-3">
         <div className="flex flex-wrap items-center gap-3">
@@ -88,8 +91,16 @@ export function ComissoesExtras() {
           <p>Comissão = receita atribuída × <b>{f.percentual || "0"}%</b> (percentual base) + a comissão diferenciada de cada um. Ligada, substitui a coluna “Pelo plano” das regras acima.</p>
         </div>
         <div className="flex items-center gap-2">
-          <label className="rotulo m-0">Percentual base das assinaturas (%)</label>
-          <input className="campo w-20 py-1.5 text-right" inputMode="decimal" value={f.percentual} onChange={(e) => muda({ percentual: e.target.value })} />
+          <label htmlFor="pote-percentual" className="rotulo m-0">Percentual base das assinaturas (%)</label>
+          <input id="pote-percentual" className="campo w-20 py-1.5 text-right" inputMode="decimal" value={f.percentual} onChange={(e) => muda({ percentual: e.target.value })} />
+        </div>
+        <div className="space-y-1">
+          <label className="rotulo" htmlFor="pote-arredondamento">Distribuição dos centavos do pote</label>
+          <select id="pote-arredondamento" className="campo" value={f.arredondamento} disabled={salvando} aria-describedby="pote-arredondamento-ajuda" onChange={e => muda({ arredondamento: e.target.value as ArredondamentoPote })}>
+            <option value="LEGADO">Legado — arredondar cada comissão individualmente</option>
+            <option value="MAIORES_RESTOS_V1">Maiores restos — distribuir todo o pote base</option>
+          </select>
+          <p id="pote-arredondamento-ajuda" className="text-xs text-zinc-500">Vale a partir da competência escolhida ao salvar. Maiores restos distribui os centavos pelas frações restantes; empates seguem o ID fixo da cadeira, em ordem crescente. Adicionais preservam a parte dos demais; incompatibilidades exigem conferência antes do fechamento. Folhas já fechadas são preservadas.</p>
         </div>
         <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
           {d.assinaturas.creditos.map((s) => (

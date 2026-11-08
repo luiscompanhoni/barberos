@@ -4,6 +4,7 @@ import { exigirSessaoCom } from "@/lib/auth/permissoes";
 import { rota } from "@/lib/erros";
 import { configExtras, salvarExtras } from "@/lib/rh/pote";
 import { corpo, zId } from "@/lib/validacao";
+import { ARREDONDAMENTOS_POTE } from "@/lib/rh/rateio-assinaturas";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,7 @@ export const PUT = rota(async (req: Request) => {
     assinaturas: z.object({
       ativo: z.boolean(),
       percentualBps: zPct,
+      arredondamento: z.enum(ARREDONDAMENTOS_POTE),
       creditos: z.array(z.object({ servicoId: zId, creditos: z.number().int().min(0).max(1000) })).max(300),
     }),
     faixas: z.array(z.object({ categoria: z.enum(["BAR", "LOJA"]), minimoCentavos: z.number().int().min(0).max(100_000_000), percentualBps: zPct })).max(50),

@@ -5,6 +5,8 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
 import { ContadorCrm } from "@/components/visual/ContadorCrm";
+import { ResumoRateioAssinaturas } from "./ResumoRateioAssinaturas";
+import type { ConciliacaoAssinaturas } from "@/lib/rh/rateio-assinaturas";
 
 type Soma = { qtd: number; base: number; comissao: number; adicional?: number };
 type Atend = { id: string; inicio: string; cliente: string; servico: string; modalidade: "AVULSO" | "PLANO"; base: number; regra: string; comissao: number };
@@ -19,7 +21,7 @@ type Linha = {
 type Dados = {
   inicio: string; fim: string; competencia: string | null; total: number; barbeiros: Linha[];
   recebimentos?: { completo: boolean; pendentes: number }; regrasLegadas?: boolean;
-  assinaturas: { recebidoCentavos: number; estornosCentavos: number; distribuivelCentavos: number; creditosTotal: number; valorCreditoCentavos: number; percentualBaseBps: number } | null;
+  assinaturas: { recebidoCentavos: number; estornosCentavos: number; distribuivelCentavos: number; creditosTotal: number; valorCreditoCentavos: number; percentualBaseBps: number; conciliacao?: ConciliacaoAssinaturas } | null;
 };
 const pct = (bps: number) => `${(bps / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 const pts = (bps: number) => `${bps >= 0 ? "+" : "−"}${(Math.abs(bps) / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} pts`;
@@ -65,6 +67,7 @@ export function ComissoesRelatorio() {
           Percentual base do recálculo: <b>{pct(a.percentualBaseBps)}</b>. Os valores de folhas fechadas são mostrados a partir do retrato histórico.
         </div>
       )}
+      {a?.conciliacao && <ResumoRateioAssinaturas dados={a.conciliacao} nomes={Object.fromEntries(d?.barbeiros.map(b => [b.barbeiroId, b.nome]) ?? [])} />}
       {d && !d.competencia && <p className="text-xs text-zinc-500">Escolha um mês inteiro (dia 1 ao último dia) para ver bônus, descontos e o total a pagar de cada um.</p>}
       {d && d.barbeiros.length > 0 && <section className="cartao space-y-4"><h2 className="font-semibold">Comissões por profissional</h2><p className="text-xs text-zinc-500">Comissões apuradas no período selecionado. Salário, bônus e descontos permanecem na folha.</p><GraficoBarrasCrm rotulo="Comissões do período por profissional" formatar={reais} itens={d.barbeiros.map(b => ({ rotulo: b.nome, valor: b.total }))} /></section>}
       {d && d.barbeiros.length === 0 && <div className="cartao text-sm text-zinc-500">Nenhum atendimento concluído no período.</div>}
@@ -91,7 +94,9 @@ export function ComissoesRelatorio() {
                     <Item rotulo="Créditos de Atendimento" valor={`${b.assinaturas.creditos} de ${a.creditosTotal}`} sub={`${b.assinaturas.qtd} pelo plano`} />
                     <Item rotulo="Receita atribuída" valor={reais(b.assinaturas.receitaAtribuida)} />
                     {b.assinaturas.percentualBaseBps !== undefined && <Item rotulo="Percentual base" valor={pct(b.assinaturas.percentualBaseBps)} sub={b.assinaturas.comissaoBase === undefined ? undefined : reais(b.assinaturas.comissaoBase)} />}
-                    {b.assinaturas.adicionalBps !== undefined && b.assinaturas.adicionalBps !== 0 && <Item rotulo="Adicional diferenciado" valor={pts(b.assinaturas.adicionalBps)} sub={b.assinaturas.adicionalCentavos === undefined ? undefined : reais(b.assinaturas.adicionalCentavos)} />}
+                    {(b.assinaturas.adicionalCentavos !== undefined && b.assinaturas.adicionalCentavos !== 0) || !!b.assinaturas.adicionalBps
+                      ? <Item rotulo="Adicional diferenciado" valor={reais(b.assinaturas.adicionalCentavos ?? 0)} sub={b.assinaturas.adicionalBps === undefined ? undefined : `${pts(b.assinaturas.adicionalBps)} médios antes dos limites por atendimento`} />
+                      : null}
                     <Item rotulo="Comissão de assinaturas" valor={reais(b.assinaturas.comissao)} forte />
                   </>
                 )}

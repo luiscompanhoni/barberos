@@ -40,6 +40,8 @@ export async function montarSnapshot(inicio: string, fim: string, tipo: "DIARIA"
   if (!atual.poteLigado && atual.atual.assinantes) avisos.push("Pote das assinaturas desligado: a mensalidade entra só no total, e os atendimentos de plano ficam fora da margem por profissional, serviço e cadeira.");
   if (atual.datasDiferentes) avisos.push("Há vendas cujo atendimento não foi concluído neste mesmo período. Elas entram no faturamento, mas não na margem, para não misturar as bases de venda e produção.");
   if (atual.recebimentosPendentes) avisos.push(`${atual.recebimentosPendentes} mensalidade(s) ainda sem comprovação de valor/data do pagamento. Os recebimentos exibidos são parciais e precisam de conciliação.`);
+  if (atual.rateioAssinaturasPendente) avisos.push("O rateio das assinaturas deste período está pendente de conferência. Comissões e margens do total e dos grupos afetados permanecem indisponíveis até a conciliação no RH.");
+  if (anterior.rateioAssinaturasPendente) avisos.push("O rateio das assinaturas do período anterior está pendente de conferência. Suas comissões e margens não servem como resultado definitivo na comparação.");
   if (atual.atual.custosPendentes) avisos.push(`${atual.atual.custosPendentes} serviço(s) ou item(ns) sem custo cadastrado. Complete os custos para calcular a margem estimada.`);
   const profissionais = await db.barbeiro.findMany({ where: { ativo: true }, select: { id: true, nome: true } });
   const [qualidade, desempenho, diaria] = await Promise.all([

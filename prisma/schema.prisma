@@ -1724,11 +1724,18 @@ model ComissaoServico {
 /// menos estornos) e atribuida aos barbeiros pelos Creditos de Atendimento dos atendimentos pelo plano, e cada
 /// um recebe o percentual base (+ adicional) sobre a receita atribuida. Ligado, substitui a regra "pelo plano"
 /// de cada servico. Linha unica (id "pote").
+enum ArredondamentoPote {
+  LEGADO
+  MAIORES_RESTOS_V1
+}
+
 model PoteConfig {
   id            String   @id @default("pote")
   ativo         Boolean  @default(false)
   /// Percentual base da comissao das assinaturas sobre a receita atribuida ao barbeiro (3500 = 35%).
   percentualBps Int      @default(3500)
+  /// Método explícito por vigência; registros existentes preservam o cálculo individual legado.
+  arredondamento ArredondamentoPote @default(LEGADO)
   atualizadoEm  DateTime @updatedAt @db.Timestamptz(3)
 
   @@map("pote_config")

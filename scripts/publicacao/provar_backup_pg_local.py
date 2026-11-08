@@ -193,6 +193,22 @@ def exigir_falha(fn, motivo):
     raise FalhaProva("NEGATIVO_NAO_REJEITADO", "Um controle negativo não foi rejeitado.", controle=motivo)
 
 
+def provar_enum_alterado(referencia, c):
+    # A tabela fica vazia: a sonda precisa detectar o schema, não uma mudança de hash de linhas.
+    if referencia["tabelas"].get("public.pote_config", {}).get("linhas") != 0:
+        raise FalhaProva("FIXTURE_ENUM_NAO_VAZIA", "A prova de enum exige configuração sintética vazia.")
+    etapa("restauracao.negativo_enum_nao_default")
+    sql(RESTAURADO, 'ALTER TYPE public."ArredondamentoPote" RENAME VALUE \'MAIORES_RESTOS_V1\' TO \'__PROVA_ENUM_ALTERADO__\'')
+    try:
+        alterado = c.capturar(RESTAURADO)
+        if alterado["tabelas"] != referencia["tabelas"]:
+            raise FalhaProva("SONDA_ENUM_ALTEROU_DADOS", "A sonda estrutural de enum alterou hashes de tabelas.")
+        return exigir_falha(lambda: c.comparar(referencia, alterado), "label de enum não default alterado com tabela vazia")
+    finally:
+        sql(RESTAURADO, 'ALTER TYPE public."ArredondamentoPote" RENAME VALUE \'__PROVA_ENUM_ALTERADO__\' TO \'MAIORES_RESTOS_V1\'')
+        c.comparar(referencia, c.capturar(RESTAURADO))
+
+
 def conferir(pasta, dump, referencia, c):
     etapa("restauracao.pg_restore")
     executar("pg_restore", [*BASE, "-d", RESTAURADO, "--exit-on-error", str(dump)])
@@ -219,6 +235,7 @@ def conferir(pasta, dump, referencia, c):
     auditoria_detectada = exigir_falha(lambda: sql(RESTAURADO, c.sql_prova_auditoria()), "auditoria sem proteção")
     sql(RESTAURADO, trigger)
     c.comparar(referencia, c.capturar(RESTAURADO))
+    enum_detectado = provar_enum_alterado(referencia, c)
     etapa("restauracao.proximo_id")
     proximo = sql(RESTAURADO, "SELECT nextval(pg_get_serial_sequence('public.prova_backup_local','id'))").strip() == b"3"
     if not proximo:
@@ -227,7 +244,7 @@ def conferir(pasta, dump, referencia, c):
             "gruposSchemaIguais": sorted(restaurado["estrutura"]), "snapshotComEscritorConcorrente": True,
             "estadosSequenciasIguaisAntesDaSonda": estados_iguais, "proximoIdCorreto": proximo,
             "auditoriaUpdateDeleteTruncateRecusados": True,
-            "negativos": {"valorAlteradoMesmaContagem": valor_detectado, "triggerAusente": trigger_detectado, "auditoriaSemTrigger": auditoria_detectada}}
+            "negativos": {"valorAlteradoMesmaContagem": valor_detectado, "triggerAusente": trigger_detectado, "auditoriaSemTrigger": auditoria_detectada, "enumAlterado": enum_detectado}}
 
 
 def limpar_criados(criados, marcador):

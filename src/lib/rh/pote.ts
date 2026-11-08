@@ -12,6 +12,7 @@ import type { CategoriaComissao, ConfigAssinaturas, FaixaProduto } from "./regra
 import { revisaoApuracao } from "./revisao";
 import { competenciaSalario, competenciasRemuneracao, garantirBaselineRemuneracao, gravarVigenciaRemuneracao } from "./vigencias";
 import { tocarPessoasDaFolha } from "./trava-regras-folha";
+import { ARREDONDAMENTOS_POTE, type ArredondamentoPote } from "./rateio-assinaturas";
 
 const ID = "pote";
 
@@ -26,6 +27,7 @@ export async function regrasExtras(c: Prisma.TransactionClient = db): Promise<{ 
     assinaturas: {
       ativo: cfg?.ativo ?? false,
       percentualBps: cfg?.percentualBps ?? 3500,
+      arredondamento: cfg?.arredondamento ?? "LEGADO",
       creditos: Object.fromEntries(creditos.map((f) => [f.servicoId, f.fichas])),
     },
     faixas: faixas.filter((f) => f.categoria !== "USO_INTERNO").map((f) => ({ categoria: f.categoria as CategoriaComissao, minimoCentavos: f.minimoCentavos, percentualBps: f.percentualBps })),
@@ -46,6 +48,7 @@ export async function configExtras() {
     assinaturas: {
       ativo: assinaturas.ativo,
       percentualBps: assinaturas.percentualBps,
+      arredondamento: assinaturas.arredondamento ?? "LEGADO",
       creditos: servicos.map((s) => ({ servicoId: s.id, nome: s.nome, creditos: assinaturas.creditos[s.id] ?? 0 })),
     },
     faixas,
@@ -56,11 +59,13 @@ export async function configExtras() {
 
 export type EntradaExtras = {
   revisao?: string; competencia?: string;
-  assinaturas: { ativo: boolean; percentualBps: number; creditos: { servicoId: string; creditos: number }[] };
+  assinaturas: { ativo: boolean; percentualBps: number; arredondamento?: ArredondamentoPote; creditos: { servicoId: string; creditos: number }[] };
   faixas: FaixaProduto[];
 };
 
 export async function salvarExtras(s: Sessao, d: EntradaExtras) {
+  const arredondamento = d.assinaturas.arredondamento ?? "LEGADO";
+  if (!ARREDONDAMENTOS_POTE.includes(arredondamento)) throw new ErroNegocio("Método de arredondamento inválido.");
   const pcts = [d.assinaturas.percentualBps, ...d.faixas.map((f) => f.percentualBps)];
   if (pcts.some((p) => p < 0 || p > 10000)) throw new ErroNegocio("Percentual tem que ficar entre 0% e 100%.");
   const chaves = new Set(d.faixas.map((f) => `${f.categoria}:${f.minimoCentavos}`));
@@ -79,8 +84,8 @@ export async function salvarExtras(s: Sessao, d: EntradaExtras) {
     await garantirBaselineRemuneracao(tx, "extras", JSON.parse(JSON.stringify(antes)) as Prisma.InputJsonValue, s.usuarioId);
     await tx.poteConfig.upsert({
       where: { id: ID },
-      create: { id: ID, ativo: d.assinaturas.ativo, percentualBps: d.assinaturas.percentualBps },
-      update: { ativo: d.assinaturas.ativo, percentualBps: d.assinaturas.percentualBps },
+      create: { id: ID, ativo: d.assinaturas.ativo, percentualBps: d.assinaturas.percentualBps, arredondamento },
+      update: { ativo: d.assinaturas.ativo, percentualBps: d.assinaturas.percentualBps, arredondamento },
     });
     await tx.poteFicha.deleteMany({});
     const creditos = d.assinaturas.creditos.filter((f) => f.creditos > 0);
@@ -89,8 +94,8 @@ export async function salvarExtras(s: Sessao, d: EntradaExtras) {
     if (d.faixas.length) await tx.comissaoProdutoFaixa.createMany({ data: d.faixas });
     await gravarVigenciaRemuneracao(tx, { escopo: "extras", competencia, conteudo: JSON.parse(JSON.stringify(await regrasExtras(tx))) as Prisma.InputJsonValue, atorId: s.usuarioId });
     await auditar(tx, s.usuarioId, "rh_comissoes_extras", "comissao", "assinaturas_produtos", {
-      antes: { ativo: antes.assinaturas.ativo, percentualBps: antes.assinaturas.percentualBps, creditos: antes.assinaturas.creditos, faixas: antes.faixas },
-      depois: { ativo: d.assinaturas.ativo, percentualBps: d.assinaturas.percentualBps, creditos: Object.fromEntries(creditos.map((c) => [c.servicoId, c.creditos])), faixas: d.faixas },
+      antes: { ativo: antes.assinaturas.ativo, percentualBps: antes.assinaturas.percentualBps, arredondamento: antes.assinaturas.arredondamento ?? "LEGADO", creditos: antes.assinaturas.creditos, faixas: antes.faixas },
+      depois: { ativo: d.assinaturas.ativo, percentualBps: d.assinaturas.percentualBps, arredondamento, creditos: Object.fromEntries(creditos.map((c) => [c.servicoId, c.creditos])), faixas: d.faixas },
     });
   });
   return configExtras();

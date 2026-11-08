@@ -1,6 +1,8 @@
 # Estabilização após auditoria — 8 de novembro de 2026
 
-As correções foram preparadas na cópia local `work/barberos-estabilizacao-20261108`, branch `correcao-auditoria-20261108`, derivada da versão instalada `8a5566dc6c095090f23dbb72384c92b4e79de81c`. PostgreSQL direcionado, `npm run check` e os oito fluxos selecionados finais passaram. Os ajustes de orquestração tiveram contrato local 3/3 aprovado. Em seguida, o workflow passou a incluir os 55 cenários PostgreSQL opt-in e os roteiros de acesso/Pix/vigências, com token somente de leitura e sem gravação de cache; YAML, 26 sintaxes Bash e quatro contratos de cobertura foram aprovados localmente. O dono autorizou branch, PR em rascunho e CI Linux sem merge, deploy ou gastos; a execução Linux cabe à coordenação. Este registro não certifica o sistema como completo ou livre de falhas.
+As correções foram preparadas na cópia local `work/barberos-estabilizacao-20261108`, branch `correcao-auditoria-20261108`, derivada de `8a5566dc6c095090f23dbb72384c92b4e79de81c`. A revisão anterior `6551206` passou no CI Linux #99: 1.744 unitários, 55 cenários PostgreSQL sem skips, os 24 fluxos, build, imagens, renders e recuperação sintética. A continuação acrescenta o rateio de centavos aprovado, a proteção contra comissões sem destinatário e sua integração com Reuniões. Os resultados do CI devem sempre ser associados ao SHA exato do PR; o CI anterior não certifica alterações posteriores.
+
+O dono autorizou branch de revisão, PR em rascunho e CI Linux com dados fictícios, sem merge, deploy ou gastos adicionais. Este registro não certifica o sistema como completo ou livre de falhas.
 
 O trabalho preserva o histórico, separa valores cobrados de recebimentos comprovados e mantém a aprovação humana. Nenhuma publicação, transferência, cobrança externa, campanha, envio ou ativação de IA paga foi executada nesta estabilização. As migrations foram aplicadas somente a bancos locais descartáveis com dados fictícios.
 
@@ -9,7 +11,7 @@ O trabalho preserva o histórico, separa valores cobrados de recebimentos compro
 | Área | Implementação local | Limite atual |
 | --- | --- | --- |
 | Recebimentos e conciliação | Provas por gateway, valor e data recebidos; divergências em revisão; importação Stone estrita e auditada; despesas vinculadas pelo dono sem deduplicação automática por valor/data. | O método histórico da Celcash por data do status precisa de ponte documental com a nova base. Valores e salários reais não estão homologados por estes testes. |
-| Comissões e folha | Retrato congelado, identidade do profissional preservada, regras/salários por competência, comissão de produtos conforme decisão do dono a partir de novembro e índice único para regra geral. Corridas de fechamento/exclusão e mudança de regras corrigidas e repetidas com prova determinística. | Resíduo do pote e comissão fechada após estorno dependem do dono. Dados/valores reais e fechamento efetivo ainda precisam de homologação. |
+| Comissões e folha | Retrato congelado, identidade do profissional preservada, regras/salários por competência, índice único para regra geral, maiores restos versionados e diagnóstico auditável. Produção sem destinatário e divergências de rateio impedem fechamento/CSV incompletos. Reuniões recebe apenas uma pendência genérica. | Regras de adicionais incompatíveis com o rateio ficam em revisão. Estorno posterior ao fechamento, dados reais e fechamento efetivo ainda precisam de homologação. |
 | Agenda e recepção | Novos adicionais reservam tempo/cadeira, iniciam marcados e exigem conclusão própria; idempotência evita repetição após timeout; cancelar comanda não ressuscita adicional; entrevista consulta a agenda do dono. | Sem ocupação retroativa automática do legado. Reagendar/transferir grupos com adicionais exige revisão orientada. |
 | Avaliações e jogos | Amostras privadas pequenas formam lotes entre competências; bônus mostrado corresponde ao jogo escolhido; legado publicado preservado. | A avaliação mensal após pagamento continua infraestrutura interna sem fluxo completo nem anonimato comprovado. Campanhas de serviços ainda não liberam giros. |
 | Acesso e dados | Contadores concorrentes, revogação de sessões, limites de entrada, CSV protegido e Pix cifrado/mascarado com autorização e auditoria. Fixture pública sintética. | A chave operacional de cifra precisa ser instalada e homologada. Contenção do histórico remoto com dados pessoais pendente. Pagamento Pix real permanece sem liberação. |
@@ -37,12 +39,20 @@ Não somar contagens de rodadas diferentes: elas repetem cenários. Logs preserv
 
 ## Decisões e passos ainda necessários
 
-1. Registrar o manifesto final das fontes estáveis e obter autorização para o CI Linux. O contrato local da orquestração com bancos estritos passou 3/3; check/build, oito fluxos selecionados e corrida de folha passaram antes do último ajuste restrito ao workflow/Bash. Falta homologação Linux/Docker e do ambiente real.
+1. Conferir o manifesto e o CI Linux do SHA atual do PR em rascunho. A autorização de branch/PR/CI já foi concedida. A aprovação da revisão anterior não substitui essa repetição nem o procedimento de publicação do ambiente real.
 2. Homologar vínculos por IDs e aplicar os valores já confirmados no registro privado de remuneração, mantido fora do Git, com vigência de novembro. Baseline legado não prova salário histórico. Comparar o próximo fechamento com o método antigo antes de lote bancário.
-3. Definir resíduo do pote e estornos posteriores à folha fechada. Nenhuma dedução retroativa foi presumida.
+3. A política de maiores restos foi aprovada e implementada por vigência; a migração conserva `LEGADO`. Escolher a competência na homologação real e resolver exceções de adicionais. Estornos posteriores à folha fechada continuam dependendo de decisão, sem dedução retroativa presumida.
 4. Concluir a ponte Celcash: relatório privado por data do status, substatus, IDs e hash; comparar com recebimentos comprovados e liquidação. Não tratar o total mensal informado pelo dono como líquido sem evidência.
 5. Executar contenção remota dos dados pessoais com plano e aprovação próprios; substituir fixture local não apaga commits, caches ou clones.
 6. Homologar no Linux backup/restore e imagem de publicação, incluindo mídias, cifra, destino externo e espaço. Validar restauração do backup da instalação antes de migração futura.
 7. Desenvolver a segunda fase funcional da matriz: avaliação mensal, giro por serviços e estados reais dos conectores. Manter preparações e integrações ausentes declaradas na interface.
 
 O [runbook de recuperação](recuperacao-segura.md), a [homologação de recebimentos](homologacao-recebimentos.md), as [vigências da remuneração](remuneracao-vigencias.md) e relatórios por frente complementam este registro. Publicação e efeitos externos exigem etapa posterior, evidência do ambiente correspondente e decisão humana.
+
+## Continuação: rateio e destinatários
+
+`npm run check` passou na execução local `1794122678469`: 1.781 unitários em 208 arquivos, lint, regras de qualidade, tipos e build. Os 61 casos PostgreSQL opt-in ficaram fora desse comando; seis novos de vínculos/vigência e os 18 financeiros anteriores passaram separadamente na execução `1794122410826`, em bancos novos. Os 37 novos unitários incluem 2.268 combinações pequenas dentro de um único teste de propriedades, sem inflar a contagem de casos.
+
+A migração `20261108020000_pote_arredondamento_versionado` é a 83ª e não ativa maiores restos. O schema real migrado ficou sem diferenças para o Prisma. A prova de backup local repetida com as 83 migrations conservou 122 tabelas, hashes, sequências e imutabilidade, com controles negativos. O comparador estrutural inclui os valores ordenados dos enums e o harness exige rejeitar um label não default adulterado com a tabela vazia. A prova sintética não é um backup nem uma restauração de produção.
+
+O [guia do rateio](rateio-assinaturas.md) descreve o método, desempate, adicionais, valores não rateados e bloqueios. Dados de profissionais reais e a homologação da folha ficam em artefatos privados fora do repositório público. A leitura de produção não aplicou associações, salários ou correções contábeis.

@@ -92,6 +92,11 @@ def capturar(banco, snapshot=None):
                    "FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE " + SCHEMAS + " AND p.prokind IN ('f','p')",
         "sequencias": "SELECT schemaname||'.'||sequencename AS chave,data_type,start_value,min_value,max_value,increment_by,cycle,cache_size "
                       "FROM pg_sequences WHERE schemaname !~ '^pg_' AND schemaname<>'information_schema'",
+        # pg_dump pode renumerar OIDs/enumsortorder; só a sequência semântica dos labels é persistida.
+        "enums": "SELECT n.nspname||'.'||t.typname AS chave,coalesce(json_agg(e.enumlabel ORDER BY e.enumsortorder) "
+                 "FILTER (WHERE e.enumlabel IS NOT NULL),'[]') AS labels FROM pg_type t "
+                 "JOIN pg_namespace n ON n.oid=t.typnamespace LEFT JOIN pg_enum e ON e.enumtypid=t.oid "
+                 "WHERE " + SCHEMAS + " AND t.typtype='e' GROUP BY n.nspname,t.typname",
         "privilegios": "SELECT n.nspname||'.'||c.relname AS chave,pg_get_userbyid(c.relowner) AS dono,c.relacl::text AS acl,c.relrowsecurity AS rls "
                        "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE " + SCHEMAS + " AND c.relkind IN ('r','p','m','S')",
     }
@@ -156,6 +161,8 @@ def check_canonico(definicao):
 def comparar(antes, depois):
     if antes["tabelas"] != depois["tabelas"]:
         raise RuntimeError("Linhas ou hash de tabela divergentes do snapshot do dump.")
+    if antes["estrutura"].keys() != depois["estrutura"].keys():
+        raise RuntimeError("Estrutura, privilégios ou proteção do banco divergentes.")
     for grupo, linhas in antes["estrutura"].items():
         outras = depois["estrutura"].get(grupo)
         if linhas == outras:

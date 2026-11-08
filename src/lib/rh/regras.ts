@@ -3,6 +3,8 @@
  * totais da folha e CSV.
  */
 
+import { apurarRateioAssinaturas, type ArredondamentoPote } from "./rateio-assinaturas";
+
 export type TipoComissao = "PERCENTUAL" | "FIXO";
 export type Regra = { avulsoTipo: TipoComissao; avulsoValor: number; planoTipo: TipoComissao; planoValor: number };
 export type RegraSalva = Regra & { servicoId: string; barbeiroId: string | null };
@@ -116,7 +118,7 @@ export function competenciaFechadaNoPeriodo(fechadas: string[], periodo: { inici
 // ---------------- comissao das assinaturas (o "pote" do CashBarber)
 
 /** Percentual base (3500 = 35%) e Creditos de Atendimento por servico. */
-export type ConfigAssinaturas = { ativo: boolean; percentualBps: number; creditos: Record<string, number> };
+export type ConfigAssinaturas = { ativo: boolean; percentualBps: number; creditos: Record<string, number>; arredondamento?: ArredondamentoPote };
 
 /**
  * Comissao das assinaturas no periodo:
@@ -128,12 +130,18 @@ export type ConfigAssinaturas = { ativo: boolean; percentualBps: number; credito
  * O adicional e pago pela barbearia: nao muda a parte dos outros.
  */
 export function calcularAssinaturas(
-  cfg: Pick<ConfigAssinaturas, "percentualBps" | "creditos">,
+  cfg: Pick<ConfigAssinaturas, "percentualBps" | "creditos" | "arredondamento">,
   receita: { recebidoCentavos: number; estornosCentavos: number },
   atendimentos: { barbeiroId: string; servicoId: string; dia: string }[],
   adicionais: Adicional[] = [],
 ) {
   const distribuivel = Math.max(0, receita.recebidoCentavos - receita.estornosCentavos);
+  const entradas = atendimentos.map(a => ({ barbeiroId: a.barbeiroId, creditos: cfg.creditos[a.servicoId] ?? 0, pontosAdicionais: adicionalNoDia(adicionais, a.barbeiroId, "ASSINATURA", a.dia) }));
+  if (cfg.arredondamento === "MAIORES_RESTOS_V1") {
+    return { recebidoCentavos: receita.recebidoCentavos, estornosCentavos: receita.estornosCentavos, distribuivelCentavos: distribuivel,
+      percentualBaseBps: cfg.percentualBps, ...apurarRateioAssinaturas(cfg.percentualBps, distribuivel, entradas) };
+  }
+  if (cfg.arredondamento !== undefined && cfg.arredondamento !== "LEGADO") throw new Error("Método de arredondamento das assinaturas inválido.");
   const por = new Map<string, { qtd: number; creditos: number; creditosPct: number; creditosAdic: number }>();
   let creditosTotal = 0;
   for (const a of atendimentos) {
@@ -159,6 +167,7 @@ export function calcularAssinaturas(
   return {
     recebidoCentavos: receita.recebidoCentavos, estornosCentavos: receita.estornosCentavos, distribuivelCentavos: distribuivel,
     creditosTotal, valorCreditoCentavos: creditosTotal ? Math.round(distribuivel / creditosTotal) : 0, percentualBaseBps: cfg.percentualBps, barbeiros,
+    conciliacao: apurarRateioAssinaturas(cfg.percentualBps, distribuivel, entradas, barbeiros).conciliacao,
   };
 }
 

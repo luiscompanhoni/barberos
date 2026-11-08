@@ -10,4 +10,6 @@ O padrão de uma alteração salarial é o mês seguinte em `America/Sao_Paulo`.
 
 Os helpers `garantirBaselineRemuneracao`, `gravarVigenciaRemuneracao` e `lerVigenciaRemuneracao` não efetuam pagamento. Configurações recebidas pela leitura precisam de validação do domínio; um envelope inválido gera pendência, em vez de assumir zero ou um valor histórico comprovado.
 
+A política de arredondamento das assinaturas também pertence à versão de extras. A migração conserva `LEGADO`; maiores restos exige escolha expressa por competência. Consulte [rateio das assinaturas](rateio-assinaturas.md). A prévia identifica produção sem destinatário e não permite que o fechamento geral ou o CSV a omitam silenciosamente.
+
 O teste `scripts/teste-seguranca-vigencias-estabilizacao.ts` usa somente banco local exclusivo, dados sintéticos e rede bloqueada. A implementação local não aplicou novas remunerações a profissionais reais nem publicou o recurso.

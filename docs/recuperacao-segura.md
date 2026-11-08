@@ -41,6 +41,10 @@ Rollback sem migração reaplica todo `CONTROLES_PUBLICACAO`, mesmo se `.env` an
 
 `backup-manifesto.py` mantém uma transação exportadora: `pg_dump --snapshot` e leituras SHA-256 por tabela importam o **mesmo snapshot**. Dados passam em streaming; manifesto guarda hashes, contagens e metadados, sem linhas pessoais. Troca de valor com mesma contagem falha. Mídias são pareadas ao dump e materializadas antes de declarar sucesso.
 
+O grupo estrutural `enums` confere esquema/nome e a sequência dos labels pela ordem semântica do PostgreSQL; OIDs e números internos de ordenação não são persistidos, pois podem mudar no restore. Alterar um label não default deve falhar mesmo com a tabela que usa o enum vazia. A prova local renomeia esse label somente no restauro sintético, exige rejeição, reverte e compara novamente.
+
+Manifestos anteriores sem `enums` não certificam essa estrutura. Os conjuntos de grupos precisam corresponder nos dois lados; não há fallback que ignore o grupo. Preserve os backups antigos e use o procedimento/leitor da versão correspondente para inspeção isolada, sem atribuir uma validação que não foi feita. Uma nova publicação exige gerar backup com comparador e manifesto compatíveis e validar sua restauração antes da migração.
+
 Diferenças de CHECK só passam por comparador restrito de associatividade AND/OR, preservando folhas/precedência. Expressão desconhecida falha fechada; não é provador geral SQL. Roles/configuração do cluster não voltam só com dump; validar grants/owners no destino.
 
 O backup mede espaço de dados por montagem somente leitura para `stat/statvfs`, sem copiar PostgreSQL físico vivo nem acessar socket Docker. Reserva dump, clone e criptografia. Dump, manifesto e mídias são criptografados para cópia externa; falha conserva arquivos locais. Senha/configuração precisam de cofre separado. Sem bucket, backup local pode passar, mas não protege contra perda da VPS.

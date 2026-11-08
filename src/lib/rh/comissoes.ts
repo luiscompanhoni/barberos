@@ -222,6 +222,7 @@ export async function relatorioComissoes(inicio: string, fim: string, barbeiroId
       creditosPorServico: cfgAssinaturas.creditos,
       recebidoCentavos: assinaturas.recebidoCentavos, estornosCentavos: assinaturas.estornosCentavos, distribuivelCentavos: assinaturas.distribuivelCentavos,
       creditosTotal: assinaturas.creditosTotal, valorCreditoCentavos: assinaturas.valorCreditoCentavos, percentualBaseBps: assinaturas.percentualBaseBps,
+      conciliacao: assinaturas.conciliacao,
     },
   };
 }

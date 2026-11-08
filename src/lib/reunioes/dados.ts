@@ -53,6 +53,8 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
   const comPorAg = new Map(comissoes.barbeiros.flatMap((b) => b.atendimentos.map((a) => [a.id, a] as const)));
   const vendidoNoPeriodo = (c: { status: string; fechadaEm: Date | null } | undefined) => c?.status === "FECHADA" && !!c.fechadaEm && c.fechadaEm >= janela.gte && c.fechadaEm < janela.lt;
   const poteLigado = !!comissoes.assinaturas;
+  const rateioAssinaturasPendente = !!comissoes.assinaturas?.conciliacao?.pendente;
+  if (rateioAssinaturasPendente) { total.comissaoPendente = true; total.margemPendente = true; }
   let semFechamento = 0;
   for (const a of ags) {
     const semVenda = a.status === "CONCLUIDO" && !a.assinaturaId && !vendidoNoPeriodo(a.itemComanda?.comanda);
@@ -64,6 +66,7 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
       if (a.status !== "CONCLUIDO") continue;
       g.atendimentos++;
       if (a.assinaturaId) g.assinantes++; else g.avulsos++;
+      if (a.assinaturaId && rateioAssinaturasPendente) { g.comissaoPendente = true; g.margemPendente = true; }
       const com = comPorAg.get(a.id);
       // Fora da margem (a comissão continua aparecendo): avulso ainda sem venda no período; e, com o pote desligado,
       // o atendimento de plano nos grupos, porque a mensalidade só existe no total.
@@ -102,13 +105,16 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
   for (const b of comissoes.barbeiros) {
     const g = linha(bs, b.barbeiroId, b.nome);
     if (b.semRegra) { g.comissaoPendente = true; total.comissaoPendente = true; }
-    const extras = (b.assinaturas?.comissao ?? 0) + (b.produtos?.comissao ?? 0);
+    if (b.assinaturas && rateioAssinaturasPendente) { g.comissaoPendente = true; g.margemPendente = true; }
+    // Um rateio pendente pode conter apenas a base parcial, sem os adicionais finais.
+    const comissaoAssinaturas = rateioAssinaturasPendente ? 0 : b.assinaturas?.comissao ?? 0;
+    const extras = comissaoAssinaturas + (b.produtos?.comissao ?? 0);
     g.comissaoCentavos! += extras; total.comissaoCentavos! += extras;
     const atribuida = b.assinaturas?.receitaAtribuida ?? 0;
     g.receitaAssinaturasCentavos += atribuida;
     const atendidos = feitos.filter((a) => a.barbeiroId === b.barbeiroId && a.assinaturaId);
     const pesos = atendidos.map((a) => fichas.get(a.servicoId) ?? 0);
-    const receita = ratearCentavos(atribuida, pesos), com = ratearCentavos(b.assinaturas?.comissao ?? 0, pesos);
+    const receita = ratearCentavos(atribuida, pesos), com = ratearCentavos(comissaoAssinaturas, pesos);
     atendidos.forEach((a, ix) => {
       for (const grupo of [ss.get(a.servicoId)!, cs.get(a.cadeiraId ?? "sem-cadeira")!]) {
         grupo.receitaAssinaturasCentavos += receita[ix]; grupo.comissaoCentavos! += com[ix];
@@ -134,5 +140,5 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
     comissaoCentavos: t.comissaoCentavos, margemCentavos: t.margemCentavos, custosPendentes: total.custosPendentes };
   const servicosAvulsos = comissoes.barbeiros.reduce((s, b) => s + b.avulso.base, 0);
   atual.ticketAvulsoCentavos = atual.avulsos ? Math.round(servicosAvulsos / atual.avulsos) : null;
-  return { atual, barbeiros: grupos(bs), servicos: grupos(ss), cadeiras: grupos(cs), semFechamento, datasDiferentes, poteLigado, recebimentosPendentes: recebidas.pendentes.length };
+  return { atual, barbeiros: grupos(bs), servicos: grupos(ss), cadeiras: grupos(cs), semFechamento, datasDiferentes, poteLigado, rateioAssinaturasPendente, recebimentosPendentes: recebidas.pendentes.length };
 }

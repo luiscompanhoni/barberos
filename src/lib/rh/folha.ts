@@ -22,15 +22,15 @@ import { tocarPessoasDaFolha } from "./trava-regras-folha";
 
 export const FORMAS_PAGAMENTO = ["PIX", "TRANSFERENCIA", "DINHEIRO_CAIXA"] as const;
 export type FormaPagamentoFolha = (typeof FORMAS_PAGAMENTO)[number];
+type PendenciaVinculo = { barbeiroId: string; nome: string; comissaoCentavos: number; motivo: "SEM_VINCULO" | "INATIVO" | "AMBIGUO" };
 
 const reaisTexto = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
 
 /** Previa por funcionario: congelada se a folha ja foi fechada, senao calculada agora. */
 async function calcularPreviaFolha(comp: string, leitor: Prisma.TransactionClient) {
   const { inicio, fim } = intervaloCompetencia(comp);
-  const [pessoas, lancs, folhas, comissoes] = await Promise.all([
+  const [todasPessoas, lancs, folhas, comissoes] = await Promise.all([
     leitor.checklistPessoa.findMany({
-      where: { OR: [{ ativo: true }, { lancamentosFolha: { some: { competencia: comp } } }, { folhas: { some: { competencia: comp } } }] },
       orderBy: [{ nome: "asc" }],
       include: { barbeiro: { select: { nome: true } } },
     }),
@@ -38,6 +38,25 @@ async function calcularPreviaFolha(comp: string, leitor: Prisma.TransactionClien
     leitor.folhaPagamento.findMany({ where: { competencia: comp } }),
     relatorioComissoes(inicio, fim, undefined, leitor),
   ]);
+  const pessoas = todasPessoas.filter(p => p.ativo || lancs.some(l => l.pessoaId === p.id) || folhas.some(f => f.pessoaId === p.id));
+  // A ficha de hoje não comprova a identidade de um retrato histórico.
+  const historicas = folhas.map(f => ({ f, barbeiroId: f.barbeiroIdCongelado ?? lerMemoriaFolha(f.detalhe)?.barbeiroId ?? null }));
+  const historiaSemIdentidade = historicas.some(h => !h.barbeiroId && h.f.comissaoCentavos !== 0);
+  const pendenciasVinculos: PendenciaVinculo[] = comissoes.barbeiros.flatMap(com => {
+    const atual = com.recalculoAtual;
+    const temAtividade = atual.total !== 0 || atual.avulso.qtd > 0 || atual.plano.qtd > 0 || (atual.assinaturas?.qtd ?? 0) > 0 || !!atual.produtos;
+    if (!temAtividade) return [];
+    const retratos = historicas.filter(h => h.barbeiroId === com.barbeiroId);
+    const fichas = todasPessoas.filter(p => p.barbeiroId === com.barbeiroId);
+    const outroDestinatario = retratos.length === 1 && fichas.some(p => p.id !== retratos[0].f.pessoaId && pessoas.some(l => l.id === p.id) && !folhas.some(f => f.pessoaId === p.id));
+    // O destinatário congelado permanece coberto mesmo após desvincular/inativar a ficha atual.
+    if (retratos.length === 1 && !outroDestinatario) return [];
+    let motivo: PendenciaVinculo["motivo"] | null = null;
+    if (retratos.length > 1 || outroDestinatario || historiaSemIdentidade || fichas.length > 1 || fichas.some(p => folhas.some(f => f.pessoaId === p.id))) motivo = "AMBIGUO";
+    else if (!fichas.length) motivo = "SEM_VINCULO";
+    else if (!fichas[0].ativo) motivo = "INATIVO";
+    return motivo ? [{ barbeiroId: com.barbeiroId, nome: com.nome, comissaoCentavos: atual.total, motivo }] : [];
+  });
   const linhas = await Promise.all(pessoas.map(async (p) => {
     const ls = lancs.filter((l) => l.pessoaId === p.id);
     const com = p.barbeiroId ? comissoes.barbeiros.find((b) => b.barbeiroId === p.barbeiroId) : undefined;
@@ -47,9 +66,10 @@ async function calcularPreviaFolha(comp: string, leitor: Prisma.TransactionClien
     const congelado = f ? { salario: f.salarioCentavos, comissao: f.comissaoCentavos, adicionais: f.adicionaisCentavos, descontos: f.descontosCentavos, liquido: f.liquidoCentavos } : null;
     const memoria = f ? lerMemoriaFolha(f.detalhe) : null;
     return {
-      pessoaId: p.id, nome: memoria?.nome ?? p.nome, cargo: f ? memoria?.cargo ?? null : p.cargo, chavePix: null, barbeiroId: p.barbeiroId, revisaoPix: p.revisaoPix, barbeiro: f ? memoria?.barbeiro ?? null : p.barbeiro?.nome ?? null, ativo: p.ativo,
+      pessoaId: p.id, nome: memoria?.nome ?? p.nome, cargo: f ? memoria?.cargo ?? null : p.cargo, chavePix: null, barbeiroId: f ? f.barbeiroIdCongelado ?? memoria?.barbeiroId ?? null : p.barbeiroId, revisaoPix: p.revisaoPix, barbeiro: f ? memoria?.barbeiro ?? null : p.barbeiro?.nome ?? null, ativo: p.ativo,
       ...(congelado ?? t),
       status: (f?.status ?? "ABERTA") as "ABERTA" | "FECHADA" | "PAGA",
+      vinculoPendente: !f && ((p.funcao === "BARBEIRO" && !p.barbeiroId) || pendenciasVinculos.some(v => v.barbeiroId === p.barbeiroId)),
       pagoEm: f?.pagoEm ?? null, despesaId: f?.despesaId ?? null,
       // Diferenca entre o congelado e o calculado agora (ex.: atendimento concluido depois de fechar).
       mudouDepois: !!congelado && Object.keys(congelado).some(k => congelado[k as keyof typeof congelado] !== t[k as keyof typeof t]),
@@ -63,8 +83,9 @@ async function calcularPreviaFolha(comp: string, leitor: Prisma.TransactionClien
     };
   }));
   const recebimentos = comissoes.recebimentos;
-  const revisao = revisaoApuracao({ comp, linhas, recebimentos, comissoes: comissoes.revisao });
-  return { competencia: comp, linhas, revisao, recebimentos };
+  const conciliacaoAssinaturas = comissoes.assinaturas?.conciliacao ?? null;
+  const revisao = revisaoApuracao({ comp, linhas, recebimentos, comissoes: comissoes.revisao, pendenciasVinculos, conciliacaoAssinaturas });
+  return { competencia: comp, linhas, revisao, recebimentos, pendenciasVinculos, conciliacaoAssinaturas };
 }
 
 export async function previaFolha(comp: string, leitor?: Prisma.TransactionClient) {
@@ -141,7 +162,10 @@ export async function fecharFolha(s: Sessao, comp: string, pessoaId?: string, re
     const previa = await previaFolha(comp, tx);
     if (revisao && revisao !== previa.revisao) throw new ErroNegocio("A apuração mudou desde a prévia. Recarregue e confira os valores antes de fechar.", 409, "folha_mudou");
     const abertas = previa.linhas.filter((l) => l.status === "ABERTA" && (!pessoaId || l.pessoaId === pessoaId) && (l.salario || l.comissao || l.lancamentos.length));
+    const cadeiraAmbigua = pessoaId && abertas.some(l => previa.pendenciasVinculos.some(v => v.barbeiroId === l.barbeiroId && v.motivo === "AMBIGUO"));
+    if ((!pessoaId && previa.pendenciasVinculos.length) || abertas.some(l => l.vinculoPendente)) throw new ErroNegocio("Há produção ou ficha de barbeiro sem destinatário de comissão comprovado. Confira os vínculos e cadastros ativos antes de fechar; a folha não foi alterada.", 409, cadeiraAmbigua ? "cadeira_folha_duplicada" : "vinculo_comissao_pendente");
     if (!abertas.length) throw new ErroNegocio("Nada para fechar nesta competência.", 409, "nada_para_fechar");
+    if (previa.conciliacaoAssinaturas?.pendente && (!pessoaId || abertas.some(l => !!l.comissaoDetalhe?.assinaturas))) throw new ErroNegocio("O rateio das assinaturas tem valores sem conciliação. Confira a distribuição antes de fechar; a folha não foi alterada.", 409, "rateio_pendente");
     if (!previa.recebimentos.completo && abertas.some(l => !!l.comissaoDetalhe?.assinaturas)) throw new ErroNegocio("Existem mensalidades sem valor/data de recebimento comprovados. Concilie antes de fechar comissões de assinaturas.", 409, "recebimento_pendente");
     if (abertas.some(l => (l.comissaoDetalhe?.semRegra ?? 0) > 0)) throw new ErroNegocio("Há atendimentos sem regra de comissão. Confira antes de fechar a folha.", 409, "comissao_sem_regra");
     const historicas = await tx.folhaPagamento.findMany({ where: { competencia: comp }, select: { pessoaId: true, barbeiroIdCongelado: true, comissaoCentavos: true } });
@@ -154,7 +178,7 @@ export async function fecharFolha(s: Sessao, comp: string, pessoaId?: string, re
     const ids = abertas.map((l) => l.pessoaId).sort();
     await tocarPessoasDaFolha(tx, ids);
     for (const l of abertas) {
-      const detalhe = JSON.parse(JSON.stringify({ versao: 2, revisao: previa.revisao, nome: l.nome, cargo: l.cargo, barbeiro: l.barbeiro, barbeiroId: l.barbeiroId, comissao: l.comissaoDetalhe, lancamentos: l.lancamentos })) as Prisma.InputJsonValue;
+      const detalhe = JSON.parse(JSON.stringify({ versao: 2, revisao: previa.revisao, nome: l.nome, cargo: l.cargo, barbeiro: l.barbeiro, barbeiroId: l.barbeiroId, comissao: l.comissaoDetalhe, lancamentos: l.lancamentos, conciliacaoAssinaturas: previa.conciliacaoAssinaturas })) as Prisma.InputJsonValue;
       await tx.folhaPagamento.create({
         data: {
           competencia: comp, pessoaId: l.pessoaId, barbeiroIdCongelado: l.barbeiroId, salarioCentavos: l.salario, comissaoCentavos: l.comissao,
@@ -219,7 +243,9 @@ export async function reabrirFolha(s: Sessao, comp: string, pessoaId: string) {
 }
 
 export async function exportarCsv(comp: string) {
-  const { linhas } = await previaFolha(comp);
+  const { linhas, pendenciasVinculos, conciliacaoAssinaturas } = await previaFolha(comp);
+  if (pendenciasVinculos.length || linhas.some(l => l.status === "ABERTA" && l.vinculoPendente && (l.salario || l.comissao || l.lancamentos.length))) throw new ErroNegocio("A folha tem vínculos de comissão pendentes. Confira os destinatários antes de exportar um total incompleto.", 409, "vinculo_comissao_pendente");
+  if (conciliacaoAssinaturas?.pendente && linhas.some(l => l.status === "ABERTA" && (l.salario || l.comissao || l.lancamentos.length))) throw new ErroNegocio("O rateio das assinaturas está pendente. Confira a distribuição antes de exportar a folha.", 409, "rateio_pendente");
   const status = { ABERTA: "Prévia", FECHADA: "Fechada", PAGA: "Paga" } as const;
   return csvFolha(comp, linhas.filter((l) => l.status !== "ABERTA" || l.liquido || l.salario || l.lancamentos.length).map((l) => ({ ...l, status: status[l.status] })));
 }

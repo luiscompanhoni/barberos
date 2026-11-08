@@ -6,20 +6,27 @@ import { api, paraCentavos, reais } from "@/lib/cliente-api";
 import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
 import { ContadorCrm } from "@/components/visual/ContadorCrm";
 import { LotePixFolha } from "./LotePixFolha";
+import { ResumoRateioAssinaturas } from "./ResumoRateioAssinaturas";
+import type { ConciliacaoAssinaturas } from "@/lib/rh/rateio-assinaturas";
 
 type Tipo = "ADICIONAL" | "BONUS" | "VALE" | "DESCONTO";
 type Lanc = { id: string; tipo: Tipo; valorCentavos: number; descricao: string; doCaixa: boolean };
 type Soma = { qtd: number; base: number; comissao: number };
 type Linha = {
-  pessoaId: string; nome: string; cargo: string | null; chavePix: string | null; barbeiro: string | null; ativo: boolean;
+  pessoaId: string; nome: string; cargo: string | null; chavePix: string | null; barbeiro: string | null; barbeiroId?: string | null; ativo: boolean;
   salario: number; comissao: number; adicionais: number; descontos: number; liquido: number;
-  status: "ABERTA" | "FECHADA" | "PAGA"; pagoEm: string | null; mudouDepois: boolean; memoriaDisponivel?: boolean;
+  status: "ABERTA" | "FECHADA" | "PAGA"; pagoEm: string | null; mudouDepois: boolean; memoriaDisponivel?: boolean; vinculoPendente?: boolean;
   comissaoDetalhe: {
     avulso: Soma; plano: Soma; semRegra: number;
     assinaturas?: { qtd: number; creditos: number; receitaAtribuida: number; comissao: number } | null; produtos?: { vendido: number; comissao: number } | null;
   } | null; lancamentos: Lanc[];
 };
-type Dados = { competencia: string; linhas: Linha[]; revisao: string; recebimentos?: { completo: boolean; pendentes: number } };
+type Dados = {
+  competencia: string; linhas: Linha[]; revisao: string; recebimentos?: { completo: boolean; pendentes: number };
+  pendenciasVinculos?: { barbeiroId: string; nome: string; comissaoCentavos: number; motivo: "SEM_VINCULO" | "INATIVO" | "AMBIGUO" }[];
+  conciliacaoAssinaturas?: ConciliacaoAssinaturas | null;
+};
+const MOTIVOS_VINCULO = { SEM_VINCULO: "sem ficha vinculada", INATIVO: "ficha inativa", AMBIGUO: "destinatário sem identificação única" };
 
 const TIPOS: { v: Tipo; r: string; soma: boolean }[] = [
   { v: "ADICIONAL", r: "Adicional", soma: true }, { v: "BONUS", r: "Bônus", soma: true },
@@ -126,16 +133,34 @@ export function FolhaTela() {
   const visiveis = d.linhas.filter((l) => l.ativo || l.status !== "ABERTA" || l.lancamentos.length);
   const total = visiveis.reduce((t, l) => t + l.liquido, 0);
   const abertas = visiveis.filter((l) => l.status === "ABERTA" && (l.salario || l.comissao || l.lancamentos.length)).length;
+  const pendenciasVinculos = d.pendenciasVinculos ?? [];
+  const fichasPendentes = visiveis.filter((l) => l.status === "ABERTA" && l.vinculoPendente && (l.salario || l.comissao || l.lancamentos.length));
+  const vinculosIncompletos = pendenciasVinculos.length > 0 || fichasPendentes.length > 0;
+  const rateioPendente = !!d.conciliacaoAssinaturas?.pendente && abertas > 0;
+  const apuracaoIncompleta = vinculosIncompletos || rateioPendente;
   return (
     <fieldset disabled={ocupado} aria-busy={ocupado} aria-label="Folha de pagamento" className="min-w-0 space-y-3">
       <div className="crm-filterbar flex flex-wrap items-end gap-2">
         <div><label className="rotulo" htmlFor="competencia-folha">Competência</label><input id="competencia-folha" name="competencia" aria-label="Competência da folha" type="month" className="campo" value={d.competencia} onChange={(e) => { if (e.target.value) { setMsg(null); void carregar(e.target.value); } }} /></div>
-        <button className="btn-primario" disabled={!abertas} onClick={() => acao({ acao: "fechar" }, "Folha fechada: valores congelados.", `Fechar a folha de ${d.competencia.split("-").reverse().join("/")}? Os valores ficam congelados.`)}><Lock size={15} /> Fechar folha{abertas ? ` (${abertas})` : ""}</button>
-        <a className="btn" href={`/api/rh/folha/csv?competencia=${d.competencia}`}><Download size={15} /> Exportar CSV</a>
-        <div className="ml-auto text-right"><p className="text-xs text-zinc-500">Líquido total</p><p className="text-xl font-normal text-ouro"><ContadorCrm valor={total} formatar={reais} /></p></div>
+        <button className="btn-primario" disabled={!abertas || apuracaoIncompleta} onClick={() => acao({ acao: "fechar" }, "Folha fechada: valores congelados.", `Fechar a folha de ${d.competencia.split("-").reverse().join("/")}? Os valores ficam congelados.`)}><Lock size={15} /> Fechar folha{abertas ? ` (${abertas})` : ""}</button>
+        {apuracaoIncompleta
+          ? <button className="btn" disabled aria-describedby={vinculosIncompletos ? "folha-vinculos-pendentes" : undefined}><Download size={15} /> Exportar CSV</button>
+          : <a className="btn" href={`/api/rh/folha/csv?competencia=${d.competencia}`}><Download size={15} /> Exportar CSV</a>}
+        <div className="ml-auto text-right"><p className="text-xs text-zinc-500">{apuracaoIncompleta ? "Líquido da prévia parcial" : "Líquido total"}</p><p className="text-xl font-normal text-ouro"><ContadorCrm valor={total} formatar={reais} /></p></div>
       </div>
       {msg && <p role={msg.erro ? "alert" : "status"} className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
       {d.recebimentos && !d.recebimentos.completo && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{d.recebimentos.pendentes} mensalidade(s) aguardam comprovação do recebido. As comissões de assinaturas são prévias e precisam de conciliação antes do fechamento.</p>}
+      {vinculosIncompletos && <section id="folha-vinculos-pendentes" role="alert" className="space-y-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+        <h2 className="font-semibold">Confira os destinatários das comissões</h2>
+        <p>O total desta prévia está incompleto. Corrija os vínculos na aba Funcionários antes de fechar ou exportar a folha geral.</p>
+        {pendenciasVinculos.length > 0 && <ul className="list-inside list-disc space-y-1 break-words">{pendenciasVinculos.map(p => <li key={p.barbeiroId}>{p.nome}: {reais(p.comissaoCentavos)} em comissão apurada · {MOTIVOS_VINCULO[p.motivo]}.</li>)}</ul>}
+        {fichasPendentes.length > 0 && <p>Fichas de barbeiro sem vínculo confirmado: {fichasPendentes.map(l => l.nome).join(", ")}. Os valores já fechados foram preservados.</p>}
+        <p>Você pode conferir e fechar individualmente uma ficha sem pendências.</p>
+      </section>}
+      {d.conciliacaoAssinaturas && <ResumoRateioAssinaturas dados={d.conciliacaoAssinaturas} nomes={Object.fromEntries([
+        ...d.linhas.filter(l => !!l.barbeiroId).map(l => [l.barbeiroId!, l.barbeiro ?? l.nome]),
+        ...pendenciasVinculos.map(p => [p.barbeiroId, p.nome]),
+      ])} />}
       <LotePixFolha key={d.competencia} competencia={d.competencia} atualizacao={d} />
       {visiveis.length === 0 && <div className="cartao text-sm text-zinc-500">Ninguém na folha. Cadastre os funcionários no checklist e preencha a ficha na aba Funcionários.</div>}
       {visiveis.length > 0 && <section className="cartao space-y-4"><h2 className="font-semibold">Leitura da folha</h2><p className="text-xs text-zinc-500">Líquido por pessoa na competência. O estado de cada folha e a memória de cálculo estão nos cartões abaixo.</p><GraficoBarrasCrm rotulo="Valor líquido da folha por pessoa" formatar={reais} itens={visiveis.map(l => ({ rotulo: l.nome, valor: l.liquido, nota: STATUS[l.status] }))} /></section>}
@@ -162,7 +187,7 @@ export function FolhaTela() {
           {l.memoriaDisponivel === false && <p className="text-xs text-amber-700">A memória detalhada desta folha antiga não está disponível. Seus totais congelados foram preservados.</p>}
           <div className="flex flex-wrap items-center gap-2">
             {l.status === "ABERTA" && (l.salario || l.comissao || l.lancamentos.length) > 0 && (
-              <button className="btn py-1.5 text-xs" onClick={() => acao({ acao: "fechar", pessoaId: l.pessoaId }, `Folha de ${l.nome} fechada.`)}><Lock size={13} /> Fechar só esta</button>
+              <button className="btn py-1.5 text-xs" disabled={l.vinculoPendente || (!!d.conciliacaoAssinaturas?.pendente && !!l.comissaoDetalhe?.assinaturas)} aria-describedby={l.vinculoPendente ? "folha-vinculos-pendentes" : undefined} onClick={() => acao({ acao: "fechar", pessoaId: l.pessoaId }, `Folha de ${l.nome} fechada.`)}><Lock size={13} /> Fechar só esta</button>
             )}
             {l.status === "FECHADA" && (
               <>
