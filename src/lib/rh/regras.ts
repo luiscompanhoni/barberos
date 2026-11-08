@@ -3,6 +3,8 @@
  * totais da folha e CSV.
  */
 
+import { apurarRateioAssinaturas, type ArredondamentoPote } from "./rateio-assinaturas";
+
 export type TipoComissao = "PERCENTUAL" | "FIXO";
 export type Regra = { avulsoTipo: TipoComissao; avulsoValor: number; planoTipo: TipoComissao; planoValor: number };
 export type RegraSalva = Regra & { servicoId: string; barbeiroId: string | null };
@@ -116,7 +118,7 @@ export function competenciaFechadaNoPeriodo(fechadas: string[], periodo: { inici
 // ---------------- comissao das assinaturas (o "pote" do CashBarber)
 
 /** Percentual base (3500 = 35%) e Creditos de Atendimento por servico. */
-export type ConfigAssinaturas = { ativo: boolean; percentualBps: number; creditos: Record<string, number> };
+export type ConfigAssinaturas = { ativo: boolean; percentualBps: number; creditos: Record<string, number>; arredondamento?: ArredondamentoPote };
 
 /**
  * Comissao das assinaturas no periodo:
@@ -128,12 +130,18 @@ export type ConfigAssinaturas = { ativo: boolean; percentualBps: number; credito
  * O adicional e pago pela barbearia: nao muda a parte dos outros.
  */
 export function calcularAssinaturas(
-  cfg: Pick<ConfigAssinaturas, "percentualBps" | "creditos">,
+  cfg: Pick<ConfigAssinaturas, "percentualBps" | "creditos" | "arredondamento">,
   receita: { recebidoCentavos: number; estornosCentavos: number },
   atendimentos: { barbeiroId: string; servicoId: string; dia: string }[],
   adicionais: Adicional[] = [],
 ) {
   const distribuivel = Math.max(0, receita.recebidoCentavos - receita.estornosCentavos);
+  const entradas = atendimentos.map(a => ({ barbeiroId: a.barbeiroId, creditos: cfg.creditos[a.servicoId] ?? 0, pontosAdicionais: adicionalNoDia(adicionais, a.barbeiroId, "ASSINATURA", a.dia) }));
+  if (cfg.arredondamento === "MAIORES_RESTOS_V1") {
+    return { recebidoCentavos: receita.recebidoCentavos, estornosCentavos: receita.estornosCentavos, distribuivelCentavos: distribuivel,
+      percentualBaseBps: cfg.percentualBps, ...apurarRateioAssinaturas(cfg.percentualBps, distribuivel, entradas) };
+  }
+  if (cfg.arredondamento !== undefined && cfg.arredondamento !== "LEGADO") throw new Error("Método de arredondamento das assinaturas inválido.");
   const por = new Map<string, { qtd: number; creditos: number; creditosPct: number; creditosAdic: number }>();
   let creditosTotal = 0;
   for (const a of atendimentos) {
@@ -159,6 +167,7 @@ export function calcularAssinaturas(
   return {
     recebidoCentavos: receita.recebidoCentavos, estornosCentavos: receita.estornosCentavos, distribuivelCentavos: distribuivel,
     creditosTotal, valorCreditoCentavos: creditosTotal ? Math.round(distribuivel / creditosTotal) : 0, percentualBaseBps: cfg.percentualBps, barbeiros,
+    conciliacao: apurarRateioAssinaturas(cfg.percentualBps, distribuivel, entradas, barbeiros).conciliacao,
   };
 }
 
@@ -212,14 +221,18 @@ export function intervaloCompetencia(comp: string) {
 
 const celula = (v: string | number) => {
   const s = String(v);
-  return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 const dinheiro = (c: number) => (c / 100).toFixed(2).replace(".", ",");
+const textoCsv = (v: string | null) => {
+  const s = v ?? "";
+  return /^[\s\u0000-\u001f]*[=+\-@]/u.test(s) || /^[\t\r\n]/.test(s) ? `'${s}` : s;
+};
 
 /** CSV (separador ;, padrao do Excel em portugues) da folha do mes. */
 export function csvFolha(comp: string, linhas: { nome: string; cargo: string | null; salario: number; comissao: number; adicionais: number; descontos: number; liquido: number; status: string; chavePix: string | null }[]) {
   const cab = ["Competência", "Funcionário", "Cargo", "Salário", "Comissão", "Adicionais", "Descontos", "Líquido", "Situação", "Chave Pix"];
-  const corpo = linhas.map((l) => [comp, l.nome, l.cargo ?? "", dinheiro(l.salario), dinheiro(l.comissao), dinheiro(l.adicionais), dinheiro(l.descontos), dinheiro(l.liquido), l.status, l.chavePix ?? ""]);
+  const corpo = linhas.map((l) => [comp, textoCsv(l.nome), textoCsv(l.cargo), dinheiro(l.salario), dinheiro(l.comissao), dinheiro(l.adicionais), dinheiro(l.descontos), dinheiro(l.liquido), textoCsv(l.status), textoCsv(l.chavePix)]);
   const t = totaisLinhas(linhas);
   corpo.push([comp, "TOTAL", "", dinheiro(t.salario), dinheiro(t.comissao), dinheiro(t.adicionais), dinheiro(t.descontos), dinheiro(t.liquido), "", ""]);
   return [cab, ...corpo].map((r) => r.map(celula).join(";")).join("\r\n");

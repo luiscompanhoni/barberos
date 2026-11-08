@@ -9,7 +9,8 @@ import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
-import { estornosEfetivos, mensalidadesEstornadas, PAGAMENTO_RECEBIDO } from "@/lib/estornos/financeiro";
+import { estornosEfetivos, PAGAMENTO_RECEBIDO } from "@/lib/estornos/financeiro";
+import { recebimentosMensalidades } from "./recebimentos";
 import { dataPrevista, FORMAS_CONCILIACAO, situacaoConciliacao, taxaSobre, type FormaConciliacao } from "./regras";
 
 const PADRAO: Record<FormaConciliacao, { taxaBps: number; prazoDias: number }> = {
@@ -45,11 +46,10 @@ export async function conciliacao(de: string, ate: string) {
   // Pago online (horario antes, link) entra como ONLINE pela data do pagamento; o lancamento
   // que isso gera na comanda fica de fora (nao conta duas vezes). Estornado depois continua no dia em que
   // foi pago; o estorno desconta no dia em que foi feito (a adquirente tira do repasse).
-  const estornadas = await mensalidadesEstornadas();
   const [pagamentos, antecipados, mensalidades, links, conferidas, tx, estornos] = await Promise.all([
     db.pagamentoComanda.findMany({ where: { ...PAGAMENTO_RECEBIDO, antecipadoId: null, linkPagamentoId: null, forma: { in: ["PIX", "DEBITO", "CREDITO"] }, pagoEm: janela }, select: { forma: true, valorCentavos: true, pagoEm: true } }),
     db.pagamentoAntecipado.findMany({ where: { status: { in: ["PAGO", "CREDITADO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
-    db.cobranca.findMany({ where: { OR: [{ status: "PAGA" }, { status: "ESTORNADA", id: { in: estornadas } }], pagaEm: janela }, select: { valorCentavos: true, pagaEm: true } }),
+    recebimentosMensalidades(janela),
     db.linkPagamento.findMany({ where: { status: { in: ["PAGO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
     db.conciliacao.findMany({ where: { data: { gte: new Date(`${de}T00:00:00Z`), lte: new Date(`${ate}T00:00:00Z`) } } }),
     taxas(),
@@ -64,7 +64,7 @@ export async function conciliacao(de: string, ate: string) {
   };
   for (const p of pagamentos) somar(dataLocal(p.pagoEm!, cfg.fuso), p.forma, p.valorCentavos);
   for (const a of antecipados) somar(dataLocal(a.pagoEm!, cfg.fuso), "ONLINE", a.valorCentavos);
-  for (const m of mensalidades) somar(dataLocal(m.pagaEm!, cfg.fuso), "ONLINE", m.valorCentavos);
+  for (const m of mensalidades.registros) somar(dataLocal(m.em, cfg.fuso), "ONLINE", m.valorCentavos);
   for (const l of links) somar(dataLocal(l.pagoEm!, cfg.fuso), "ONLINE", l.valorCentavos);
   const estornado = new Map<string, number>();
   for (const e of estornos) {
@@ -99,6 +99,7 @@ export async function conciliacao(de: string, ate: string) {
   const soma = (f: (l: Linha) => number) => linhas.reduce((t, l) => t + f(l), 0);
   return {
     linhas,
+    mensalidadesPendentes: mensalidades.pendentes.length,
     totais: {
       bruto: soma((l) => l.brutoCentavos), estornos: soma((l) => l.estornoCentavos), liquido: soma((l) => l.liquidoCentavos),
       recebido: soma((l) => l.recebidoCentavos ?? 0), pendentes: linhas.filter((l) => l.status === "PENDENTE").length,

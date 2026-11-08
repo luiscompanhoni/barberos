@@ -108,6 +108,8 @@ services:
       PGUSER: barberos
       PGPASSWORD: ${DB_SENHA}
       PGDATABASE: barberos
+      # Apenas stat/statvfs para reservar espaço do clone; nunca copiar arquivos físicos vivos.
+      BACKUP_PG_DATA: /capacidade-postgres
       TZ: America/Sao_Paulo
       BACKUP_HORA: ${BACKUP_HORA:-0300}
       BACKUP_DIAS_LOCAL: ${BACKUP_DIAS_LOCAL:-14}
@@ -121,6 +123,7 @@ services:
       BACKUP_S3_SEGREDO: ${BACKUP_S3_SEGREDO:-}
     volumes:
       - ../backups:/backups
+      - pg:/capacidade-postgres:ro
     depends_on:
       db:
         condition: service_healthy

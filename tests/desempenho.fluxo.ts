@@ -11,7 +11,7 @@ import { justificarPresenca, proporAdesao, responderAdesao, salvarPrograma } fro
 import { painelDesempenho, resumoPessoa } from "@/lib/desempenho/consultas";
 import { marcarPresenca, revisarAjuste, revisarAjustes, solicitarAjuste } from "@/lib/desempenho/presenca";
 import { PROGRAMA_INICIAL } from "@/lib/desempenho/schemas";
-import { excluirLancamento, fecharFolha } from "@/lib/rh/folha";
+import { excluirLancamento, fecharFolha, previaFolha } from "@/lib/rh/folha";
 import { avaliarItem } from "@/lib/checklist/pontos";
 import { marcarNoPainel, salvarCadastro } from "@/lib/checklist/servico";
 
@@ -19,15 +19,18 @@ async function main() {
   const url = new URL(process.env.DATABASE_URL ?? "");
   assert.equal(url.pathname, "/barberos_test_desempenho");
   assert(["localhost", "127.0.0.1"].includes(url.hostname));
-  const usuarioIds: string[] = [], pessoaIds: string[] = [];
+  const usuarioIds: string[] = [], pessoaIds: string[] = [], barbeiroIds: string[] = [];
   const prefixo = randomUUID().slice(0, 8), agora = new Date(), fuso = (await configuracao()).fuso;
   const hoje = dataLocal(agora, fuso), comp = somarDias(`${hoje.slice(0, 7)}-01`, -1).slice(0, 7), dia = `${comp}-01`;
   let regraId: string | null = null;
-  const sessao = (u: { id: string; nome: string; papel: Sessao["papel"] }): Sessao => ({ usuarioId: u.id, nome: u.nome, papel: u.papel, barbeiroId: null, clienteId: null });
+  const sessao = (u: { id: string; nome: string; papel: Sessao["papel"] }, barbeiroId: string | null): Sessao => ({ usuarioId: u.id, nome: u.nome, papel: u.papel, barbeiroId, clienteId: null });
   async function criar(nome: string, papel: Sessao["papel"]) {
     const u = await db.usuario.create({ data: { nome: `${prefixo} ${nome}`, telefone: `teste-${prefixo}-${usuarioIds.length}`, papel } }); usuarioIds.push(u.id);
-    const p = await db.checklistPessoa.create({ data: { usuarioId: u.id, nome: u.nome, telefone: u.telefone, funcao: papel === "BARBEIRO" ? "BARBEIRO" : "GERENTE", token: randomUUID() } }); pessoaIds.push(p.id);
-    return { s: sessao(u), p };
+    // A fixture de barbeiro também precisa da identidade da cadeira comprovada na folha.
+    const b = papel === "BARBEIRO" ? await db.barbeiro.create({ data: { usuarioId: u.id, nome: u.nome } }) : null;
+    if (b) barbeiroIds.push(b.id);
+    const p = await db.checklistPessoa.create({ data: { usuarioId: u.id, nome: u.nome, telefone: u.telefone, funcao: papel === "BARBEIRO" ? "BARBEIRO" : "GERENTE", token: randomUUID(), barbeiroId: b?.id ?? null } }); pessoaIds.push(p.id);
+    return { s: sessao(u, b?.id ?? null), p };
   }
   try {
     const dono = await criar("Dono", "DONO"), lider = await criar("Líder", "LIDER"), profissional = await criar("Profissional", "BARBEIRO"), segundo = await criar("Segundo", "BARBEIRO");
@@ -104,6 +107,9 @@ async function main() {
     assert.equal(memoria.checklist.validados, 0, "O indicador vivo recebeu dado posterior");
     assert.equal(memoria.resultado.criterios.find((c) => c.nome === "Checklist")?.cumpriu, true, "A aprovação preserva os critérios usados na época");
     await assert.rejects(() => avaliarDesempenho(lider.s, { pessoaId: profissional.p.id, data: dia, tipo: "DIARIA", notas: { execucao: 4, organizacao: 4, atendimento: 4, colaboracao: 4 }, comentario: "Não pode alterar período fechado" }), { status: 409 });
+    const previa = await previaFolha(comp);
+    assert.equal(previa.linhas.find(l => l.pessoaId === profissional.p.id)?.vinculoPendente, false, "A fixture comprova a identidade da cadeira antes de fechar o bônus");
+    assert.equal(profissional.p.barbeiroId, profissional.s.barbeiroId);
     await fecharFolha(dono.s, comp, profissional.p.id);
     // Pontos de mês fechado não mudam: desfazer, dar ré ou desmarcar a tarefa é recusado.
     const itemFechado = await db.checklistItem.create({ data: { pessoaId: profissional.p.id, data: dataParaColuna(dia), titulo: "Tarefa do mês fechado", ordem: 1, feito: true, avaliacao: "VALIDADO" } });
@@ -127,9 +133,11 @@ async function main() {
       // O bônus de comp do segundo ainda não foi aprovado: a prévia mostra que ele também mudaria de faixa ali.
       && !!e.detalhes?.mudancas.some((m) => m.nome === segundo.p.nome && m.quando === comp)
       && !e.detalhes?.mudancas.some((m) => m.nome === profissional.p.nome && m.quando === comp));
-    assert.equal((await db.folhaPagamento.findUniqueOrThrow({ where: { competencia_pessoaId: { competencia: comp, pessoaId: profissional.p.id } } })).adicionaisCentavos, 20000);
+    const folhaProfissional = await db.folhaPagamento.findFirstOrThrow({ where: { competencia: comp, pessoaId: profissional.p.id, ativa: true } });
+    assert.equal(folhaProfissional.adicionaisCentavos, 20000);
+    assert.equal(folhaProfissional.barbeiroIdCongelado, profissional.p.barbeiroId, "O bônus fechado preserva a cadeira fictícia comprovada");
     await Promise.allSettled([aprovarBonus(dono.s, segundo.p.id, comp), fecharFolha(dono.s, comp, segundo.p.id)]);
-    const folhaSegunda = await db.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: comp, pessoaId: segundo.p.id } } });
+    const folhaSegunda = await db.folhaPagamento.findFirst({ where: { competencia: comp, pessoaId: segundo.p.id, ativa: true } });
     const lancsSegunda = await db.folhaLancamento.aggregate({ where: { pessoaId: segundo.p.id, competencia: comp }, _sum: { valorCentavos: true } });
     if (folhaSegunda) assert.equal(folhaSegunda.adicionaisCentavos, lancsSegunda._sum.valorCentavos ?? 0, "Concorrência nunca congela folha sem o bônus registrado");
     else assert.equal(lancsSegunda._sum.valorCentavos, 20000, "O bônus foi registrado e a folha aguarda nova conferência");
@@ -142,6 +150,7 @@ async function main() {
     await db.desempenhoAdesao.deleteMany({ where: { pessoaId: { in: pessoaIds } } });
     await db.desempenhoAvaliacao.deleteMany({ where: { pessoaId: { in: pessoaIds } } });
     await db.checklistPessoa.deleteMany({ where: { id: { in: pessoaIds } } });
+    await db.barbeiro.deleteMany({ where: { id: { in: barbeiroIds } } });
     await db.usuario.deleteMany({ where: { id: { in: usuarioIds } } });
     if (regraId && !await db.desempenhoBonus.count({ where: { regraId } })) await db.desempenhoRegra.delete({ where: { id: regraId } });
     await db.$disconnect();

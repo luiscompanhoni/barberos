@@ -8,9 +8,9 @@ import { CATEGORIAS_DESPESA, FORMAS_DESPESA, ROTULO_CATEGORIA, ROTULO_FORMA_DESP
 import { ContadorCrm } from "@/components/visual/ContadorCrm";
 
 type Despesa = {
-  id: string; descricao: string; categoria: string; valorCentavos: number; vencimento: string; status: "PENDENTE" | "PAGA"; pagoEm: string | null;
+  id: string; descricao: string; categoria: string; valorCentavos: number; vencimento: string; status: "PENDENTE" | "PAGA" | "ANULADA_TESTE"; pagoEm: string | null;
   pagoEmLocal: string | null; formaPagamento: string | null; fornecedor: string | null; observacao: string | null; recorrente: boolean;
-  situacao: "PAGA" | "VENCIDA" | "ABERTA";
+  situacao: "PAGA" | "VENCIDA" | "ABERTA" | "ANULADA_TESTE";
 };
 type Lista = {
   hoje: string; mes: string; despesas: Despesa[];
@@ -138,7 +138,7 @@ export function DespesasTela() {
                     </p>
                     <p className="text-xs text-zinc-500">
                       {ROTULO_CATEGORIA[d.categoria] ?? d.categoria}{d.fornecedor ? ` · ${d.fornecedor}` : ""} ·{" "}
-                      {d.status === "PAGA"
+                      {d.status === "ANULADA_TESTE" ? "anulada como teste interno sem transferência; original preservado e fora dos totais" : d.status === "PAGA"
                         ? `paga em ${dataBR(d.pagoEmLocal ?? "")}${d.formaPagamento ? ` (${ROTULO_FORMA_DESPESA[d.formaPagamento] ?? d.formaPagamento})` : ""}`
                         : <span className={d.situacao === "VENCIDA" ? "font-semibold text-red-700" : ""}>{d.situacao === "VENCIDA" ? "venceu" : "vence"} {dataBR(d.vencimento)}</span>}
                       {d.observacao ? ` · ${d.observacao}` : ""}
@@ -152,7 +152,7 @@ export function DespesasTela() {
                         <button className="btn px-2 py-1" title="Editar" onClick={() => setForm({ id: d.id, descricao: d.descricao, categoria: d.categoria, valor: centavosParaTexto(d.valorCentavos), vencimento: d.vencimento, fornecedor: d.fornecedor ?? "", observacao: d.observacao ?? "", recorrente: d.recorrente })}><Pencil size={14} /></button>
                         {podeExcluir && <button className="btn px-2 py-1" title="Excluir" disabled={ocupado} onClick={() => confirm(`Excluir "${d.descricao}"?`) && agir(() => api(`/api/financeiro/despesas/${d.id}`, { method: "DELETE" }), "Despesa excluída.")}><Trash2 size={14} /></button>}
                       </>
-                    ) : podeExcluir && (
+                    ) : d.status === "PAGA" && podeExcluir && (
                       <button className="btn px-3 py-1 text-xs" disabled={ocupado} onClick={() => confirm(`Estornar o pagamento de "${d.descricao}"? Ela volta para em aberto.`) && agir(() => api(`/api/financeiro/despesas/${d.id}`, { method: "PATCH", body: { acao: "estornar" } }), "Pagamento estornado.")}><RotateCcw size={14} /> Estornar</button>
                     )}
                   </div>

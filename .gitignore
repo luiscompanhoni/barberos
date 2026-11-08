@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/deploy/prisma-cli/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -55,3 +56,6 @@ next-env.d.ts
 /.test-estudio/
 /workers/video/node_modules/
 /workers/video/.hyperframes/
+
+# Registro privado da remuneração real; não publicar junto do código.
+/docs/black-remuneracao-confirmada.md

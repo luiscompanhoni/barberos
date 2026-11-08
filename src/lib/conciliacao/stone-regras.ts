@@ -22,29 +22,54 @@ export function lerCsvStone(texto: string): LinhaStone[] {
     else campo += c;
   }
   if (campo || linha.length) { linha.push(campo); L.push(linha); }
-  const [cab, ...corpo] = L;
-  if (!cab?.includes("Movimentação") || !cab.includes("Saldo depois")) throw new Error("Esse arquivo não parece o extrato CSV da Stone.");
-  return corpo.filter((l) => l.length >= cab.length - 1 && l.some(Boolean)).map((l) => Object.fromEntries(cab.map((k, i) => [k, l[i] ?? ""])));
+  if (aspas) throw new Error("O CSV contém aspas sem fechamento.");
+  const [cabecalho, ...corpo] = L;
+  const cab = cabecalho?.map(c => c.trim());
+  const obrigatorios = ["Data", "Horário", "Movimentação", "Tipo", "Valor", "Saldo antes", "Saldo depois"];
+  if (!cab || new Set(cab).size !== cab.length || obrigatorios.some(c => !cab.includes(c))) throw new Error("O extrato CSV da Stone precisa conter Data, Horário, Movimentação, Tipo, Valor, Saldo antes e Saldo depois, sem colunas repetidas.");
+  return corpo.filter(l => l.some(c => c.trim())).map((l, i) => {
+    if (l.length !== cab.length) throw new Error(`Linha ${i + 2}: quantidade de colunas diferente do cabeçalho.`);
+    return Object.fromEntries(cab.map((k, n) => [k, l[n].trim()]));
+  });
 }
 
 /** "R$ 1.234,56" / "-650,00" / "Grátis" -> centavos (com sinal). */
 export function centavosStone(s: string) {
-  const t = (s ?? "").replace(/R\$\s?/, "").replace(/\s/g, "");
-  if (!t || /gr[aá]tis/i.test(t)) return 0;
-  const n = Number(t.replace(/\./g, "").replace(",", "."));
-  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  const t = (s ?? "").trim().replace(/^R\$\s*/i, "").replace(/[\s\u00a0]/g, "");
+  if (/^gr[aá]tis$/i.test(t)) return 0;
+  if (!/^[+-]?(?:(?:\d{1,3}(?:\.\d{3})+|\d+),\d{2}|\d+)$/.test(t)) throw new Error("Valor monetário inválido no extrato.");
+  const negativo = t.startsWith("-");
+  const [inteiro, decimal = "00"] = t.replace(/^[+-]/, "").replace(/\./g, "").split(",");
+  const valor = Number(inteiro) * 100 + Number(decimal);
+  if (!Number.isSafeInteger(valor) || valor > 2_147_483_647) throw new Error("Valor monetário fora do limite suportado.");
+  return negativo ? -valor : valor;
 }
 
 /** "14/10/2026 20:36" + "20:36:32.567" -> instante (horario de Brasilia). */
 export function instanteStone(o: LinhaStone) {
-  const [d, m, a] = (o["Data"] ?? "").split(" ")[0].split("/");
-  const hora = o["Horário"] || (o["Data"] ?? "").split(" ")[1] || "00:00";
-  return new Date(`${a}-${m}-${d}T${hora.length === 5 ? `${hora}:00` : hora}-03:00`);
+  const partes = (o["Data"] ?? "").trim().split(/\s+/);
+  const data = partes[0]?.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const hora = (o["Horário"] || partes[1] || "").match(/^(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/);
+  if (!data || !hora || +hora[1] > 23 || +hora[2] > 59 || +(hora[3] ?? 0) > 59) throw new Error("Data ou horário inválido no extrato.");
+  const [, dia, mes, ano] = data;
+  const calendario = new Date(`${ano}-${mes}-${dia}T00:00:00Z`);
+  if (!Number.isFinite(+calendario) || calendario.toISOString().slice(0, 10) !== `${ano}-${mes}-${dia}`) throw new Error("A data do extrato não existe no calendário.");
+  return new Date(`${ano}-${mes}-${dia}T${hora[1]}:${hora[2]}:${hora[3] ?? "00"}.${(hora[4] ?? "0").padEnd(3, "0")}-03:00`);
 }
 
 /** Id estavel da linha (o mesmo arquivo baixado de novo nao duplica). */
-export const idStone = (o: LinhaStone) =>
+export const idStoneLegado = (o: LinhaStone) =>
   createHash("sha1").update([o["Data"], o["Horário"], o["Valor"], o["Saldo antes"], o["Saldo depois"], o["Tipo"]].join("|")).digest("hex").slice(0, 24);
+
+export function idStone(o: LinhaStone) {
+  const texto = (s: string | undefined) => (s ?? "").normalize("NFC").trim().replace(/\s+/g, " ");
+  const referencia = o["ID da transação"] || o["Identificador da transação"];
+  return createHash("sha256").update(JSON.stringify(referencia ? ["stone-id", texto(referencia)] : [
+    "stone-canonica-v1", instanteStone(o).toISOString(), centavosStone(o["Valor"]),
+    centavosStone(o["Saldo antes"]), centavosStone(o["Saldo depois"]),
+    texto(o["Tipo"]), texto(o["Movimentação"]),
+  ])).digest("hex");
+}
 
 /** Classifica uma linha do extrato da Stone. `contraparte` e quem recebeu (debito) ou quem mandou (credito). */
 export function classificarStone(o: LinhaStone, contasProprias: string[]): { tipo: TipoExterno; forma: string | null; contraparte: string | null } {

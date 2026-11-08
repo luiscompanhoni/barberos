@@ -10,7 +10,7 @@ import type { ModoCartao } from "./checkout-regras";
 import { provedorPagamento, type Provedor } from "./gateway";
 
 /** Token gerado no navegador pela Pagar.me (o numero do cartao nunca chega aqui). */
-export const zCartaoToken = z.string().regex(/^token_[A-Za-z0-9]+$/, "Cartão inválido.");
+export const zCartaoToken = z.string().max(512).regex(/^token_[A-Za-z0-9]+$/, "Cartão inválido.");
 
 export function chavePublicaPagarme() {
   return process.env.PAGARME_PUBLIC_KEY?.trim() || null;

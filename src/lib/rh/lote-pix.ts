@@ -10,8 +10,8 @@ type Tx = Prisma.TransactionClient;
 
 async function contexto(tx: Tx, competencia: string) {
   const folhas = await tx.folhaPagamento.findMany({
-    where: { competencia }, orderBy: { id: "asc" },
-    include: { pessoa: { select: { nome: true, chavePix: true, ativo: true, revisaoPix: true } } },
+    where: { competencia, ativa: true }, orderBy: { id: "asc" },
+    include: { pessoa: { select: { nome: true, chavePix: true, chavePixCifrada: true, chavePixMascarada: true, chavePixTipo: true, chavePixHash: true, ativo: true, revisaoPix: true } } },
   });
   return planejarLotePix(competencia, folhas);
 }
@@ -48,6 +48,7 @@ export async function prepararLotePix(s: Sessao, d: { competencia: string; revis
       if (!plano.itens.length) throw new ErroNegocio("Não há folhas fechadas com valor positivo para preparar.", 409, "lote_vazio");
       const where = { competencia_revisao: { competencia: d.competencia, revisao: plano.revisao } };
       let lote = await tx.folhaLotePix.findUnique({ where });
+      if (lote && (lote.estado === "INVALIDADO" || ["ENVIADO", "PAGO", "INCERTO"].includes(lote.estado) || lote.enviadoEm || lote.referenciaBancaria)) throw new ErroNegocio("Este lote é histórico ou tem resultado bancário. Não reutilize sua preparação.", 409, "lote_bloqueado");
       if (!lote) {
         if (d.acao === "conferir") throw new ErroNegocio("Prepare e revise o lote antes de conferir.", 409, "lote_nao_preparado");
         lote = await tx.folhaLotePix.create({ data: {
@@ -58,7 +59,7 @@ export async function prepararLotePix(s: Sessao, d: { competencia: string; revis
       }
       if (d.acao === "conferir" && !lote.conferidoEm) {
         if (!plano.podeConferir) throw new ErroNegocio("Corrija as pendências de cadastro antes de conferir a preparação.", 409, "pix_pendencias");
-        await tx.folhaLotePix.update({ where: { id: lote.id }, data: { conferidoPorId: s.usuarioId, conferidoEm: new Date() } });
+        await tx.folhaLotePix.update({ where: { id: lote.id }, data: { estado: "CONFERIDO", conferidoPorId: s.usuarioId, conferidoEm: new Date() } });
         await auditar(tx, s.usuarioId, "rh_pix_conferir_preparacao", "folha_lote_pix", lote.id, { revisao: plano.revisao, totalCentavos: plano.totalCentavos, autorizaEnvio: false });
       }
       return vista(tx, d.competencia, u.papel === "DONO");

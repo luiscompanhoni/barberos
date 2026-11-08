@@ -12,6 +12,7 @@ import { dataLocal, dataParaColuna } from "./tempo";
 import { travarBarbeiro } from "./agendamentos";
 import { validarIntervalos } from "./expediente";
 import { conflitosPeriodo, limitesPeriodo, periodoHorario } from "./solicitacoes-periodo";
+import { conferirSemEntrevista } from "./entrevistas-conflitos";
 
 const linha = z.object({ diaSemana: z.number().int().min(0).max(6), inicioMin: z.number().int().min(0).max(1440), fimMin: z.number().int().min(0).max(1440) });
 export const semanaHorario = z.array(linha).max(28);
@@ -80,6 +81,7 @@ export async function decidirSemana(barbeiroId: string, pedidoId: string, decisa
         const proposto = periodoHorario.parse(pedido.proposto);
         const { inicio, fim } = await limitesPeriodo(tx, proposto);
         if (inicio <= new Date()) throw new ErroNegocio("O período solicitado já começou; recuse e solicite novamente.", 409);
+        await conferirSemEntrevista(tx, barbeiroId, { inicio: +inicio, fim: +fim });
         const conflitos = await conflitosPeriodo(tx, barbeiroId, proposto);
         if (conflitos.length) throw new ErroNegocio("Existem atendimentos afetados. Resolva-os antes de aprovar; nenhum foi cancelado.", 409, "conflitos_pendentes", { ids: conflitos.map(a => a.id) });
         await tx.bloqueio.create({ data: { barbeiroId, inicio, fim, motivo: proposto.motivo || (pedido.tipo === "FOLGA" ? "Folga aprovada" : "Bloqueio aprovado"), criadoPorId: ator.usuarioId } });

@@ -11,6 +11,7 @@ import { processarConvitesAvaliacao } from "@/lib/avaliacoes/automacao";
 import { reenviarConvitesSemSaida } from "@/lib/avaliacoes/reenvio";
 import { sincronizarFichas } from "@/lib/jogos/fichas";
 import { competenciaResposta } from "@/lib/avaliacoes/regras";
+import { testarLotesEntreMeses } from "./avaliacoes-lotes.fluxo";
 
 async function main() {
   assert.equal(new URL(process.env.DATABASE_URL!).pathname, "/barberos_test_qualidade", "Use o banco isolado de testes");
@@ -113,7 +114,8 @@ async function main() {
   assert.equal(await db.automacaoEnviada.count({ where: { tipo: "AVALIACAO", chave: { startsWith: `${reenviar.id}:retry:` } } }), 1, "Retry concorrente não duplica envio");
   assert.equal(await db.automacaoEnviada.count({ where: { tipo: "AVALIACAO", chave: { startsWith: `${ic.id}:retry:` } } }), 0, "Timeout ambíguo nunca é reenviado");
   await db.avaliacaoConfig.update({ where: { id: 1 }, data: { whatsapp: false } });
-  console.log("PASS avaliações: concorrência, primeira visita, expiração, nota baixa, privacidade, lote mensal, auditoria, configuração e ficha única");
+  await testarLotesEntreMeses(dono.id, servico.id, sufixo);
+  console.log("PASS avaliações: concorrência, primeira visita, expiração, nota baixa, privacidade, lotes entre meses, legado preservado, bônus/folha/pontos congelados, auditoria, configuração e ficha única");
 }
 
 main().catch(e => { console.error(e); process.exitCode = 1; }).finally(() => db.$disconnect());

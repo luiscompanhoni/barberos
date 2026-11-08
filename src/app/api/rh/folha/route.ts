@@ -21,11 +21,11 @@ export const GET = rota(async (req: Request) => {
 export const POST = rota(async (req: Request) => {
   const s = await exigirSessaoCom("folha");
   const b = await corpo(req, z.discriminatedUnion("acao", [
-    z.object({ acao: z.literal("fechar"), competencia: zComp, pessoaId: zId.optional() }),
+    z.object({ acao: z.literal("fechar"), competencia: zComp, pessoaId: zId.optional(), revisao: z.string().regex(/^[a-f0-9]{64}$/) }),
     z.object({ acao: z.literal("pagar"), competencia: zComp, pessoaId: zId, forma: z.enum(FORMAS_PAGAMENTO).default("PIX") }),
     z.object({ acao: z.literal("reabrir"), competencia: zComp, pessoaId: zId }),
   ]));
-  if (b.acao === "fechar") await fecharFolha(s, b.competencia, b.pessoaId);
+  if (b.acao === "fechar") await fecharFolha(s, b.competencia, b.pessoaId, b.revisao);
   else if (b.acao === "pagar") await pagarFolha(s, b.competencia, b.pessoaId, b.forma);
   else await reabrirFolha(s, b.competencia, b.pessoaId);
   return NextResponse.json(await previaFolha(b.competencia));

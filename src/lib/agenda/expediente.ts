@@ -8,10 +8,12 @@ import { exigirPermissao } from "@/lib/auth/permissoes";
 import { validarCadeira } from "./cadeiras";
 import { exigirGestaoBarbeiro, exigirConfigBarbeiro, GESTAO, type Sessao } from "@/lib/auth/sessao";
 import { avisarMudanca } from "@/lib/whatsapp/avisos";
-import { carregarDia, configuracao, servicoDoBarbeiro, STATUS_ATIVOS } from "./carregar";
+import { carregarDia, configuracao, limitesDoDia, servicoDoBarbeiro, STATUS_ATIVOS } from "./carregar";
 import { contido, sobrepoe, type IntervaloMin } from "./disponibilidade";
 import { colunaParaData, dataLocal, dataParaColuna } from "./tempo";
 import { conflitoHorario, travarBarbeiro, validarEncaixe } from "./agendamentos";
+import { conferirSemEntrevista } from "./entrevistas-conflitos";
+import { validarHorarioCliente } from "./cliente-conflitos";
 
 const DIAS_VERIFICADOS = 60;
 
@@ -113,6 +115,7 @@ export async function salvarExcecao(
   const valorIntervalos = e.tipo === "HORARIO_ESPECIAL" ? (intervalos as Prisma.InputJsonValue) : Prisma.DbNull;
   await db.$transaction(async (tx) => {
     await travarBarbeiro(tx, barbeiroId);
+    if (e.tipo === "FOLGA") await conferirSemEntrevista(tx, barbeiroId, limitesDoDia(e.data, (await configuracao(tx)).fuso));
     const reg = await tx.excecaoAgenda.upsert({
       where: { barbeiroId_data: { barbeiroId, data } },
       create: { barbeiroId, data, tipo: e.tipo, intervalos: valorIntervalos, motivo: e.motivo },
@@ -206,7 +209,11 @@ export async function fecharAgenda(
   try {
     const bloqueio = await db.$transaction(async (tx) => {
       const destinos = (p.resolucoes ?? []).flatMap(r => r.acao === "transferir" ? [r.barbeiroDestinoId] : []);
+      const clientes = [...new Set(afetados.map(a => a.clienteId))].sort();
+      for (const id of clientes) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente-ciclo:${id}`}))`;
       for (const b of [...new Set([barbeiroId, ...destinos])].sort()) await travarBarbeiro(tx, b);
+      for (const id of clientes) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${id}`}))`;
+      await conferirSemEntrevista(tx, barbeiroId, { inicio: +p.inicio, fim: +p.fim });
       const cadeirasDestino = await tx.barbeiro.findMany({ where: { id: { in: destinos } }, select: { cadeiraId: true } });
       for (const cadeiraId of [...new Set(cadeirasDestino.map(b => b.cadeiraId).filter((id): id is string => !!id))].sort()) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cadeira:${cadeiraId}`}))`;
@@ -230,6 +237,7 @@ export async function fecharAgenda(
           });
           const destino = await tx.barbeiro.findUniqueOrThrow({ where: { id: r.barbeiroDestinoId } });
           if (!destino.ativo) throw new ErroNegocio("O barbeiro de destino está inativo.");
+          await validarHorarioCliente(tx, a.clienteId, { inicio: +a.inicio, fim: +a.fim }, [a.id]);
           await validarCadeira(tx, destino.cadeiraId, { inicio: +a.inicio, fim: +a.fim }, a.id, cfg.intervaloEntreClientes);
           await tx.agendamento.update({ where: { id: a.id }, data: { barbeiroId: r.barbeiroDestinoId, cadeiraId: destino.cadeiraId } });
           await auditar(tx, ator.usuarioId, "transferir_por_fechamento", "agendamento", a.id, { para: r.barbeiroDestinoId });

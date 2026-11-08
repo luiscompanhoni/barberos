@@ -241,12 +241,13 @@ export async function centralDoCliente(clienteId: string): Promise<CentralJogos>
     db.premioGanho.count({ where: { clienteId, status: { in: ["DISPONIVEL", "RESERVADO"] } } }),
   ]);
   const assinante = !!sit?.valida;
+  const multiplicadores = new Set(jogos.map(j => multiplicador(assinante, j.bonusAssinantePct)));
   return {
     jogos: jogos.map((j): JogoCliente => {
       const doJogo = premios.filter((p) => p.jogoId === j.id);
       return {
         id: j.id, tipo: j.tipo, nome: j.nome, descricao: j.descricao, raridade: j.raridade, premiosPorJogada: j.premiosPorJogada,
-        ativo: true, soAssinante: j.soAssinante,
+        ativo: true, soAssinante: j.soAssinante, multiplicador: multiplicador(assinante, j.bonusAssinantePct),
         fichas: j.soAssinante && !assinante ? 0 : fichas.get(j.id)?.fichas ?? 0,
         proximaGratisEm: fichas.get(j.id)?.proximaGratisEm?.toISOString() ?? null,
         comoGanhar: comoGanhar(j),
@@ -255,7 +256,7 @@ export async function centralDoCliente(clienteId: string): Promise<CentralJogos>
         pendente: pend.get(j.id) ?? null,
       };
     }),
-    multiplicador: multiplicador(assinante, jogos[0]?.bonusAssinantePct ?? 10),
+    multiplicador: multiplicadores.size === 1 ? [...multiplicadores][0] : null,
     assinante,
     premiosAtivos: ativos,
   };
@@ -266,7 +267,7 @@ export async function jogoDoCliente(clienteId: string, jogoId: string) {
   const c = await centralDoCliente(clienteId);
   const j = c.jogos.find((x) => x.id === jogoId);
   if (!j) throw new ErroNegocio("Esse jogo está fora do ar no momento.", 404, "desligado");
-  return { ...j, multiplicador: c.multiplicador, assinante: c.assinante };
+  return { ...j, assinante: c.assinante };
 }
 
 // ---------------- campanha (link sem login)

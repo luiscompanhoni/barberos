@@ -1,0 +1,7 @@
+{
+  "name": "barberos-prisma-cli",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": { "prisma": "6.19.3" },
+  "overrides": { "@prisma/config@6.19.3": { "deepmerge-ts": "8.0.2" } }
+}

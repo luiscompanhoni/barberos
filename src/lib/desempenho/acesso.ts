@@ -34,7 +34,7 @@ export async function travarCompetencia(tx: Prisma.TransactionClient, pessoaId: 
   await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ${pessoaId} FOR UPDATE`;
   const [bonus, folha] = await Promise.all([
     tx.desempenhoBonus.findUnique({ where: { pessoaId_competencia: { pessoaId, competencia } } }),
-    tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia, pessoaId } } }),
+    tx.folhaPagamento.findFirst({ where: { competencia, pessoaId, ativa: true } }),
   ]);
   if (bonus || folha) throw new ErroNegocio("O desempenho ou a folha desta competência já foi fechado. O histórico não pode ser alterado.", 409, "competencia_fechada");
 }

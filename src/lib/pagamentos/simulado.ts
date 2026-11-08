@@ -20,6 +20,7 @@ function converter(c: { id: string; assinaturaGatewayId: string; valorCentavos: 
     status: c.status as CobrancaGateway["status"],
     abertaConfirmada: c.status === "PENDENTE" || c.status === "ATRASADA",
     pagaEm: c.pagaEm?.toISOString() ?? null,
+    ...(c.status === "PAGA" && c.pagaEm ? { recebimento: { valorCentavos: c.valorCentavos, em: c.pagaEm.toISOString(), fonte: "simulado", referencia: c.id, status: c.status, campoValor: "valorCentavos", campoData: "pagaEm" } } : {}),
     link: `/c/pagamento-simulado/${c.id}`,
   };
 }

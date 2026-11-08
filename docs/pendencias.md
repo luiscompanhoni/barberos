@@ -299,7 +299,8 @@ Falta:
     devolve, vencido expira, e só a gerência cancela, com motivo.
   - Campanha pode dar uma jogada de presente em qualquer jogo. O endereço antigo da roleta continua funcionando.
 - **Serviço adicional na comanda** (fora da lista): sobrancelha junto do corte, por exemplo. Conta na comissão, no
-  plano e nos relatórios, sem ocupar horário na agenda.
+  plano e nos relatórios. Novos adicionais reservam intervalo próprio na agenda (`ocupaAgenda=true`),
+  com confirmação de realização separada. O legado conserva a duração original; repetir solicitação não cria outra cobrança.
 
 
 ### Recrutamento: formulários profissionais (02/11/2026)

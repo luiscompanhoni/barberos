@@ -8,22 +8,22 @@ import type { Intervalo } from "./disponibilidade";
 
 type Cliente = typeof db | Prisma.TransactionClient;
 
-export async function ocupacaoCadeira(cadeiraId: string | null, int: Intervalo, c: Cliente = db, ignorarId?: string) {
+export async function ocupacaoCadeira(cadeiraId: string | null, int: Intervalo, c: Cliente = db, ignorarId?: string, ignorarIds: string[] = []) {
   if (!cadeiraId) return [];
   const cadeira = await c.cadeira.findUnique({ where: { id: cadeiraId } });
   if (!cadeira?.ativa) throw new ErroNegocio("A cadeira selecionada está indisponível.");
   return c.agendamento.findMany({ where: {
-    cadeiraId, adicionalDeId: null, status: { in: [...STATUS_ATIVOS] },
+    cadeiraId, OR: [{ adicionalDeId: null }, { ocupaAgenda: true }], status: { in: [...STATUS_ATIVOS] },
     inicio: { lt: new Date(int.fim) }, fim: { gt: new Date(int.inicio) },
-    ...(ignorarId ? { id: { not: ignorarId } } : {}),
+    ...((ignorarId || ignorarIds.length) ? { id: { notIn: [...ignorarIds, ...(ignorarId ? [ignorarId] : [])] } } : {}),
   }, select: { inicio: true, fim: true } });
 }
 
-export async function validarCadeira(tx: Prisma.TransactionClient, cadeiraId: string | null, int: Intervalo, ignorarId?: string, intervaloMin = 0) {
+export async function validarCadeira(tx: Prisma.TransactionClient, cadeiraId: string | null, int: Intervalo, ignorarId?: string, intervaloMin = 0, ignorarIds: string[] = []) {
   if (!cadeiraId) return;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cadeira:${cadeiraId}`}))`;
   const folga = intervaloMin * 60_000;
-  const ocupados = await ocupacaoCadeira(cadeiraId, { inicio: int.inicio - folga, fim: int.fim + folga }, tx, ignorarId);
+  const ocupados = await ocupacaoCadeira(cadeiraId, { inicio: int.inicio - folga, fim: int.fim + folga }, tx, ignorarId, ignorarIds);
   if (ocupados.length) throw new ErroNegocio("A cadeira já está ocupada neste intervalo. Escolha outra cadeira ou horário.", 409, "conflito_cadeira");
 }
 

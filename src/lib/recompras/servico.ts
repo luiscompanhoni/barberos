@@ -6,7 +6,7 @@ import { ocupacaoCadeira } from "@/lib/agenda/cadeiras";
 import { precificar } from "@/lib/assinaturas/agenda";
 import { calcularComissao, escolherRegra, adicionalNoDia } from "@/lib/rh/regras";
 import { adicionaisDoCalculo } from "@/lib/rh/adicionais";
-import { regrasExtras } from "@/lib/rh/pote";
+import { extrasNaCompetencia, regrasServicosNaCompetencia } from "@/lib/rh/config-calculo";
 import { configRecompras } from "./configuracao";
 import { ultimasCompras } from "./historico";
 import { descontoReativacao, diasDecorridos, podeRecomendar, DIA } from "./regras";
@@ -20,8 +20,8 @@ export type OportunidadeRecompra = {
 };
 
 export async function oportunidadesDoDia(barbeiroId: string, data: string): Promise<OportunidadeRecompra[]> {
-  const [cfg, politica, regras, adicionais, extras] = await Promise.all([
-    configuracao(), configRecompras(), db.comissaoServico.findMany(), adicionaisDoCalculo(), regrasExtras(),
+  const [cfg, politica, adicionais] = await Promise.all([
+    configuracao(), configRecompras(), adicionaisDoCalculo(),
   ]);
   if (!politica.ativo) return [];
   const inicio = instanteLocal(data, 0, cfg.fuso), fim = instanteLocal(somarDias(data, 1), 0, cfg.fuso);
@@ -40,6 +40,8 @@ export async function oportunidadesDoDia(barbeiroId: string, data: string): Prom
   if (!turno) return [];
   const resultado: OportunidadeRecompra[] = [];
   const vistos = new Set<string>();
+  const carregarRemuneracao = (competencia: string) => Promise.all([regrasServicosNaCompetencia(competencia), extrasNaCompetencia(competencia)]);
+  const versoes = new Map<string, ReturnType<typeof carregarRemuneracao>>();
   for (const a of agenda) for (const servico of servicos) {
     const chave = `${a.clienteId}:${servico.id}`;
     if (vistos.has(chave)) continue;
@@ -51,15 +53,19 @@ export async function oportunidadesDoDia(barbeiroId: string, data: string): Prom
     const sb = servico.barbeiros[0];
     const duracaoMin = sb.duracaoMin ?? servico.duracaoMin;
     const inicioExtra = +a.fim + cfg.intervaloEntreClientes * 60_000;
+    const diaEncaixe = dataLocal(inicioExtra, cfg.fuso), competencia = diaEncaixe.slice(0, 7);
+    let versao = versoes.get(competencia);
+    if (!versao) { versao = carregarRemuneracao(competencia); versoes.set(competencia, versao); }
+    const [regras, extras] = await versao;
     const int = { inicio: inicioExtra, fim: inicioExtra + duracaoMin * 60_000 };
     const folga = cfg.intervaloEntreClientes * 60_000;
     const cabe = inicioExtra >= Date.now() && contido(int, turno.janelas) && !turno.bloqueios.some(b => sobrepoe(b, int)) && !turno.agendamentos.some(ag => sobrepoe({ inicio: ag.inicio - folga, fim: ag.fim + folga }, int));
     const cadeiraOcupada = await ocupacaoCadeira(a.cadeiraId, { inicio: int.inicio - folga, fim: int.fim + folga });
     const preco = await precificar({ clienteId: a.clienteId, servicoId: servico.id, barbeiroId, inicio: inicioExtra, precoBase: sb.precoCentavos ?? servico.precoCentavos, fuso: cfg.fuso, forcarAvulso: true });
     const regra = escolherRegra(regras, servico.id, barbeiroId);
-    const adicionalBps = adicionalNoDia(adicionais, barbeiroId, preco.assinaturaId ? "ASSINATURA" : "AVULSO", data);
+    const adicionalBps = adicionalNoDia(adicionais, barbeiroId, preco.assinaturaId ? "ASSINATURA" : "AVULSO", diaEncaixe);
     const expiraEm = new Date(+(oferta?.criadoEm ?? new Date()) + politica.descontoValidadeDias * DIA);
-    const descontoCentavos = descontoReativacao({ politica, preco: preco.precoCentavos, custo: servico.custoCentavos, regra, adicionalBps, diasSemVisita: diasDecorridos(historico.visitas.get(a.clienteId) ?? ultima.fim, data, cfg.fuso), cobertoPlano: !!preco.assinaturaId, expirou: +expiraEm < Date.now() });
+    const descontoCentavos = descontoReativacao({ politica, preco: preco.precoCentavos, custo: servico.custoCentavos, regra, adicionalBps, diasSemVisita: diasDecorridos(historico.visitas.get(a.clienteId) ?? ultima.fim, diaEncaixe, cfg.fuso), cobertoPlano: !!preco.assinaturaId, expirou: +expiraEm < Date.now() });
     const comissaoCentavos = !regra || (preco.assinaturaId && extras.assinaturas.ativo) ? null : calcularComissao(regra, { modalidade: preco.assinaturaId ? "PLANO" : "AVULSO", preco: preco.precoCentavos, precoTabela: sb.precoCentavos ?? servico.precoCentavos }, adicionalBps).comissao;
     resultado.push({
       agendamentoId: a.id, clienteId: a.clienteId, clienteNome: a.cliente.nome, servicoId: servico.id, servicoNome: servico.nome,

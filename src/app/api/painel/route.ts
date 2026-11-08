@@ -30,7 +30,7 @@ export const GET = rota(async () => {
   const financeiro = verLucro
     ? await resultadoDoMes(dataLocal(Date.now(), pend.fuso).slice(0, 7))
       .then((r) => ({ mes: r.mes, faturamento: r.registrado.total, despesas: r.despesas.total,
-        taxas: r.custos.total, lucro: r.lucro, alertas: r.alertas }))
+        taxas: r.custos.total, lucro: r.lucro, status: r.status, alertas: r.alertas }))
       .catch((e) => { console.error("[painel] resultado do mes", e); return null; })
     : null;
   return NextResponse.json({ financeiro, dia, pendencias: { ...pend, estornosPendentes: estornos, produtosAcabando: acabando, esperas: esperas.map((e) => ({ id: e.id, data: e.data.toISOString().slice(0, 10), periodo: e.periodo, cliente: e.cliente.nome })) }, mes, pico, vendas, backup });

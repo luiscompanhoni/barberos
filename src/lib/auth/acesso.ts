@@ -4,10 +4,13 @@
  */
 import { VERSAO_TERMOS } from "@/lib/lgpd/textos";
 import { db } from "@/lib/db";
-import { ErroNegocio, naoEncontrado } from "@/lib/erros";
+import { auditar } from "@/lib/auditoria";
+import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
 import { verificarCodigo, type Area } from "./otp";
 import { conferirSenha, gerarHash, problemaDaSenha, senhaTemporaria } from "./senha";
+import { limitarIdentificadorSenha } from "./limites";
+import type { Sessao } from "./sessao";
 
 const MAX_FALHAS = 5;
 const BLOQUEIO_MS = 15 * 60_000;
@@ -32,27 +35,34 @@ async function acharUsuario(identificador: string) {
 }
 
 export async function entrarComSenha(identificador: string, senha: string, area: Area) {
+  limitarIdentificadorSenha(identificador);
   const u = await acharUsuario(identificador);
   if (!u || !u.ativo || !u.senhaHash) {
     await conferirSenha(senha, "scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAA"); // tempo parecido com o caminho normal
     throw invalido();
   }
-  if (u.bloqueadoAte && u.bloqueadoAte.getTime() > Date.now()) {
-    const min = Math.ceil((u.bloqueadoAte.getTime() - Date.now()) / 60_000);
-    throw new ErroNegocio(`Muitas tentativas erradas. Tente de novo em ${min} min ou use "esqueci a senha".`, 429, "bloqueado");
-  }
-  if (!(await conferirSenha(senha, u.senhaHash))) {
-    const falhas = u.senhaFalhas + 1;
-    await db.usuario.update({
-      where: { id: u.id },
-      data: falhas >= MAX_FALHAS ? { senhaFalhas: 0, bloqueadoAte: new Date(Date.now() + BLOQUEIO_MS) } : { senhaFalhas: falhas },
-    });
-    throw invalido();
-  }
-  if (area === "equipe" && u.papel === "CLIENTE") throw new ErroNegocio("Esse número é de cliente. Entre pela área do cliente.", 403);
-  if (area === "cliente" && u.papel !== "CLIENTE") throw new ErroNegocio("Esse número é da equipe. Entre pelo acesso da equipe.", 403);
-  if (u.senhaFalhas || u.bloqueadoAte) await db.usuario.update({ where: { id: u.id }, data: { senhaFalhas: 0, bloqueadoAte: null } });
-  return u;
+  const r = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`auth-usuario:${u.id}`}))`;
+    const atual = await tx.usuario.findUnique({ where: { id: u.id }, include: incluir });
+    if (!atual?.ativo || !atual.senhaHash) return { erro: invalido() };
+    if (atual.bloqueadoAte && atual.bloqueadoAte.getTime() > Date.now()) {
+      const min = Math.ceil((atual.bloqueadoAte.getTime() - Date.now()) / 60_000);
+      return { erro: new ErroNegocio(`Muitas tentativas erradas. Tente de novo em ${min} min ou use "esqueci a senha".`, 429, "bloqueado") };
+    }
+    if (!(await conferirSenha(senha, atual.senhaHash))) {
+      const falhas = atual.senhaFalhas + 1;
+      await tx.usuario.update({ where: { id: atual.id }, data: falhas >= MAX_FALHAS
+        ? { senhaFalhas: 0, bloqueadoAte: new Date(Date.now() + BLOQUEIO_MS) } : { senhaFalhas: falhas } });
+      // Lançar fora da transação preserva a falha e o bloqueio gravados.
+      return { erro: invalido() };
+    }
+    if (area === "equipe" && atual.papel === "CLIENTE") return { erro: new ErroNegocio("Esse número é de cliente. Entre pela área do cliente.", 403) };
+    if (area === "cliente" && atual.papel !== "CLIENTE") return { erro: new ErroNegocio("Esse número é da equipe. Entre pelo acesso da equipe.", 403) };
+    if (atual.senhaFalhas || atual.bloqueadoAte) await tx.usuario.update({ where: { id: atual.id }, data: { senhaFalhas: 0, bloqueadoAte: null } });
+    return { usuario: atual };
+  });
+  if (r.erro) throw r.erro;
+  return r.usuario!;
 }
 
 /**
@@ -96,15 +106,38 @@ export async function trocarPropriaSenha(usuarioId: string, p: { atual?: string 
   const problema = problemaDaSenha(p.nova, u.telefone);
   if (problema) throw new ErroNegocio(problema);
   if (u.senhaHash && (await conferirSenha(p.nova, u.senhaHash))) throw new ErroNegocio("A nova senha precisa ser diferente da atual.");
-  await tx.usuario.update({ where: { id: usuarioId }, data: { senhaHash: await gerarHash(p.nova), trocarSenha: false, senhaFalhas: 0, bloqueadoAte: null } });
+  const atualizado = await tx.usuario.update({ where: { id: usuarioId }, data: {
+    senhaHash: await gerarHash(p.nova), trocarSenha: false, senhaFalhas: 0, bloqueadoAte: null, sessaoVersao: { increment: 1 },
+  }, include: incluir });
+  await auditar(tx, usuarioId, "trocar_senha", "usuario", usuarioId, { revogouSessoes: true });
+  return atualizado;
   });
 }
 
 /** Dono define uma senha temporaria para alguem da equipe (troca obrigatoria no 1o acesso). */
 export async function definirSenhaTemporaria(usuarioId: string) {
-  const u = await db.usuario.findUnique({ where: { id: usuarioId } });
-  if (!u || u.papel === "CLIENTE") throw naoEncontrado("Usuário da equipe");
+  return (await redefinirSenhaTemporaria(usuarioId)).senha;
+}
+
+/** A rota passa o dono para revalidar e auditar o reset na mesma transação. */
+export async function redefinirSenhaTemporaria(usuarioId: string, ator?: Pick<Sessao, "usuarioId" | "sessaoVersao">) {
   const senha = senhaTemporaria();
-  await db.usuario.update({ where: { id: usuarioId }, data: { senhaHash: await gerarHash(senha), trocarSenha: true, senhaFalhas: 0, bloqueadoAte: null } });
-  return senha;
+  const senhaHash = await gerarHash(senha);
+  return db.$transaction(async (tx) => {
+    // Ordem estável também quando dois donos redefinem a senha um do outro.
+    for (const id of [...new Set([usuarioId, ...(ator ? [ator.usuarioId] : [])])].sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`auth-usuario:${id}`}))`;
+    }
+    if (ator) {
+      const dono = await tx.usuario.findUnique({ where: { id: ator.usuarioId } });
+      if (!dono?.ativo || dono.papel !== "DONO" || (dono.sessaoVersao ?? 0) !== (ator.sessaoVersao ?? 0)) throw proibido();
+    }
+    const u = await tx.usuario.findUnique({ where: { id: usuarioId } });
+    if (!u || u.papel === "CLIENTE") throw naoEncontrado("Usuário da equipe");
+    const usuario = await tx.usuario.update({ where: { id: usuarioId }, data: {
+      senhaHash, trocarSenha: true, senhaFalhas: 0, bloqueadoAte: null, sessaoVersao: { increment: 1 },
+    }, include: incluir });
+    await auditar(tx, ator?.usuarioId ?? null, "senha_temporaria", "usuario", usuarioId, { revogouSessoes: true });
+    return { senha, usuario };
+  });
 }

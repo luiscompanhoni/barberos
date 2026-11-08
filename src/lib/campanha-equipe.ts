@@ -3,6 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { ErroNegocio } from "@/lib/erros";
 import { ciclosDaCampanha, proximaCompetencia } from "./equipe-regras";
+import { tocarPessoasDaFolha } from "./rh/trava-regras-folha";
 
 /** Ficha de RH do barbeiro; sem ela o bonus nao tem folha onde entrar. */
 export async function pessoaDaFolha(tx: Prisma.TransactionClient, barbeiroId: string) {
@@ -20,10 +21,11 @@ export async function lancarBonusNaFolha(tx: Prisma.TransactionClient, d: { pess
   await tx.$queryRaw`SELECT id FROM checklist_pessoas WHERE id = ${d.pessoaId} FOR UPDATE`;
   let competencia = dataLocal(Date.now(), d.fuso).slice(0, 7);
   for (let i = 0; i < 24; i++) {
-    const fechada = await tx.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia, pessoaId: d.pessoaId } }, select: { id: true } });
+    const fechada = await tx.folhaPagamento.findFirst({ where: { competencia, pessoaId: d.pessoaId, ativa: true }, select: { id: true } });
     if (!fechada) break;
     competencia = proximaCompetencia(competencia);
   }
+  await tocarPessoasDaFolha(tx, [d.pessoaId]);
   return tx.folhaLancamento.create({ data: { pessoaId: d.pessoaId, competencia, tipo: "BONUS", valorCentavos: d.valorCentavos, descricao: d.descricao, porId: d.porId } });
 }
 

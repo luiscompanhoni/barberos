@@ -15,6 +15,9 @@ import { somarMes } from "./regras";
 import { conferirVinculoSincronizado } from "@/lib/conciliacao/historico/sincronizacao";
 import { confirmarAntesDoEnvio, concluirCobrancaManual, gatewayConfere, reservarCobrancaManual, revisarCobrancaManual } from "./cobranca-automatica";
 import { dataLocal } from "@/lib/agenda/tempo";
+import { dadosRecebimento } from "@/lib/pagamentos/recebimento";
+import { auditar } from "@/lib/auditoria";
+import { processarEventoAssinatura } from "./eventos";
 
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = (iso: string) => iso.split("-").reverse().join("/");
@@ -47,6 +50,8 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
     }).filter(([, v]) => v !== undefined && v !== null),
   );
   const token = novoTokenPublico();
+  const recebimento = dadosRecebimento(cob);
+  const recebimentoPendente = cob.pendenciaRecebimento ?? (recebimento.valorRecebidoConfirmadoCentavos !== undefined ? null : undefined);
   const resultado = await db.$transaction(async (tx) => {
     const transacaoId = cob.id.match(/^celtx_(\d+)$/)?.[1];
     if (transacaoId) {
@@ -64,6 +69,7 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
       const marcada = await tx.cobranca.updateMany({ where: { gatewayId: cob.id, assinaturaId: assinatura.id, status: "PENDENTE" }, data: { status: "ATRASADA" } });
       if (!marcada.count) return null;
     }
+    const anterior = opcoes.apenasPendente ? null : await tx.cobranca.findUnique({ where: { gatewayId: cob.id } });
     const salva = opcoes.apenasPendente ? await tx.cobranca.findUniqueOrThrow({ where: { gatewayId: cob.id } }) : await tx.cobranca.upsert({
       where: { gatewayId: cob.id },
       create: {
@@ -71,14 +77,17 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
         vencimento: new Date(`${cob.vencimento}T00:00:00Z`), status: cob.status,
         pagaEm: cob.pagaEm ? new Date(cob.pagaEm) : null, tokenPublico: token,
         // Sem fatura externa (Pagar.me): o cliente paga na pagina do BarberOS.
-        link: cob.link ?? `/c/pagar/${token}`, ...detalhes,
+        link: cob.link ?? `/c/pagar/${token}`, ...detalhes, ...recebimento, recebimentoPendente,
       },
       // O vencimento fica o da criacao (o Pix gerado pelo BarberOS define o mes).
       update: {
         valorCentavos: cob.valorCentavos, status: cob.status, pagaEm: cob.pagaEm ? new Date(cob.pagaEm) : null,
-        ...(cob.link ? { link: cob.link } : {}), ...detalhes,
+        ...(cob.link ? { link: cob.link } : {}), ...detalhes, ...recebimento, recebimentoPendente,
       },
     });
+    if (!opcoes.apenasPendente && (JSON.stringify(anterior?.provaRecebimento ?? null) !== JSON.stringify(salva.provaRecebimento ?? null) || (anterior?.recebimentoPendente ?? null) !== (salva.recebimentoPendente ?? null))) {
+      await auditar(tx, null, "assinatura_recebimento_comprovado", "cobranca", salva.id, { gatewayId: cob.id, antes: anterior ? { valor: anterior.valorRecebidoConfirmadoCentavos, em: anterior.recebidoConfirmadoEm?.toISOString() ?? null, prova: anterior.provaRecebimento, pendencia: anterior.recebimentoPendente } : null, depois: { valor: salva.valorRecebidoConfirmadoCentavos, em: salva.recebidoConfirmadoEm?.toISOString() ?? null, pendencia: salva.recebimentoPendente }, prova: salva.provaRecebimento });
+    }
     if (assinatura.status === "CANCELADA") return { assinatura, salva, status: "CANCELADA" as const };
     const cobrancas = await tx.cobranca.findMany({ where: { assinaturaId: assinatura.id, vinculosExternos: { none: {} } }, orderBy: { vencimento: "asc" } });
     const pagas = cobrancas.filter((c) => c.status === "PAGA");
@@ -141,17 +150,7 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
  * cobranca na API do gateway antes de mudar qualquer coisa.
  */
 export async function processarEventoGateway(eventoId: string, tipo: string, cobrancaGatewayId: string) {
-  // Consulta sem efeito externo de escrita antes de reservar o evento; uma
-  // indisponibilidade do gateway não pode marcar o evento como processado.
-  const g = await gatewayPorId(cobrancaGatewayId);
-  const cob = await g.buscarCobranca(cobrancaGatewayId);
-  try {
-    await db.eventoPagamento.create({ data: { id: eventoId, tipo, cobrancaId: cobrancaGatewayId } });
-  } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { repetido: true };
-    throw e;
-  }
-  return { repetido: false, transicao: await sincronizarCobranca(cob) };
+  return processarEventoAssinatura(eventoId, tipo, cobrancaGatewayId, sincronizarCobranca);
 }
 
 /** Busca todas as cobrancas da assinatura no gateway (conserta webhook perdido). */

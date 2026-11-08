@@ -49,7 +49,7 @@ async function main() {
     const cliente = await db.cliente.create({ data: { nome: "Pessoa Sintética", telefone: `55119${id.slice(-8)}` } });
     const assinatura = await db.assinatura.create({ data: { clienteId: cliente.id, planoId: plano.id, precoCentavos: 11800, formaPagamento: "CARTAO", origem: "RECEPCAO", status: "CANCELADA", gatewayId: `celcash:hist:${cliente.id}` } });
     const mov = await db.movimentoExterno.create({ data: { fonte: "CELCASH", tipo: "RECEBIMENTO", idExterno: `${lote}-${id}`, transacaoId: id, valorCentavos: 11800, data: instante, descricao: "Crédito sintético" } });
-    const fonte = { galaxPayId: Number(id), value: 11800, payday: "2026-10-23", status: "captured", Subscription: { galaxPayId: Number(id), Customer: { name: cliente.nome, document: "", phones: [cliente.telefone] } } };
+    const fonte = { galaxPayId: Number(id), value: 11800, payday: "2026-10-23", paydayDateDateTime: "2026-10-23 10:00:00", status: "captured", Subscription: { galaxPayId: Number(id), Customer: { name: cliente.nome, document: "", phones: [cliente.telefone] } } };
     fontes.set(id, fonte);
     const p: EscolhaHistorico = { transacaoId: id, assinaturaId: assinatura.id, operacao: "IMPORTAR", identidadeConfirmada: false, motivo: "Evidência fictícia conferida no teste" };
     return { id, cliente, assinatura, mov, fonte, p };

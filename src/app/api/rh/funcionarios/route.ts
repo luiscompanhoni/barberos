@@ -19,7 +19,9 @@ export const PATCH = rota(async (req: Request) => {
     id: zId,
     cargo: z.string().trim().max(60).nullable(),
     salarioCentavos: z.number().int().min(0).max(100_000_000),
-    chavePix: z.string().trim().max(120).nullable(),
+    competenciaSalario: z.string().regex(/^(?!0000)\d{4}-(0[1-9]|1[0-2])$/).optional(),
+    chavePix: z.string().trim().min(1).max(120).nullable().optional(),
+    revisaoPix: z.number().int().nonnegative().optional(),
     admissao: zData.nullable(),
     barbeiroId: zId.nullable(),
   }));

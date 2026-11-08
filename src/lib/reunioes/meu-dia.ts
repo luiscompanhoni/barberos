@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { oportunidadesDoDia } from "@/lib/recompras/servico";
 import { adicionaisDoCalculo } from "@/lib/rh/adicionais";
-import { regrasExtras } from "@/lib/rh/pote";
+import { extrasNaCompetencia, regrasServicosNaCompetencia } from "@/lib/rh/config-calculo";
 import { adicionalNoDia, calcularComissao, escolherRegra } from "@/lib/rh/regras";
 import { meuDiaSchema } from "./schemas";
 import { acoesDoBarbeiro } from "./acoes";
@@ -26,7 +26,7 @@ export async function carregarMeuDia(s: Sessao, entrada: unknown) {
   const [ags, regras, extras, adicionais, encaixes, custos, acoes, recompras] = await Promise.all([
     db.agendamento.findMany({ where: { barbeiroId: id, inicio: { gte: new Date(dia.inicio), lt: new Date(dia.fim) }, status: { notIn: ["CANCELADO", "FALTOU"] } }, orderBy: { inicio: "asc" },
       select: { id: true, clienteId: true, inicio: true, fim: true, status: true, assinaturaId: true, precoCentavos: true, servicoId: true, cliente: { select: { nome: true } }, servico: { select: { nome: true, precoCentavos: true } } } }),
-    db.comissaoServico.findMany(), regrasExtras(), adicionaisDoCalculo(), encaixesDoDia({ data, barbeiroId: id }, s),
+    regrasServicosNaCompetencia(data.slice(0, 7)), extrasNaCompetencia(data.slice(0, 7)), adicionaisDoCalculo(), encaixesDoDia({ data, barbeiroId: id }, s),
     db.servico.findMany({ select: { id: true, custoCentavos: true } }),
     id === s.barbeiroId || (permissoes.lucro && permissoes.comissoes_equipe) ? acoesDoBarbeiro(id, data) : Promise.resolve([]), oportunidadesDoDia(id, data),
   ]);

@@ -15,7 +15,8 @@ import { schemaOferta } from "./schemas";
 import { oportunidadesDoDia } from "./servico";
 import { ultimasCompras } from "./historico";
 import { descontoReativacao, diasDecorridos, DIA } from "./regras";
-import { escolherRegra, adicionalNoDia } from "@/lib/rh/regras";
+import { escolherRegra, adicionalNoDia, calcularComissao } from "@/lib/rh/regras";
+import { extrasNaCompetencia, regrasServicosNaCompetencia } from "@/lib/rh/config-calculo";
 
 export async function registrarOferta(s: Sessao, input: z.infer<typeof schemaOferta>) {
   const principal = await db.agendamento.findUnique({ where: { id: input.agendamentoId } });
@@ -55,6 +56,7 @@ export async function registrarOferta(s: Sessao, input: z.infer<typeof schemaOfe
       if (!servico.ativo || !sb) throw new ErroNegocio("Serviço indisponível para esse profissional.");
       const inicio = +atual.fim + cfg.intervaloEntreClientes * 60_000;
       const int = { inicio, fim: inicio + (sb.duracaoMin ?? servico.duracaoMin) * 60_000 };
+      if (new Date(inicio).toISOString() !== oportunidade.inicioSugerido) throw new ErroNegocio("O encaixe da oferta mudou. Atualize a recomendação.", 409, "recompra_horario_mudou");
       if (inicio < Date.now()) throw new ErroNegocio("Esse encaixe já passou. Escolha outro horário.");
       const jaMarcado = await tx.agendamento.count({ where: { clienteId: atual.clienteId, servicoId: servico.id, status: { in: [...STATUS_ATIVOS] }, fim: { gt: new Date() } } });
       if (jaMarcado) throw new ErroNegocio("O cliente já tem esse serviço agendado.", 409);
@@ -65,14 +67,23 @@ export async function registrarOferta(s: Sessao, input: z.infer<typeof schemaOfe
       const preco = await precificar({ clienteId: atual.clienteId, servicoId: servico.id, barbeiroId: atual.barbeiroId, inicio, precoBase: sb.precoCentavos ?? servico.precoCentavos, fuso: cfg.fuso, forcarAvulso: true, c: tx });
       // Qualquer mudança de preço exige nova prévia; desconto vale somente neste serviço.
       if (preco.precoCentavos !== oportunidade.precoCentavos) throw new ErroNegocio("O preço mudou. Atualize a recomendação.", 409);
+      const diaEncaixe = dataLocal(inicio, cfg.fuso), competencia = diaEncaixe.slice(0, 7);
+      const [regras, extras, adicionaisBrutos] = await Promise.all([
+        regrasServicosNaCompetencia(competencia, tx), extrasNaCompetencia(competencia, tx),
+        tx.adicionalComissao.findMany({ where: { barbeiroId: atual.barbeiroId } }),
+      ]);
+      const adicionais = adicionaisBrutos.map(a => ({ ...a, inicio: a.inicio.toISOString().slice(0, 10), fim: a.fim?.toISOString().slice(0, 10) ?? null }));
+      const regra = escolherRegra(regras, servico.id, atual.barbeiroId);
+      const adicionalBps = adicionalNoDia(adicionais, atual.barbeiroId, preco.assinaturaId ? "ASSINATURA" : "AVULSO", diaEncaixe);
+      const comissao = !regra || (preco.assinaturaId && extras.assinaturas.ativo) ? null
+        : calcularComissao(regra, { modalidade: preco.assinaturaId ? "PLANO" : "AVULSO", preco: preco.precoCentavos, precoTabela: sb.precoCentavos ?? servico.precoCentavos }, adicionalBps).comissao;
+      if (comissao !== oportunidade.comissaoCentavos) throw new ErroNegocio("As regras de remuneração da oferta mudaram. Atualize a recomendação.", 409, "recompra_remuneracao_mudou");
       let desconto = 0;
       if (input.aplicarDesconto) {
         const politica = await tx.recompraConfig.findUniqueOrThrow({ where: { id: 1 } });
-        const regras = await tx.comissaoServico.findMany({ where: { servicoId: servico.id } });
-        const adicionais = (await tx.adicionalComissao.findMany({ where: { barbeiroId: atual.barbeiroId } })).map(a => ({ ...a, inicio: a.inicio.toISOString().slice(0, 10), fim: a.fim?.toISOString().slice(0, 10) ?? null }));
         desconto = descontoReativacao({ politica, preco: preco.precoCentavos, custo: servico.custoCentavos,
-          regra: escolherRegra(regras, servico.id, atual.barbeiroId), adicionalBps: adicionalNoDia(adicionais, atual.barbeiroId, "AVULSO", dia),
-          diasSemVisita: diasDecorridos(historico.visitas.get(atual.clienteId)!, dia, cfg.fuso), cobertoPlano: !!preco.assinaturaId,
+          regra, adicionalBps,
+          diasSemVisita: diasDecorridos(historico.visitas.get(atual.clienteId)!, diaEncaixe, cfg.fuso), cobertoPlano: !!preco.assinaturaId,
           expirou: !!registrada && +registrada.criadoEm + politica.descontoValidadeDias * DIA < Date.now(),
         });
         if (desconto !== oportunidade.descontoCentavos) throw new ErroNegocio("As condições da oferta mudaram. Atualize a recomendação.", 409);

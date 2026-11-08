@@ -77,7 +77,9 @@ export function CentralJogos() {
           </Link>
         ))}
       </div>
-      {c.assinante && c.multiplicador > 100 && <p className="text-center text-xs text-zinc-500">Assinante: prêmios em dinheiro valem x{(c.multiplicador / 100).toFixed(1)}.</p>}
+      {c.assinante && <ul className="space-y-1 text-center text-xs text-zinc-500" aria-label="Bônus de assinante por jogo">
+        {c.jogos.filter(j => j.multiplicador > 100).map(j => <li key={j.id}>{j.nome}: +{j.multiplicador - 100}% nos prêmios em dinheiro.</li>)}
+      </ul>}
     </div>
   );
 }

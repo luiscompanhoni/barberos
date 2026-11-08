@@ -9,11 +9,13 @@ it("bônus entra na folha do primeiro mês ainda aberto, com a pessoa travada", 
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-31T23:30:00-03:00"));
   const fechadas = new Set(["2026-10", "2026-11"]);
   const criar = vi.fn(async ({ data }) => ({ id: "l1", ...data }));
-  const lock = vi.fn();
-  const tx = { $queryRaw: lock, folhaPagamento: { findUnique: async ({ where }: { where: { competencia_pessoaId: { competencia: string } } }) => fechadas.has(where.competencia_pessoaId.competencia) ? { id: "f" } : null }, folhaLancamento: { create: criar } };
+  const lock = vi.fn(async () => [{ id: "p1" }]);
+  const tocar = vi.fn(async () => 1);
+  const tx = { $queryRaw: lock, $executeRaw: tocar, folhaPagamento: { findFirst: async ({ where }: { where: { competencia: string; ativa: boolean } }) => fechadas.has(where.competencia) && where.ativa ? { id: "f" } : null }, folhaLancamento: { create: criar } };
   const l = await lancarBonusNaFolha(tx as never, { pessoaId: "p1", valorCentavos: 5000, descricao: "Bônus", porId: "u", fuso: "America/Sao_Paulo" });
   vi.useRealTimers();
-  expect(lock).toHaveBeenCalledOnce();
+  expect(lock).toHaveBeenCalledTimes(2);
+  expect(tocar).toHaveBeenCalledOnce();
   expect(l).toMatchObject({ pessoaId: "p1", tipo: "BONUS", valorCentavos: 5000, competencia: "2026-12" });
 });
 it("sem ficha de RH: recusa antes de sortear", async () => {

@@ -30,7 +30,7 @@ class RecuperacaoTest(unittest.TestCase):
             executar.assert_not_called()
             self.assertFalse((codigo.parent / "operacao.json").exists())
 
-    def executar_cenario(self, falha, backup_sem_imagem=False):
+    def executar_cenario(self, falha, backup_sem_imagem=False, com_migracao=False):
         with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
             base = Path(d)
             commit = "a" * 40
@@ -43,10 +43,13 @@ class RecuperacaoTest(unittest.TestCase):
                       "Config": {"Env": ["DATABASE_URL=sentinela-db", "MAQUININHA=manual"], "Labels": {"com.docker.compose.project.config_files": str(base / "deploy/docker-compose.yml")}},
                       "State": {"Status": "running", "Health": {"Status": "healthy"}}, "NetworkSettings": {"Networks": {"barberos_default": {}}}}
             novo = {**antigo, "Image": "sha256:" + "c" * 64, "Config": {"Env": ["MAQUININHA=" + ("stone" if falha == "stone" else "manual")]}}
+            recuperado = {**antigo, "Config": {**antigo["Config"], "Env": [k + "=" + v for k, v in deploy.ambiente_rollback().items()]}}
             chamadas = []
 
             def comando(args, **_kw):
                 chamadas.append(args)
+                if falha == "migracao" and "migrate" in args:
+                    raise RuntimeError("Falha sintética após iniciar a migração")
                 if args[:3] == ["docker", "image", "inspect"]:
                     if backup_sem_imagem and args[-1] == antigo["Image"]:
                         raise RuntimeError("Imagem antiga de backup ausente")
@@ -65,9 +68,13 @@ class RecuperacaoTest(unittest.TestCase):
             simular("container", side_effect=[antigo, antigo, antigo, novo])
             simular("executar", side_effect=comando)
             simular("migracoes", return_value=[])
-            simular("conferir_migracoes", return_value=[])
+            simular("conferir_migracoes", side_effect=[["20261104224500_versao_sessao"] if com_migracao else [], []])
             simular("consultar_banco", return_value="1")
-            simular("aguardar_saude", side_effect=[antigo, novo, antigo])
+            simular("aguardar_saude", side_effect=[antigo, recuperado] if falha in ("backup", "agenda_pre_migracao") else [antigo, novo, recuperado])
+            simular("conferir_capacidade", return_value={"estimativaConservadora": True, "volumePostgres": "pg-ficticio"})
+            simular("exigir_banco_isolavel")
+            parar = simular("parar_escritores", return_value=[{"id": "caddy", "servico": "caddy"}])
+            simular("retomar_auxiliares")
             agenda = simular("exigir_agenda_equipe", return_value=True)
             pix = simular("exigir_contrato_pix_imagem", return_value=True)
             simular("conferir_central_desligada", return_value={"habilitada": True, "execucaoAtiva": False, "metaTokenConfigurado": False})
@@ -101,13 +108,21 @@ class RecuperacaoTest(unittest.TestCase):
             self.assertEqual((base / "deploy/docker-compose.yml").read_text(), "original")
             if falha == "backup":
                 self.assertFalse(ensaio.called)
-                self.assertFalse(any("up" in a or "migrate" in a for a in chamadas))
-                self.assertIsNone(registro["rollback"])
+                self.assertFalse(any("migrate" in a for a in chamadas))
+                self.assertTrue(registro["rollback"])
                 self.assertEqual(registro["etapaFalha"], "backup_e_restauracao")
             elif falha == "agenda_pre_migracao":
                 self.assertTrue(ensaio.called)
-                self.assertFalse(any("up" in a or "migrate" in a for a in chamadas))
+                self.assertFalse(any("migrate" in a for a in chamadas))
+                self.assertTrue(registro["rollback"])
+            elif com_migracao and falha:
+                self.assertTrue(registro["recuperacaoManualObrigatoria"])
                 self.assertIsNone(registro["rollback"])
+                self.assertFalse((codigo.parent / "rollback.json").exists())
+                marcador = json.loads((base / deploy.MARCADOR).read_text())
+                self.assertTrue(marcador["migrouOuIniciouMigracao"])
+                self.assertTrue(marcador["escritoresParados"])
+                self.assertGreaterEqual(parar.call_count, 2)
             elif falha in ("https", "agenda_saude", "agenda_final", "stone"):
                 self.assertTrue(registro["rollback"])
                 self.assertEqual(registro["etapaFalha"], "backup_apos_migracao" if falha == "agenda_final" else "troca_aplicacao")
@@ -115,12 +130,15 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertEqual(rollback["services"]["app"]["image"], antigo["Image"])
                 self.assertEqual(rollback["services"]["app"]["command"], ["node", "server.js"])
                 self.assertEqual(rollback["services"]["app"]["environment"]["MAQUININHA"], "manual")
-                self.assertTrue(any("stop" in a and "video-worker" in a for a in chamadas))
+                self.assertEqual(rollback["services"]["app"]["environment"], deploy.ambiente_rollback())
+                self.assertGreaterEqual(parar.call_count, 2)
             else:
                 self.assertTrue(ensaio.called)
                 self.assertEqual(backup.call_count, 2)
                 self.assertTrue(registro["concluido"])
                 self.assertTrue((base / "versao-ativa.json").is_file())
+                self.assertFalse((base / deploy.MARCADOR).exists())
+                self.assertEqual(resultado["rollbackAutomaticoPermitido"], not com_migracao)
                 self.assertEqual(registro["backupAnteriorPreservado"], not backup_sem_imagem)
                 override = json.loads((codigo / "deploy/versao.json").read_text())
                 self.assertEqual(override["services"]["app"]["environment"], CONTROLES_PUBLICACAO)
@@ -137,6 +155,14 @@ class RecuperacaoTest(unittest.TestCase):
 
     def test_falha_https_retorna_imagem_sem_restaurar_banco(self):
         self.executar_cenario("https")
+
+    def test_falha_apos_iniciar_migracao_mantem_isolamento_sem_rollback_de_dados(self):
+        for falha in ("migracao", "https"):
+            with self.subTest(falha=falha):
+                self.executar_cenario(falha, com_migracao=True)
+
+    def test_sucesso_migrado_remove_marcador_so_apos_controles_e_backup(self):
+        self.executar_cenario(None, com_migracao=True)
 
     def test_sucesso_exige_ensaio_e_backups_antes_e_depois(self):
         self.executar_cenario(None)

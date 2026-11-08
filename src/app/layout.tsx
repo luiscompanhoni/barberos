@@ -1,11 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Manrope } from "next/font/google";
+import localFont from "next/font/local";
 import { FaixaAmbiente } from "@/components/FaixaAmbiente";
 import "./globals.css";
 
 // Design system BarberOS: uma grotesca geometrica (Manrope), pesos leves e numeros grandes.
-const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"], weight: ["300", "400", "500", "600", "700", "800"] });
-const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+// Arquivos oficiais versionados: o build não consulta Google Fonts (origens/licenças em docs/fontes-locais.md).
+const manrope = localFont({ src: "./fonts/Manrope-Variable.ttf", variable: "--font-manrope", weight: "300 800", style: "normal", display: "swap" });
+const geistMono = localFont({ src: "./fonts/GeistMono-Variable.woff2", variable: "--font-geist-mono", weight: "100 900", style: "normal", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Black Barber",

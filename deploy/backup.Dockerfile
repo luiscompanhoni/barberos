@@ -8,7 +8,7 @@ RUN --mount=type=secret,id=build_ca,target=/etc/ssl/certs/ca-certificates.crt ap
     && for cmd in pg_dump psql createdb dropdb pg_isready; do ln -s "/usr/libexec/postgresql16/$cmd" "/usr/local/bin/$cmd"; done
 COPY --from=rclone_legado /usr/bin/rclone /usr/bin/rclone
 ENV PATH="/usr/libexec/postgresql16:${PATH}"
-COPY backup.sh backup-estudio.py /usr/local/bin/
-RUN chmod 0755 /usr/local/bin/backup.sh && chmod 0644 /usr/local/bin/backup-estudio.py
+COPY backup.sh backup-estudio.py backup-manifesto.py backup-conferencia.py /usr/local/bin/
+RUN chmod 0755 /usr/local/bin/backup.sh && chmod 0644 /usr/local/bin/backup-*.py
 ENTRYPOINT ["backup.sh"]
 CMD ["loop"]

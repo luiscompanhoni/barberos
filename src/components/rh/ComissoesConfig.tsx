@@ -7,6 +7,8 @@ import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
 type Tipo = "PERCENTUAL" | "FIXO";
 type Regra = { avulsoTipo: Tipo; avulsoValor: number; planoTipo: Tipo; planoValor: number };
 type Dados = {
+  revisao: string;
+  vigenciaPadrao: string;
   sugestao: Regra;
   barbeiros: { id: string; nome: string }[];
   servicos: (Regra & { id: string; nome: string; precoCentavos: number; salvo: boolean })[];
@@ -33,9 +35,11 @@ export function ComissoesConfig() {
   const [excecoes, setExcecoes] = useState<Excecao[]>([]);
   const [msg, setMsg] = useState<{ t: string; erro?: boolean } | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [competencia, setCompetencia] = useState("");
 
   function aplicar(x: Dados) {
     setD(x);
+    setCompetencia(x.vigenciaPadrao);
     setGerais(Object.fromEntries(x.servicos.map((s) => [s.id, paraForm(s)])));
     setExcecoes(x.excecoes.map((e) => ({ ...paraForm(e), chave: `e${++seq}`, servicoId: e.servicoId, barbeiroId: e.barbeiroId })));
   }
@@ -51,7 +55,7 @@ export function ComissoesConfig() {
     try {
       aplicar(await api<Dados>("/api/rh/comissoes", {
         method: "PUT",
-        body: { gerais: gs.map((g) => ({ servicoId: g.servicoId, ...g.regra! })), excecoes: es.map((e) => ({ servicoId: e.servicoId, barbeiroId: e.barbeiroId, ...e.regra! })) },
+        body: { competencia, revisao: d.revisao, gerais: gs.map((g) => ({ servicoId: g.servicoId, ...g.regra! })), excecoes: es.map((e) => ({ servicoId: e.servicoId, barbeiroId: e.barbeiroId, ...e.regra! })) },
       }));
       setMsg({ t: "Regras de comissão salvas." });
     } catch (e) {
@@ -65,6 +69,7 @@ export function ComissoesConfig() {
   const naoSalvos = d.servicos.filter((s) => !s.salvo).length;
   return (
     <div className="space-y-4">
+      <div className="cartao space-y-1"><label className="rotulo" htmlFor="vigencia-comissao-servicos">Aplicar estas regras a partir de</label><input id="vigencia-comissao-servicos" type="month" className="campo w-48" value={competencia} onChange={e => setCompetencia(e.target.value)} /><p className="text-xs text-zinc-500">O padrão é o próximo mês. As versões anteriores e as folhas fechadas são preservadas.</p></div>
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
       {naoSalvos > 0 && (
         <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">

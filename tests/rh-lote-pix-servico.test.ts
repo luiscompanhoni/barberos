@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ perm: vi.fn(), audit: vi.fn(), folhas: vi.fn(), lotes: vi.fn(), criar: vi.fn(), atualizar: vi.fn(), usuario: vi.fn(), trava: vi.fn(), transacao: vi.fn() }));
 vi.mock("@/lib/auth/permissoes", () => ({ exigirPermissao: m.perm }));
 vi.mock("@/lib/auditoria", () => ({ auditar: m.audit }));
@@ -7,18 +7,22 @@ import { prepararLotePix, previaLotePix } from "@/lib/rh/lote-pix";
 import { planejarLotePix } from "@/lib/rh/lote-pix-regras";
 import { ErroNegocio } from "@/lib/erros";
 import type { Sessao } from "@/lib/auth/sessao";
+import { protegerChavePix } from "@/lib/rh/pix-protegido";
 const sessao = { usuarioId: "dono-teste", papel: "DONO", nome: "Dono", barbeiroId: null, clienteId: null } as Sessao;
-const folha = { id: "f1", pessoaId: "p1", criadoEm: new Date("2026-11-01"), status: "FECHADA", salarioCentavos: 10000, comissaoCentavos: 0, adicionaisCentavos: 0, descontosCentavos: 0, liquidoCentavos: 10000, pessoa: { nome: "Pessoa sintética", chavePix: "pessoa@example.com", revisaoPix: 0, ativo: true } };
+const folha = { id: "f1", pessoaId: "p1", criadoEm: new Date("2026-11-01"), status: "FECHADA", salarioCentavos: 10000, comissaoCentavos: 0, adicionaisCentavos: 0, descontosCentavos: 0, liquidoCentavos: 10000, pessoa: { nome: "Pessoa sintética", chavePix: null as string | null, chavePixCifrada: null as string | null, chavePixMascarada: null as string | null, chavePixTipo: null as string | null, chavePixHash: null as string | null, revisaoPix: 0, ativo: true } };
 const tx = { $queryRaw: m.trava, usuario: { findUnique: m.usuario }, folhaPagamento: { findMany: m.folhas }, folhaLotePix: { findUnique: m.lotes, create: m.criar, update: m.atualizar } };
 let lote: { id: string; criadoEm: Date; conferidoEm: Date | null } | null;
 const dados = () => ({ competencia: "2026-11", revisao: planejarLotePix("2026-11", [folha]).revisao, acao: "preparar" as const });
 beforeEach(() => {
   vi.resetAllMocks(); lote = null;
+  vi.stubEnv("RH_PIX_ENCRYPTION_KEY", Buffer.alloc(32, 71).toString("base64"));
+  Object.assign(folha.pessoa, protegerChavePix(folha.pessoaId, "pessoa@example.com"));
   m.transacao.mockImplementation(async f => f(tx)); m.usuario.mockResolvedValue({ ativo: true, papel: "DONO" }); m.folhas.mockResolvedValue([folha]);
   m.lotes.mockImplementation(async () => lote);
   m.criar.mockImplementation(async () => lote = { id: "lote1", criadoEm: new Date(), conferidoEm: null });
   m.atualizar.mockImplementation(async ({ data }) => lote = { ...lote!, conferidoEm: data.conferidoEm });
 });
+afterEach(() => vi.unstubAllEnvs());
 describe("lote Pix local: serviço", () => {
   it("prévia devolve apenas chave mascarada, sem hash individual ou chave inteira", async () => {
     const r = await previaLotePix(sessao, "2026-11");

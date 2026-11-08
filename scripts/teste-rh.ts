@@ -1,6 +1,8 @@
-// Teste de integracao do RH (pontos do checklist, comissoes e folha) contra o banco de
-// DESENVOLVIMENTO. Cria e apaga os proprios dados. Rodar: npm run teste:rh
+// Integração do RH em banco local exclusivo por execução. Preserva os retratos e
+// suas dependências para inspeção; o coordenador descarta a base inteira depois.
 process.env.WHATSAPP_PROVIDER = "simulador";
+process.env.WHATSAPP_ENVIOS_BLOQUEADOS = "true";
+process.env.AMBIENTE = "homologacao";
 
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, instanteLocal } from "@/lib/agenda/tempo";
@@ -14,6 +16,7 @@ import { fecharFolha, lancar, pagarFolha, previaFolha, reabrirFolha } from "@/li
 import { criarAdicional, encerrarAdicional, excluirAdicional } from "@/lib/rh/adicionais";
 import { configExtras, salvarExtras } from "@/lib/rh/pote";
 import { salvarFicha } from "@/lib/rh/funcionarios";
+import { dadosRecebimento } from "@/lib/pagamentos/recebimento";
 
 const ok = (c: boolean, msg: string) => { console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); if (!c) process.exitCode = 1; };
 const falha = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error & { codigo?: string }; } };
@@ -21,14 +24,23 @@ const TEL = "5511933337201";
 const TEL_BARB = "5511933337202";
 const TEL_CLI = "5511933337203";
 const COMP = "2031-01"; // mes futuro: nao mistura com atendimentos reais
+const COMP_APURACAO = "2031-02";
+const COMP_SEM_POTE = "2031-03";
 
 async function main() {
+  const destino = new URL(process.env.DATABASE_URL ?? "");
+  if (!["postgres:", "postgresql:"].includes(destino.protocol) || destino.hostname !== "127.0.0.1"
+    || destino.port !== "55439" || destino.username !== "auditoria_teste"
+    || !/^\/barberos_ci_local_regr_rh_\d{8}$/.test(destino.pathname)) {
+    throw new Error("RH restrito ao banco local descartável barberos_ci_local_regr_rh_<8 dígitos>, usuário auditoria_teste, porta 55439.");
+  }
   const dono = await db.usuario.findFirstOrThrow({ where: { papel: "DONO" } });
   const s: Sessao = { usuarioId: dono.id, papel: "DONO", nome: dono.nome, barbeiroId: null, clienteId: null };
   const fuso = (await configuracao()).fuso;
   const hoje = dataLocal(Date.now(), fuso);
   const cfgAntes = await db.checklistConfig.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-  const excecoesAntes = await db.comissaoServico.findMany({ where: { barbeiroId: { not: null } } });
+  const regrasAntes = await db.comissaoServico.findMany();
+  const excecoesAntes = regrasAntes.filter(r => r.barbeiroId !== null);
   const jaAberto = await caixaAberto();
   if (jaAberto) await db.caixa.update({ where: { id: jaAberto.id }, data: { status: "FECHADO", fechadoEm: new Date(), observacao: "fechado pelo teste" } });
   const ids = { pessoa: "", tarefas: [] as string[], usuario: "", barbeiro: "", servico: "", cliente: "", plano: "", assinatura: "", ags: [] as string[], caixas: [] as string[], despesas: [] as string[], produto: "", comanda: "", comandaServico: "", estorno: "" };
@@ -63,7 +75,8 @@ async function main() {
     ok((await resumoPontos(p.id)).pontos === 10, "ré: perde os pontos da config (30 − 20 = 10)");
     ok(!lixoRe.feito && lixoRe.avaliacao === "RE" && lixoRe.motivoRe === "lixo ainda cheio", "ré: tarefa volta para não feita com o motivo");
     const msgRe = await db.mensagem.findFirst({ where: { conversa: { telefone: TEL }, texto: { contains: "você tomou uma ré" } } });
-    ok(!!msgRe && msgRe.texto.includes("−20 pts") && msgRe.texto.includes("[teste rh] Lixo"), "ré avisa o funcionário no WhatsApp");
+    ok(!!msgRe && msgRe.texto.includes("−20 pts") && msgRe.texto.includes("[teste rh] Lixo")
+      && !!msgRe.erro?.includes("bloqueados") && msgRe.wamid === null, "ré prepara o aviso, registrando bloqueio sem envio externo");
     const pub = (await listaPublica(p.token))!;
     ok(pub.pontos.pontos === 10 && pub.pontos.nivel === "ELITE" && pub.itens.find((i) => i.id === lixo.id)?.avaliacao === "RE", "link público mostra pontos, faixa e a ré");
 
@@ -111,21 +124,23 @@ async function main() {
     await ag(`${COMP}-12`, 0, true); // pelo plano
     await ag(`${COMP}-31`, 0, true); // pelo plano, ultimo dia do mes
     await ag(`${COMP}-20`, 5000, false, "MARCADO"); // nao atendido: fica fora
-    await ag("2031-02-01", 5000, false); // fora do mes
+    await ag(`${COMP_SEM_POTE}-01`, 5000, false); // fora de janeiro e da apuração de fevereiro
 
     const rel0 = await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id);
     ok(rel0.barbeiros[0]?.semRegra === 3 && rel0.total === 0, "serviço sem regra salva não gera comissão (e avisa)");
     await salvarComissoes(s, {
+      competencia: COMP,
       gerais: [{ servicoId: sv.id, avulsoTipo: "PERCENTUAL", avulsoValor: 4000, planoTipo: "FIXO", planoValor: 1500 }],
       excecoes: excecoesAntes.map((e) => ({ servicoId: e.servicoId, barbeiroId: e.barbeiroId!, avulsoTipo: e.avulsoTipo, avulsoValor: e.avulsoValor, planoTipo: e.planoTipo, planoValor: e.planoValor })),
     });
-    await salvarComissoes(s, { gerais: [{ servicoId: sv.id, avulsoTipo: "PERCENTUAL", avulsoValor: 4000, planoTipo: "FIXO", planoValor: 1500 }], excecoes: excecoesAntes.map((e) => ({ ...e, barbeiroId: e.barbeiroId! })) });
+    await salvarComissoes(s, { competencia: COMP, gerais: [{ servicoId: sv.id, avulsoTipo: "PERCENTUAL", avulsoValor: 4000, planoTipo: "FIXO", planoValor: 1500 }], excecoes: excecoesAntes.map((e) => ({ ...e, barbeiroId: e.barbeiroId! })) });
     ok((await db.comissaoServico.count({ where: { servicoId: sv.id, barbeiroId: null } })) === 1, "salvar duas vezes não duplica a regra geral (unique com NULL)");
     let rel = (await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id)).barbeiros[0];
     ok(rel.avulso.qtd === 1 && rel.avulso.base === 6000 && rel.avulso.comissao === 2400, `avulso: 40% do valor cobrado (R$ 60 → R$ 24) (${rel.avulso.comissao})`);
     ok(rel.plano.qtd === 2 && rel.plano.base === 10000 && rel.plano.comissao === 3000, `plano: R$ 15 fixo por corte, base = tabela (${rel.plano.comissao})`);
     ok(rel.total === 5400 && rel.atendimentos.length === 3, "só CONCLUIDO dentro do período entra no relatório");
     await salvarComissoes(s, {
+      competencia: COMP,
       gerais: [{ servicoId: sv.id, avulsoTipo: "PERCENTUAL", avulsoValor: 4000, planoTipo: "FIXO", planoValor: 1500 }],
       excecoes: [...excecoesAntes.map((e) => ({ ...e, barbeiroId: e.barbeiroId! })), { servicoId: sv.id, barbeiroId: b.id, avulsoTipo: "PERCENTUAL", avulsoValor: 5000, planoTipo: "PERCENTUAL", planoValor: 3000 }],
     });
@@ -134,7 +149,7 @@ async function main() {
     ok(rel.atendimentos.find((a) => a.modalidade === "PLANO")?.regra === "30% da tabela", "detalhe mostra a regra aplicada");
 
     // ================= FOLHA
-    await salvarFicha(s, p.id, { cargo: "Barbeiro", salarioCentavos: 200000, chavePix: "teste@pix", admissao: "2026-01-10", barbeiroId: b.id });
+    await salvarFicha(s, p.id, { cargo: "Barbeiro", salarioCentavos: 200000, competenciaSalario: COMP, admissao: "2026-01-10", barbeiroId: b.id });
     ok((await falha(() => lancar(s, { competencia: COMP, pessoaId: p.id, tipo: "VALE", valorCentavos: 5000, descricao: "vale", doCaixa: true })))?.codigo === "fechado", "vale do caixa exige caixa aberto");
     const cx = await abrirCaixa(s, 20000);
     ids.caixas.push(cx.id);
@@ -160,17 +175,28 @@ async function main() {
     const pago = await pagarFolha(s, COMP, p.id, "PIX");
     if (pago.despesaId) ids.despesas.push(pago.despesaId);
     const desp = pago.despesaId ? await db.despesa.findUnique({ where: { id: pago.despesaId } }) : null;
-    const folha = await db.folhaPagamento.findUnique({ where: { competencia_pessoaId: { competencia: COMP, pessoaId: p.id } } });
+    const folha = await db.folhaPagamento.findFirst({ where: { competencia: COMP, pessoaId: p.id, ativa: true } });
     ok(!!desp && desp.categoria === "FOLHA" && desp.status === "PAGA" && desp.valorCentavos === 211500 && !!desp.pagoEm && desp.formaPagamento === "PIX", "pagar cria a despesa FOLHA paga com o líquido");
     ok(folha?.status === "PAGA" && folha.despesaId === desp?.id && !!folha.pagoEm, "folha fica PAGA ligada à despesa");
     ok((await falha(() => reabrirFolha(s, COMP, p.id)))?.codigo === "ja_paga", "folha paga não reabre");
     ok((await falha(() => pagarFolha(s, COMP, p.id)))?.codigo === "ja_paga", "não paga duas vezes");
 
     // ================= COMISSAO DAS ASSINATURAS, COMISSAO DIFERENCIADA E PRODUTOS
-    // Atendimentos do barbeiro no mes: avulsos de R$ 60 (dia 5) e R$ 50 (dia 15), plano nos dias 12 e 31 (excecao: 50% avulso).
-    await db.cobranca.create({ data: { assinaturaId: as.id, gatewayId: "teste-rh-pote-1", valorCentavos: 100000, vencimento: new Date(`${COMP}-10T00:00:00Z`), status: "PAGA", pagaEm: new Date(instanteLocal(`${COMP}-10`, 600, fuso)) } });
-    ok((await falha(() => salvarExtras(s, { assinaturas: { ativo: true, percentualBps: 3500, creditos: [] }, faixas: [] })))?.message.includes("créditos") === true, "comissão das assinaturas ligada sem créditos é recusada");
+    // Janeiro está pago. Fevereiro é outra competência aberta, sem reescrever o retrato.
+    await ag(`${COMP_APURACAO}-05`, 6000, false);
+    await ag(`${COMP_APURACAO}-12`, 0, true);
+    await ag(`${COMP_APURACAO}-28`, 0, true);
+    await ag(`${COMP_APURACAO}-15`, 5000, false);
+    const pagoEmPote = new Date(instanteLocal(`${COMP_APURACAO}-10`, 600, fuso));
+    const prova = dadosRecebimento({ id: "teste-rh-pote-1", assinaturaGatewayId: null, valorCentavos: 100000,
+      vencimento: `${COMP_APURACAO}-10`, status: "PAGA", pagaEm: pagoEmPote.toISOString(), link: null,
+      recebimento: { fonte: "simulado", referencia: "teste-rh-pote-1", status: "PAGA", valorCentavos: 100000,
+        em: pagoEmPote.toISOString(), campoValor: "fixture.valorCentavos", campoData: "fixture.pagoEm" } });
+    await db.cobranca.create({ data: { assinaturaId: as.id, gatewayId: "teste-rh-pote-1", valorCentavos: 100000,
+      vencimento: new Date(`${COMP_APURACAO}-10T00:00:00Z`), status: "PAGA", pagaEm: pagoEmPote, ...prova } });
+    ok((await falha(() => salvarExtras(s, { competencia: COMP_APURACAO, assinaturas: { ativo: true, percentualBps: 3500, creditos: [] }, faixas: [] })))?.message.includes("créditos") === true, "comissão das assinaturas ligada sem créditos é recusada");
     await salvarExtras(s, {
+      competencia: COMP_APURACAO,
       assinaturas: { ativo: true, percentualBps: 3500, creditos: [{ servicoId: sv.id, creditos: 40 }] },
       faixas: [{ categoria: "LOJA", minimoCentavos: 10000, percentualBps: 500 }, { categoria: "LOJA", minimoCentavos: 12000, percentualBps: 1000 }, { categoria: "BAR", minimoCentavos: 10000, percentualBps: 100 }],
     });
@@ -179,10 +205,10 @@ async function main() {
     // Estorno de R$ 100 de mensalidade feito no mes: sai da Receita Distribuivel.
     ids.estorno = (await db.pedidoEstorno.create({ data: {
       tipo: "MENSALIDADE", referenciaId: "teste-rh-pote-1", valorCentavos: 10000, valorOriginalCentavos: 100000, motivo: "[teste rh]", status: "EXECUTADO",
-      meio: "SIMULADO", forma: "ONLINE", descricao: "[teste rh] mensalidade", executadoEm: new Date(instanteLocal(`${COMP}-25`, 600, fuso)),
+      meio: "SIMULADO", forma: "ONLINE", descricao: "[teste rh] mensalidade", executadoEm: new Date(instanteLocal(`${COMP_APURACAO}-25`, 600, fuso)),
     } })).id;
     // Avulso do dia 5 numa comanda com outro item de R$ 40 e R$ 10 de desconto: o corte vale R$ 54.
-    const agAvulso = await db.agendamento.findFirstOrThrow({ where: { barbeiroId: b.id, inicio: new Date(instanteLocal(`${COMP}-05`, 600, fuso)) } });
+    const agAvulso = await db.agendamento.findFirstOrThrow({ where: { barbeiroId: b.id, inicio: new Date(instanteLocal(`${COMP_APURACAO}-05`, 600, fuso)) } });
     const cmServ = await db.comanda.create({ data: { status: "FECHADA", clienteId: cli.id, descontoCentavos: 1000, abertaEm: agAvulso.inicio, fechadaEm: agAvulso.fim } });
     ids.comandaServico = cmServ.id;
     await db.itemComanda.createMany({ data: [
@@ -192,10 +218,11 @@ async function main() {
     await db.pagamentoComanda.create({ data: { comandaId: cmServ.id, forma: "PIX", valorCentavos: 9000, status: "PAGO", pagoEm: agAvulso.fim } });
     const prod = await db.produto.create({ data: { nome: "[teste rh] Pomada", categoria: "LOJA", precoCentavos: 5000 } });
     ids.produto = prod.id;
-    const cm = await db.comanda.create({ data: { status: "FECHADA", abertaEm: new Date(instanteLocal(`${COMP}-20`, 600, fuso)), fechadaEm: new Date(instanteLocal(`${COMP}-20`, 620, fuso)), clienteId: cli.id } });
+    const cm = await db.comanda.create({ data: { status: "FECHADA", abertaEm: new Date(instanteLocal(`${COMP_APURACAO}-20`, 600, fuso)), fechadaEm: new Date(instanteLocal(`${COMP_APURACAO}-20`, 620, fuso)), clienteId: cli.id } });
     ids.comanda = cm.id;
     await db.itemComanda.create({ data: { comandaId: cm.id, produtoId: prod.id, descricao: prod.nome, quantidade: 3, precoUnitCentavos: 5000, barbeiroId: b.id } });
-    const relAss = await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id);
+    await db.pagamentoComanda.create({ data: { comandaId: cm.id, forma: "PIX", valorCentavos: 15000, status: "PAGO", pagoEm: cm.fechadaEm } });
+    const relAss = await relatorioComissoes(`${COMP_APURACAO}-01`, `${COMP_APURACAO}-28`, b.id);
     rel = relAss.barbeiros[0];
     ok(relAss.assinaturas?.recebidoCentavos === 100000 && relAss.assinaturas.estornosCentavos === 10000 && relAss.assinaturas.distribuivelCentavos === 90000 && relAss.assinaturas.creditosTotal === 80,
       `Receita de Assinaturas R$ 1.000 − estorno R$ 100 = Receita Distribuível R$ 900, 80 créditos (${JSON.stringify(relAss.assinaturas)})`);
@@ -205,9 +232,24 @@ async function main() {
     ok(rel.avulso.base === 5400 + 5000 && rel.avulso.comissao === 2700 + 2500, `avulso sobre o valor cobrado: corte de R$ 60 com desconto proporcional vale R$ 54 (${rel.avulso.base} / ${rel.avulso.comissao})`);
     ok(rel.produtos?.vendido === 15000 && rel.produtos.comissao === 1500, `produtos: R$ 150 na loja → faixa de 10% = R$ 15 (${rel.produtos?.comissao})`);
     ok(rel.total === 5200 + 36000 + 1500, `total = avulso + assinaturas + produtos (${rel.total})`);
-    ok(relAss.competencia === COMP && rel.folha?.salario === 200000 && rel.folha.bonus === 10000 && rel.folha.descontos === 7000 && rel.folha.status === "PAGA" && rel.folha.totalAPagar === 200000 + 42700 + 10000 - 7000,
-      `mês inteiro: folha junto (salário + comissões + bônus − descontos) (${JSON.stringify(rel.folha)})`);
-    ok((await relatorioComissoes(`${COMP}-02`, `${COMP}-31`, b.id)).barbeiros[0].folha === null, "período que não é mês inteiro não mostra a folha");
+    ok(relAss.competencia === COMP_APURACAO && rel.fonte === "APURACAO_ATUAL" && rel.folha?.salario === 200000
+      && rel.folha.bonus === 0 && rel.folha.descontos === 0 && rel.folha.status === "ABERTA" && rel.folha.totalAPagar === 242700,
+      `mês aberto: salário + apuração atual de comissões, sem bônus/desconto de janeiro (${JSON.stringify(rel.folha)})`);
+    await ag(`${COMP}-18`, 2000, false);
+    const janeiro = (await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id)).barbeiros[0];
+    // O fixture migrou +5 pontos de assinatura desde2000 depois do pagamento:
+    // recálculo = avulso6500 + plano3500 (inclui500 de adicional), sem alterar8500 pagos.
+    ok(janeiro.fonte === "RETRATO_FECHADO" && janeiro.total === 8500 && janeiro.folha?.status === "PAGA"
+      && janeiro.folha.totalAPagar === 211500 && janeiro.avulso.comissao === 5500 && janeiro.plano.comissao === 3000
+      && janeiro.recalculoAtual.total === 10000 && janeiro.recalculoAtual.avulso.comissao === 6500
+      && janeiro.recalculoAtual.plano.comissao === 3500 && janeiro.recalculoAtual.plano.adicional === 500 && janeiro.atendimentos.length === 0,
+      `FIN-02: folha paga/comissão congelada preservadas; recálculo inclui adicional legado separado (${JSON.stringify({
+        fonte: janeiro.fonte, status: janeiro.folha?.status, comissaoCongelada: janeiro.total, totalPago: janeiro.folha?.totalAPagar,
+        recalculo: janeiro.recalculoAtual.total, avulsoAtual: janeiro.recalculoAtual.avulso.comissao, planoAtual: janeiro.recalculoAtual.plano.comissao,
+        adicionalPlanoAtual: janeiro.recalculoAtual.plano.adicional,
+      })})`);
+    ok((await previaFolha(COMP)).linhas.find(l => l.pessoaId === p.id)?.mudouDepois === true, "prévia sinaliza mudança posterior sem reescrever o salário pago");
+    ok((await relatorioComissoes(`${COMP_APURACAO}-02`, `${COMP_APURACAO}-28`, b.id)).barbeiros[0].folha === null, "período que não é mês inteiro não mostra a folha");
 
     // Regras da comissão diferenciada (o mês de teste está com a folha paga).
     const novoAdic = { barbeiroId: b.id, modalidade: "ASSINATURA" as const, pontosBps: 200, motivo: "[teste rh] meta", inicio: `${COMP}-10`, fim: null };
@@ -221,47 +263,41 @@ async function main() {
     await excluirAdicional(s, futuro.id);
     ok(!(await db.adicionalComissao.findUnique({ where: { id: futuro.id } })), "adicional que ainda não começou pode ser apagado");
     ok((await db.auditoria.count({ where: { entidade: "adicional_comissao", entidadeId: { in: [adicAntigo.id, futuro.id] } } })) === 3, "criar, encerrar e apagar ficam na auditoria");
-    await db.adicionalComissao.delete({ where: { id: adicAntigo.id } });
+    // O adicional encerrado permanece como prova da apuração de fevereiro.
 
     const extras = await configExtras();
     await salvarExtras(s, {
+      competencia: COMP_SEM_POTE,
       assinaturas: { ativo: false, percentualBps: extras.assinaturas.percentualBps, creditos: extras.assinaturas.creditos.map(({ servicoId, creditos }) => ({ servicoId, creditos })) },
       faixas: extras.faixas,
     });
-    rel = (await relatorioComissoes(`${COMP}-01`, `${COMP}-31`, b.id)).barbeiros[0];
+    await ag(`${COMP_SEM_POTE}-12`, 0, true);
+    await ag(`${COMP_SEM_POTE}-31`, 0, true);
+    rel = (await relatorioComissoes(`${COMP_SEM_POTE}-01`, `${COMP_SEM_POTE}-31`, b.id)).barbeiros[0];
     ok(rel.assinaturas === null && rel.plano.comissao === 3000, `comissão das assinaturas desligada volta a regra pelo plano (30% da tabela) (${rel.plano.comissao})`);
+    ok((await relatorioComissoes(`${COMP_APURACAO}-01`, `${COMP_APURACAO}-28`, b.id)).barbeiros[0].total === 42700,
+      "versão de março não altera a apuração de fevereiro");
   } finally {
-    if (ids.comanda) await db.comanda.delete({ where: { id: ids.comanda } });
-    if (ids.comandaServico) await db.comanda.delete({ where: { id: ids.comandaServico } });
-    if (ids.estorno) await db.pedidoEstorno.delete({ where: { id: ids.estorno } });
-    await db.adicionalComissao.deleteMany({ where: { barbeiroId: ids.barbeiro || "-" } });
-    if (ids.produto) await db.produto.delete({ where: { id: ids.produto } });
+    // Base exclusiva: conservar folha paga, versões imutáveis, auditoria e todas
+    // as dependências do retrato. Só restaurar configurações atuais mutáveis.
     await db.poteConfig.deleteMany({});
     if (poteAntes.cfg) await db.poteConfig.create({ data: poteAntes.cfg });
     await db.poteFicha.deleteMany({});
     if (poteAntes.fichas.length) await db.poteFicha.createMany({ data: poteAntes.fichas });
     await db.comissaoProdutoFaixa.deleteMany({});
     if (poteAntes.faixas.length) await db.comissaoProdutoFaixa.createMany({ data: poteAntes.faixas });
-    await db.despesa.deleteMany({ where: { id: { in: ids.despesas } } });
-    await db.caixa.deleteMany({ where: { id: { in: ids.caixas } } });
+    await db.caixa.updateMany({ where: { id: { in: ids.caixas }, status: "ABERTO" }, data: { status: "FECHADO", fechadoEm: new Date(), observacao: "[teste rh] preservado para inspeção" } });
     if (jaAberto) await db.caixa.update({ where: { id: jaAberto.id }, data: { status: "ABERTO", fechadoEm: null, observacao: null } });
-    await db.agendamento.deleteMany({ where: { id: { in: ids.ags } } });
-    if (ids.assinatura) await db.assinatura.delete({ where: { id: ids.assinatura } });
-    if (ids.plano) await db.plano.delete({ where: { id: ids.plano } });
-    if (ids.cliente) await db.cliente.delete({ where: { id: ids.cliente } });
-    if (ids.servico) await db.servico.delete({ where: { id: ids.servico } });
-    if (ids.pessoa) await db.checklistPessoa.delete({ where: { id: ids.pessoa } });
-    if (ids.barbeiro) await db.barbeiro.delete({ where: { id: ids.barbeiro } });
-    if (ids.usuario) await db.usuario.delete({ where: { id: ids.usuario } });
-    await db.checklistItem.deleteMany({ where: { tarefaId: { in: ids.tarefas } } });
-    await db.checklistTarefa.deleteMany({ where: { id: { in: ids.tarefas } } });
-    // Restaura as excecoes de comissao e a config do checklist como estavam.
-    await db.comissaoServico.deleteMany({ where: { barbeiroId: { not: null } } });
-    if (excecoesAntes.length) await db.comissaoServico.createMany({ data: excecoesAntes });
+    if (ids.cliente) await db.cliente.update({ where: { id: ids.cliente }, data: { aceitaMensagens: false } });
+    if (ids.servico) await db.servico.update({ where: { id: ids.servico }, data: { ativo: false } });
+    if (ids.pessoa) await db.checklistPessoa.update({ where: { id: ids.pessoa }, data: { ativo: false } });
+    if (ids.barbeiro) await db.barbeiro.update({ where: { id: ids.barbeiro }, data: { ativo: false } });
+    if (ids.usuario) await db.usuario.update({ where: { id: ids.usuario }, data: { ativo: false } });
+    if (ids.produto) await db.produto.update({ where: { id: ids.produto }, data: { ativo: false } });
+    await db.checklistTarefa.updateMany({ where: { id: { in: ids.tarefas } }, data: { ativo: false } });
+    await db.comissaoServico.deleteMany({});
+    if (regrasAntes.length) await db.comissaoServico.createMany({ data: regrasAntes });
     await db.checklistConfig.update({ where: { id: 1 }, data: cfgAntes });
-    const conv = await db.conversa.findMany({ where: { telefone: { in: [TEL, TEL_BARB, TEL_CLI] } }, select: { id: true } });
-    await db.mensagem.deleteMany({ where: { conversaId: { in: conv.map((c) => c.id) } } });
-    await db.conversa.deleteMany({ where: { id: { in: conv.map((c) => c.id) } } });
   }
   console.log(process.exitCode ? "\nAlgum teste FALHOU." : "\nTodos os testes passaram.");
 }

@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
-from deploy_vps_comum import (CONTROLES_PUBLICACAO, PROVA_CONTRATO_PIX, conferir_migracoes, conferir_pacote,
+from deploy_vps_comum import (CONTROLES_PUBLICACAO, GRUPOS_ESTRUTURA_BACKUP, PROVA_CONTRATO_PIX, backup_verificado, conferir_migracoes, conferir_pacote,
                               conferir_central_desligada, exigir_agenda_equipe, exigir_contrato_pix_imagem, exigir_migracoes_da_publicacao)
 from receber_release import receber
 
@@ -26,6 +26,24 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_estabilizacao_aceita_somente_as_doze_migracoes_nominais_revisadas(self):
+        revisadas = [
+            "20261108010000_adicional_reserva_agenda", "20261108011000_identidade_importacao_stone",
+            "20261108012000_prova_recebimento", "20261108013000_pix_protegido",
+            "20261108014000_comissao_geral_unica", "20261108015000_remuneracao_vigencias",
+            "20261108016000_conciliacao_despesas", "20261108017000_recebimento_pendente",
+            "20261108018000_evento_pagamento_recuperavel", "20261108019000_folha_identidade_congelada",
+            "20261108020000_pote_arredondamento_versionado", "20261108030000_folha_retificacao_teste",
+        ]
+        exigir_migracoes_da_publicacao(revisadas)
+        for nome in revisadas:
+            exigir_migracoes_da_publicacao([nome])
+            self.assertTrue((Path(__file__).resolve().parents[2] / "prisma/migrations" / nome / "migration.sql").is_file())
+            with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+                exigir_migracoes_da_publicacao([nome + "_extra"])
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao(revisadas + ["20261108031000_nao_revisada"])
+
     def test_publicacao_aceita_somente_as_tres_novas_migracoes_de_cliente(self):
         nomes = ["20261104223000_cliente_pedidos_login_planos", "20261104224000_verificacao_telefone", "20261104224500_versao_sessao"]
         exigir_migracoes_da_publicacao(nomes)
@@ -162,6 +180,24 @@ class DeployTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Histórico"):
                 conferir_migracoes(m, pasta)
 
+    def test_backup_novo_exige_os_oito_grupos_incluindo_enums(self):
+        for completo in (False, True):
+            with self.subTest(completo=completo), tempfile.TemporaryDirectory() as d:
+                base = Path(d); (base / "backups").mkdir()
+                def gerar(*_args, **_kw):
+                    nome = base / "backups/barberos-20261108-120000.sql.gz"
+                    nome.write_bytes(b"dump-sintetico")
+                    nome.with_name(nome.name.removesuffix(".sql.gz") + ".studio.tar.gz").write_bytes(b"midia-sintetica")
+                    grupos = GRUPOS_ESTRUTURA_BACKUP if completo else GRUPOS_ESTRUTURA_BACKUP - {"enums"}
+                    ref = {"formato": 1, "snapshotConsistente": True, "dumpSha256": hashlib.sha256(nome.read_bytes()).hexdigest(), "tabelas": {}, "estrutura": {g: [] for g in grupos}}
+                    nome.with_name(nome.name.removesuffix(".sql.gz") + ".manifesto.json").write_text(json.dumps(ref))
+                with patch("deploy_vps_comum.executar", side_effect=gerar):
+                    if not completo:
+                        with self.assertRaisesRegex(RuntimeError, "grupos estruturais"):
+                            backup_verificado(base, "imagem-fixture", "rede-fixture", base / "env-fixture", "midia-fixture", volume_banco="pg-fixture")
+                    else:
+                        r = backup_verificado(base, "imagem-fixture", "rede-fixture", base / "env-fixture", "midia-fixture", volume_banco="pg-fixture")
+                        self.assertEqual(r["gruposSchemaConferidos"], sorted(GRUPOS_ESTRUTURA_BACKUP))
     def test_recebe_nova_pasta_confere_hashes_e_preserva_instalacao(self):
         with tempfile.TemporaryDirectory() as d:
             base = Path(d)

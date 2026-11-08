@@ -25,6 +25,8 @@ vi.mock("@/lib/eventos", () => ({ publicar: m.publicar }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: async () => ({ cashbackAtivo: false }) }));
 vi.mock("@/lib/comandas/estoque", () => ({ movimentar: vi.fn() }));
 vi.mock("@/lib/comandas/adicional", () => ({ cancelarAdicionalDoItem: m.adicional }));
+// Esta suíte exercita o piso financeiro; reservas reais são cobertas no PostgreSQL descartável.
+vi.mock("@/lib/comandas/agenda-comanda", () => ({ travarAgendaComanda: vi.fn(), validarRemocaoAgendada: vi.fn(), validarConclusaoAgendada: vi.fn(), cancelarPendentesAgendados: async () => [], publicarMudancasAgenda: vi.fn() }));
 vi.mock("@/lib/links/servico", () => ({ cancelarLinksDaComanda: m.cancelarLinks }));
 vi.mock("@/lib/jogos/motor", () => ({ premioParaCliente: vi.fn() }));
 

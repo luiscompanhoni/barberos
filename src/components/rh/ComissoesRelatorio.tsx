@@ -5,19 +5,23 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
 import { ContadorCrm } from "@/components/visual/ContadorCrm";
+import { ResumoRateioAssinaturas } from "./ResumoRateioAssinaturas";
+import type { ConciliacaoAssinaturas } from "@/lib/rh/rateio-assinaturas";
 
-type Soma = { qtd: number; base: number; comissao: number; adicional: number };
+type Soma = { qtd: number; base: number; comissao: number; adicional?: number };
 type Atend = { id: string; inicio: string; cliente: string; servico: string; modalidade: "AVULSO" | "PLANO"; base: number; regra: string; comissao: number };
-type Assinaturas = { qtd: number; creditos: number; receitaAtribuida: number; percentualBaseBps: number; adicionalBps: number; comissaoBase: number; adicionalCentavos: number; comissao: number };
+type Assinaturas = { qtd: number; creditos: number; receitaAtribuida: number; percentualBaseBps?: number; adicionalBps?: number; comissaoBase?: number; adicionalCentavos?: number; comissao: number };
 type Produtos = { vendido: number; comissao: number; categorias: { categoria: "BAR" | "LOJA"; vendido: number; percentualBps: number; comissao: number }[] };
 type Folha = { salario: number; bonus: number; descontos: number; totalAPagar: number; status: "ABERTA" | "FECHADA" | "PAGA" };
 type Linha = {
   barbeiroId: string; nome: string; avulso: Soma; plano: Soma; assinaturas: Assinaturas | null; produtos: Produtos | null;
   folha: Folha | null; total: number; semRegra: number; atendimentos: Atend[];
+  fonte?: "RETRATO_FECHADO" | "APURACAO_ATUAL"; memoriaDisponivel?: boolean; recalculoAtual?: { total: number };
 };
 type Dados = {
   inicio: string; fim: string; competencia: string | null; total: number; barbeiros: Linha[];
-  assinaturas: { recebidoCentavos: number; estornosCentavos: number; distribuivelCentavos: number; creditosTotal: number; valorCreditoCentavos: number; percentualBaseBps: number } | null;
+  recebimentos?: { completo: boolean; pendentes: number }; regrasLegadas?: boolean;
+  assinaturas: { recebidoCentavos: number; estornosCentavos: number; distribuivelCentavos: number; creditosTotal: number; valorCreditoCentavos: number; percentualBaseBps: number; conciliacao?: ConciliacaoAssinaturas } | null;
 };
 const pct = (bps: number) => `${(bps / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 const pts = (bps: number) => `${bps >= 0 ? "+" : "−"}${(Math.abs(bps) / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} pts`;
@@ -53,14 +57,17 @@ export function ComissoesRelatorio() {
         {d && <p className="ml-auto text-sm">Comissões do período: <b className="text-lg font-normal text-ouro"><ContadorCrm valor={d.total} formatar={reais} /></b></p>}
       </div>
       {erro && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      {d?.recebimentos && !d.recebimentos.completo && <p role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{d.recebimentos.pendentes} mensalidade(s) aguardam comprovação do recebido. O cálculo aberto é provisório.</p>}
+      {d?.regrasLegadas && <p className="text-xs text-amber-800">Parte das regras vem do cadastro legado observado. A vigência histórica ainda precisa de conferência; folhas fechadas mantêm seu retrato.</p>}
       {a && (
         <div className="rounded-xl bg-zinc-100 p-3 text-sm">
           <b>Receita de Assinaturas</b> {reais(a.recebidoCentavos)}
           {a.estornosCentavos > 0 && <> − estornos {reais(a.estornosCentavos)}</>} = <b>Receita Distribuível</b> {reais(a.distribuivelCentavos)},
           dividida por <b>{a.creditosTotal} Créditos de Atendimento</b>{a.creditosTotal ? <> ({reais(a.valorCreditoCentavos)} por crédito)</> : null}.
-          Percentual base: <b>{pct(a.percentualBaseBps)}</b>.
+          Percentual base do recálculo: <b>{pct(a.percentualBaseBps)}</b>. Os valores de folhas fechadas são mostrados a partir do retrato histórico.
         </div>
       )}
+      {a?.conciliacao && <ResumoRateioAssinaturas dados={a.conciliacao} nomes={Object.fromEntries(d?.barbeiros.map(b => [b.barbeiroId, b.nome]) ?? [])} />}
       {d && !d.competencia && <p className="text-xs text-zinc-500">Escolha um mês inteiro (dia 1 ao último dia) para ver bônus, descontos e o total a pagar de cada um.</p>}
       {d && d.barbeiros.length > 0 && <section className="cartao space-y-4"><h2 className="font-semibold">Comissões por profissional</h2><p className="text-xs text-zinc-500">Comissões apuradas no período selecionado. Salário, bônus e descontos permanecem na folha.</p><GraficoBarrasCrm rotulo="Comissões do período por profissional" formatar={reais} itens={d.barbeiros.map(b => ({ rotulo: b.nome, valor: b.total }))} /></section>}
       {d && d.barbeiros.length === 0 && <div className="cartao text-sm text-zinc-500">Nenhum atendimento concluído no período.</div>}
@@ -77,6 +84,7 @@ export function ComissoesRelatorio() {
             <span className="w-28 text-right text-lg font-black text-ouro" title="Total de comissões">{reais(b.total)}</span>
           </button>
           {b.semRegra > 0 && <p className="text-xs text-amber-700">{b.semRegra} atendimento(s) de serviço sem regra salva (não geraram comissão). Configure em “Regras de comissão”.</p>}
+          {b.fonte === "RETRATO_FECHADO" && <p className="text-xs text-zinc-500">Valores congelados da folha. {b.recalculoAtual && b.recalculoAtual.total !== b.total ? `Recálculo atual de comissão: ${reais(b.recalculoAtual.total)}. O histórico foi preservado.` : ""}{b.memoriaDisponivel === false ? " Memória detalhada antiga indisponível." : ""}</p>}
           {aberto === b.barbeiroId && (
             <div className="space-y-3">
               <div className="max-w-md text-sm">
@@ -85,8 +93,10 @@ export function ComissoesRelatorio() {
                     <Item rotulo="Receita de Assinaturas (de todos)" valor={reais(a.recebidoCentavos)} />
                     <Item rotulo="Créditos de Atendimento" valor={`${b.assinaturas.creditos} de ${a.creditosTotal}`} sub={`${b.assinaturas.qtd} pelo plano`} />
                     <Item rotulo="Receita atribuída" valor={reais(b.assinaturas.receitaAtribuida)} />
-                    <Item rotulo="Percentual base" valor={pct(b.assinaturas.percentualBaseBps)} sub={reais(b.assinaturas.comissaoBase)} />
-                    {b.assinaturas.adicionalBps !== 0 && <Item rotulo="Adicional diferenciado" valor={pts(b.assinaturas.adicionalBps)} sub={reais(b.assinaturas.adicionalCentavos)} />}
+                    {b.assinaturas.percentualBaseBps !== undefined && <Item rotulo="Percentual base" valor={pct(b.assinaturas.percentualBaseBps)} sub={b.assinaturas.comissaoBase === undefined ? undefined : reais(b.assinaturas.comissaoBase)} />}
+                    {(b.assinaturas.adicionalCentavos !== undefined && b.assinaturas.adicionalCentavos !== 0) || !!b.assinaturas.adicionalBps
+                      ? <Item rotulo="Adicional diferenciado" valor={reais(b.assinaturas.adicionalCentavos ?? 0)} sub={b.assinaturas.adicionalBps === undefined ? undefined : `${pts(b.assinaturas.adicionalBps)} médios antes dos limites por atendimento`} />
+                      : null}
                     <Item rotulo="Comissão de assinaturas" valor={reais(b.assinaturas.comissao)} forte />
                   </>
                 )}

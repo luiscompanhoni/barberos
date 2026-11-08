@@ -6,24 +6,25 @@
  * Estorno: o recebimento original fica na data dele e o estorno desconta na data em que foi feito.
  */
 import { dataLocal } from "@/lib/agenda/tempo";
+import type { Prisma } from "@prisma/client";
 import { foiRecebido, resumoComanda } from "@/lib/comandas/regras";
-import { estornosEfetivos, mensalidadesEstornadas } from "@/lib/estornos/financeiro";
+import { estornosEfetivos } from "@/lib/estornos/financeiro";
+import { recebimentosMensalidades } from "./recebimentos";
 import { somarPorForma } from "@/lib/estornos/regras";
 import { db } from "@/lib/db";
 import { janelaMes } from "./despesas";
 import { mesAnterior, serieDiaria, variacao } from "./regras";
 
-async function numerosMes(mes: string) {
-  const { gte, lt, fuso } = await janelaMes(mes);
+async function numerosMes(mes: string, c: Prisma.TransactionClient = db) {
+  const { gte, lt, fuso } = await janelaMes(mes, c);
   const janela = { gte, lt };
-  const estornadas = await mensalidadesEstornadas();
   const [comandas, antecipados, cobrancas, links, despesas, estornos] = await Promise.all([
-    db.comanda.findMany({ where: { status: "FECHADA", fechadaEm: janela }, include: { itens: true, pagamentos: true } }),
-    db.pagamentoAntecipado.findMany({ where: { status: { in: ["PAGO", "CREDITADO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
-    db.cobranca.findMany({ where: { OR: [{ status: "PAGA" }, { status: "ESTORNADA", id: { in: estornadas } }], pagaEm: janela }, select: { valorCentavos: true, pagaEm: true } }),
-    db.linkPagamento.findMany({ where: { status: { in: ["PAGO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
-    db.despesa.findMany({ where: { status: "PAGA", pagoEm: janela }, select: { categoria: true, valorCentavos: true, pagoEm: true } }),
-    estornosEfetivos(janela),
+    c.comanda.findMany({ where: { status: "FECHADA", fechadaEm: janela }, include: { itens: true, pagamentos: true } }),
+    c.pagamentoAntecipado.findMany({ where: { status: { in: ["PAGO", "CREDITADO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
+    recebimentosMensalidades(janela, c),
+    c.linkPagamento.findMany({ where: { status: { in: ["PAGO", "ESTORNADO"] }, pagoEm: janela }, select: { valorCentavos: true, pagoEm: true } }),
+    c.despesa.findMany({ where: { status: "PAGA", pagoEm: janela }, select: { categoria: true, valorCentavos: true, pagoEm: true } }),
+    estornosEfetivos(janela, c),
   ]);
 
   const porForma: Record<string, number> = { DINHEIRO: 0, PIX: 0, DEBITO: 0, CREDITO: 0 };
@@ -46,9 +47,9 @@ async function numerosMes(mes: string) {
     receitasDia.push({ data: dataLocal(c.fechadaEm!, fuso), valor });
   }
   const totalAntecipados = antecipados.reduce((t, a) => t + a.valorCentavos, 0);
-  const totalMensalidades = cobrancas.reduce((t, c) => t + c.valorCentavos, 0);
+  const totalMensalidades = cobrancas.total;
   for (const a of antecipados) receitasDia.push({ data: dataLocal(a.pagoEm!, fuso), valor: a.valorCentavos });
-  for (const c of cobrancas) receitasDia.push({ data: dataLocal(c.pagaEm!, fuso), valor: c.valorCentavos });
+  for (const c of cobrancas.registros) receitasDia.push({ data: dataLocal(c.em, fuso), valor: c.valorCentavos });
   const totalLinks = links.reduce((t, l) => t + l.valorCentavos, 0);
   for (const l of links) receitasDia.push({ data: dataLocal(l.pagoEm!, fuso), valor: l.valorCentavos });
 
@@ -62,7 +63,7 @@ async function numerosMes(mes: string) {
   return {
     receitas: {
       comandas: { total: totalComandas, quantidade: comandas.length, porForma, pagoAntes, pagoPorLink },
-      mensalidades: { total: totalMensalidades, quantidade: cobrancas.length },
+      mensalidades: { total: totalMensalidades, quantidade: cobrancas.quantidade, porFonte: cobrancas.porFonte, pendentes: cobrancas.pendentes.length, nominalPendente: cobrancas.nominalPendente, completo: cobrancas.completo },
       antecipados: { total: totalAntecipados, quantidade: antecipados.length },
       links: { total: totalLinks, quantidade: links.length },
       estornos: { total: totalEstornos, quantidade: estornos.length, porForma: somarPorForma(estornos) },
@@ -75,9 +76,9 @@ async function numerosMes(mes: string) {
 }
 
 /** Resumo do mes AAAA-MM com o mes anterior para comparar. */
-export async function resumoMes(mes: string) {
+export async function resumoMes(mes: string, c: Prisma.TransactionClient = db) {
   const ant = mesAnterior(mes);
-  const [atual, anterior] = await Promise.all([numerosMes(mes), numerosMes(ant)]);
+  const [atual, anterior] = await Promise.all([numerosMes(mes, c), numerosMes(ant, c)]);
   return {
     mes,
     ...atual,

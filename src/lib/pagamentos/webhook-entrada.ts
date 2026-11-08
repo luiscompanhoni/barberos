@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
+import { FalhaSincronizacaoAssinatura } from "@/lib/assinaturas/eventos";
+import { auditar } from "@/lib/auditoria";
 
 const identificador = z.string().min(1).max(300);
 const cargaSchema = z.discriminatedUnion("fonte", [
@@ -62,12 +64,21 @@ export async function processarWebhookEntrada(id: string, executarEvento: (carga
     return (await tx.webhookPagamentoEntrada.updateMany({ where: { id, estado: "PENDENTE" }, data: { estado: "PROCESSANDO" } })).count > 0;
   });
   if (!claim) return false;
+  let apenasAssinatura = false;
   try {
     const item = await db.webhookPagamentoEntrada.findUniqueOrThrow({ where: { id } });
-    await executarEvento(cargaSchema.parse(item.carga));
+    const carga = cargaSchema.parse(item.carga);
+    apenasAssinatura = carga.fonte !== "pagarme" || (!carga.pedido && !carga.assinaturaCancelada);
+    await executarEvento(carga);
     await db.webhookPagamentoEntrada.updateMany({ where: { id, estado: "PROCESSANDO" }, data: { estado: "CONCLUIDO" } });
-  } catch {
-    await db.webhookPagamentoEntrada.updateMany({ where: { id, estado: "PROCESSANDO" }, data: { estado: "REVISAO" } });
+  } catch (erro) {
+    // A exceção tipada só vem de consulta canônica + reconciliação local de assinatura. Pedidos,
+    // cancelamentos externos e falhas ambíguas de outros fluxos continuam exigindo revisão.
+    const estado = apenasAssinatura && erro instanceof FalhaSincronizacaoAssinatura && erro.podeRetentar ? "PENDENTE" : "REVISAO";
+    await db.$transaction(async tx => {
+      const r = await tx.webhookPagamentoEntrada.updateMany({ where: { id, estado: "PROCESSANDO" }, data: { estado } });
+      if (r.count) await auditar(tx, null, estado === "PENDENTE" ? "webhook_assinatura_retentar" : "webhook_pagamento_revisar", "webhook_pagamento_entrada", id);
+    });
   }
   return true;
 }
