@@ -26,7 +26,7 @@ describe("Celcash: conversao da transacao", () => {
     expect(c).toMatchObject({ id: "celtx_10", assinaturaGatewayId: "celsub_7", valorCentavos: 11800, forma: "PIX", link: "https://pagina-pix", pixCopiaECola: "000201...", status: "PENDENTE", pagaEm: null });
   });
   it("cartao usa o link da assinatura (cadastro do cartao)", () => {
-    const c = converter({ ...pix, Pix: null, status: "captured", paydayDate: "2099-01-02" }, { mainPaymentMethodId: "creditcard", paymentLink: "https://link-assinatura" });
-    expect(c).toMatchObject({ forma: "CARTAO", link: "https://link-assinatura", status: "PAGA", pagaEm: "2099-01-02", pixCopiaECola: null });
+    const c = converter({ ...pix, Pix: null, status: "captured", paydayDate: "2099-01-01", paydayDateDateTime: "2099-01-02 10:00:00" }, { mainPaymentMethodId: "creditcard", paymentLink: "https://link-assinatura" });
+    expect(c).toMatchObject({ forma: "CARTAO", link: "https://link-assinatura", status: "PAGA", pagaEm: "2099-01-02T13:00:00.000Z", pixCopiaECola: null });
   });
 });

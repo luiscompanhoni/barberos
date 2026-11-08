@@ -6,6 +6,7 @@ import { criarReuniao, editarReuniao, lerReuniao } from "@/lib/reunioes/servico"
 import { carregarMeuDia } from "@/lib/reunioes/meu-dia";
 import { acoesDoBarbeiro } from "@/lib/reunioes/acoes";
 import { instanteLocal } from "@/lib/agenda/tempo";
+import { dadosRecebimento } from "@/lib/pagamentos/recebimento";
 
 let verificacoes = 0;
 function ok(condicao: unknown, texto: string) { assert(condicao, texto); verificacoes++; }
@@ -63,7 +64,13 @@ async function main() {
   await db.servico.update({ where: { id: corte.id }, data: { custoCentavos: 700 } });
   const plano = await db.plano.create({ data: { nome: "Plano teste", precoCentavos: 15000, servicos: { create: { servicoId: corte.id } } } });
   const assinatura = await db.assinatura.create({ data: { clienteId: cliente.id, planoId: plano.id, status: "ATIVA", formaPagamento: "PIX", precoCentavos: 15000, origem: "PAINEL", cicloInicio: hora(0) } });
-  await db.cobranca.create({ data: { assinaturaId: assinatura.id, gatewayId: "teste-reunioes", status: "PAGA", valorCentavos: 15000, vencimento: new Date(`${data}T00:00:00Z`), pagaEm: hora(500) } });
+  const gatewayId = "sim_reunioes", pagaEm = hora(500);
+  // Quitação e recebimento são fatos separados, mesmo na fixture: a prova usa a data do pagamento.
+  await db.cobranca.create({ data: { assinaturaId: assinatura.id, gatewayId, status: "PAGA", valorCentavos: 15000, vencimento: new Date(`${data}T00:00:00Z`), pagaEm,
+    ...dadosRecebimento({ id: gatewayId, assinaturaGatewayId: null, valorCentavos: 15000, vencimento: data, status: "PAGA", pagaEm: pagaEm.toISOString(), link: null,
+      recebimento: { valorCentavos: 15000, em: pagaEm.toISOString(), fonte: "simulado", referencia: gatewayId, status: "PAGA", campoValor: "valorCentavos", campoData: "pagaEm" },
+    }),
+  } });
   await db.poteConfig.create({ data: { id: "pote", ativo: true, percentualBps: 4000 } });
   await db.poteFicha.create({ data: { servicoId: corte.id, fichas: 1 } });
   await db.agendamento.create({ data: { barbeiroId: barbeiro.id, cadeiraId: cadeira.id, clienteId: cliente.id, servicoId: corte.id, inicio: hora(660), fim: hora(690), status: "CONCLUIDO", origem: "RECEPCAO", precoCentavos: 0, assinaturaId: assinatura.id } });

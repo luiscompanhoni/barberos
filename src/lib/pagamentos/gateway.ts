@@ -15,6 +15,10 @@ export type CobrancaGateway = {
   id: string;
   assinaturaGatewayId: string | null;
   valorCentavos: number;
+  /** Prova de pagamento bruto. Tarifas, saldo disponível e estornos permanecem separados. */
+  recebimento?: { valorCentavos: number; em: string; fonte: string; referencia: string; status: string; campoValor: string; campoData: string; precisaoData?: "DIA" | "INSTANTE" };
+  /** O status pode quitar a obrigação sem comprovar entrada de dinheiro. */
+  pendenciaRecebimento?: string;
   vencimento: string; // AAAA-MM-DD
   /** O vencimento veio do campo do provedor, e não de um fallback local. */
   vencimentoConfirmado?: boolean;

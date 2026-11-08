@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { auditar } from "@/lib/auditoria";
-import { definirSenhaTemporaria } from "@/lib/auth/acesso";
+import { redefinirSenhaTemporaria } from "@/lib/auth/acesso";
+import { abrirSessao } from "@/lib/auth/abrir-sessao";
 import { opcoesDeAcesso, salvarAcesso } from "@/lib/auth/equipe";
 import { zEditarUsuario, zPapelEquipe } from "@/lib/auth/equipe-schemas";
 import { exigirSessao } from "@/lib/auth/sessao";
-import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 
@@ -26,9 +25,9 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/usuarios/
   const { id } = await ctx.params;
   const b = await corpo(req, schema);
   if (b.acao === "senha_temporaria") {
-    const senha = await definirSenhaTemporaria(id);
-    await db.$transaction((tx) => auditar(tx, s.usuarioId, "senha_temporaria", "usuario", id));
-    return NextResponse.json({ senha });
+    const r = await redefinirSenhaTemporaria(id, s);
+    if (id === s.usuarioId) await abrirSessao(r.usuario);
+    return NextResponse.json({ senha: r.senha }, { headers: { "Cache-Control": "private, no-store" } });
   }
   if (b.acao === "editar") {
     const dados = zEditarUsuario.strip().parse(b);

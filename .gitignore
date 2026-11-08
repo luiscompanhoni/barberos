@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/deploy/prisma-cli/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -60,3 +61,5 @@ next-env.d.ts
 /workers/atendimento/.venv/
 /workers/atendimento/__pycache__/
 /workers/atendimento/.cache/
+# Registro privado da remuneração real; não publicar junto do código.
+/docs/black-remuneracao-confirmada.md

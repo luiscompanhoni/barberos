@@ -80,12 +80,12 @@ function Resumo({ d }: { d: Dados }) {
   return (
     <Secao titulo="Resumo" descricao={`${d.periodo.rotulo}, comparado com o mesmo número de dias antes.`}>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi destaque rotulo="Faturamento total" valor={din(r.total)} numero={r.total} formatar={din} variacao={variacao(r.total, b.receita.total)}
-          ajuda="Serviços avulsos concluídos + mensalidades pagas + bar + loja + itens avulsos das comandas." />
+        <Kpi destaque rotulo="Produção e mensalidades" valor={din(r.total)} numero={r.total} formatar={din} variacao={variacao(r.total, b.receita.total)}
+          ajuda="Produção: preços dos serviços concluídos e itens vendidos. Mensalidades: valor bruto comprovado do pagamento. Este indicador comercial não é o saldo nem o resultado de caixa; consulte o Financeiro para recebimentos e estornos." />
         <Kpi rotulo="Atendimentos" valor={num(a.atendimentos)} numero={a.atendimentos} formatar={num} variacao={variacao(a.atendimentos, b.atendimentos)} detalhe={`${a.peloPlano} pelo plano`} />
         <Kpi rotulo="Clientes atendidos" valor={num(a.clientesUnicos)} numero={a.clientesUnicos} formatar={num} variacao={variacao(a.clientesUnicos, b.clientesUnicos)} detalhe={`${d.negocio.clientes.novos} novos`} />
-        <Kpi rotulo="Gasto médio por cliente" valor={din(a.gastoPorCliente)} variacao={a.gastoPorCliente && b.gastoPorCliente ? variacao(a.gastoPorCliente, b.gastoPorCliente) : null}
-          ajuda="Faturamento total dividido pelos clientes atendidos no período (ticket por cabeça)." />
+        <Kpi rotulo="Valor registrado por cliente" valor={din(a.gastoPorCliente)} variacao={a.gastoPorCliente && b.gastoPorCliente ? variacao(a.gastoPorCliente, b.gastoPorCliente) : null}
+          ajuda="Produção e mensalidades comprovadas divididas pelos clientes atendidos; não representa gasto liquidado individual." />
         <Kpi rotulo="Ticket médio do serviço avulso" valor={din(a.ticketAvulso)} variacao={a.ticketAvulso && b.ticketAvulso ? variacao(a.ticketAvulso, b.ticketAvulso) : null} />
         <Kpi rotulo="Ocupação da agenda" valor={pct(d.equipe.total.taxa)} detalhe={`${num(Math.round((d.equipe.total.capacidadeMin - d.equipe.total.ocupadoMin) / 60))} h livres`}
           ajuda="Minutos com cliente na cadeira ÷ minutos de agenda aberta (expediente menos horários fechados). Falta não conta." />
@@ -93,8 +93,8 @@ function Resumo({ d }: { d: Dados }) {
         <Kpi rotulo="Receita recorrente (MRR)" valor={din(d.assinaturas.mrrCentavos)} numero={d.assinaturas.mrrCentavos} formatar={din} detalhe={`${d.assinaturas.ativas} assinantes`} />
       </div>
       <div className="cartao">
-        <p className="mb-3 text-sm font-semibold">De onde veio o dinheiro</p>
-        <GraficoRoscaCrm rotulo="Distribuição do faturamento por origem" formatar={din} itens={[
+        <p className="mb-3 text-sm font-semibold">Produção e mensalidades por origem</p>
+        <GraficoRoscaCrm rotulo="Distribuição da produção e das mensalidades" formatar={din} itens={[
           { rotulo: "Serviços avulsos", valor: r.servicos },
           { rotulo: "Assinaturas (mensalidades pagas)", valor: r.assinaturas },
           { rotulo: "Bar", valor: r.bar },

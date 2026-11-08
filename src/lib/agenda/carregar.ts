@@ -40,11 +40,12 @@ export type DiaBarbeiro = {
 export async function carregarDia(
   data: string,
   barbeiroIds: string[],
-  opts: { fuso: string; ignorarAgendamentoId?: string; c?: Cliente },
+  opts: { fuso: string; ignorarAgendamentoId?: string; ignorarAgendamentoIds?: string[]; c?: Cliente },
 ): Promise<Map<string, DiaBarbeiro>> {
   const c = opts.c ?? db;
   const dia = limitesDoDia(data, opts.fuso);
-  const [expediente, excecoes, bloqueios, agendamentos] = await Promise.all([
+  const titulares = await c.barbeiro.findMany({ where: { id: { in: barbeiroIds } }, select: { id: true, usuarioId: true } });
+  const [expediente, excecoes, bloqueios, agendamentos, entrevistas] = await Promise.all([
     c.expedientePadrao.findMany({ where: { barbeiroId: { in: barbeiroIds } } }),
     c.excecaoAgenda.findMany({ where: { barbeiroId: { in: barbeiroIds }, data: dataParaColuna(data) } }),
     c.bloqueio.findMany({
@@ -54,14 +55,15 @@ export async function carregarDia(
       where: {
         barbeiroId: { in: barbeiroIds },
         status: { in: [...STATUS_ATIVOS] },
-        // Adicional (ex.: sobrancelha lancada na comanda) acontece junto do principal: nao ocupa a agenda.
-        adicionalDeId: null,
+        // Filhos antigos/SITE já estão cobertos pelo pai; novos adicionais têm reserva própria.
+        OR: [{ adicionalDeId: null }, { ocupaAgenda: true }],
         inicio: { lt: new Date(dia.fim) },
         fim: { gt: new Date(dia.inicio) },
-        ...(opts.ignorarAgendamentoId ? { id: { not: opts.ignorarAgendamentoId } } : {}),
+        ...((opts.ignorarAgendamentoId || opts.ignorarAgendamentoIds?.length) ? { id: { notIn: [...(opts.ignorarAgendamentoIds ?? []), ...(opts.ignorarAgendamentoId ? [opts.ignorarAgendamentoId] : [])] } } : {}),
       },
       select: { id: true, barbeiroId: true, inicio: true, fim: true },
     }),
+    c.entrevistaRecrutamento.findMany({ where: { estado: "CONFIRMADA", donoId: { in: titulares.flatMap(b => b.usuarioId ? [b.usuarioId] : []) }, inicio: { lt: new Date(dia.fim) }, fim: { gt: new Date(dia.inicio) } }, select: { id: true, donoId: true, inicio: true, fim: true } }),
   ]);
 
   const out = new Map<string, DiaBarbeiro>();
@@ -75,9 +77,10 @@ export async function carregarDia(
         excecaoParaDia(exc),
         opts.fuso,
       ),
-      bloqueios: bloqueios
+      bloqueios: [...bloqueios
         .filter((b) => b.barbeiroId === id)
         .map((b) => ({ id: b.id, motivo: b.motivo, inicio: b.inicio.getTime(), fim: b.fim.getTime() })),
+        ...entrevistas.filter(e => titulares.some(b => b.id === id && b.usuarioId === e.donoId) && e.inicio && e.fim).map(e => ({ id: `entrevista:${e.id}`, motivo: "Indisponível", inicio: +e.inicio!, fim: +e.fim! }))],
       agendamentos: agendamentos
         .filter((a) => a.barbeiroId === id)
         .map((a) => ({ id: a.id, inicio: a.inicio.getTime(), fim: a.fim.getTime() })),

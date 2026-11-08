@@ -6,13 +6,17 @@ import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
 import { hashTokenEntrevista, tokenEntrevista } from "./entrevistas-token";
 import { janelasEntrevista, sobrepoe, zAcaoEntrevista, zConviteEntrevista, type AcaoEntrevista } from "./entrevistas-regras";
+import { ocupacoesProfissionalDono, travarProfissionalDono } from "./entrevistas-agenda";
 type Tx = Prisma.TransactionClient;
 export type Entrevista = EntrevistaRecrutamento;
 const invalidar = () => new ErroNegocio("Convite indisponível. Peça um novo link à Black.", 404);
 export async function donoEntrevista(tx: Tx, id: string) {
   if (!await tx.usuario.findFirst({ where: { id, ativo: true, papel: "DONO" }, select: { id: true } })) throw proibido();
 }
-export async function travarAgenda(tx: Tx, donoId: string) { await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'entrevistas:'} || ${donoId}, 0))`; }
+export async function travarAgenda(tx: Tx, donoId: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'entrevistas:'} || ${donoId}, 0))`;
+  await travarProfissionalDono(tx, donoId);
+}
 export async function travarCandidaturaEntrevista(tx: Tx, candidaturaId: string) { await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${'entrevistas-candidatura:'} || ${candidaturaId}, 0))`; }
 export async function criarConviteEntrevista(usuarioId: string, candidaturaId: string, entrada: z.infer<typeof zConviteEntrevista>, agora = Date.now()) {
   const b = zConviteEntrevista.parse(entrada);
@@ -37,7 +41,9 @@ export async function criarConviteEntrevista(usuarioId: string, candidaturaId: s
 export async function horariosEntrevista(tx: Tx, e: Entrevista, agora: number) {
   await donoEntrevista(tx, e.donoId);
   const ocupadas = await tx.entrevistaRecrutamento.findMany({ where: { donoId: e.donoId, estado: "CONFIRMADA", fim: { gt: new Date(agora) } }, select: { inicio: true, fim: true } });
-  return janelasEntrevista(e.duracaoMin, agora).filter(j => !ocupadas.some(o => o.inicio && o.fim && sobrepoe(j, { inicio: o.inicio, fim: o.fim })));
+  const janelas = janelasEntrevista(e.duracaoMin, agora);
+  const profissionais = janelas.length ? await ocupacoesProfissionalDono(tx, e.donoId, janelas[0].inicio, janelas.at(-1)!.fim) : [];
+  return janelas.filter(j => !ocupadas.some(o => o.inicio && o.fim && sobrepoe(j, { inicio: o.inicio, fim: o.fim })) && !profissionais.some(o => sobrepoe(j, o)));
 }
 export async function porTokenEntrevista(tx: Tx, token: string, agora: number) {
   if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw invalidar();
@@ -68,7 +74,7 @@ export async function agirEntrevista(tx: Tx, original: Entrevista, entrada: Acao
   } else if (b.acao === "CONFIRMAR") {
     if (e.estado !== "AGUARDA_CONFIRMACAO" || !e.propostaInicio || !e.propostaExpiraEm || +e.propostaExpiraEm <= agora) throw new ErroNegocio("Escolha novamente um horário e confirme os dados.", 409);
     const j = (await horariosEntrevista(tx, e, agora)).find(j => +j.inicio === +e.propostaInicio!);
-    if (!j) throw new ErroNegocio("Outro candidato confirmou este horário. Consulte novas opções.", 409);
+    if (!j) throw new ErroNegocio("O horário foi ocupado na agenda do dono. Consulte novas opções.", 409);
     Object.assign(dados, { estado: "CONFIRMADA", inicio: j.inicio, fim: j.fim, confirmadoEm: new Date(agora), expiraEm: new Date(+j.fim + 86400_000) });
     const r = await tx.candidaturaRecrutamento.updateMany({ where: { id: c.id, versao: c.versao }, data: { etapa: "ENTREVISTA", versao: { increment: 1 } } });
     if (!r.count) throw new ErroNegocio("Seleção alterada. Consulte novamente a entrevista.", 409);

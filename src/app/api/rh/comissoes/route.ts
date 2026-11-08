@@ -19,6 +19,6 @@ export const GET = rota(async () => {
 
 export const PUT = rota(async (req: Request) => {
   const s = await exigirSessaoCom("comissao");
-  const b = await corpo(req, z.object({ gerais: z.array(zRegra).max(300), excecoes: z.array(zRegra.extend({ barbeiroId: zId })).max(1000) }));
+  const b = await corpo(req, z.object({ competencia: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/), revisao: z.string().regex(/^[a-f0-9]{64}$/), gerais: z.array(zRegra).max(300), excecoes: z.array(zRegra.extend({ barbeiroId: zId })).max(1000) }));
   return NextResponse.json(await salvarComissoes(s, b));
 });

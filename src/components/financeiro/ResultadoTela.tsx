@@ -5,7 +5,7 @@
  * (mensalidades) e na Stone (maquininha e Pix), as taxas, as saidas e o lucro, com as divergencias marcadas.
  * As saidas sao classificadas aqui (e viram regra por nome com "lembrar").
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertTriangle, RefreshCw, Trash2, Upload } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { CATEGORIAS_DESPESA, ROTULO_CATEGORIA } from "@/lib/financeiro/regras";
@@ -13,14 +13,16 @@ import { mesAtual } from "./DespesasTela";
 import { GraficoRoscaCrm } from "@/components/visual/GraficosCrm";
 import { GraficoBarrasCrm } from "@/components/visual/GraficoBarrasCrm";
 import { ContadorCrm } from "@/components/visual/ContadorCrm";
+import { ConciliacaoDespesas, type ConciliacaoDespesasDados, type ConferenciaDados } from "./ConciliacaoDespesas";
 
 type Extrato = {
   recebido: number; recebidoPorForma: Record<string, number>; taxas: number; antecipacao: number; tarifas: number; estornos: number; custoGateway: number;
   liquido: number; transferidoParaEmpresa: number; voltouDaEmpresa: number; pagamentos: number; despesa: number; retiradas: number; semCategoria: number;
 };
 type Resultado = {
+  status: "PREVIA" | "CONFERIDO"; conferencias: ConferenciaDados[]; conciliacaoDespesas: ConciliacaoDespesasDados;
   mes: string; sincronizadoAte: Record<string, string | null>;
-  registrado: { total: number; porForma: Record<string, number>; mensalidades: number; antecipados: number; links: number; estornos: number };
+  registrado: { total: number; porForma: Record<string, number>; mensalidades: number; mensalidadesPorFonte: Record<string, number>; mensalidadesCelcash: number; antecipados: number; links: number; estornos: number };
   celcash: Extrato; stone: Extrato;
   custos: { celcash: number; stone: number; maquininhaEstimada: number; total: number };
   despesas: { barberos: number; celcash: number; stone: number; total: number; porCategoria: Record<string, number> };
@@ -30,15 +32,16 @@ type Movimento = { id: string; fonte: string; data: string; valorCentavos: numbe
 type Regra = { id: string; padrao: string; tipo: string; categoria: string | null };
 
 const FORMA: Record<string, string> = { DINHEIRO: "Dinheiro", PIX: "Pix", DEBITO: "Débito", CREDITO: "Crédito", CARTAO: "Cartão", BOLETO: "Boleto" };
-const CATEGORIAS_SAIDA = [...CATEGORIAS_DESPESA, "RETIRADA_SOCIO", "JA_LANCADA"];
-const ROTULO_SAIDA: Record<string, string> = { ...ROTULO_CATEGORIA, RETIRADA_SOCIO: "Retirada do sócio", JA_LANCADA: "Já lançada em Despesas" };
+const FONTE: Record<string, string> = { celcash: "Celcash", pagarme: "Pagar.me", asaas: "Asaas", simulado: "Simulado", indefinida: "Origem não confirmada" };
+const CATEGORIAS_SAIDA = [...CATEGORIAS_DESPESA, "RETIRADA_SOCIO"];
+const ROTULO_SAIDA: Record<string, string> = { ...ROTULO_CATEGORIA, RETIRADA_SOCIO: "Retirada do sócio", JA_LANCADA: "Vínculo de despesa pendente" };
 const quando = (d: string) => new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
 
 function Linha({ r, v, forte, neg, cor }: { r: string; v: number; forte?: boolean; neg?: boolean; cor?: string }) {
   return (
     <div className={`flex justify-between gap-3 py-1 text-sm ${forte ? "font-bold" : ""}`}>
       <span className="text-zinc-600">{r}</span>
-      <span className={cor}>{neg && v ? "− " : ""}{reais(Math.abs(v))}</span>
+      <span className={cor}>{(neg || v < 0) && v ? "− " : ""}{reais(Math.abs(v))}</span>
     </div>
   );
 }
@@ -55,14 +58,18 @@ export function ResultadoTela() {
   const [ocupado, setOcupado] = useState(false);
   const [lembrar, setLembrar] = useState(true);
   const [filtro, setFiltro] = useState<"sem" | "todas">("sem");
+  const consultaAtual = useRef(0);
+  const mesDaTela = useRef(mes);
 
   const carregar = useCallback(() => {
-    api<Resultado>(`/api/financeiro/resultado?mes=${mes}`).then(setR).catch((e) => setMsg({ t: e.message, erro: true }));
+    if (mesDaTela.current !== mes) return;
+    const versao = ++consultaAtual.current;
+    api<Resultado>(`/api/financeiro/resultado?mes=${mes}`).then(x => { if (consultaAtual.current === versao) setR(x); }).catch((e) => { if (consultaAtual.current === versao) setMsg({ t: e.message, erro: true }); });
     Promise.all([api<Movimento[]>(`/api/financeiro/externos?mes=${mes}&tipo=PAGAMENTO`), api<Movimento[]>(`/api/financeiro/externos?mes=${mes}&tipo=TRANSFERENCIA`)])
-      .then(([p, t]) => setSaidas([...p, ...t.filter((x) => x.valorCentavos < 0)].sort((a, b) => a.valorCentavos - b.valorCentavos))).catch(() => {});
-    api<Regra[]>("/api/financeiro/regras").then(setRegras).catch(() => {});
+      .then(([p, t]) => { if (consultaAtual.current === versao) setSaidas([...p, ...t.filter((x) => x.valorCentavos < 0)].sort((a, b) => a.valorCentavos - b.valorCentavos)); }).catch(() => {});
+    api<Regra[]>("/api/financeiro/regras").then(x => { if (consultaAtual.current === versao) setRegras(x); }).catch(() => {});
   }, [mes]);
-  useEffect(() => { carregar(); }, [carregar]);
+  useEffect(() => { mesDaTela.current = mes; carregar(); }, [carregar, mes]);
 
   async function sincronizar(historico: boolean) {
     setOcupado(true); setMsg(null);
@@ -84,11 +91,12 @@ export function ResultadoTela() {
     } catch (e) { setMsg({ t: (e as Error).message, erro: true }); } finally { setOcupado(false); }
   }
   async function classificar(m: Movimento, tipo: string, categoria: string | null) {
+    setOcupado(true);
     try {
       const x = await api<{ aplicadas: number }>(`/api/financeiro/externos/${m.id}`, { method: "PATCH", body: { tipo, categoria, lembrar } });
       if (x.aplicadas) setMsg({ t: `Regra salva: mais ${x.aplicadas} saídas desse nome classificadas.` });
       carregar();
-    } catch (e) { setMsg({ t: (e as Error).message, erro: true }); }
+    } catch (e) { setMsg({ t: (e as Error).message, erro: true }); } finally { setOcupado(false); }
   }
   async function apagarRegra(id: string) {
     try { await api(`/api/financeiro/regras/${id}`, { method: "DELETE" }); carregar(); } catch (e) { setMsg({ t: (e as Error).message, erro: true }); }
@@ -99,7 +107,7 @@ export function ResultadoTela() {
   return (
     <div className="space-y-4">
       <div className="crm-filterbar flex flex-wrap items-end gap-3">
-        <div><label className="rotulo">Mês</label><input aria-label="Mês do resultado financeiro" type="month" className="campo" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} /></div>
+        <div><label className="rotulo">Mês</label><input aria-label="Mês do resultado financeiro" type="month" className="campo" disabled={ocupado} value={mes} onChange={(e) => { if (e.target.value) { setR(null); setSaidas([]); setMes(e.target.value); } }} /></div>
         <button className="btn" disabled={ocupado} onClick={() => sincronizar(false)}><RefreshCw size={14} className={ocupado ? "animate-spin" : ""} /> Atualizar Celcash</button>
         <label className={`btn cursor-pointer ${ocupado ? "pointer-events-none opacity-50" : ""}`}>
           <Upload size={14} /> Subir extrato da Stone (CSV)
@@ -110,19 +118,20 @@ export function ResultadoTela() {
           {r?.sincronizadoAte.STONE ? <>Stone até {quando(r.sincronizadoAte.STONE)}</> : "Stone: nenhum extrato"}
         </span>
       </div>
-      {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
-      {!r ? <p className="cartao text-sm text-zinc-500">Carregando…</p> : (
+      {msg && <p role={msg.erro ? "alert" : "status"} className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
+      {!r || r.mes !== mes ? <p className="cartao text-sm text-zinc-500">Carregando…</p> : (
         <>
+          <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">{r.status === "PREVIA" ? "Prévia financeira: há conferências ou provas pendentes. Não representa lucro definitivo." : "Recorte conciliado com os dados e extratos conferidos. Não é fechamento contábil; alterações posteriores exigem nova conferência."}</p>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Faturamento registrado</p><p className="text-2xl font-normal"><ContadorCrm valor={r.registrado.total} formatar={reais} /></p></div>
             <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Caiu nas contas</p><p className="text-2xl font-normal"><ContadorCrm valor={r.celcash.recebido + r.stone.recebido} formatar={reais} /></p><p className="text-[11px] text-zinc-500">Celcash {reais(r.celcash.recebido)} · Stone {reais(r.stone.recebido)}</p></div>
             <div className="crm-kpi cartao"><p className="text-xs text-zinc-500">Despesas + taxas</p><p className="text-2xl font-normal"><ContadorCrm valor={r.despesas.total + r.custos.total} formatar={reais} /></p>{!!r.retiradas && <p className="text-[11px] text-zinc-500">retiradas do sócio {reais(r.retiradas)} (fora do lucro)</p>}</div>
-            <div className="crm-kpi cartao-destaque"><p className="text-xs text-zinc-500">Lucro</p><p className={`text-2xl font-normal ${r.lucro >= 0 ? "text-ouro" : "text-red-600"}`}><ContadorCrm valor={r.lucro} formatar={reais} /></p></div>
+            <div className="crm-kpi cartao-destaque"><p className="text-xs text-zinc-500">Resultado {r.status === "PREVIA" ? "provisório" : "conciliado"}</p><p className={`text-2xl font-normal ${r.lucro >= 0 ? "text-ouro" : "text-red-600"}`}><ContadorCrm valor={r.lucro} formatar={reais} /></p></div>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
             <section className="cartao space-y-4"><h2 className="font-semibold">Recebimentos nas contas</h2><p className="text-xs text-zinc-500">Recebido por origem, antes das taxas e transferências entre contas.</p><GraficoBarrasCrm rotulo="Recebimentos nas contas Celcash e Stone" formatar={reais} itens={[{ rotulo: "Celcash", valor: r.celcash.recebido }, { rotulo: "Stone", valor: r.stone.recebido, cor: "#91c4e4" }]} /></section>
-            <section className="cartao space-y-4"><h2 className="font-semibold">Despesas por categoria</h2><p className="text-xs text-zinc-500">Despesas classificadas; taxas e retiradas do sócio seguem separadas nos detalhes.</p><GraficoRoscaCrm rotulo="Despesas classificadas por categoria" formatar={reais} itens={Object.entries(r.despesas.porCategoria).map(([categoria, valor]) => ({ rotulo: ROTULO_CATEGORIA[categoria] ?? categoria, valor }))} /></section>
+            <section className="cartao space-y-4"><h2 className="font-semibold">Despesas por categoria</h2><p className="text-xs text-zinc-500">Despesas classificadas; taxas e retiradas do sócio seguem separadas nos detalhes.</p><GraficoRoscaCrm rotulo="Despesas classificadas por categoria" formatar={reais} itens={Object.entries(r.despesas.porCategoria).map(([categoria, valor]) => ({ rotulo: ROTULO_SAIDA[categoria] ?? categoria, valor }))} /></section>
           </div>
 
           {r.alertas.length > 0 && (
@@ -136,6 +145,7 @@ export function ResultadoTela() {
               <h2 className="mb-2 font-semibold">Registrado no BarberOS</h2>
               {Object.entries(r.registrado.porForma).map(([f, v]) => <Linha key={f} r={`Comandas · ${FORMA[f] ?? f}`} v={v} />)}
               <Linha r="Mensalidades dos planos" v={r.registrado.mensalidades} />
+              {Object.entries(r.registrado.mensalidadesPorFonte).filter(([, valor]) => valor > 0).map(([fonte, valor]) => <Linha key={fonte} r={`· ${FONTE[fonte] ?? fonte}`} v={valor} />)}
               {!!r.registrado.antecipados && <Linha r="Pagos antes pelo link" v={r.registrado.antecipados} />}
               {!!r.registrado.links && <Linha r="Links de pagamento" v={r.registrado.links} />}
               {!!r.registrado.estornos && <Linha r="Estornos" v={r.registrado.estornos} neg />}
@@ -149,7 +159,7 @@ export function ResultadoTela() {
               <Linha r="Estornos" v={r.celcash.estornos} neg />
               <Linha r="Repassado para a Stone" v={r.celcash.transferidoParaEmpresa} neg />
               {!!r.celcash.pagamentos && <Linha r="Pagamentos a terceiros" v={r.celcash.pagamentos} neg />}
-              <Dif r="Celcash − mensalidades" v={r.divergencias.mensalidades} />
+              <Dif r="Celcash − mensalidades da própria Celcash" v={r.divergencias.mensalidades} />
             </section>
 
             <section className="cartao">
@@ -165,20 +175,20 @@ export function ResultadoTela() {
             </section>
 
             <section className="cartao">
-              <h2 className="mb-2 font-semibold">Lucro do mês</h2>
+              <h2 className="mb-2 font-semibold">Resultado do mês</h2>
               <Linha r="Faturamento registrado" v={r.registrado.total} />
               <Linha r="Taxas Celcash" v={r.custos.celcash} neg />
               <Linha r="Tarifas Stone" v={r.custos.stone} neg />
-              <Linha r="Taxa da maquininha (estimada)" v={r.custos.maquininhaEstimada} neg />
               <Linha r="Despesas" v={r.despesas.total} neg />
-              <div className="mt-1 border-t border-zinc-200 pt-1"><Linha r="Lucro" v={r.lucro} forte cor={r.lucro >= 0 ? "text-ouro" : "text-red-600"} /></div>
+              <div className="mt-1 border-t border-zinc-200 pt-1"><Linha r={r.status === "PREVIA" ? "Resultado provisório" : "Resultado conciliado"} v={r.lucro} forte cor={r.lucro >= 0 ? "text-ouro" : "text-red-600"} /></div>
               <div className="mt-2 space-y-0.5">
                 {Object.entries(r.despesas.porCategoria).sort((a, b) => b[1] - a[1]).map(([c, v]) => <Linha key={c} r={`· ${ROTULO_SAIDA[c] ?? c}`} v={v} />)}
               </div>
-              <p className="mt-2 text-[11px] text-zinc-500">A taxa da maquininha usa as taxas da aba Conciliação. Dinheiro em espécie só aparece pelo fechamento do caixa.</p>
+              <p className="mt-2 text-[11px] text-zinc-500">Estimativa de taxa da maquininha: {reais(r.custos.maquininhaEstimada)}, fora dos totais observados e do resultado. Dinheiro em espécie depende do fechamento do caixa.</p>
             </section>
           </div>
 
+          <ConciliacaoDespesas mes={mes} dados={r.conciliacaoDespesas} conferencias={r.conferencias} aoMudar={carregar} aoOcupar={setOcupado} />
           <section className="cartao">
             <div className="mb-2 flex flex-wrap items-center gap-3">
               <h2 className="font-semibold">Saídas do mês</h2>
@@ -197,9 +207,12 @@ export function ResultadoTela() {
                     <span className="min-w-40 flex-1">{m.observacao ?? m.descricao}</span>
                     <b className="w-28 text-right">{reais(Math.abs(m.valorCentavos))}</b>
                     <select className="campo w-auto py-1 text-xs" value={m.tipo === "TRANSFERENCIA" ? "TRANSFERENCIA" : m.categoria ?? ""}
+                      disabled={ocupado}
+                      aria-label={`Classificar saída ${m.descricao}`}
                       onChange={(e) => (e.target.value === "TRANSFERENCIA" ? classificar(m, "TRANSFERENCIA", null) : classificar(m, "PAGAMENTO", e.target.value || null))}>
                       <option value="TRANSFERENCIA">Transferência entre contas da empresa</option>
                       <option value="">A classificar</option>
+                      {m.categoria === "JA_LANCADA" && <option value="JA_LANCADA" disabled>Já lançada: requer vínculo comprovado</option>}
                       {CATEGORIAS_SAIDA.map((c) => <option key={c} value={c}>{ROTULO_SAIDA[c] ?? c}</option>)}
                     </select>
                   </li>

@@ -33,7 +33,7 @@ export function TelaJogo({ id }: { id: string }) {
   return (
     <div>
       {voltar}
-      {jogo.tipo === "ROLETA" && <RoletaBlack key={versao} jogo={{ ...jogo, multiplicador: c.multiplicador, assinante: c.assinante }} aoTerminar={carregar} />}
+      {jogo.tipo === "ROLETA" && <RoletaBlack key={versao} jogo={{ ...jogo, assinante: c.assinante }} aoTerminar={carregar} />}
       {jogo.tipo === "RASPADINHA" && <RaspadinhaBlack key={versao} jogo={jogo} aoTerminar={carregar} />}
       {jogo.tipo === "CAIXA" && <CaixasBlack key={versao} jogos={[jogo]} aoAtualizar={carregar} />}
     </div>

@@ -3,6 +3,7 @@ const m = vi.hoisted(() => ({ usuario: vi.fn(), perfil: vi.fn(), atualizar: vi.f
 vi.mock("@/lib/db", () => ({ db: { $transaction: m.tx } }));
 vi.mock("@/lib/auth/senha", () => ({ problemaDaSenha: () => null, gerarHash: m.hash, conferirSenha: m.conferir }));
 vi.mock("@/lib/auth/otp", () => ({ verificarCodigo: m.otp }));
+vi.mock("@/lib/auditoria", () => ({ auditar: vi.fn() }));
 import { criarContaCliente, trocarPropriaSenha } from "@/lib/auth/acesso";
 const dados = { nome: "Dono do celular", telefone: "47999990000", senha: "senha-fornecida", codigo: "123456" };
 const usuario = { id: "u1", ativo: true, papel: "CLIENTE", telefone: "5547999990000", telefoneVerificadoEm: new Date(), sessaoVersao: 1, senhaHash: null, cliente: { id: "c1", excluidoEm: null } };

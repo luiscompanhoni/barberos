@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, CheckCircle2, Gift, Link2, Minus, Plus, Scissors, Trash2 } from "lucide-react";
 import { useAcesso } from "@/components/AcessoContexto";
 import { BotaoCopiar, NovoLinkModal } from "@/components/financeiro/NovoLinkModal";
-import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
+import { api, centavosParaTexto, ErroApi, paraCentavos, reais } from "@/lib/cliente-api";
+import { armazenamentoAdicional, encerrarSolicitacaoAdicional, solicitacaoAdicional } from "./solicitacao-adicional";
 import { Catalogo } from "./Catalogo";
 import { Recebimento } from "./Recebimento";
 import { nomeDaComanda, type Comanda, type Forma, type ModoMaquininha } from "./tipos";
@@ -23,6 +24,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
   const [desconto, setDesconto] = useState<string | null>(null);
   const [cobrarLink, setCobrarLink] = useState(false);
   const acaoEmVoo = useRef(false);
+  const adicionaisPendentes = useRef(new Map<string, string>());
   const gerente = papel === "DONO" || papel === "GERENTE" || papel === "RECEPCAO";
   const pode = useAcesso().permissoes;
 
@@ -33,7 +35,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
   useAoVivo("comanda", carregar);
 
   /** Chama a API, atualiza a tela com a comanda devolvida e mostra erro se houver. */
-  async function executar(url: string, body: unknown, method = "PATCH") {
+  async function executar(url: string, body: unknown, method = "PATCH", aoFalhar?: (e: unknown) => void) {
     if (acaoEmVoo.current) return false;
     acaoEmVoo.current = true;
     setErro("");
@@ -44,6 +46,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
       if (r.resultado) setFechamento(r.resultado);
       return true;
     } catch (e) {
+      aoFalhar?.(e);
       setErro((e as Error).message);
       // Um timeout de envio pode ter criado uma cobrança pendente. Releia antes de liberar nova ação.
       await api<Resposta>(`/api/comandas/${id}`).then((r) => setC(r.comanda)).catch(() => {});
@@ -52,6 +55,17 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
       acaoEmVoo.current = false;
       setOcupado(false);
     }
+  }
+
+  async function incluirServico(servicoId: string, barbeiroId: string) {
+    if (acaoEmVoo.current) return;
+    const storage = armazenamentoAdicional();
+    const solicitacaoId = solicitacaoAdicional(adicionaisPendentes.current, id, servicoId, barbeiroId, storage);
+    const encerrar = () => encerrarSolicitacaoAdicional(adicionaisPendentes.current, id, servicoId, barbeiroId, storage);
+    const sucesso = await executar(`/api/comandas/${id}`, { acao: "servico", servicoId, barbeiroId, solicitacaoId }, "PATCH", e => {
+      if (e instanceof ErroApi && ["solicitacao_encerrada", "solicitacao_reutilizada"].includes(e.codigo ?? "")) encerrar();
+    });
+    if (sucesso) encerrar();
   }
 
   if (!c) return <p className="text-sm text-zinc-500">{erro || "Carregando..."}</p>;
@@ -98,7 +112,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
             desabilitado={ocupado}
             podeAvulso={gerente}
             onProduto={(produtoId) => executar(`/api/comandas/${id}`, { acao: "produto", produtoId, quantidade: 1 })}
-            onServico={c.cliente && c.itens.some((i) => i.agendamentoId) ? (servicoId, barbeiroId) => executar(`/api/comandas/${id}`, { acao: "servico", servicoId, barbeiroId }) : undefined}
+            onServico={c.cliente && c.itens.some((i) => i.agendamentoId) ? incluirServico : undefined}
             barbeiroPadrao={c.itens.find((i) => i.agendamentoId)?.barbeiroId ?? null}
             onAvulso={(descricao, precoCentavos) => executar(`/api/comandas/${id}`, { acao: "avulso", descricao, precoCentavos, quantidade: 1 })}
           />

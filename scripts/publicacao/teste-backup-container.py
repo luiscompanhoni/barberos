@@ -9,6 +9,8 @@ import sys
 import tempfile
 import time
 import uuid
+sys.path.insert(0, str(Path(__file__).parent))
+from backup_fixture_recuperacao import provar_restauro, provar_snapshot_concorrente, sql_fixture_recuperacao
 
 
 def run(args, *, stdin=None, expect_failure=False):
@@ -16,6 +18,30 @@ def run(args, *, stdin=None, expect_failure=False):
     if (p.returncode != 0) != expect_failure:
         raise RuntimeError("Resultado inesperado no ensaio isolado: " + p.stderr[-1000:])
     return p.stdout
+
+
+def psql_fixture(db, password):
+    return ["docker", "exec", "-i", "-e", "PGPASSWORD=" + password,
+            "-e", "PGCONNECT_TIMEOUT=2", db, "psql", "-h", "127.0.0.1", "-p", "5432",
+            "-X", "-w", "-U", "postgres", "-d", "fixture", "-v", "ON_ERROR_STOP=1"]
+
+
+def aguardar_postgres_tcp(psql, limite=60):
+    # O entrypoint do postgres sobe um servidor temporário SOMENTE por socket
+    # durante initdb. Só aceitar SQL autenticado por TCP no servidor definitivo.
+    prazo = time.monotonic() + limite
+    while (restante := prazo - time.monotonic()) > 0:
+        try:
+            p = subprocess.run([*psql, "-At", "-c", "SELECT 1"], text=True,
+                               capture_output=True, timeout=min(3, restante))
+            if p.returncode == 0 and p.stdout.strip() == "1":
+                return
+        except subprocess.TimeoutExpired:
+            pass
+        restante = prazo - time.monotonic()
+        if restante > 0:
+            time.sleep(min(1, restante))
+    raise RuntimeError("PostgreSQL sintético não aceitou SQL autenticado por TCP no prazo.")
 
 
 def main(image, legacy):
@@ -39,12 +65,14 @@ def main(image, legacy):
          "ldd /usr/bin/rclone || /usr/bin/rclone version >/dev/null"])
     suffix = uuid.uuid4().hex[:12]
     net, db, s3 = "backup-fixture-" + suffix, "backup-db-" + suffix, "backup-s3-" + suffix
+    pg_volume = "backup-pg-" + suffix
     user = f"{os.getuid()}:{os.getgid()}"
     password = "fixture-descartavel-sem-valor"
     env = ["-e", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
            "-e", "PGHOST=" + db, "-e", "PGUSER=fixture_user",
            "-e", "PGPASSWORD=" + password, "-e", "PGDATABASE=fixture",
-           "-e", "BACKUP_ESTUDIO_MEDIA=/media-estudio"]
+           "-e", "BACKUP_ESTUDIO_MEDIA=/media-estudio", "-e", "BACKUP_PG_DATA=/capacidade-postgres",
+           "--mount", f"type=volume,src={pg_volume},dst=/capacidade-postgres,readonly"]
     with tempfile.TemporaryDirectory(prefix="backup-cliente-fixture-") as tmp:
         base = Path(tmp)
         media, backups = base / "media", base / "backups"
@@ -59,8 +87,9 @@ def main(image, legacy):
                   "--mount", f"type=bind,src={backups},dst=/backups", *env]
         try:
             run(["docker", "network", "create", "--internal", net])
+            run(["docker", "volume", "create", pg_volume])
             run(["docker", "run", "-d", "--rm", "--name", db, "--network", net,
-                 "--memory", "512m", "--tmpfs", "/var/lib/postgresql/data:rw,size=256m",
+                 "--memory", "512m", "--mount", f"type=volume,src={pg_volume},dst=/var/lib/postgresql/data",
                  "-e", "POSTGRES_PASSWORD=" + password, "-e", "POSTGRES_DB=fixture",
                  "postgres:16-alpine"])
             # Servidor experimental S3 do próprio rclone em tmpfs e rede interna.
@@ -68,22 +97,16 @@ def main(image, legacy):
                  "--memory", "128m", "--tmpfs", "/dados:rw,size=64m", "--entrypoint", "rclone", image,
                  "serve", "s3", "/dados", "--addr", ":9000", "--auth-key",
                  "fixtureaccess,fixturesecretpassword"])
-            for _ in range(60):
-                p = subprocess.run(["docker", "exec", db, "pg_isready", "-U", "postgres",
-                                    "-d", "fixture"], capture_output=True)
-                if p.returncode == 0:
-                    break
-                time.sleep(1)
-            else:
-                raise RuntimeError("PostgreSQL sintético não iniciou.")
-            run(["docker", "exec", "-i", db, "psql", "-X", "-U", "postgres", "-d", "fixture",
-                 "-v", "ON_ERROR_STOP=1"], stdin=f"""
+            psql = psql_fixture(db, password)
+            aguardar_postgres_tcp(psql)
+            run(psql, stdin=f"""
 CREATE ROLE fixture_user LOGIN CREATEDB PASSWORD '{password}';
 ALTER DATABASE fixture OWNER TO fixture_user;
 GRANT ALL ON SCHEMA public TO fixture_user;
 """)
             sql = f"""
 SET ROLE fixture_user;
+{sql_fixture_recuperacao()}
 CREATE TABLE clientes(id int); INSERT INTO clientes VALUES (1);
 CREATE TABLE agendamentos(id int); INSERT INTO agendamentos VALUES (1);
 CREATE TABLE _prisma_migrations(migration_name text, finished_at timestamptz);
@@ -95,10 +118,8 @@ CREATE TABLE backups(id text, tipo text, arquivo text, bytes bigint, restaurado 
  conferencia text, "foraDoServidor" bool, erro text);
 CREATE DATABASE barberos_teste_restauracao;
 """
-            psql = ["docker", "exec", "-i", db, "psql", "-X", "-U", "postgres", "-d", "fixture",
-                    "-v", "ON_ERROR_STOP=1"]
             run(psql, stdin=sql)
-            consult = ["docker", "exec", db, "psql", "-X", "-U", "postgres", "-d", "fixture", "-At", "-c"]
+            consult = [*psql, "-At", "-c"]
             def conferir_registro(filename, externo):
                 assert re.fullmatch(r"barberos-[0-9-]+\.sql\.gz", filename)
                 query = ("SELECT json_build_object('tipo',tipo,'arquivo',arquivo,'restaurado',restaurado,"
@@ -123,6 +144,8 @@ CREATE DATABASE barberos_teste_restauracao;
             run([*common, image, "restaurar", "/backups/" + dump.name], expect_failure=True)
             assert (restored / name).read_bytes() == content
             print("OK: dump, conferência, mídia e restauração; destino existente preservado.")
+            provar_restauro(run, common, image, psql, dump.name)
+            provar_snapshot_concorrente(run, common, image, psql)
 
             # O serviço de backup no compose roda como root; o ensaio principal também cobre UID sem privilégios.
             root_backups = base / "backup-root"
@@ -181,7 +204,9 @@ for cmd in pg_dump psql createdb dropdb pg_isready gzip gunzip find stat flock p
             s3_dump = next(iter(novos))
             conferir_registro(s3_dump.name, True)
             s3_media = backups / (s3_dump.name.removesuffix(".sql.gz") + ".studio.tar.gz")
-            for item in (s3_dump, s3_media):
+            s3_manifesto = backups / (s3_dump.name.removesuffix(".sql.gz") + ".manifesto.json")
+            assert json.loads(s3_manifesto.read_text())["snapshotConsistente"] is True
+            for item in (s3_dump, s3_media, s3_manifesto):
                 remote = "fix:fixture/barberos/" + item.name + ".enc"
                 dest = "/backups/" + item.name + ".baixado.enc"
                 run([*common, *config, "--entrypoint", "rclone", image, "copyto", remote, dest])
@@ -203,8 +228,7 @@ for cmd in pg_dump psql createdb dropdb pg_isready gzip gunzip find stat flock p
                       "-e", "RCLONE_CONNECT_TIMEOUT=2s", "-e", "RCLONE_LOW_LEVEL_RETRIES=1"]
             run([*common, *s3_env, image, "agora"], expect_failure=True)
             assert old.is_file() and dump.is_file()
-            failure = run(["docker", "exec", db, "psql", "-X", "-U", "postgres", "-d", "fixture",
-                           "-At", "-c", "SELECT count(*) FROM backups WHERE restaurado AND NOT \"foraDoServidor\" AND erro IS NOT NULL"])
+            failure = run([*consult, "SELECT count(*) FROM backups WHERE restaurado AND NOT \"foraDoServidor\" AND erro IS NOT NULL"])
             assert int(failure.strip()) >= 1
             print("OK: falha de cópia externa é registrada e preserva backups anteriores.")
 
@@ -244,6 +268,7 @@ else: raise AssertionError('tmpfs sem limite')
             subprocess.run(["docker", "rm", "-fv", db], capture_output=True)
             subprocess.run(["docker", "rm", "-fv", s3], capture_output=True)
             subprocess.run(["docker", "network", "rm", net], capture_output=True)
+            subprocess.run(["docker", "volume", "rm", pg_volume], capture_output=True)
 
 
 if __name__ == "__main__":

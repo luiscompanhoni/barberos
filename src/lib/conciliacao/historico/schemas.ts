@@ -20,4 +20,7 @@ export type AplicarHistorico = z.infer<typeof zAplicarHistorico>;
 export type TransacaoHistorica = {
   id: string; contratoId: string | null; valorCentavos: number; vencimento: string;
   status: string; cliente: { nome: string; cpf: string; telefones: string[] };
+  /** Data efetiva canônica; crédito no saldo e mudança de status não a substituem. */
+  pagamentoEfetivoEm?: string | null;
+  pagoForaDoGateway?: boolean;
 };

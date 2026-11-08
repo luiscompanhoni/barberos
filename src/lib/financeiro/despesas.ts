@@ -20,8 +20,8 @@ export type DadosDespesa = {
 const limpo = (s?: string | null) => s?.trim() || null;
 
 /** Inicio e fim (exclusivo) do mes AAAA-MM no fuso da barbearia. */
-export async function janelaMes(mes: string) {
-  const { fuso } = await configuracao();
+export async function janelaMes(mes: string, c: Parameters<typeof configuracao>[0] = db) {
+  const { fuso } = await configuracao(c);
   const [a, m] = mes.split("-").map(Number);
   const prox = m === 12 ? `${a + 1}-01` : `${a}-${String(m + 1).padStart(2, "0")}`;
   return { gte: new Date(instanteLocal(`${mes}-01`, 0, fuso)), lt: new Date(instanteLocal(`${prox}-01`, 0, fuso)), fuso };
@@ -32,7 +32,7 @@ export async function listarDespesas(mes: string) {
   const { gte, lt, fuso } = await janelaMes(mes);
   const hoje = dataLocal(Date.now(), fuso);
   const lista = await db.despesa.findMany({
-    where: { OR: [{ status: "PENDENTE" }, { status: "PAGA", pagoEm: { gte, lt } }] },
+    where: { OR: [{ status: "PENDENTE" }, { status: { in: ["PAGA", "ANULADA_TESTE"] }, pagoEm: { gte, lt } }] },
     orderBy: [{ status: "asc" }, { vencimento: "asc" }, { criadoEm: "asc" }],
   });
   const despesas = lista.map((d) => {
@@ -86,6 +86,8 @@ export async function excluirDespesa(s: Sessao, id: string) {
   const d = await buscar(id);
   if (d.status !== "PENDENTE") throw new ErroNegocio("Despesa já paga não pode ser excluída. Estorne o pagamento antes.", 409, "paga");
   await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM despesas WHERE id = ${id} FOR UPDATE`;
+    if (await tx.vinculoDespesaExterna.count({ where: { despesaId: id } })) throw new ErroNegocio("Esta despesa participou de uma conciliação e deve ser preservada, mesmo com vínculo anulado. Revise o histórico em vez de excluir o registro.", 409, "despesa_conciliada");
     const ok = await tx.despesa.deleteMany({ where: { id, status: "PENDENTE" } });
     if (!ok.count) throw new ErroNegocio("Essa despesa acabou de ser paga.", 409, "paga");
     await auditar(tx, s.usuarioId, "despesa_excluir", "despesa", id, { descricao: d.descricao, valorCentavos: d.valorCentavos, vencimento: colunaParaData(d.vencimento) });

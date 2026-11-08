@@ -17,7 +17,7 @@ def preservar(base):
     backups = base / "backups"
     if base.is_symlink() or backups.is_symlink() or not backups.is_dir():
         raise RuntimeError("Diretório de backup inesperado.")
-    arquivos = [base / ".env", *backups.glob("*.sql.gz"), *backups.glob("*.studio.tar.gz")]
+    arquivos = [base / ".env", *backups.glob("*.sql.gz"), *backups.glob("*.studio.tar.gz"), *backups.glob("*.manifesto.json")]
     if (base / ".env.estudio").exists():
         arquivos.append(base / ".env.estudio")
     if any(p.is_symlink() or not p.is_file() for p in arquivos):

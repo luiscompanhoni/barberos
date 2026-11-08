@@ -1,60 +1,36 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { cpfValido } from "@/lib/assinaturas/regras";
 import { ErroNegocio } from "@/lib/erros";
+import { conferirPixProtegido, type CadastroPixProtegido } from "./pix-protegido";
+export { analisarChavePix } from "./pix-regras";
 
 export const zCompetenciaPix = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Competência no formato AAAA-MM");
 export const zRevisaoPix = z.string().regex(/^[a-f0-9]{64}$/);
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
-function cnpjValido(d: string) {
-  if (!/^\d{14}$/.test(d) || /^(\d)\1+$/.test(d)) return false;
-  const digito = (base: string) => {
-    let peso = 2;
-    const soma = [...base].reverse().reduce((t, n) => { const v = Number(n) * peso; peso = peso === 9 ? 2 : peso + 1; return t + v; }, 0);
-    return soma % 11 < 2 ? 0 : 11 - soma % 11;
-  };
-  return digito(d.slice(0, 12)) === Number(d[12]) && digito(d.slice(0, 13)) === Number(d[13]);
-}
-
-/** Valida apenas o formato local. Nunca comprova existência ou titularidade bancária. */
-export function analisarChavePix(entrada: string | null) {
-  const original = (entrada ?? "").trim();
-  const digitos = original.replace(/[.\-/]/g, "");
-  let tipo: "CPF" | "CNPJ" | "EMAIL" | "TELEFONE" | "ALEATORIA" | null = null;
-  let normalizada = original;
-  if (/^[\d.\-/]+$/.test(original) && cpfValido(digitos)) { tipo = "CPF"; normalizada = digitos; }
-  else if (/^[\d.\-/]+$/.test(original) && cnpjValido(digitos)) { tipo = "CNPJ"; normalizada = digitos; }
-  else if (z.email().safeParse(original).success && original.length <= 77) { tipo = "EMAIL"; normalizada = original.toLowerCase(); }
-  else if (/^\+[1-9]\d{9,14}$/.test(original)) tipo = "TELEFONE";
-  else if (/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(original)) { tipo = "ALEATORIA"; normalizada = original.toLowerCase(); }
-  return {
-    tipo, hash: hash(normalizada), mascarada: original ? `••••${normalizada.slice(-4)}` : "Não cadastrada",
-    problema: !original ? "Chave Pix ausente." : !tipo ? "Formato da chave inválido. Para telefone, use + e código do país." : null,
-  };
-}
-
 export type FolhaParaPix = {
+  ativa?: boolean; versao?: number;
   id: string; pessoaId: string; status: string; criadoEm: Date;
   salarioCentavos: number; comissaoCentavos: number; adicionaisCentavos: number; descontosCentavos: number; liquidoCentavos: number;
-  pessoa: { nome: string; chavePix: string | null; ativo: boolean; revisaoPix: number };
+  pessoa: { nome: string; ativo: boolean; revisaoPix: number } & CadastroPixProtegido;
 };
 
 export function planejarLotePix(competencia: string, folhas: FolhaParaPix[]) {
   zCompetenciaPix.parse(competencia);
-  const ordenadas = [...folhas].sort((a, b) => a.id.localeCompare(b.id));
+  const ordenadas = folhas.filter(f => f.ativa !== false).sort((a, b) => a.id.localeCompare(b.id));
   const estado = ordenadas.map(f => ({
-    id: f.id, pessoaId: f.pessoaId, status: f.status, criadoEm: f.criadoEm.toISOString(),
+    id: f.id, pessoaId: f.pessoaId, versao: f.versao ?? 1, status: f.status, criadoEm: f.criadoEm.toISOString(),
     salario: f.salarioCentavos, comissao: f.comissaoCentavos, adicionais: f.adicionaisCentavos,
     descontos: f.descontosCentavos, liquido: f.liquidoCentavos,
     nome: f.pessoa.nome, ativo: f.pessoa.ativo, revisaoPix: f.pessoa.revisaoPix,
-    chaveHash: analisarChavePix(f.pessoa.chavePix).hash,
+    chaveHash: conferirPixProtegido(f.pessoaId, f.pessoa).hash,
+    protecao: conferirPixProtegido(f.pessoaId, f.pessoa).estado,
   }));
   const itens = ordenadas.filter(f => f.status === "FECHADA" && f.liquidoCentavos > 0).map(f => {
-    const chave = analisarChavePix(f.pessoa.chavePix);
+    const chave = conferirPixProtegido(f.pessoaId, f.pessoa);
     return {
       folhaId: f.id, pessoaId: f.pessoaId, nome: f.pessoa.nome, valorCentavos: f.liquidoCentavos,
-      tipoChave: chave.tipo, chaveMascarada: chave.mascarada, chaveHash: chave.hash,
+      tipoChave: chave.tipo, chaveMascarada: chave.mascara, chaveHash: chave.hash,
       problemas: chave.problema ? [chave.problema] : [],
       destinatario: "NAO_VERIFICADO" as const,
     };

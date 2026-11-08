@@ -3,6 +3,8 @@ export type Status = "MARCADO" | "CONFIRMADO" | "CHEGOU" | "EM_ATENDIMENTO" | "C
 export type AgendamentoApi = {
   id: string;
   barbeiroId: string;
+  adicionalDeId?: string | null;
+  ocupaAgenda?: boolean;
   cadeiraId?: string | null;
   cadeira?: { id: string; nome: string } | null;
   inicio: string;

@@ -1,33 +1,23 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { CATEGORIAS, competenciaResposta, notaPublica, quantidadePublicavel, resumirNotas, type TotaisCategorias } from "./regras";
-
-type Periodos = Record<string, { quantidade: number; soma: number }>;
+import { planejarLotes, type Periodos } from "./lotes";
+import { CATEGORIAS, notaPublica, resumirNotas, type TotaisCategorias } from "./regras";
 
 /** Chamado sob lock por barbeiro. Resto de 1–4 respostas não altera o resumo visível. */
 export async function publicarLotes(tx: Prisma.TransactionClient, barbeiroId: string) {
-  const respostas = await tx.avaliacaoCliente.findMany({
-    where: { convite: { barbeiroId } }, orderBy: [{ criadoEm: "asc" }, { id: "asc" }],
-  });
-  const publicadas = respostas.slice(0, quantidadePublicavel(respostas.length));
-  if (!publicadas.length) return;
-  const totais = resumirNotas(publicadas);
-  const porMes = new Map<string, typeof respostas>();
-  for (const resposta of respostas) {
-    const mes = competenciaResposta(resposta.criadoEm);
-    const grupo = porMes.get(mes) ?? [];
-    grupo.push(resposta);
-    porMes.set(mes, grupo);
-  }
-  const periodos: Periodos = {};
-  for (const [mes, grupo] of porMes) {
-    const lote = grupo.slice(0, quantidadePublicavel(grupo.length));
-    if (lote.length) periodos[mes] = { quantidade: lote.length, soma: lote.reduce((s, n) => s + n.nota, 0) };
-  }
+  const [respostas, anterior] = await Promise.all([
+    tx.avaliacaoCliente.findMany({ where: { convite: { barbeiroId } }, orderBy: [{ criadoEm: "asc" }, { id: "asc" }],
+      select: { id: true, criadoEm: true, publicada: true, nota: true, corte: true, atendimento: true, ambiente: true, pontualidade: true } }),
+    tx.avaliacaoResumo.findUnique({ where: { barbeiroId }, select: { periodos: true } }),
+  ]);
+  const plano = planejarLotes(respostas.map(r => ({ ...r, criadaEm: r.criadoEm })), anterior?.periodos ?? {});
+  if (!plano) return;
+  const totais = resumirNotas(plano.publicadas), periodos = plano.periodos;
   await tx.avaliacaoResumo.upsert({ where: { barbeiroId },
     create: { barbeiroId, ...totais, periodos }, update: { ...totais, periodos },
   });
-  await tx.avaliacaoCliente.updateMany({ where: { id: { in: publicadas.map(r => r.id) }, publicada: false }, data: { publicada: true } });
+  const publicacao = await tx.avaliacaoCliente.updateMany({ where: { id: { in: plano.ids }, publicada: false }, data: { publicada: true } });
+  if (publicacao.count !== plano.ids.length) throw new Error("O lote de avaliações mudou durante a publicação.");
 }
 
 export async function resumoPublicado(barbeiroId: string) {

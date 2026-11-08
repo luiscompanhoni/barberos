@@ -1,0 +1,62 @@
+name: Validar restauração de arquivos históricos de workers
+
+on:
+  workflow_dispatch:
+    inputs:
+      arquivo:
+        description: Um arquivo histórico; esta execução somente lê a VPS e restaura no CI
+        required: true
+        type: choice
+        options:
+          - workers-1793679730688481207.tar.gz
+          - workers-1793719396708289953.tar.gz
+          - workers-1793825938203932356.tar.gz
+          - workers-1793893835032522907.tar.gz
+      chave_relatorio:
+        description: Chave pública RSA SPKI base64; relatório sai somente cifrado
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publicacao-producao
+  cancel-in-progress: false
+
+jobs:
+  validar:
+    if: github.ref == 'refs/heads/main'
+    environment: "produção"
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Conferir limites e rejeições
+        run: |
+          python3 -B scripts/publicacao/test_transferir_arquivos_workers.py
+          node --test scripts/publicacao/transferir-arquivos-workers.test.mjs
+      - name: Restaurar arquivo e renderizar cada imagem sem rede
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          ARQUIVO_WORKERS: ${{ inputs.arquivo }}
+          RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
+        run: node scripts/publicacao/transferir-arquivos-workers.mjs "$RUNNER_TEMP/restauracao-arquivo-workers.cifrado.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: comprovante-restauracao-arquivo-workers-cifrado
+          path: ${{ runner.temp }}/restauracao-arquivo-workers.cifrado.json
+          retention-days: 1
+          if-no-files-found: error

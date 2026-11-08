@@ -12,6 +12,8 @@ from pathlib import Path
 from deploy_vps_comum import (CONTROLES_PUBLICACAO, aguardar_saude, ambiente_container, arquivo_ambiente, backup_verificado,
     conferir_https, conferir_migracoes, conferir_pacote, conferir_central_desligada, consultar_banco, container, ensaiar_schema,
     escrever_privado, executar, exigir_agenda_equipe, exigir_contrato_pix_imagem, exigir_migracoes_da_publicacao, migracoes)
+from protecao_operacao import (MARCADOR, ambiente_rollback, conferir_capacidade, exigir_banco_isolavel,
+    exigir_sem_recuperacao, parar_escritores, registrar_quarentena, retomar_auxiliares)
 
 
 def interrompido(_sinal, _frame):
@@ -35,6 +37,7 @@ def conferir_controles_cliente(app, banco, imagem_com_contrato_verificado):
 def publicar(base, projeto, commit, imagem_esperada):
     if os.geteuid() != 0 or base.is_symlink() or not (base / ".env").is_file():
         raise RuntimeError("Instalação existente não confirmada.")
+    exigir_sem_recuperacao(base)
     pasta = base / "releases" / commit
     codigo = conferir_pacote(pasta, commit)
     registro = pasta / "operacao.json"
@@ -108,16 +111,29 @@ def publicar(base, projeto, commit, imagem_esperada):
     env_app = ambiente_container(app)
     env_backup = ambiente_container(backup_anterior)
     volume = projeto + "_estudio_media"
+    estado["capacidade"] = conferir_capacidade(base, banco, app, volume)
+    exigir_banco_isolavel(projeto, banco)
     env_backup.update(BACKUP_ESTUDIO_MEDIA="/media-estudio", BACKUP_DIAS_LOCAL="999999", BACKUP_S3_BUCKET="")
     ativacao_iniciada = False
+    isolamento_iniciado = False
+    migracao_iniciada = False
+    servicos_parados = []
     compose = None
     try:
+        # Ingresso, app, Evolution, worker e backup param antes da cópia e do schema.
+        # O marcador persiste inclusive se o processo for encerrado inesperadamente.
+        etapa("isolar_escritores")
+        registrar_quarentena(base, {"revisao": commit, "etapa": estado["etapa"]})
+        isolamento_iniciado = True
+        servicos_parados = parar_escritores(projeto, banco["Id"])
+        estado["servicosParados"] = servicos_parados
+        estado["capacidade"] = conferir_capacidade(base, banco, app, volume)
         arquivo_ambiente(pasta / "backup.env", env_backup)
         # A primeira montagem usa o diretório da imagem antes da montagem de leitura.
         executar(["docker", "run", "--rm", "--network", "none", "-v", volume + ":/app/media", novas["app"], "node", "-e",
                   "require('fs').accessSync('/app/media',require('fs').constants.W_OK)"])
         etapa("backup_e_restauracao")
-        estado["backupAntes"] = backup_verificado(base, novas["backup"], rede, pasta / "backup.env", volume)
+        estado["backupAntes"] = backup_verificado(base, novas["backup"], rede, pasta / "backup.env", volume, volume_banco=estado["capacidade"]["volumePostgres"])
         etapa("ensaio_migracao_e_compatibilidade")
         ensaiar_schema(banco["Id"], estado["backupAntes"]["arquivo"], "barberos_ensaio_" + commit[:12], rede, env_app, novas["app"], app["Image"], pasta)
         privado = base / ".env.estudio"
@@ -141,7 +157,11 @@ def publicar(base, projeto, commit, imagem_esperada):
         executar([*compose, "config", "--quiet"])
         exigir_agenda_equipe(banco["Id"])
         etapa("migracao_producao")
-        executar([*compose, "run", "--rm", "--no-deps", "app", "prisma", "migrate", "deploy"], prazo=180)
+        if pendentes:
+            # Depois deste ponto não se declara rollback funcional baseado só em leitura.
+            migracao_iniciada = True
+            registrar_quarentena(base, {"revisao": commit, "etapa": "migracao_iniciada", "migracoes": pendentes})
+            executar([*compose, "run", "--rm", "--no-deps", "app", "prisma", "migrate", "deploy"], prazo=180)
         if conferir_migracoes(migracoes(banco["Id"]), codigo / "prisma/migrations"):
             raise RuntimeError("Migrações não concluídas.")
         etapa("troca_aplicacao")
@@ -150,6 +170,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         novo = aguardar_saude(projeto)
         estado["centralAgentes"] = conferir_central_desligada(novo)
         estado["controlesCliente"] = conferir_controles_cliente(novo, banco["Id"], imagem_nova)
+        retomar_auxiliares(servicos_parados, {"caddy"})
         conferir_https(commit)
         etapa("ativacao_worker")
         executar([*compose, "up", "-d", "--no-build", "--no-deps", "video-worker"], prazo=180)
@@ -161,9 +182,10 @@ def publicar(base, projeto, commit, imagem_esperada):
         else:
             raise RuntimeError("Worker não confirmou autenticação e presença.")
         etapa("backup_apos_migracao")
-        estado["backupDepois"] = backup_verificado(base, novas["backup"], rede, pasta / "backup.env", volume, tipo="MANUAL")
+        estado["backupDepois"] = backup_verificado(base, novas["backup"], rede, pasta / "backup.env", volume, tipo="MANUAL", volume_banco=estado["capacidade"]["volumePostgres"])
         conferir_https(commit)
         estado["controlesCliente"] = conferir_controles_cliente(container(projeto, "app"), banco["Id"], imagem_nova)
+        retomar_auxiliares(servicos_parados, {"evolution"})
         estado.update(concluido=True, imagemNova=novo["Image"], composeAtual=[str(p) for p in arquivos], workerAtivo=True)
         etapa("concluido")
         ativa = base / "versao-ativa.json"
@@ -173,7 +195,9 @@ def publicar(base, projeto, commit, imagem_esperada):
         temp.write_text(json.dumps({"revisao": commit, "registro": str(registro), "compose": estado["composeAtual"]}))
         os.chmod(temp, 0o600)
         os.replace(temp, ativa)
-        return {"concluido": True, "revisao": commit, "backupRestaurado": True, "compatibilidadeAnterior": True,
+        (base / MARCADOR).unlink()
+        return {"concluido": True, "revisao": commit, "backupRestaurado": True, "leituraAnteriorConferida": True,
+                "rollbackAutomaticoPermitido": not migracao_iniciada,
                 "workerAtivo": True, "controlesCliente": estado["controlesCliente"]}
     except BaseException as erro:
         estado["concluido"] = False
@@ -181,13 +205,21 @@ def publicar(base, projeto, commit, imagem_esperada):
         estado["erroTipo"] = type(erro).__name__
         if isinstance(erro, RuntimeError):
             estado["erro"] = str(erro)
-        if ativacao_iniciada:
+        if isolamento_iniciado:
+            # Reenumera também containers criados depois da primeira parada.
+            try:
+                parar_escritores(projeto, banco["Id"])
+                estado["escritoresParadosNaFalha"] = True
+            except BaseException:
+                estado["escritoresParadosNaFalha"] = False
+            registrar_quarentena(base, {"revisao": commit, "etapa": "falha", "migrouOuIniciouMigracao": migracao_iniciada,
+                                       "escritoresParados": estado["escritoresParadosNaFalha"]})
+        if isolamento_iniciado and not migracao_iniciada and estado.get("escritoresParadosNaFalha"):
             etapa("recuperar_imagem_anterior")
             try:
-                executar([*compose, "stop", "video-worker"])
                 rollback = pasta / "rollback.json"
                 escrever_privado(rollback, json.dumps({"services": {"app": {"image": app["Image"], "command": ["node", "server.js"],
-                                                                           "environment": {"MAQUININHA": "manual"}}}}))
+                                                                           "environment": ambiente_rollback()}}}))
                 anterior = ["docker", "compose", "-p", projeto, "--env-file", str(base / ".env")]
                 if (base / ".env.estudio").exists():
                     anterior += ["--env-file", str(base / ".env.estudio")]
@@ -195,9 +227,22 @@ def publicar(base, projeto, commit, imagem_esperada):
                     anterior += ["-f", arquivo]
                 executar([*anterior, "up", "-d", "--no-build", "--no-deps", "app"], prazo=180)
                 recuperado = aguardar_saude(projeto)
-                estado["rollback"] = recuperado["Image"] == app["Image"] and ambiente_container(recuperado).get("MAQUININHA") == "manual"
+                conferir_central_desligada(recuperado)
+                estado["rollback"] = recuperado["Image"] == app["Image"] and ambiente_container(recuperado).get("BARBEROS_QUARENTENA_RESTAURACAO") == "false"
+                if not estado["rollback"]:
+                    raise RuntimeError("Imagem ou bloqueios da recuperação não confirmados.")
+                retomar_auxiliares(servicos_parados, {"caddy"})
+                estado["recuperacaoRestrita"] = True
+                registrar_quarentena(base, {"revisao": commit, "etapa": "imagem_anterior_restrita", "migrouOuIniciouMigracao": False,
+                                           "escritoresParados": False, "controlesValidados": True})
             except BaseException:
                 estado["rollback"] = False
+                try:
+                    parar_escritores(projeto, banco["Id"])
+                except BaseException:
+                    estado["escritoresParadosNaFalha"] = False
+        elif migracao_iniciada:
+            estado["recuperacaoManualObrigatoria"] = True
         etapa("falhou")
         raise RuntimeError("Publicação interrompida; consultar registro privado da etapa e recuperação.") from None
     finally:

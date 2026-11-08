@@ -4,6 +4,7 @@
  */
 import type { FormaPagamento } from "@prisma/client";
 import type { CobrancaGateway, Gateway } from "./gateway";
+import { centavosValidos, instanteRecebimento } from "./recebimento";
 
 function config() {
   const chave = process.env.ASAAS_API_KEY;
@@ -33,6 +34,7 @@ type PagamentoAsaas = {
   id: string;
   subscription?: string | null;
   value: number;
+  originalValue?: number | null;
   dueDate: string;
   status: string;
   billingType?: string | null;
@@ -67,16 +69,21 @@ export function traduzirStatus(p: Pick<PagamentoAsaas, "status" | "deleted">): C
 
 export function converter(p: PagamentoAsaas): CobrancaGateway {
   const formas: Record<string, FormaPagamento> = { CREDIT_CARD: "CARTAO", PIX: "PIX", BOLETO: "BOLETO" };
+  const recebidoEm = instanteRecebimento(p.clientPaymentDate ?? p.paymentDate);
+  const recebido = Math.round(p.value * 100);
+  const comprovado = !p.deleted && ["RECEIVED", "CONFIRMED"].includes(p.status) && centavosValidos(recebido) && !!recebidoEm;
   return {
     id: p.id,
     assinaturaGatewayId: p.subscription ?? null,
-    valorCentavos: Math.round(p.value * 100),
+    valorCentavos: Math.round((p.originalValue ?? p.value) * 100),
     vencimento: p.dueDate,
     vencimentoConfirmado: /^\d{4}-\d{2}-\d{2}$/.test(p.dueDate ?? ""),
     status: traduzirStatus(p),
     abertaConfirmada: !p.deleted && ["PENDING", "OVERDUE"].includes(p.status),
     forma: p.billingType ? formas[p.billingType] ?? null : null,
-    pagaEm: p.confirmedDate ?? p.paymentDate ?? p.clientPaymentDate ?? null,
+    pagaEm: recebidoEm,
+    ...(comprovado ? { recebimento: { valorCentavos: recebido, em: recebidoEm!, fonte: "asaas", referencia: p.id, status: p.status, campoValor: "payment.value", campoData: p.clientPaymentDate ? "payment.clientPaymentDate" : "payment.paymentDate", precisaoData: "DIA" as const } }
+      : traduzirStatus(p) === "PAGA" ? { pendenciaRecebimento: "Conferir pagamento externo ou valor/data efetivos ausentes." } : {}),
     link: p.invoiceUrl ?? null,
   };
 }

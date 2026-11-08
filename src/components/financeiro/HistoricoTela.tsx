@@ -65,6 +65,7 @@ export function HistoricoTela() {
         <p>{dados.fonte.cliente.nome || "Cliente não informado"} · CPF {dados.fonte.cliente.cpf}</p>
         <p className="text-sm">Telefone: {dados.fonte.cliente.telefones.join(", ") || "Não informado"}</p>
         <p>{reais(dados.fonte.valorCentavos)} · vencimento {dia(dados.fonte.vencimento)} · contrato {dados.fonte.contratoId ?? "Não informado"} · status {dados.fonte.status}</p>
+        <p className="text-sm">Data efetiva do pagamento na Celcash: {quando(dados.fonte.pagamentoEfetivoEm ?? null)}</p>
         {dados.vinculo && <p className="text-sm text-emerald-800">Já possui vínculo documentado com a cobrança {dados.vinculo.cobrancaId}.</p>}
         {dados.vinculo?.divergente && <p role="alert" className="text-sm text-amber-900">A sincronização detectou mudança de valor ou status na Celcash após a conciliação. Confira a origem e o extrato antes de gerar uma nova prévia.</p>}
         <h4 className="pt-2 font-semibold">Movimentos no extrato importado</h4>
@@ -119,13 +120,14 @@ export function HistoricoTela() {
           <div><h4 className="font-semibold">Depois</h4><p className="text-sm">{reais(previa.depois.valorCentavos)} · {dia(previa.depois.vencimento)} · {previa.depois.status}<br />Pagamento: {quando(previa.depois.pagaEm)}<br />Assinatura: {previa.depois.assinaturaId}</p>
             {previa.depois.estornoEm && <p className="text-sm">Devolução registrada em {quando(previa.depois.estornoEm)}</p>}</div>
         </div>
+        <p className="text-sm">Data efetiva do recebimento: {quando(previa.depois.pagamentoEfetivoEm)}{previa.depois.recebimentoComprovado ? " · Valor e data do recebimento comprovados." : " · Receita permanece pendente de comprovação."}</p>
         {previa.avisos.map((a) => <p key={a} className="text-sm text-amber-900">{a}</p>)}
         {previa.bloqueios.map((a) => <p key={a} className="text-sm text-red-800">{a}</p>)}
         <p className="text-sm">{previa.backup?.apto ? `Backup conferido em ${quando(previa.backup.criadoEm)} · ${previa.backup.conferencia ?? "Restauração validada"}` : "Aplicação bloqueada: é necessário um backup com restauração conferida nas últimas duas horas. Solicite o backup ao responsável pelo servidor e gere uma nova prévia."} <Link className="underline" href="/configuracoes">Ver configurações</Link></p>
         <button className="btn-primario" type="button" disabled={ocupado || !previa.podeAplicar} onClick={() => void tarefa(async () => {
-          const r = await api<{ cobrancaId: string; repetida: boolean }>(URL_API, { method: "POST", body: { acao: "aplicar", escolha: { ...escolha, revisao: previa.revisao, backupId: previa.backup!.id } } });
+          const r = await api<{ cobrancaId: string; repetida: boolean; recebimentoComprovado: boolean; recebimentoPendente: string | null }>(URL_API, { method: "POST", body: { acao: "aplicar", escolha: { ...escolha, revisao: previa.revisao, backupId: previa.backup!.id } } });
           setPrevia(null); setDados(null); setEscolha(null);
-          setSucesso(`${r.repetida ? "Correção já registrada" : "Correção registrada com auditoria"}. Cobrança ${r.cobrancaId}. Consulte a transação novamente para conferir o vínculo.`);
+          setSucesso(`${r.repetida ? "Correção já registrada" : "Correção registrada com auditoria"}. Cobrança ${r.cobrancaId}. ${r.recebimentoComprovado ? "Recebimento com valor e data comprovados." : r.recebimentoPendente ?? "O recebimento permanece sem prova monetária."} Consulte a transação novamente para conferir o vínculo.`);
         })}>{ocupado ? "Aplicando…" : "Aplicar correção histórica"}</button>
       </div>}
     </>}

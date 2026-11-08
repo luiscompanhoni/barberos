@@ -7,6 +7,9 @@ import { chaveEscolhaHistorico, contextoHistorico, revisaoHistorico } from "./co
 import { buscarTransacaoHistorica } from "./fonte";
 import { backupApto, gatewayHistorico, planejarHistorico } from "./regras";
 import { zAplicarHistorico, type AplicarHistorico } from "./schemas";
+import { prepararRecebimentoHistorico } from "./recebimento";
+import { provaRecebimentoValida } from "@/lib/pagamentos/recebimento";
+import { hashConferencia } from "../despesas-hash";
 
 /** Corrige registros locais. Nao chama gateways de cobranca, devolucao ou notificacao. */
 export async function aplicarHistorico(s: Sessao, entrada: AplicarHistorico) {
@@ -31,18 +34,26 @@ export async function aplicarHistorico(s: Sessao, entrada: AplicarHistorico) {
       const cobAnterior = c.cobrancas.find((x) => x.id === existente?.cobrancaId);
       if (evidenciaAnterior?.revisao === revisao && evidenciaAnterior.escolha === chaveEscolhaHistorico(p, backupId) && evidenciaAnterior.operacao === p.operacao && cobAnterior?.assinaturaId === p.assinaturaId &&
         (p.operacao === "IMPORTAR" || p.cobrancaId === cobAnterior.id)) {
-        return { cobrancaId: cobAnterior.id, vinculoId: existente!.id, repetida: true };
+        const atual = await tx.cobranca.findUniqueOrThrow({ where: { id: cobAnterior.id } });
+        return { cobrancaId: cobAnterior.id, vinculoId: existente!.id, repetida: true, recebimentoComprovado: provaRecebimentoValida(atual) && !atual.recebimentoPendente, recebimentoPendente: atual.recebimentoPendente };
       }
       if (revisaoHistorico(p, c) !== revisao) throw new ErroNegocio("Os dados mudaram desde a prévia. Confira uma nova prévia antes de aplicar.", 409);
       if (c.backup?.id !== backupId || !backupApto(c.backup)) throw new ErroNegocio("Faça um backup com restauração conferida há no máximo duas horas e gere outra prévia.", 409);
       const plano = planejarHistorico(p, c);
       if (plano.bloqueios.length || !plano.recebimento) throw new ErroNegocio(plano.bloqueios.join(" "), 409);
+      const anterior = plano.cobranca ? await tx.cobranca.findUniqueOrThrow({ where: { id: plano.cobranca.id } }) : null;
+      const movimento = await tx.movimentoExterno.findUniqueOrThrow({ where: { id: plano.recebimento.id } });
+      const recebimento = prepararRecebimentoHistorico(fonte, movimento, anterior ?? {
+        gatewayId: gatewayHistorico(fonte.id), valorRecebidoConfirmadoCentavos: null,
+        recebidoConfirmadoEm: null, provaRecebimento: null, recebimentoPendente: null,
+      }, p.operacao === "IMPORTAR");
       const cobranca = p.operacao === "IMPORTAR"
         ? await tx.cobranca.create({ data: {
           assinaturaId: p.assinaturaId, gatewayId: gatewayHistorico(fonte.id), valorCentavos: fonte.valorCentavos,
           vencimento: new Date(`${fonte.vencimento}T00:00:00.000Z`), pagaEm: plano.recebimento.data, status: "PAGA",
+          ...recebimento.dados,
         } })
-        : await tx.cobranca.update({ where: { id: plano.cobranca!.id }, data: { assinaturaId: p.assinaturaId } });
+        : await tx.cobranca.update({ where: { id: plano.cobranca!.id }, data: { assinaturaId: p.assinaturaId, ...recebimento.dados } });
       let pedidoEstornoId: string | undefined;
       if (plano.registrarEstorno && plano.estorno) {
         const pedido = await tx.pedidoEstorno.create({ data: {
@@ -63,6 +74,8 @@ export async function aplicarHistorico(s: Sessao, entrada: AplicarHistorico) {
         backupId, conferidaEm: new Date().toISOString(),
         estornoMovimentoId: plano.registrarEstorno ? plano.estorno?.id ?? null : null,
         estornoEm: plano.registrarEstorno ? plano.estorno?.data.toISOString() ?? null : null,
+        recebimentoComprovado: recebimento.comprovado, recebimentoPendente: recebimento.pendencia,
+        evidenciaRecebimentoSha256: recebimento.evidenciaSha256, movimentoRecebimento: recebimento.movimento,
       };
       const dados = {
         cobrancaId: cobranca.id, contratoId: fonte.contratoId, recebimentoId: plano.recebimento.id,
@@ -78,8 +91,10 @@ export async function aplicarHistorico(s: Sessao, entrada: AplicarHistorico) {
           valorCentavos: plano.cobranca.valorCentavos, vencimento: plano.cobranca.vencimento.toISOString(), pagaEm: plano.cobranca.pagaEm?.toISOString() ?? null } : null,
         depois: { assinaturaId: p.assinaturaId, status: plano.registrarEstorno ? "ESTORNADA" : cobranca.status, gatewayId: cobranca.gatewayId,
           valorCentavos: cobranca.valorCentavos, vencimento: cobranca.vencimento.toISOString(), pagaEm: cobranca.pagaEm?.toISOString() ?? null },
+        provaRecebimentoAntesSha256: hashConferencia(anterior?.provaRecebimento ?? null),
+        provaRecebimentoDepoisSha256: hashConferencia(cobranca.provaRecebimento),
       });
-      return { cobrancaId: cobranca.id, vinculoId: vinculo.id, repetida: false };
+      return { cobrancaId: cobranca.id, vinculoId: vinculo.id, repetida: false, recebimentoComprovado: recebimento.comprovado, recebimentoPendente: recebimento.pendencia };
     // ReadCommitted enxerga pedidos criados enquanto aguardava a trava do estorno.
     }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 15_000 });
   } catch (e) {

@@ -1,12 +1,14 @@
 /**
- * Importa o cadastro da barbearia vindo do CashBarber (scripts/dados/cashbarber.json):
+ * Importa um cadastro privado explicitamente fornecido do CashBarber:
  * servicos, barbeiros (com servicos, duracoes e horarios), planos e produtos.
  * Pode rodar de novo: o que ja existe (mesmo nome/telefone) e atualizado, nada e duplicado.
- * Rodar: DATABASE_URL=... npx tsx scripts/importar-cashbarber.ts
+ * Real: DATABASE_URL=... npx tsx scripts/importar-cashbarber.ts --arquivo <exportacao-privada.json>
+ * Exemplo local: DATABASE_URL=... npx tsx scripts/importar-cashbarber.ts --exemplo
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
+import { validarImportacaoCashbarber } from "./lib/importacao-cashbarber";
 
 type Barbeiro = {
   nome: string; nomeCompleto: string; telefone: string; dono?: boolean; cor: string;
@@ -19,8 +21,14 @@ type Dados = {
   produtos: [string, number, "B" | "L"][];
 };
 
+const indice = process.argv.indexOf("--arquivo");
+if (indice >= 0 && (!process.argv[indice + 1] || process.argv[indice + 1].startsWith("--"))) throw new Error("Informe o caminho após --arquivo.");
+const exemplo = process.argv.includes("--exemplo");
+if (!exemplo && indice < 0) throw new Error("Informe --arquivo com a exportação privada. A fixture versionada só pode ser usada com --exemplo em banco local descartável.");
+const arquivo = indice >= 0 ? process.argv[indice + 1] : join(__dirname, "dados", "cashbarber.json");
+// Valida origem/ambiente antes de criar qualquer cliente do banco.
+const dados: Dados = validarImportacaoCashbarber(JSON.parse(readFileSync(arquivo, "utf8")), { exemplo, arquivoExplicito: indice >= 0, databaseUrl: process.env.DATABASE_URL });
 const db = new PrismaClient();
-const dados: Dados = JSON.parse(readFileSync(join(__dirname, "dados", "cashbarber.json"), "utf8"));
 const min = (h: string) => Number(h.slice(0, 2)) * 60 + Number(h.slice(3, 5));
 const centavos = (r: number) => Math.round(r * 100);
 // Combo para agendar corte e barba juntos (no CashBarber sao dois servicos no mesmo horario).

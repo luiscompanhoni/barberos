@@ -62,6 +62,8 @@ export type JogoCliente = {
   premiosPorJogada: number;
   ativo: boolean;
   soAssinante: boolean;
+  /** Bônus efetivo deste jogo para este cliente: 100 = sem bônus, 115 = +15% em dinheiro. */
+  multiplicador: number;
   /** Jogadas que o cliente pode fazer agora. */
   fichas: number;
   proximaGratisEm: string | null;
@@ -76,7 +78,8 @@ export type JogoCliente = {
 
 export type CentralJogos = {
   jogos: JogoCliente[];
-  multiplicador: number;
+  /** Compatibilidade: só existe um bônus global quando todos os jogos têm a mesma regra. */
+  multiplicador: number | null;
   assinante: boolean;
   premiosAtivos: number;
 };

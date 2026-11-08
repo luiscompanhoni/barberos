@@ -7,6 +7,7 @@
  */
 import type { FormaPagamento } from "@prisma/client";
 import type { CobrancaAvulsa, CobrancaGateway, Gateway } from "./gateway";
+import { centavosValidos, instanteRecebimento } from "./recebimento";
 
 const ESCOPOS = "customers.read customers.write subscriptions.read subscriptions.write charges.read charges.write transactions.read transactions.write";
 export const PREFIXO = { assinatura: "celsub_", transacao: "celtx_", cliente: "celcli_", avulsa: "celchg_" } as const;
@@ -59,6 +60,8 @@ type Transacao = {
   value: number;
   payday: string;
   paydayDate?: string | null;
+  paydayDateDateTime?: string | null;
+  payedOutsideGalaxPay?: boolean;
   status: string;
   Pix?: { qrCode?: string | null; image?: string | null; page?: string | null } | null;
   Boleto?: { pdf?: string | null; bankLine?: string | null } | null;
@@ -87,6 +90,8 @@ const hojeSp = () => new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0,
 export function converter(t: Transacao, a: Pick<Assinatura, "paymentLink" | "mainPaymentMethodId"> | null): CobrancaGateway {
   const forma = a ? FORMA[a.mainPaymentMethodId] ?? null : t.Pix?.qrCode ? "PIX" : null;
   const status = traduzirStatus(t.status, t.payday, hojeSp());
+  const pagaEm = t.paydayDateDateTime && /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/.test(t.paydayDateDateTime) ? instanteRecebimento(t.paydayDateDateTime) : null;
+  const comprovado = ["captured", "payedBoleto", "payedPix"].includes(t.status) && !t.payedOutsideGalaxPay && centavosValidos(t.value) && !!pagaEm;
   return {
     id: `${PREFIXO.transacao}${t.galaxPayId}`,
     assinaturaGatewayId: t.subscriptionGalaxPayId ? `${PREFIXO.assinatura}${t.subscriptionGalaxPayId}` : null,
@@ -95,7 +100,9 @@ export function converter(t: Transacao, a: Pick<Assinatura, "paymentLink" | "mai
     vencimentoConfirmado: /^\d{4}-\d{2}-\d{2}$/.test(t.payday ?? ""),
     status,
     abertaConfirmada: ["pendingPix", "pendingBoleto"].includes(t.status),
-    pagaEm: status === "PAGA" ? (t.paydayDate ?? t.payday) : null,
+    pagaEm: status === "PAGA" ? pagaEm : null,
+    ...(comprovado ? { recebimento: { valorCentavos: t.value, em: pagaEm!, fonte: "celcash", referencia: `${PREFIXO.transacao}${t.galaxPayId}`, status: t.status, campoValor: "Transactions.value", campoData: "Transactions.paydayDateDateTime" } }
+      : status === "PAGA" ? { pendenciaRecebimento: "Pagamento sem comprovação monetária normal: conferir data efetiva, isenção, pagamento externo, diferença ou duplicidade." } : {}),
     // Cartao: link da assinatura para cadastrar/trocar o cartao. Pix/boleto: a pagina da cobranca.
     link: forma === "CARTAO" ? (a?.paymentLink ?? null) : (t.Pix?.page ?? t.Boleto?.pdf ?? a?.paymentLink ?? null),
     forma,

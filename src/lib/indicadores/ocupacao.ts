@@ -36,7 +36,7 @@ export async function ocupacaoDosDias(todosOsDias: string[], barbeiroIds?: strin
   if (!dias.length || !ids.length) return { total: linha(0, 0), porBarbeiro: [], porDia: [], porDiaSemana: [] };
 
   const ags = await db.agendamento.findMany({
-    where: { barbeiroId: { in: ids }, status: { in: [...OCUPA] }, inicio: { lt: new Date(Date.parse(`${dias.at(-1)}T23:59:59Z`) + 86_400_000) }, fim: { gt: new Date(Date.parse(`${dias[0]}T00:00:00Z`) - 86_400_000) } },
+    where: { barbeiroId: { in: ids }, OR: [{ adicionalDeId: null }, { ocupaAgenda: true }], status: { in: [...OCUPA] }, inicio: { lt: new Date(Date.parse(`${dias.at(-1)}T23:59:59Z`) + 86_400_000) }, fim: { gt: new Date(Date.parse(`${dias[0]}T00:00:00Z`) - 86_400_000) } },
     select: { barbeiroId: true, inicio: true, fim: true },
   });
   const porChave = new Map<string, Intervalo[]>(); // barbeiro|data

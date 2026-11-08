@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ativarComCartao } from "@/lib/assinaturas/cartao-pix";
 import { rota } from "@/lib/erros";
-import { limitarTentativas, zCartaoToken } from "@/lib/pagamentos/checkout";
+import { limitarAcessoCheckout, limitarTentativas, zCartaoToken } from "@/lib/pagamentos/checkout";
 import { corpo } from "@/lib/validacao";
 
 /**
@@ -12,7 +12,8 @@ import { corpo } from "@/lib/validacao";
  * (O checkout novo usa /api/pagamentos/assinatura/[token]; esta rota segue para links antigos.)
  */
 export const POST = rota(async (req: Request) => {
-  const b = await corpo(req, z.object({ assinatura: z.string().min(20).max(64), cartaoToken: zCartaoToken }));
+  limitarAcessoCheckout(req);
+  const b = await corpo(req, z.object({ assinatura: z.string().min(20).max(64), cartaoToken: zCartaoToken }), { maxBytes: 32_768, tipoJson: true });
   // Limite contra teste de cartoes em massa: 5 tentativas por assinatura por hora.
   limitarTentativas(`assinatura:${b.assinatura}:CARTAO`);
   const r = await ativarComCartao(b.assinatura, b.cartaoToken);

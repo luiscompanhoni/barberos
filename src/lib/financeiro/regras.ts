@@ -67,10 +67,11 @@ export function proximoVencimento(data: string) {
   return `${ano}-${String(mes).padStart(2, "0")}-${String(Math.min(d, ultimo)).padStart(2, "0")}`;
 }
 
-export type DespesaResumo = { categoria: string; valorCentavos: number; status: "PENDENTE" | "PAGA"; vencimento: string; pagoEm: string | null };
+export type DespesaResumo = { categoria: string; valorCentavos: number; status: "PENDENTE" | "PAGA" | "ANULADA_TESTE"; vencimento: string; pagoEm: string | null };
 
 /** PAGA, VENCIDA (pendente com vencimento antes de hoje) ou ABERTA. Datas AAAA-MM-DD locais. */
 export function situacaoDespesa(d: Pick<DespesaResumo, "status" | "vencimento">, hoje: string) {
+  if (d.status === "ANULADA_TESTE") return "ANULADA_TESTE" as const;
   if (d.status === "PAGA") return "PAGA" as const;
   return d.vencimento < hoje ? ("VENCIDA" as const) : ("ABERTA" as const);
 }
@@ -84,7 +85,7 @@ export function totaisDespesas(lista: DespesaResumo[], hoje: string, mes: string
       t.aPagar += d.valorCentavos;
       cat.aberto += d.valorCentavos;
       if (situacaoDespesa(d, hoje) === "VENCIDA") { t.vencidas += d.valorCentavos; t.qtdVencidas++; }
-    } else if (d.pagoEm?.startsWith(mes)) {
+    } else if (d.status === "PAGA" && d.pagoEm?.startsWith(mes)) {
       t.pagasNoMes += d.valorCentavos;
       cat.pago += d.valorCentavos;
     }

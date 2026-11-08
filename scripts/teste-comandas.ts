@@ -1,11 +1,12 @@
 // Teste de integracao de estoque + comanda + maquininha Stone (Connect 2.0) contra o banco de
-// DESENVOLVIMENTO, com uma Pagar.me FALSA em memoria. Cria e apaga os proprios dados.
-// Rodar: npm run teste:comandas
+// local descartável dedicado, com uma Pagar.me FALSA em memória. Cria e apaga os próprios dados.
+// Rodar pelo coordenador local com AMBIENTE=teste: npm run teste:comandas
 process.env.MAQUININHA = "stone";
 process.env.STONE_POS_SERIAL = "SERIAL123";
 process.env.PAGARME_SECRET_KEY = "sk_test_falsa";
 
 import type { Sessao } from "@/lib/auth/sessao";
+import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
 import { _usarFetch } from "@/lib/pagamentos/pagarme";
@@ -13,7 +14,16 @@ import { lancarMovimento } from "@/lib/comandas/estoque";
 import { cancelarPagamento, registrarPagamento, sincronizarPedido } from "@/lib/comandas/maquininha";
 import { alterarStatus } from "@/lib/agenda/agendamentos";
 import { adicionarServico } from "@/lib/comandas/adicional";
+import { configuracao } from "@/lib/agenda/carregar";
+import { instanteLocal } from "@/lib/agenda/tempo";
 import { abrirComanda, adicionarProduto, alterarItem, cancelarComanda, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
+
+const destino = new URL(process.env.DATABASE_URL ?? "http://invalido");
+if (!["postgres:", "postgresql:"].includes(destino.protocol) || destino.hostname !== "127.0.0.1"
+  || destino.port !== "55439" || destino.username !== "auditoria_teste"
+  || !/^\/barberos_ci_local_regr_comandas_\d{8}$/.test(destino.pathname)) {
+  throw new Error("Comandas restrito ao banco local descartável barberos_ci_local_regr_comandas_<8 dígitos>, usuário auditoria_teste, porta 55439.");
+}
 
 const ok = (c: boolean, msg: string) => { if (!c) throw new Error(`FALHOU ${msg}`); console.log(`OK  ${msg}`); };
 const falha = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
@@ -50,6 +60,7 @@ _usarFetch((async (url: string, init?: RequestInit) => {
 }) as typeof fetch);
 
 const TEL = "5511933337001";
+const TEL_AGENDA = "5511933337002";
 async function limpar() {
   const c = await db.cliente.findUnique({ where: { telefone: TEL } });
   const ps = await db.produto.findMany({ where: { nome: { startsWith: "[teste] " } }, select: { id: true } });
@@ -61,6 +72,11 @@ async function limpar() {
     await db.comanda.deleteMany({ where: { id: { in: cs.map((x) => x.id) } } });
     await db.agendamento.deleteMany({ where: { clienteId: c.id } });
     await db.cliente.delete({ where: { id: c.id } });
+  }
+  const proximo = await db.cliente.findUnique({ where: { telefone: TEL_AGENDA } });
+  if (proximo) {
+    await db.agendamento.deleteMany({ where: { clienteId: proximo.id } });
+    await db.cliente.delete({ where: { id: proximo.id } });
   }
   await db.movimentoEstoque.deleteMany({ where: { produtoId: { in: ps.map((p) => p.id) } } });
   await db.itemComanda.deleteMany({ where: { produtoId: { in: ps.map((p) => p.id) } } });
@@ -216,33 +232,61 @@ async function main() {
   await fecharComanda(s, incerta.id);
   await cancelarComanda(s, incerta.id, "teste");
 
-  // ---- servico adicional (ex.: sobrancelha junto do corte)
+  // ---- adicional da recepção tem reserva própria, nunca sobrepõe o próximo cliente.
   const extra = await db.barbeiroServico.findFirstOrThrow({ where: { barbeiroId: barbeiro.id, servico: { ativo: true } }, include: { servico: true } });
-  const inicio2 = new Date(Date.UTC(2031, 0, 8, 12, (Date.now() % 40) + 5));
+  const { fuso } = await configuracao();
+  const inicio2 = new Date(instanteLocal("2031-01-08", 9 * 60 + 5, fuso)); // Quarta, dentro da manhã do seed.
   const ag2 = await db.agendamento.create({
     data: { barbeiroId: barbeiro.id, clienteId: cliente.id, servicoId: servico.id, inicio: inicio2, fim: new Date(+inicio2 + 30 * 60_000), origem: "RECEPCAO", precoCentavos: 5000, status: "EM_ATENDIMENTO" },
   });
   const cm = await abrirComanda(s, { agendamentoId: ag2.id });
-  // Proximo cliente do barbeiro logo depois: o adicional nao pode travar por "horario ocupado".
-  await db.agendamento.create({
-    data: { barbeiroId: barbeiro.id, clienteId: cliente.id, servicoId: servico.id, inicio: ag2.fim, fim: new Date(+ag2.fim + 30 * 60_000), origem: "RECEPCAO", precoCentavos: 5000, status: "MARCADO" },
+  const proximoCliente = await db.cliente.create({ data: { telefone: TEL_AGENDA, nome: "Próximo cliente fictício" } });
+  const proximo = await db.agendamento.create({
+    data: { barbeiroId: barbeiro.id, clienteId: proximoCliente.id, servicoId: servico.id, inicio: ag2.fim, fim: new Date(+ag2.fim + 30 * 60_000), origem: "RECEPCAO", precoCentavos: 5000, status: "MARCADO" },
   });
-  const adic = await adicionarServico(s, cm.id, extra.servicoId, barbeiro.id);
+  const solicitacaoId = randomUUID();
+  const conflito = await falha(() => adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, solicitacaoId));
+  ok(conflito instanceof ErroNegocio && conflito.codigo === "conflito_horario", "próximo cliente impede adicional no mesmo período, sem alterar a reserva existente");
+  ok(await db.agendamento.count({ where: { adicionalDeId: ag2.id } }) === 0, "tentativa em conflito não deixa adicional nem cobrança parcial");
+  await alterarStatus(proximo.id, "CANCELADO", s);
+  const [adic, repetida] = await Promise.all([
+    adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, solicitacaoId),
+    adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, solicitacaoId),
+  ]);
   const precoExtra = extra.precoCentavos ?? extra.servico.precoCentavos;
-  ok(adic.adicionalDeId === ag2.id && adic.status === "EM_ATENDIMENTO" && adic.precoCentavos === precoExtra, "adicional ligado ao atendimento, mesmo status, preço do barbeiro");
+  ok(adic.adicionalDeId === ag2.id && adic.status === "MARCADO" && adic.ocupaAgenda && +adic.inicio === +ag2.fim && adic.precoCentavos === precoExtra,
+    "adicional reserva seu horário, inicia marcado e usa o preço do profissional");
+  ok(adic.id === solicitacaoId && repetida.id === adic.id && await db.itemComanda.count({ where: { agendamentoId: adic.id } }) === 1,
+    "repetição concorrente da mesma solicitação produz um adicional e um item");
   let dc = await detalheComanda(cm.id);
-  ok(dc.itens.some((i) => i.agendamentoId === adic.id && i.precoUnitCentavos === precoExtra && i.barbeiroId === barbeiro.id), "adicional entra na comanda com o barbeiro (comissão)");
+  ok(dc.itens.some((i) => i.agendamentoId === adic.id && i.precoUnitCentavos === precoExtra && i.barbeiroId === barbeiro.id), "adicional preserva o vínculo do profissional sem antecipar serviço concluído");
   ok(dc.resumo.total === 5000 + precoExtra, "total soma o serviço adicional");
   await alterarStatus(ag2.id, "CONCLUIDO", s);
-  ok((await db.agendamento.findUniqueOrThrow({ where: { id: adic.id } })).status === "CONCLUIDO", "concluir o atendimento conclui o adicional junto");
+  ok((await db.agendamento.findUniqueOrThrow({ where: { id: adic.id } })).status === "MARCADO", "concluir o principal não conclui adicional ainda não realizado");
+  const fechamentoPendente = await falha(() => fecharComanda(s, cm.id));
+  ok(fechamentoPendente instanceof ErroNegocio && fechamentoPendente.codigo === "adicional_pendente", "fechamento exige conclusão individual ou remoção do adicional pendente");
+  await alterarStatus(adic.id, "CONCLUIDO", s);
+  ok((await db.agendamento.findUniqueOrThrow({ where: { id: adic.id } })).status === "CONCLUIDO", "adicional só fica concluído após sua própria baixa operacional");
+  const remocaoConcluida = await falha(() => alterarItem(s, dc.itens.find(i => i.agendamentoId === adic.id)!.id, 0));
+  ok(remocaoConcluida instanceof ErroNegocio && remocaoConcluida.codigo === "adicional_iniciado", "serviço concluído não é removido para apagar histórico");
   const semCliente = await abrirComanda(s, { nomeAvulso: "Balcão" });
   ok((await falha(() => adicionarServico(s, semCliente.id, extra.servicoId, barbeiro.id)))?.message.includes("avulso") === true, "comanda sem cliente pede item avulso");
   await cancelarComanda(s, semCliente.id, "teste");
-  await alterarItem(s, dc.itens.find((i) => i.agendamentoId === adic.id)!.id, 0);
-  ok((await db.agendamento.findUniqueOrThrow({ where: { id: adic.id } })).status === "CANCELADO", "tirar o adicional da comanda cancela o atendimento adicional");
+  const removivelId = randomUUID();
+  const removivel = await adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, removivelId);
   dc = await detalheComanda(cm.id);
-  ok(dc.resumo.total === 5000, "total volta ao valor do corte");
+  await alterarItem(s, dc.itens.find((i) => i.agendamentoId === removivel.id)!.id, 0);
+  ok((await db.agendamento.findUniqueOrThrow({ where: { id: removivel.id } })).status === "CANCELADO", "remover adicional ainda marcado cancela sua reserva");
+  const repetirRemovido = await falha(() => adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, removivelId));
+  ok(repetirRemovido instanceof ErroNegocio && repetirRemovido.codigo === "solicitacao_encerrada", "repetir solicitação removida não ressuscita reserva nem cobrança");
+  dc = await detalheComanda(cm.id);
+  ok(dc.resumo.total === 5000 + precoExtra, "remoção do pendente preserva o principal e o adicional realizado");
+  const pendente = await adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, randomUUID());
   await cancelarComanda(s, cm.id, "teste");
+  await alterarStatus(ag2.id, "CONFIRMADO", s);
+  ok((await db.agendamento.findUniqueOrThrow({ where: { id: pendente.id } })).status === "CANCELADO"
+    && (await db.agendamento.findUniqueOrThrow({ where: { id: adic.id } })).status === "CONCLUIDO",
+  "cancelar comanda libera pendente, preserva realizado e reconfirmar principal não reativa adicional");
 
   await limpar();
   await db.$disconnect();

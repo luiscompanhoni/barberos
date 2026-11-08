@@ -21,7 +21,7 @@ type Fase = "pronto" | "raspando" | "revelado" | "fim";
 const ORDEM = { COMUM: 0, RARO: 1, EPICO: 2, LENDARIO: 3 } as const;
 
 export function RaspadinhaBlack({ jogo, jogar, campanha = false, aoTerminar }: {
-  jogo: Pick<JogoCliente, "id" | "nome" | "fichas" | "vitrine" | "comoGanhar" | "pendente">;
+  jogo: Pick<JogoCliente, "id" | "nome" | "fichas" | "vitrine" | "comoGanhar" | "pendente"> & { multiplicador?: number };
   jogar?: () => Promise<JogadaCliente>;
   campanha?: boolean;
   aoTerminar?: () => void;
@@ -179,6 +179,7 @@ export function RaspadinhaBlack({ jogo, jogar, campanha = false, aoTerminar }: {
             <p className="jogo-subtitulo">{jogo.nome}</p>
             <h2 className="jogo-titulo mt-2 text-4xl sm:text-5xl">Raspe e Ganhe</h2>
             <p className="mt-2 text-sm font-semibold text-zinc-400">Raspe e combine 3 iguais</p>
+              {!!jogo.multiplicador && jogo.multiplicador > 100 && <p className="mt-2 text-xs text-zinc-500">Assinante: +{jogo.multiplicador - 100}% nos prêmios em dinheiro.</p>}
 
             {melhores.length > 0 && (
               <div className="mt-5">

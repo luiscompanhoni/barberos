@@ -127,6 +127,7 @@ model AlteracaoPlanoAssinatura {
 }
 
 model Usuario {
+  retificacoesFolhaTeste FolhaRetificacaoTeste[]
   identidadesSociais     IdentidadeSocial[]
   telefoneVerificadoEm   DateTime?             @db.Timestamptz(3)
   sessaoVersao           Int                   @default(0)
@@ -538,6 +539,8 @@ model Agendamento {
   /// Servico adicional lancado na comanda (ex.: sobrancelha junto do corte): fica ligado ao atendimento principal,
   /// conta para comissao/plano/relatorios, mas nao ocupa a agenda (fora da regra de sobreposicao).
   adicionalDeId     String?
+  /// Adicionais novos reservam seu próprio intervalo; os antigos mantêm a duração histórica.
+  ocupaAgenda       Boolean              @default(false)
   adicionalDe       Agendamento?         @relation("adicionais", fields: [adicionalDeId], references: [id], onDelete: Cascade)
   adicionais        Agendamento[]        @relation("adicionais")
   criadoPorId       String?
@@ -760,6 +763,11 @@ model Cobranca {
   assinatura    Assinatura      @relation(fields: [assinaturaId], references: [id], onDelete: Cascade)
   gatewayId     String          @unique
   valorCentavos Int
+  /// Valor bruto efetivamente pago, comprovado pelo provedor/conciliação; não é saldo bancário.
+  valorRecebidoConfirmadoCentavos Int?
+  recebidoConfirmadoEm DateTime? @db.Timestamptz(3)
+  provaRecebimento Json?
+  recebimentoPendente String?
   vencimento    DateTime        @db.Date
   status        StatusCobranca  @default(PENDENTE)
   pagaEm        DateTime?       @db.Timestamptz(3)
@@ -779,11 +787,17 @@ model Cobranca {
   vinculosExternos VinculoCobrancaExterna[]
 
   @@index([assinaturaId, vencimento])
+  @@index([recebidoConfirmadoEm], map: "cobrancas_recebido_confirmado_em_idx")
   @@map("cobrancas")
 }
 
 /// Eventos de webhook ja processados (o gateway reenvia; processa uma vez so).
 model EventoPagamento {
+  estado String @default("LEGADO")
+  tentativaToken String?
+  tentativas Int @default(0)
+  atualizadoEm DateTime? @db.Timestamptz(3)
+  concluidoEm DateTime? @db.Timestamptz(3)
   id           String   @id
   tipo         String
   cobrancaId   String?
@@ -1610,6 +1624,10 @@ model ChecklistPessoa {
   cargo                  String?
   salarioCentavos        Int                     @default(0)
   chavePix               String?
+  chavePixCifrada         String?
+  chavePixMascarada       String?
+  chavePixTipo            String?
+  chavePixHash            String?
   /// Invalida conferência local do lote ao mudar chave, nome ou estado do cadastro (trigger).
   revisaoPix             Int                     @default(0)
   admissao               DateTime?               @db.Date
@@ -1728,6 +1746,18 @@ enum TipoComissao {
 }
 
 /// Comissao de um servico. barbeiroId null = regra geral; com barbeiro = excecao para ele.
+model RemuneracaoVersao {
+  id String @id @default(cuid())
+  escopo String
+  competencia String
+  versao Int
+  conteudoJson Json
+  criadoPorId String?
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  @@unique([escopo, competencia, versao])
+  @@map("remuneracao_versoes")
+}
+
 model ComissaoServico {
   id          String       @id @default(cuid())
   servicoId   String
@@ -1746,11 +1776,18 @@ model ComissaoServico {
 /// menos estornos) e atribuida aos barbeiros pelos Creditos de Atendimento dos atendimentos pelo plano, e cada
 /// um recebe o percentual base (+ adicional) sobre a receita atribuida. Ligado, substitui a regra "pelo plano"
 /// de cada servico. Linha unica (id "pote").
+enum ArredondamentoPote {
+  LEGADO
+  MAIORES_RESTOS_V1
+}
+
 model PoteConfig {
   id            String   @id @default("pote")
   ativo         Boolean  @default(false)
   /// Percentual base da comissao das assinaturas sobre a receita atribuida ao barbeiro (3500 = 35%).
   percentualBps Int      @default(3500)
+  /// Método explícito por vigência; registros existentes preservam o cálculo individual legado.
+  arredondamento ArredondamentoPote @default(LEGADO)
   atualizadoEm  DateTime @updatedAt @db.Timestamptz(3)
 
   @@map("pote_config")
@@ -1839,6 +1876,15 @@ enum StatusFolha {
 
 /// Folha fechada de um funcionario num mes (valores congelados).
 model FolhaPagamento {
+  /// Só a versão ativa participa da prévia, fechamento e preparação de pagamento.
+  ativa              Boolean         @default(true)
+  versao             Int             @default(1)
+  substituiId        String?         @unique
+  substitui          FolhaPagamento? @relation("FolhaSubstituicao", fields: [substituiId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  substituta         FolhaPagamento? @relation("FolhaSubstituicao")
+  retificacaoTeste    FolhaRetificacaoTeste?
+  /// Identidade da cadeira no fechamento; preservada mesmo após troca da ficha atual.
+  barbeiroIdCongelado String?
   id                 String          @id @default(cuid())
   competencia        String
   pessoaId           String
@@ -1854,12 +1900,50 @@ model FolhaPagamento {
   despesaId          String?         @unique
   criadoEm           DateTime        @default(now()) @db.Timestamptz(3)
 
-  @@unique([competencia, pessoaId])
+  @@unique([competencia, pessoaId, versao])
+  @@index([competencia, ativa])
   @@map("folha_pagamentos")
+}
+
+/// Anulação interna do teste sem transferência. Original, despesa e declaração são preservados.
+model FolhaRetificacaoTeste {
+  id                         String         @id @default(cuid())
+  idempotencia               String         @unique
+  folhaOriginalId            String         @unique
+  folhaOriginal              FolhaPagamento @relation(fields: [folhaOriginalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  despesaOriginalId          String         @unique
+  despesaOriginal            Despesa        @relation(fields: [despesaOriginalId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  atorId                     String
+  ator                       Usuario        @relation(fields: [atorId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  atorSessaoVersao            Int
+  motivo                     String
+  declaracao                 String
+  revisaoOrigem               String
+  hashPedido                 String
+  salarioSubstitutivoCentavos Int
+  snapshotFolha               Json
+  snapshotDespesa             Json
+  criadoEm                   DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@map("folha_retificacoes_teste")
+}
+
+enum EstadoLoteFolhaPix {
+  PREPARADO
+  CONFERIDO
+  INVALIDADO
+  ENVIADO
+  PAGO
+  INCERTO
 }
 
 /// Preparação local: conferência não autoriza transferência nem quita a folha.
 model FolhaLotePix {
+  estado          EstadoLoteFolhaPix @default(PREPARADO)
+  enviadoEm       DateTime? @db.Timestamptz(3)
+  referenciaBancaria String?
+  invalidadoEm    DateTime? @db.Timestamptz(3)
+  motivoInvalidacao String?
   id              String   @id @default(cuid())
   competencia     String
   revisao         String
@@ -1879,9 +1963,12 @@ model FolhaLotePix {
 enum StatusDespesa {
   PENDENTE
   PAGA
+  ANULADA_TESTE
 }
 
 model Despesa {
+  retificacaoFolhaTeste FolhaRetificacaoTeste?
+  vinculosExternos VinculoDespesaExterna[]
   id               String        @id @default(cuid())
   descricao        String
   /// ALUGUEL, ENERGIA, AGUA, INTERNET, PRODUTOS, BAR, FORNECEDOR, FOLHA, COMISSAO, MARKETING, IMPOSTOS, MANUTENCAO, OUTROS
@@ -2193,10 +2280,13 @@ enum TipoMovimentoExterno {
 
 /// Movimento do extrato de uma fonte externa (cada um entra uma vez so). A classificacao pode ser corrigida no painel.
 model MovimentoExterno {
+  vinculosDespesa VinculoDespesaExterna[]
   id                String               @id @default(cuid())
   fonte             FonteExterna
   /// Id do movimento na fonte (ex.: galaxPayId do extrato da Celcash).
   idExterno         String
+  /// Identidade normalizada de importação, sem substituir o identificador legado.
+  identidadeCanonica String?
   data              DateTime             @db.Timestamptz(3)
   /// Com sinal: entrada positiva, saida negativa.
   valorCentavos     Int
@@ -2217,10 +2307,39 @@ model MovimentoExterno {
   estornoVinculado     VinculoCobrancaExterna? @relation("EstornoHistorico")
 
   @@unique([fonte, idExterno])
+  @@unique([fonte, identidadeCanonica])
   @@index([fonte, transacaoId])
   @@index([fonte, data])
   @@index([tipo, data])
   @@map("movimentos_externos")
+}
+
+model VinculoDespesaExterna {
+  id String @id @default(cuid())
+  movimentoId String
+  movimento MovimentoExterno @relation(fields: [movimentoId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  despesaId String
+  despesa Despesa @relation(fields: [despesaId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  criadoPorId String
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  anuladoEm DateTime? @db.Timestamptz(3)
+  anuladoPorId String?
+  motivoAnulacao String?
+  @@index([movimentoId])
+  @@index([despesaId])
+  @@map("vinculos_despesa_externa")
+}
+
+model ConferenciaExtrato {
+  id String @id @default(cuid())
+  fonte FonteExterna
+  competencia String
+  hashDados String
+  snapshot Json
+  criadoPorId String
+  criadoEm DateTime @default(now()) @db.Timestamptz(3)
+  @@index([fonte, competencia, criadoEm])
+  @@map("conferencias_extrato")
 }
 
 /// Origem comprovada de uma cobranca. Vincular nao substitui o gatewayId nem dispara cobranca.
