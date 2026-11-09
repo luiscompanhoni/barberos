@@ -5,6 +5,7 @@ import os
 import re
 import secrets
 import shutil
+import sys
 import time
 from pathlib import Path
 
@@ -54,15 +55,18 @@ const {createHmac}=require('node:crypto');
 })().catch(()=>process.exit(1));
 """
 
-MODELO = r"""
-const Anthropic=require('@anthropic-ai/sdk');
-(async()=>{
- const c=new Anthropic.default({maxRetries:0,timeout:30000});
- const r=await c.beta.messages.create({model:process.env.BOT_MODELO||'claude-opus-5-5',max_tokens:32,messages:[{role:'user',content:'Teste técnico interno. Responda somente OK.'}]});
- if(!r.content.some(x=>x.type==='text'&&x.text.trim())) throw Error('Modelo sem resposta');
- console.log('{"modeloRespondeu":true}');
-})().catch(()=>process.exit(1));
-"""
+MODELO = None
+
+
+def provar_modelo(app):
+    if not MODELO:
+        raise RuntimeError('Bundle da prova do SDK não informado.')
+    programa = "process.env.BARBEROS_PROVA_IA='mensagem';\n" + MODELO
+    prova = json.loads(executar(['docker', 'exec', '-i', app['Id'], 'node'], entrada=programa.encode(), prazo=40))
+    if prova.get('modeloRespondeu') is not True:
+        raise RuntimeError('Modelo existente não respondeu: status ' + str(prova.get('status')) +
+                           ', motivo ' + str(prova.get('motivo', 'indefinido')) + '.')
+    return {'modeloRespondeu': True, 'sdkExternalizado': prova.get('sdkExternalizado')}
 
 
 def compor(base, projeto, arquivos, privado):
@@ -102,7 +106,9 @@ def ativar(base, projeto, commit):
         raise RuntimeError('Nenhum dono/gerente ativo cadastrado para testar.')
     # Uma chamada técnica curta, sem dados de cliente, à mesma IA já configurada.
     try:
-        prova_modelo = json.loads(executar(['docker', 'exec', app['Id'], 'node', '-e', MODELO], prazo=40))
+        prova_modelo = provar_modelo(app)
+    except RuntimeError:
+        raise
     except Exception:
         raise RuntimeError('Modelo existente não respondeu ao teste técnico; conferir autenticação e disponibilidade.') from None
     privado = base / '.env.atendimento'
@@ -159,7 +165,12 @@ if __name__ == '__main__':
     import fcntl
     parser = argparse.ArgumentParser()
     parser.add_argument('base'); parser.add_argument('projeto'); parser.add_argument('commit')
+    parser.add_argument('--prova-sdk-stdin', action='store_true')
     args = parser.parse_args()
+    if args.prova_sdk_stdin:
+        MODELO = sys.stdin.read(1024 * 1024 + 1)
+        if not MODELO or len(MODELO) > 1024 * 1024:
+            raise SystemExit('Bundle da prova inválido.')
     base = Path(args.base)
     if os.geteuid() != 0 or base.is_symlink() or not re.fullmatch(r'/[A-Za-z0-9_/-]+', args.base) or '..' in base.parts or not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', args.projeto) or not re.fullmatch(r'[a-f0-9]{40}', args.commit):
         raise SystemExit('Parâmetros inválidos.')
