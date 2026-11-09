@@ -260,7 +260,7 @@ jobs:
           export NODE_OPTIONS="--require=$RUNNER_TEMP/rh-sem-checklist-sem-http.cjs"
           ./node_modules/.bin/vitest run tests/rh-sem-checklist-banco.test.ts \
             --maxWorkers=1 --reporter=json --outputFile="$RUNNER_TEMP/rh-sem-checklist.json"
-          node -e 'const r=require(process.argv[1]); if (!r.success || r.numPassedTests < 9 || r.numPendingTests || r.numTotalTests !== r.numPassedTests) process.exit(1); console.log(r.numPassedTests, "cenários RH sem checklist aprovados sem skips")' "$RUNNER_TEMP/rh-sem-checklist.json"
+          node -e 'const r=require(process.argv[1]); if (r.success !== true || !Number.isInteger(r.numPassedTests) || r.numPassedTests < 9 || r.numPendingTests !== 0 || r.numTotalTests !== r.numPassedTests) process.exit(1); console.log(r.numPassedTests, "cenários RH sem checklist aprovados sem skips")' "$RUNNER_TEMP/rh-sem-checklist.json"
       - name: Build
         run: npm run build
 

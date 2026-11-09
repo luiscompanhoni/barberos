@@ -12,6 +12,8 @@ import { receberMensagem } from "@/lib/bot/processar";
 const telefone = "5547999990000";
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "false");
+  vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_EQUIPE", "false");
   vi.stubEnv("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "true");
   vi.stubEnv("WHATSAPP_ATENDIMENTO_APOS_PILOTO", "true");
   vi.stubEnv("WHATSAPP_ATENDIMENTO_IA_PAGA", "false");
@@ -23,6 +25,12 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("atendimento sem IA paga após piloto", () => {
+  it("bloqueio geral impede atendimento antes de consultar piloto ou modelo", async () => {
+    vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "true");
+    await receberMensagem({ telefone, texto: "oi" });
+    expect(m.entrada).toHaveBeenCalled();
+    for (const fn of [m.piloto, m.cfg, m.update, m.enviar, m.modelo, m.entrevista]) expect(fn).not.toHaveBeenCalled();
+  });
   it("encaminha à equipe com resposta de acolhimento sem chamar modelo ou entrevista", async () => {
     await receberMensagem({ telefone, texto: "oi" });
     expect(m.update).toHaveBeenCalledWith({ where: { id: "conversa" }, data: { estado: "HUMANO" } });
