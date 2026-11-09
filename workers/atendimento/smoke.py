@@ -45,6 +45,8 @@ def main():
         with urllib.request.urlopen(req, timeout=120) as r:
             resultado = json.load(r)
         assert resultado["confiavel"] is True and resultado["texto"]
+        assert all(t.strip().lower() in resultado["texto"].lower() for t in os.environ.get("ASR_TESTE_TOKENS", "").split(",") if t.strip())
+        assert time.monotonic() - inicio < 60, "Transcrição acima do prazo aceito pelo app"
         print(json.dumps({"http": "ok", "sem_token": "401", "audio_sintetico": resultado, "processamento_segundos": round(time.monotonic() - inicio, 2)}, ensure_ascii=False))
     finally:
         server.should_exit = True

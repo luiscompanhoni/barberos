@@ -112,7 +112,7 @@ def ativar(base, projeto, commit):
         escrever_privado(privado, 'BOT_TRANSCRICAO_TOKEN=' + secrets.token_hex(32) + '\n')
     os.chmod(privado, 0o600)
     override = pasta / 'atendimento-teste.json'
-    servicos = {'app': {'environment': {'WHATSAPP_ATENDIMENTO_TESTE_EQUIPE': 'true',
+    servicos = {'app': {'environment': {'WHATSAPP_ATENDIMENTO_TESTE_EQUIPE': 'true', 'WHATSAPP_MIDIA_ATIVA': 'true',
                 'BOT_TRANSCRICAO_URL': 'http://atendimento:8091/transcrever', 'BOT_TRANSCRICAO_TOKEN': '${BOT_TRANSCRICAO_TOKEN}'}},
                 'atendimento': {'image': imagem, 'restart': 'unless-stopped', 'read_only': True,
                 'user': '10001:10001', 'cap_drop': ['ALL'], 'security_opt': ['no-new-privileges:true'],
@@ -140,7 +140,7 @@ def ativar(base, projeto, commit):
         executar([*novo, 'up', '-d', '--no-build', '--no-deps', 'app'], prazo=120)
         novo_app = aguardar_saude(projeto)
         env = ambiente_container(novo_app)
-        if env.get('WHATSAPP_ATENDIMENTO_TESTE_EQUIPE') != 'true' or env.get('WHATSAPP_ENVIOS_BLOQUEADOS') != 'true':
+        if env.get('WHATSAPP_ATENDIMENTO_TESTE_EQUIPE') != 'true' or env.get('WHATSAPP_ENVIOS_BLOQUEADOS') != 'true' or env.get('WHATSAPP_MIDIA_ATIVA') != 'true':
             raise RuntimeError('Isolamento do teste não confirmado.')
         conferir_https(commit)
         executar(['docker', 'exec', novo_app['Id'], 'node', '-e', WEBHOOK], prazo=25)
