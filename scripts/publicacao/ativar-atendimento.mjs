@@ -29,8 +29,11 @@ try {
   try { remoto("bash -o pipefail -c 'gzip -dc | docker load'", { stdio: [fd, "pipe", "pipe"] }); }
   finally { closeSync(fd); }
   resultado.etapa = "ativacao_restrita";
-  const comando = ["python3", `${p.base}/releases/${commit}/barberos/scripts/publicacao/ativar_atendimento.py`, p.base, p.projeto, commit];
-  resultado = JSON.parse(remoto(comando.map(shell).join(" ")).toString());
+  // O procedimento operacional atual usa os helpers da release comprovada, sem reescrevê-la.
+  const codigoAtivacao = "import sys\nsys.path.insert(0," + JSON.stringify(`${p.base}/releases/${commit}/barberos/scripts/publicacao`) + ")\n" +
+    readFileSync(new URL("./ativar_atendimento.py", import.meta.url), "utf8");
+  const comando = ["python3", "-c", codigoAtivacao, p.base, p.projeto, commit, "--prova-sdk-stdin"];
+  resultado = JSON.parse(remoto(comando.map(shell).join(" "), { input: readFileSync(process.argv[4]) }).toString());
   if (!resultado.concluido) throw Error("Ativação não comprovada");
   process.stdout.write("Atendimento ativado somente para dono/gerente; campanhas bloqueadas.\n");
 } catch (erro) {

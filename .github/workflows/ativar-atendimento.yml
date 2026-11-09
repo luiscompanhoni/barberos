@@ -26,15 +26,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
           ref: ${{ env.REVISAO }}
+          path: release-bot
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+      - name: Preparar prova com o mesmo SDK do bot
+        run: |
+          npm ci --ignore-scripts
+          node --check scripts/publicacao/ativar-atendimento.mjs
+          node --check scripts/publicacao/diagnosticar-ia.mjs
+          npx eslint scripts/publicacao/ativar-atendimento.mjs scripts/publicacao/diagnosticar-ia.mjs scripts/publicacao/prova-ia.mjs scripts/publicacao/prova-ia.test.mjs scripts/publicacao/preparar-prova-ia.mjs
+          python3 -B scripts/publicacao/test_ativar_atendimento.py
+          node --test scripts/publicacao/prova-ia.test.mjs
+          node scripts/publicacao/preparar-prova-ia.mjs "$RUNNER_TEMP/prova-ia.cjs"
       - name: Construir ASR com modelo fixado e teste HTTP sintético
         run: |
           [[ "$REVISAO" =~ ^[a-f0-9]{40}$ ]]
-          docker build --build-arg VCS_REF="$REVISAO" -t "barberos-atendimento:$REVISAO" workers/atendimento
+          docker build --build-arg VCS_REF="$REVISAO" -t "barberos-atendimento:$REVISAO" release-bot/workers/atendimento
           docker run --rm --network none --read-only --memory 768m --cpus 0.5 --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:rw,size=32m --entrypoint python "barberos-atendimento:$REVISAO" smoke.py teste.wav
           docker save "barberos-atendimento:$REVISAO" | gzip -1 > "$RUNNER_TEMP/asr.tar.gz"
       - name: Ativar somente para dono e gerente após deploy
@@ -47,7 +61,7 @@ jobs:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
-        run: GITHUB_SHA="$REVISAO" node scripts/publicacao/ativar-atendimento.mjs "$RUNNER_TEMP/asr.tar.gz" "$RUNNER_TEMP/atendimento.cifrado.json"
+        run: GITHUB_SHA="$REVISAO" node scripts/publicacao/ativar-atendimento.mjs "$RUNNER_TEMP/asr.tar.gz" "$RUNNER_TEMP/atendimento.cifrado.json" "$RUNNER_TEMP/prova-ia.cjs"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
