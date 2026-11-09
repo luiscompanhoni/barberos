@@ -92,6 +92,7 @@ jobs:
           SQL
           docker exec "$POSTGRES_SERVICO" createdb -U barberos --owner=anotacoes barberos_anotacoes_teste_20261109
           ./node_modules/.bin/prisma migrate deploy
+          npm run db:seed
           npm run teste:agenda:cliente
           npm run teste:anotacoes
       - name: Preparar bancos exclusivos de RH e comandas
