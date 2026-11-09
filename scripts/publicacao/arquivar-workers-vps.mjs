@@ -10,18 +10,21 @@ import { cifrar } from "./cifrar-relatorio.mjs";
 
 const shell = s => "'" + s.replace(/'/g, "'\\''") + "'";
 export const LEGADO = "legado-f7968a11";
-export const APP_ESPERADO = "sha256:a2a78e0a4ab504fa65cb72c9c21130e05a261c2b4134bc3b41532fc407a187d6";
+export const APP_ESPERADO = "sha256:e0dad14729fb9dc7293d8ea0f0915748cb9a872a8d84e0a56148bdbd0898a477";
 export const ALVOS = Object.freeze({
   d833182db751a74d3ce52017f11a2824fcb6c735: { id: "sha256:4d5728f7035eb38b0cb29c752936637047f997cf0e6eb240285c956a6f13b87e", bytesImagem: 1948259798 },
   "7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10": { id: "sha256:412eeeb7c3f1f1f555a5420d10a55311bd6a81c5b965f5c40fc5e354104466ab", bytesImagem: 1948279454 },
   "7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a": { id: "sha256:3a226008e7aeb5897ea669d64e22b12ae3a42ba7eb5a29bcdf27668476ce1568", bytesImagem: 1948299299 },
+  deb1ecce366410404d3e2d403f9e091538a95975: { id: "sha256:844476ff7385a16cd510f3baeae80ea7de8bf581e745f48df60dc744603844f4", bytesImagem: 1779238343 },
+  "0367c9d1be036ad0433fbb53e447c2a0afdda3cb": { id: "sha256:5988b33b1dbceb72fc3d496809a716f4423eae0df2dbb31a01c57c5a412e4678", bytesImagem: 1779227102 },
+  "8a5566dc6c095090f23dbb72384c92b4e79de81c": { id: "sha256:941d7d1458eb7085accb59aaf6e1e0b4c2af3c6dae17aa9e59d46a717a33de66", bytesImagem: 1779271754 },
 });
 const TAG_LEGADO = "barberos-video-worker:f7968a11b1892b07eaad46b659ad7c5d18bb9bd4";
 const ID_LEGADO = /^sha256:32855fc2a5d7[a-f0-9]{52}$/;
 
 export function selecionarAlvo(alvo) {
   if (alvo === LEGADO) return { tag: TAG_LEGADO, maxBytes: 2 * 1024 ** 3 };
-  if (!Object.hasOwn(ALVOS, alvo)) throw new Error("Selecione exatamente um dos três alvos autorizados.");
+  if (!Object.hasOwn(ALVOS, alvo)) throw new Error("Selecione exatamente um alvo nominal autorizado.");
   return { ...ALVOS[alvo], tag: "barberos-video-worker:" + alvo, maxBytes: 2_000_000_000 };
 }
 export function validarPreparacao(antes, alvo = LEGADO) {

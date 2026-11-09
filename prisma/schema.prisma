@@ -1615,7 +1615,8 @@ model ChecklistPessoa {
   id                     String                  @id @default(cuid())
   nome                   String
   telefone               String
-  funcao                 FuncaoChecklist
+  /// Nula: cadastro exclusivamente no RH, sem tarefas ou acesso por link de checklist.
+  funcao                 FuncaoChecklist?
   ativo                  Boolean                 @default(true)
   /// Link pessoal para marcar as tarefas sem login (/t/<token>).
   token                  String                  @unique

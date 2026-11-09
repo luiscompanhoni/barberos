@@ -11,6 +11,7 @@ import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { urlPainel } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
+import { normalizarTelefone } from "@/lib/telefone";
 import { notificarCliente } from "@/lib/whatsapp/conversas";
 import { previaDeFaixas, resumoPontos, totaisDePontos, travarPontoDoItem } from "./pontos";
 import { hhmmParaMinutos, tarefasDoDia, textoLista, textoResumo } from "./regras";
@@ -54,7 +55,7 @@ export async function configChecklist() {
 /** Cria os itens do dia para as pessoas ativas (sem duplicar; tarefa nova entra no mesmo dia). */
 export async function gerarItens(data: string, pessoaIds?: string[]) {
   const [pessoas, tarefas] = await Promise.all([
-    db.checklistPessoa.findMany({ where: { ativo: true, ...(pessoaIds ? { id: { in: pessoaIds } } : {}) } }),
+    db.checklistPessoa.findMany({ where: { ativo: true, funcao: { not: null }, ...(pessoaIds ? { id: { in: pessoaIds } } : {}) } }),
     db.checklistTarefa.findMany({ where: { ativo: true } }),
   ]);
   const ds = diaSemana(data);
@@ -69,7 +70,7 @@ export async function painelDoDia(data: string) {
   await configChecklist();
   await gerarItens(data);
   const pessoas = await db.checklistPessoa.findMany({
-    where: { OR: [{ ativo: true }, { itens: { some: { data: dataDb(data) } } }] },
+    where: { funcao: { not: null }, OR: [{ ativo: true }, { itens: { some: { data: dataDb(data) } } }] },
     orderBy: [{ funcao: "asc" }, { nome: "asc" }],
     include: { itens: { where: { data: dataDb(data) }, orderBy: [{ horario: "asc" }, { ordem: "asc" }], include: { _count: { select: { fotos: true } } } } },
   });
@@ -112,7 +113,7 @@ export const marcarNoPainel = (s: Sessao, itemId: string, feito: boolean) => mar
 
 export async function listaPublica(token: string) {
   const p = await db.checklistPessoa.findUnique({ where: { token } });
-  if (!p || !p.ativo) return null;
+  if (!p || !p.ativo || p.funcao === null) return null;
   const cfg = await configuracao();
   const hoje = dataLocal(Date.now(), cfg.fuso);
   await gerarItens(hoje, [p.id]);
@@ -125,7 +126,7 @@ export async function listaPublica(token: string) {
 
 export async function marcarPublico(token: string, itemId: string, feito: boolean) {
   const p = await db.checklistPessoa.findUnique({ where: { token } });
-  if (!p || !p.ativo) throw naoEncontrado("Link");
+  if (!p || !p.ativo || p.funcao === null) throw naoEncontrado("Link");
   await marcar(itemId, feito, "link", p.id);
 }
 
@@ -138,7 +139,7 @@ export type ConfigEntrada = { ativo: boolean; horaEnvio: string; horaResumo: str
 export async function cadastro() {
   const cfg = await configChecklist();
   const [pessoas, tarefas] = await Promise.all([
-    db.checklistPessoa.findMany({ orderBy: [{ funcao: "asc" }, { nome: "asc" }] }),
+    db.checklistPessoa.findMany({ where: { funcao: { not: null } }, orderBy: [{ funcao: "asc" }, { nome: "asc" }] }),
     db.checklistTarefa.findMany({ orderBy: [{ funcao: "asc" }, { ordem: "asc" }] }),
   ]);
   return {
@@ -165,9 +166,13 @@ export async function salvarCadastro(s: Sessao, d: { config: ConfigEntrada; pess
     }
   }
   await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext('rh:pessoa:criar'))`;
+    const neutras = await tx.checklistPessoa.findMany({ where: { funcao: null }, select: { id: true, telefone: true } });
+    if (d.pessoas.some(p => neutras.some(n => n.id !== p.id && normalizarTelefone(n.telefone) === normalizarTelefone(p.telefone)))) throw new ErroNegocio("Contato já cadastrado em ficha exclusiva do RH. Confira a identidade antes de criar outra ficha.", 409, "rh_cadastro_duplicado");
     await tx.checklistConfig.upsert({ where: { id: 1 }, create: { id: 1, ...config }, update: config });
     const idsP = d.pessoas.map((p) => p.id).filter((x): x is string => !!x);
-    await tx.checklistPessoa.updateMany({ where: { id: { notIn: idsP } }, data: { ativo: false } });
+    if (await tx.checklistPessoa.count({ where: { id: { in: idsP }, funcao: null } })) throw new ErroNegocio("Ficha exclusiva do RH não pode receber tarefas por este cadastro.", 409, "rh_sem_checklist");
+    await tx.checklistPessoa.updateMany({ where: { funcao: { not: null }, id: { notIn: idsP } }, data: { ativo: false } });
     for (const p of d.pessoas) {
       const dados = { nome: p.nome, telefone: p.telefone, funcao: p.funcao, ativo: p.ativo };
       if (p.id) await tx.checklistPessoa.update({ where: { id: p.id }, data: dados });
@@ -193,6 +198,8 @@ export async function salvarCadastro(s: Sessao, d: { config: ConfigEntrada; pess
 
 /** Gera um link novo (o antigo para de funcionar). */
 export async function novoLink(s: Sessao, pessoaId: string) {
+  const pessoa = await db.checklistPessoa.findUnique({ where: { id: pessoaId }, select: { funcao: true } });
+  if (!pessoa || pessoa.funcao === null) throw naoEncontrado("Pessoa do checklist");
   await db.checklistPessoa.update({ where: { id: pessoaId }, data: { token: novoToken() } });
   await auditar(db, s.usuarioId, "checklist_novo_link", "checklist", pessoaId, {});
 }
@@ -227,7 +234,7 @@ async function mandar(envioId: string, telefone: string, texto: string) {
 /** Manda a lista do dia de uma pessoa (uma vez por dia; `forcar` reenvia). */
 export async function enviarLista(pessoaId: string, data: string, forcar = false) {
   const p = await db.checklistPessoa.findUnique({ where: { id: pessoaId } });
-  if (!p || !p.ativo) return false;
+  if (!p || !p.ativo || p.funcao === null) return false;
   await gerarItens(data, [p.id]);
   const itens = await db.checklistItem.findMany({ where: { pessoaId: p.id, data: dataDb(data), feito: false }, orderBy: [{ horario: "asc" }, { ordem: "asc" }] });
   if (!itens.length) return false;
@@ -263,7 +270,7 @@ export async function rodarChecklist(agora = Date.now()) {
   const min = minutosLocal(agora, fuso);
   let listas = 0, resumos = 0;
   if (min >= hhmmParaMinutos(cfg.horaEnvio) && min < hhmmParaMinutos(cfg.horaResumo)) {
-    const pessoas = await db.checklistPessoa.findMany({ where: { ativo: true }, select: { id: true } });
+    const pessoas = await db.checklistPessoa.findMany({ where: { ativo: true, funcao: { not: null } }, select: { id: true } });
     for (const p of pessoas) if (await enviarLista(p.id, hoje)) listas++;
   }
   if (min >= hhmmParaMinutos(cfg.horaResumo)) resumos = await enviarResumo(hoje);

@@ -26,6 +26,16 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_rh_sem_checklist_aceita_somente_a_expansao_nominal_revisada(self):
+        nome = "20261109000000_rh_sem_checklist"
+        exigir_migracoes_da_publicacao([nome])
+        arquivo = Path(__file__).resolve().parents[2] / "prisma/migrations" / nome / "migration.sql"
+        sql = "\n".join(l for l in arquivo.read_text(encoding="utf8").splitlines() if not l.lstrip().startswith("--")).strip()
+        self.assertEqual(sql, 'ALTER TABLE "checklist_pessoas" ALTER COLUMN "funcao" DROP NOT NULL;')
+        for outra in (nome + "_extra", "20261109000001_rh_sem_checklist", "20261109010000_rh_nao_revisada"):
+            with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+                exigir_migracoes_da_publicacao([nome, outra])
+
     def test_atendimento_so_aceita_migracoes_expansivas_revisadas(self):
         nomes = ["20261108193000_plano_venda_equipe", "20261108210000_crescimento_migracao"]
         exigir_migracoes_da_publicacao(nomes)

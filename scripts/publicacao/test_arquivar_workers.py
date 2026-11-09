@@ -91,8 +91,8 @@ class ArquivarAlvoTest(unittest.TestCase):
         self.tag = a.tags_alvo(self.alvo)[0]
         self.id, self.tamanho = a.ALVOS[self.alvo]
         self.lista = [{"tag": self.tag, "id": self.id, "bytesImagem": self.tamanho}]
-        self.retrato = {"imagens": [self.id + " " + self.tag, "atual worker:8a5566d", "anterior worker:0367",
-                                    "anterior worker:deb1", "atual app:atual"],
+        self.retrato = {"imagens": [self.id + " " + self.tag, "atual worker:102a391", "anterior worker:d10b3b1",
+                                    "atual atendimento:102a391", "atual app:atual"],
                         "containers": ["app atual running", "db banco running"], "volumes": ["pg", "media"],
                         "arquivos": {"backup.sql.gz": "hash", "arquivo-anterior.tar.gz": "hash-archive", ".env": "hash-env"}}
 
@@ -112,15 +112,23 @@ class ArquivarAlvoTest(unittest.TestCase):
     def processo(self, dados=b"tar sintetico"):
         return SimpleNamespace(stdout=io.BytesIO(dados), kill=Mock(), poll=Mock(return_value=0), wait=Mock(return_value=0))
 
-    def test_tres_alvos_exatos_com_ids_completos_e_tamanhos_sem_ampliar_o_legado(self):
-        self.assertEqual(len(a.ALVOS), 3)
+    def test_alvos_nominais_exatos_com_ids_completos_e_tamanhos_sem_ampliar_o_legado(self):
+        self.assertEqual(len(a.ALVOS), 6)
+        self.assertEqual(a.APP_ESPERADO, "sha256:e0dad14729fb9dc7293d8ea0f0915748cb9a872a8d84e0a56148bdbd0898a477")
+        novos = {
+            "deb1ecce366410404d3e2d403f9e091538a95975": ("sha256:844476ff7385a16cd510f3baeae80ea7de8bf581e745f48df60dc744603844f4", 1779238343),
+            "0367c9d1be036ad0433fbb53e447c2a0afdda3cb": ("sha256:5988b33b1dbceb72fc3d496809a716f4423eae0df2dbb31a01c57c5a412e4678", 1779227102),
+            "8a5566dc6c095090f23dbb72384c92b4e79de81c": ("sha256:941d7d1458eb7085accb59aaf6e1e0b4c2af3c6dae17aa9e59d46a717a33de66", 1779271754),
+        }
+        self.assertEqual({chave: a.ALVOS[chave] for chave in novos}, novos)
+        self.assertEqual(set(a.ALVOS), {"d833182db751a74d3ce52017f11a2824fcb6c735", "7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10", "7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a", *novos})
         self.assertEqual(a.tags_alvo(), a.TAGS)
         for alvo, (id, tamanho) in a.ALVOS.items():
             imagem = {"Id": id, "Size": tamanho, "RepoTags": a.tags_alvo(alvo)}
             with self.subTest(alvo=alvo), patch.object(a, "cmd", side_effect=["", json.dumps([imagem])]) as cmd:
                 self.assertEqual(a.candidatos(alvo), [{"tag": a.tags_alvo(alvo)[0], "id": id, "bytesImagem": tamanho}])
                 self.assertEqual(cmd.call_args.args[0], ["docker", "image", "inspect", *a.tags_alvo(alvo)])
-        for invalido in ("8a5566d", self.alvo + "," + list(a.ALVOS)[1], "legado-f7968a11"):
+        for invalido in ("8a5566d", self.alvo + "," + list(a.ALVOS)[1], "legado-f7968a11", "102a3911fd6b38c635af9cf9cb7718e04f0796db", "d10b3b1c7be93faa9f5433732a18a2602620bf25"):
             with self.assertRaises(RuntimeError):
                 a.tags_alvo(invalido)
 
@@ -235,6 +243,25 @@ class ArquivarAlvoTest(unittest.TestCase):
             self.assertTrue(resultado["concluido"])
             self.assertFalse(resultado["espacoRecuperadoPrometido"])
             self.assertTrue(json.loads((base / "worker-archives" / ("alvo-" + self.alvo + ".json")).read_text())["concluido"])
+
+    def test_quatro_workers_da_manutencao_preservam_atual_rollback_e_asr(self):
+        protegidas = self.retrato["imagens"][1:]
+        alvos = ["7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a", "deb1ecce366410404d3e2d403f9e091538a95975", "0367c9d1be036ad0433fbb53e447c2a0afdda3cb", "8a5566dc6c095090f23dbb72384c92b4e79de81c"]
+        for alvo in alvos:
+            with self.subTest(alvo=alvo), tempfile.TemporaryDirectory() as d:
+                self.alvo, self.tag = alvo, a.tags_alvo(alvo)[0]
+                self.id, self.tamanho = a.ALVOS[alvo]
+                self.lista = [{"tag": self.tag, "id": self.id, "bytesImagem": self.tamanho}]
+                self.retrato = {**self.retrato, "imagens": [self.id + " " + self.tag, *protegidas]}
+                arquivo, r = self.registro(Path(d))
+                depois = {**self.retrato, "imagens": protegidas}
+                with patch.object(a, "conferir_app"), patch.object(a, "candidatos", return_value=self.lista), \
+                     patch.object(a, "retrato", side_effect=[self.retrato, depois]), \
+                     patch.object(a.shutil, "disk_usage", return_value=SimpleNamespace(free=3 * 1024**3)), patch.object(a, "cmd") as cmd:
+                    resultado = a.concluir(Path(d), "barberos", a.APP_ESPERADO, arquivo.name, r["sha256"], alvo)
+                cmd.assert_called_once_with(["docker", "image", "rm", self.tag])
+                self.assertEqual(a.soma(arquivo), r["sha256"])
+                self.assertTrue(resultado["containersVolumesBackupsConfiguracaoPreservados"])
 
 
 if __name__ == "__main__": unittest.main()

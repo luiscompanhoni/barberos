@@ -35,7 +35,7 @@ export async function previaDeFaixas(de: LimitesNivel, para: LimitesNivel) {
   const fuso = (await configuracao()).fuso;
   const mes = dataLocal(Date.now(), fuso).slice(0, 7), anterior = somarDias(`${mes}-01`, -1).slice(0, 7);
   const [pessoas, totais, ateAnterior, participantes, aprovados] = await Promise.all([
-    db.checklistPessoa.findMany({ where: { ativo: true }, select: { id: true, nome: true } }),
+    db.checklistPessoa.findMany({ where: { ativo: true, funcao: { not: null } }, select: { id: true, nome: true } }),
     totaisDePontos(),
     db.checklistPonto.groupBy({ by: ["pessoaId"], _sum: { pontos: true }, where: { criadoEm: { lt: new Date(instanteLocal(`${mes}-01`, 0, fuso)) } } }),
     db.desempenhoAdesao.findMany({ where: { aceitaEm: { not: null }, inicio: { lt: `${mes}-01` } }, select: { pessoaId: true }, distinct: ["pessoaId"] }),
@@ -131,10 +131,10 @@ export async function classificacao() {
   const mes = dataLocal(Date.now(), fuso).slice(0, 7);
   const inicioMes = new Date(instanteLocal(`${mes}-01`, 0, fuso));
   const [pessoas, totais, doMes, ultimos] = await Promise.all([
-    db.checklistPessoa.findMany({ where: { ativo: true }, select: { id: true, nome: true, funcao: true } }),
+    db.checklistPessoa.findMany({ where: { ativo: true, funcao: { not: null } }, select: { id: true, nome: true, funcao: true } }),
     totaisDePontos(),
     db.checklistPonto.groupBy({ by: ["pessoaId"], _sum: { pontos: true }, where: { criadoEm: { gte: inicioMes } } }),
-    db.checklistPonto.findMany({ where: { pessoa: { ativo: true } }, orderBy: { criadoEm: "desc" }, take: 300 }),
+    db.checklistPonto.findMany({ where: { pessoa: { ativo: true, funcao: { not: null } } }, orderBy: { criadoEm: "desc" }, take: 300 }),
   ]);
   const mesMap = new Map(doMes.map((x) => [x.pessoaId, x._sum.pontos ?? 0]));
   const linhas = pessoas.map((p) => {

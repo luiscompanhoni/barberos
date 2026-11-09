@@ -7,9 +7,13 @@ vi.mock("@/lib/whatsapp/piloto",()=>({estadoPiloto:m.piloto}));
 vi.mock("@/lib/bot/entrevistas",()=>({processarBotEntrevista:m.entrevista,registroSeguroEntrevista:(s:string)=>s,contemConviteEntrevista:()=>false,comandoReservadoEntrevista:()=>false}));
 import { receberMensagem } from "@/lib/bot/processar";
 const telefone="5547999990000";
-beforeEach(()=>{vi.clearAllMocks();m.piloto.mockResolvedValue({ativo:true,telefone,expiraEm:new Date(Date.now()+60000),enviados:0,versao:1});m.entrada.mockResolvedValue({id:"fixture-piloto",telefone,estado:"BOT"});m.entrevista.mockResolvedValue({tratado:true,resposta:"fixture horarios"});});
+beforeEach(()=>{vi.clearAllMocks();vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS","false");vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_EQUIPE","false");m.piloto.mockResolvedValue({ativo:true,telefone,expiraEm:new Date(Date.now()+60000),enviados:0,versao:1});m.entrada.mockResolvedValue({id:"fixture-piloto",telefone,estado:"BOT"});m.entrevista.mockResolvedValue({tratado:true,resposta:"fixture horarios"});});
 afterEach(()=>vi.unstubAllEnvs());
 describe("piloto determinístico não chama IA ou ferramentas gerais",()=>{
+ it("bloqueio geral impede também entrevista ativa sem exceção de equipe",async()=>{
+  vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS","true");await receberMensagem({telefone,texto:"INICIAR ENTREVISTA"});
+  expect(m.entrada).toHaveBeenCalled();for(const fn of [m.piloto,m.entrevista,m.cfg,m.enviar,m.modelo])expect(fn).not.toHaveBeenCalled();
+ });
  it("responde somente pelo fluxo de entrevista com finalidade explícita",async()=>{
   await receberMensagem({telefone,texto:"INICIAR ENTREVISTA"});
   expect(m.entrevista).toHaveBeenCalledWith({conversaId:"fixture-piloto",telefone},"INICIAR ENTREVISTA");

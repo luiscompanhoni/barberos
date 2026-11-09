@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,6 +16,29 @@ const conteudo = Buffer.from("arquivo de imagem sintético");
 const preparado = () => ({ formato: 2, alvo, imagemApp: APP_ESPERADO, arquivo: "workers-123.tar.gz",
   bytes: conteudo.length, sha256: createHash("sha256").update(conteudo).digest("hex"), imagens: [imagem] });
 const smoke = { concluido: true, preset: "black-vertical-v1", largura: 720, altura: 1280, audio: true, duracao: 0.5 };
+
+test("inventário nominal de novembro preserva legados, app instalado e tamanhos do inspect", () => {
+  assert.equal(APP_ESPERADO, "sha256:e0dad14729fb9dc7293d8ea0f0915748cb9a872a8d84e0a56148bdbd0898a477");
+  const novos = {
+    deb1ecce366410404d3e2d403f9e091538a95975: { id: "sha256:844476ff7385a16cd510f3baeae80ea7de8bf581e745f48df60dc744603844f4", bytesImagem: 1779238343 },
+    "0367c9d1be036ad0433fbb53e447c2a0afdda3cb": { id: "sha256:5988b33b1dbceb72fc3d496809a716f4423eae0df2dbb31a01c57c5a412e4678", bytesImagem: 1779227102 },
+    "8a5566dc6c095090f23dbb72384c92b4e79de81c": { id: "sha256:941d7d1458eb7085accb59aaf6e1e0b4c2af3c6dae17aa9e59d46a717a33de66", bytesImagem: 1779271754 },
+  };
+  assert.deepEqual(Object.keys(ALVOS).sort(), ["d833182db751a74d3ce52017f11a2824fcb6c735", "7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10", "7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a", ...Object.keys(novos)].sort());
+  for (const protegida of ["102a3911fd6b38c635af9cf9cb7718e04f0796db", "d10b3b1c7be93faa9f5433732a18a2602620bf25"]) assert.throws(() => selecionarAlvo(protegida));
+  const workflow = readFileSync(new URL("../../.github/workflows/arquivar-workers-vps.yml", import.meta.url), "utf8");
+  assert.ok(workflow.includes("default: " + APP_ESPERADO));
+  for (const [revisao, esperado] of Object.entries(novos)) {
+    assert.deepEqual(ALVOS[revisao], esperado);
+    assert.ok(workflow.includes("- " + revisao));
+    const imagemAlvo = { tag: "barberos-video-worker:" + revisao, ...esperado };
+    const registro = { ...preparado(), alvo: revisao, imagens: [imagemAlvo] };
+    validarPreparacao(registro, revisao);
+    validarRestauracao(imagemAlvo, { Id: esperado.id, RepoTags: [imagemAlvo.tag], Size: esperado.bytesImagem }, revisao);
+    assert.throws(() => validarPreparacao({ ...registro, imagemApp: "sha256:a2a78e0a4ab504fa65cb72c9c21130e05a261c2b4134bc3b41532fc407a187d6" }, revisao));
+    assert.throws(() => validarRestauracao(imagemAlvo, { Id: esperado.id, RepoTags: [imagemAlvo.tag], Size: esperado.bytesImagem + 2011 }, revisao));
+  }
+});
 
 test("comprovantes inicial e final são envelopes cifrados exclusivos do destinatário", () => {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 3072 });

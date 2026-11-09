@@ -5,7 +5,7 @@
 export type TarefaRegra = { id: string; titulo: string; funcao: string; diasSemana: number[]; horario: string | null; ordem: number; ativo: boolean };
 
 /** Tarefas que valem para a funcao naquele dia da semana (lista vazia = todo dia), em ordem de horario. */
-export function tarefasDoDia<T extends TarefaRegra>(tarefas: T[], funcao: string, diaSemana: number) {
+export function tarefasDoDia<T extends TarefaRegra>(tarefas: T[], funcao: string | null, diaSemana: number) {
   return tarefas
     .filter((t) => t.ativo && t.funcao === funcao && (t.diasSemana.length === 0 || t.diasSemana.includes(diaSemana)))
     .sort((a, b) => (a.horario ?? "99:99").localeCompare(b.horario ?? "99:99") || a.ordem - b.ordem);
