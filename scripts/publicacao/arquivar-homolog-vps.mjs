@@ -76,7 +76,7 @@ export async function validarCopia(antes, arquivo, executar = execFileSync, conf
     etapa = "metadados";
     const metadados = extrair(arquivo, executar);
     const manifesto = JSON.parse(Buffer.from(metadados["manifest.json"].base64, "base64").toString());
-    const [imagem] = manifestar(manifesto, antes, metadados);
+    const [imagem] = manifestar(manifesto, antes, metadados, { permitirAtestacaoVazia: true });
     if (JSON.stringify(imagem.diffIds) !== JSON.stringify(ROOTFS)) throw Error("RootFS nominal divergente.");
     etapa = "executor";
     // Runner dedicado: nem imagens nem containers prévios podem mascarar o Docker load.

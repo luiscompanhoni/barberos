@@ -21,6 +21,9 @@ export function selecionar(nome, alvos) {
 const INDEX = "application/vnd.oci.image.index.v1+json";
 const MANIFEST = "application/vnd.oci.image.manifest.v1+json";
 const CONFIG = "application/vnd.oci.image.config.v1+json";
+const EMPTY = "application/vnd.oci.empty.v1+json";
+const EMPTY_DIGEST = "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
+const IN_TOTO = "application/vnd.in-toto+json", SLSA = "https://slsa.dev/provenance/v1";
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 // Não materializa tar nem layers: só inventário e metadados limitados em memória.
 export const LEITOR_TAR = String.raw`import base64,hashlib,json,re,sys,tarfile
@@ -76,7 +79,27 @@ function configuracao(metadados, d, arquitetura, sistema) {
       !Array.isArray(config.rootfs.diff_ids) || config.rootfs.diff_ids.some(id => !DIGEST.test(id))) throw Error("Configuração OCI divergente.");
   return config.rootfs.diff_ids;
 }
-function identidadeOCI(metadados, d, imagem, manifesto) {
+// OCI 1.1 / BuildKit artifact: valida o conteúdo original, sem fabricar configuração/rootfs.
+function atestacaoVazia(metadados, a, plataforma) {
+  const config = blobJson(metadados, a.config, EMPTY);
+  if (a.config.digest !== EMPTY_DIGEST || a.config.size !== 2 ||
+      (Object.hasOwn(a.config, "data") && a.config.data !== "e30=") ||
+      !config || Array.isArray(config) || typeof config !== "object" || Object.keys(config).length ||
+      a.artifactType !== "application/vnd.docker.attestation.manifest.v1+json") throw Error("Configuração vazia de atestação divergente.");
+  descritor(a.subject, MANIFEST);
+  if (a.subject.digest !== plataforma.digest || a.subject.size !== plataforma.size ||
+      (Object.hasOwn(a.subject, "data") && a.subject.data !== metadados["blobs/sha256/" + plataforma.digest.slice(7)].base64)) throw Error("Subject de atestação divergente.");
+  for (const l of a.layers) {
+    const prova = blobJson(metadados, l, IN_TOTO);
+    if ((Object.hasOwn(l, "data") && l.data !== metadados["blobs/sha256/" + l.digest.slice(7)].base64) ||
+        l.annotations?.["in-toto.io/predicate-type"] !== SLSA || prova?._type !== "https://in-toto.io/Statement/v1" ||
+        prova.predicateType !== SLSA || !prova.predicate || typeof prova.predicate !== "object" || Array.isArray(prova.predicate) ||
+        !Array.isArray(prova.subject) || prova.subject.length !== 1 || typeof prova.subject[0]?.name !== "string" || !prova.subject[0].name ||
+        prova.subject[0].digest?.sha256 !== plataforma.digest.slice(7) ||
+        JSON.stringify(Object.keys(prova.subject[0].digest)) !== JSON.stringify(["sha256"])) throw Error("Proveniência SLSA divergente.");
+  }
+}
+function identidadeOCI(metadados, d, imagem, manifesto, permitirAtestacaoVazia) {
   if (d.digest !== imagem.id || d.annotations?.["io.containerd.image.name"] !== "docker.io/library/" + imagem.tag ||
       d.annotations?.["org.opencontainers.image.ref.name"] !== imagem.tag.split(":")[1]) throw Error("Identidade do índice OCI divergente.");
   const indice = blobJson(metadados, d, INDEX); objetoOCI(indice, INDEX);
@@ -93,13 +116,17 @@ function identidadeOCI(metadados, d, imagem, manifesto) {
         atestacao.annotations?.["vnd.docker.reference.type"] !== "attestation-manifest" ||
         atestacao.annotations?.["vnd.docker.reference.digest"] !== plataforma.digest) throw Error("Atestação OCI não prevista.");
     const a = blobJson(metadados, atestacao, MANIFEST); objetoOCI(a, MANIFEST);
-    if (!Array.isArray(a.layers) || a.layers.length < 1 || a.layers.length > 4 ||
-        JSON.stringify(configuracao(metadados, a.config, "unknown", "unknown")) !== JSON.stringify(a.layers.map(l => l.digest))) throw Error("Configuração de atestação divergente.");
-    for (const l of a.layers) blobJson(metadados, l, "application/vnd.in-toto+json");
+    if (!Array.isArray(a.layers) || a.layers.length < 1 || a.layers.length > 4) throw Error("Layers de atestação divergentes.");
+    if (permitirAtestacaoVazia && (a.config?.mediaType === EMPTY || Object.hasOwn(a, "artifactType") || Object.hasOwn(a, "subject"))) {
+      atestacaoVazia(metadados, a, plataforma);
+    } else {
+      if (JSON.stringify(configuracao(metadados, a.config, "unknown", "unknown")) !== JSON.stringify(a.layers.map(l => l.digest))) throw Error("Configuração de atestação divergente.");
+      for (const l of a.layers) blobJson(metadados, l, IN_TOTO);
+    }
   }
   return { ...imagem, configId: m.config.digest, manifestId: plataforma.digest, formato: "OCI_INDEX_V1", diffIds };
 }
-export function validarManifesto(manifesto, esperado, metadados) {
+export function validarManifesto(manifesto, esperado, metadados, opcoes = {}) {
   if (!Array.isArray(manifesto) || manifesto.length !== esperado.imagens.length ||
       manifesto.some(i => !Array.isArray(i.RepoTags) || i.RepoTags.length !== 1)) throw Error("Manifesto de imagens inesperado.");
   const tags = manifesto.map(i => i.RepoTags[0]).sort();
@@ -116,7 +143,7 @@ export function validarManifesto(manifesto, esperado, metadados) {
     if (oci) {
       const alvos = indice.manifests.filter(d => d.annotations?.["io.containerd.image.name"] === "docker.io/library/" + imagem.tag);
       if (alvos.length !== 1) throw Error("Tag OCI ausente ou ambígua.");
-      return identidadeOCI(metadados, alvos[0], imagem, m);
+      return identidadeOCI(metadados, alvos[0], imagem, m, opcoes?.permitirAtestacaoVazia === true);
     }
     if (m.Config !== imagem.id.slice(7) + ".json") throw Error("Formato Docker desconhecido.");
     const config = jsonMetadados(metadados, m.Config);

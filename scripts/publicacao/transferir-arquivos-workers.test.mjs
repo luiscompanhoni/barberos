@@ -49,6 +49,93 @@ const prova = { formato: 1, ...esperado, identidadesRestauradas: f.identidades.m
 const clonar = x => JSON.parse(JSON.stringify(x));
 const ler = (m, nome) => JSON.parse(Buffer.from(m[nome].base64, "base64"));
 
+// Recria os digests de todo o grafo para testar semântica, além de detectar bytes adulterados.
+function fixtureVazia({ alterarAtestacao = () => {}, alterarProva = () => {}, alterarPrincipal = () => {} } = {}) {
+  const m = {}, tag = "app:historico", diffIds = ["sha256:" + "c".repeat(64)];
+  const blob = (valor, mediaType) => {
+    const raw = Buffer.from(JSON.stringify(valor)), digest = "sha256:" + hash(raw);
+    adicionar(m, "blobs/sha256/" + digest.slice(7), valor);
+    return { mediaType, digest, size: raw.length };
+  };
+  const layer = blob({ layer: "sintetica" }, LAYER);
+  const principal = { os: "linux", architecture: "amd64", rootfs: { type: "layers", diff_ids: diffIds } };
+  alterarPrincipal(principal);
+  const config = blob(principal, CONFIG);
+  const plataforma = { ...blob({ schemaVersion: 2, mediaType: MANIFEST, config, layers: [layer] }, MANIFEST), platform: { os: "linux", architecture: "amd64" } };
+  const slsa = { _type: "https://in-toto.io/Statement/v1", predicateType: "https://slsa.dev/provenance/v1",
+    subject: [{ name: "pkg:docker/app@historico?platform=linux%2Famd64", digest: { sha256: plataforma.digest.slice(7) } }], predicate: { buildDefinition: {} } };
+  alterarProva(slsa);
+  const conteudo = { ...blob(slsa, "application/vnd.in-toto+json"), annotations: { "in-toto.io/predicate-type": "https://slsa.dev/provenance/v1" } };
+  const vazio = { ...blob({}, "application/vnd.oci.empty.v1+json"), data: "e30=" };
+  const a = { schemaVersion: 2, mediaType: MANIFEST, artifactType: "application/vnd.docker.attestation.manifest.v1+json",
+    config: vazio, subject: { mediaType: plataforma.mediaType, digest: plataforma.digest, size: plataforma.size }, layers: [conteudo] };
+  alterarAtestacao(a, { blob, plataforma, metadados: m });
+  const atestacao = { ...blob(a, MANIFEST), platform: { os: "unknown", architecture: "unknown" },
+    annotations: { "vnd.docker.reference.type": "attestation-manifest", "vnd.docker.reference.digest": plataforma.digest } };
+  const indice = { ...blob({ schemaVersion: 2, mediaType: INDEX, manifests: [plataforma, atestacao] }, INDEX),
+    annotations: { "io.containerd.image.name": "docker.io/library/" + tag, "org.opencontainers.image.ref.name": "historico" } };
+  const manifesto = [{ Config: "blobs/sha256/" + config.digest.slice(7), RepoTags: [tag], Layers: ["blobs/sha256/" + layer.digest.slice(7)] }];
+  adicionar(m, "manifest.json", manifesto); adicionar(m, "index.json", { schemaVersion: 2, mediaType: INDEX, manifests: [indice] });
+  adicionar(m, "oci-layout", { imageLayoutVersion: "1.0.0" });
+  return { metadados: m, manifesto, esperado: { imagens: [{ tag, id: indice.digest }] }, configVazia: vazio, conteudo,
+    identidades: [{ tag, id: indice.digest, configId: config.digest, manifestId: plataforma.digest, formato: "OCI_INDEX_V1", diffIds }] };
+}
+
+test("atestação OCI empty exige opt-in literal; workers continuam usando a configuração estrita", () => {
+  const v = fixtureVazia(), permitir = { permitirAtestacaoVazia: true };
+  assert.throws(() => validarManifesto(v.manifesto, v.esperado, v.metadados));
+  for (const opcoes of [{}, { permitirAtestacaoVazia: false }, { permitirAtestacaoVazia: "true" }]) assert.throws(() => validarManifesto(v.manifesto, v.esperado, v.metadados, opcoes));
+  assert.deepEqual(validarManifesto(v.manifesto, v.esperado, v.metadados, permitir), v.identidades);
+  assert.deepEqual(validarManifesto(manifesto, esperado, metadados), f.identidades);
+  const semData = fixtureVazia({ alterarAtestacao: a => { delete a.config.data; } });
+  assert.deepEqual(validarManifesto(semData.manifesto, semData.esperado, semData.metadados, permitir), semData.identidades);
+  const inline = fixtureVazia({ alterarAtestacao: (a, { metadados: m }) => {
+    a.subject.data = m["blobs/sha256/" + a.subject.digest.slice(7)].base64;
+    a.layers[0].data = m["blobs/sha256/" + a.layers[0].digest.slice(7)].base64;
+  } });
+  assert.deepEqual(validarManifesto(inline.manifesto, inline.esperado, inline.metadados, permitir), inline.identidades);
+});
+
+test("empty config, artifactType e subject inválidos falham mesmo com todo o grafo autenticado", () => {
+  const alteracoes = [
+    a => { a.config.data = "e30=\n"; }, a => { a.config.data = "e30"; }, a => { a.config.data = null; },
+    a => { a.config.size = 3; }, a => { a.config.digest = "sha256:" + "d".repeat(64); },
+    (a, { blob }) => { a.config = blob({ inesperado: true }, "application/vnd.oci.empty.v1+json"); },
+    a => { a.config.urls = ["https://exemplo.invalid/config"]; },
+    a => { a.artifactType = "application/vnd.in-toto+json"; }, a => { delete a.artifactType; },
+    a => { delete a.subject; }, a => { a.subject.digest = "sha256:" + "d".repeat(64); },
+    a => { a.subject.size += 1; }, a => { a.subject.mediaType = INDEX; },
+    a => { a.subject.urls = ["https://exemplo.invalid/manifest"]; }, a => { a.subject.data = "e30="; },
+    a => { a.layers[0].urls = ["https://exemplo.invalid/provenance"]; }, a => { a.layers[0].mediaType = CONFIG; },
+    a => { a.layers[0].data = "e30="; }, a => { a.layers[0].data = null; },
+    a => { a.layers[0].annotations["in-toto.io/predicate-type"] = "https://exemplo.invalid/tipo"; },
+    // Não reinterpretar artifact como a configuração legacy para fugir de subject/empty.
+    (a, { blob }) => { a.config = blob({ os: "unknown", architecture: "unknown", rootfs: { type: "layers", diff_ids: a.layers.map(l => l.digest) } }, CONFIG); },
+  ];
+  for (const alterarAtestacao of alteracoes) {
+    const v = fixtureVazia({ alterarAtestacao });
+    assert.throws(() => validarManifesto(v.manifesto, v.esperado, v.metadados, { permitirAtestacaoVazia: true }));
+  }
+});
+
+test("blobs SLSA mantêm hash, tamanho e subject da plataforma sem normalizar o conteúdo", () => {
+  for (const alterarProva of [p => { p._type = "https://in-toto.io/Statement/v0.1"; }, p => { p.predicateType = "outro"; },
+    p => { p.subject[0].digest.sha256 = "d".repeat(64); }, p => { p.subject = []; }, p => { p.predicate = null; }]) {
+    const v = fixtureVazia({ alterarProva });
+    assert.throws(() => validarManifesto(v.manifesto, v.esperado, v.metadados, { permitirAtestacaoVazia: true }));
+  }
+  for (const campo of ["configVazia", "conteudo"]) for (const adulterar of [e => { e.sha256 = "d".repeat(64); }, e => { e.bytes += 1; },
+    e => { e.base64 = Buffer.from("{}").toString("base64"); }]) {
+    const v = fixtureVazia(), nome = "blobs/sha256/" + v[campo].digest.slice(7);
+    adulterar(v.metadados[nome]);
+    // O blob vazio já é '{}': use bytes distintos também nessa adulteração.
+    if (campo === "configVazia" && v.metadados[nome].base64 === "e30=" && v.metadados[nome].sha256 === v[campo].digest.slice(7) && v.metadados[nome].bytes === 2) v.metadados[nome].base64 = "W10=";
+    assert.throws(() => validarManifesto(v.manifesto, v.esperado, v.metadados, { permitirAtestacaoVazia: true }));
+  }
+  const rootfs = fixtureVazia({ alterarPrincipal: p => { p.rootfs.type = "desconhecido"; } });
+  assert.throws(() => validarManifesto(rootfs.manifesto, rootfs.esperado, rootfs.metadados, { permitirAtestacaoVazia: true }));
+});
+
 test("seleciona um arquivo revisado, sem caminho calculado ou alvo extra", () => {
   assert.deepEqual(selecionar(esperado.arquivo, { [esperado.arquivo]: esperado }), esperado);
   for (const invalido of [undefined, "../.env", "__proto__", esperado.arquivo + ".json"]) {
