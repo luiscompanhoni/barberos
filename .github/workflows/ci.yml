@@ -72,7 +72,7 @@ jobs:
           npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Dados de exemplo
         run: npm run db:seed
-      - name: Conferir os fluxos das anotações em banco nominal descartável
+      - name: Preparar banco nominal descartável das anotações
         env:
           POSTGRES_SERVICO: ${{ job.services.postgres.id }}
           DATABASE_URL: postgresql://anotacoes:fixture_anotacoes_ci@127.0.0.1:55549/barberos_anotacoes_teste_20261109
@@ -93,8 +93,6 @@ jobs:
           docker exec "$POSTGRES_SERVICO" createdb -U barberos --owner=anotacoes barberos_anotacoes_teste_20261109
           ./node_modules/.bin/prisma migrate deploy
           npm run db:seed
-          npm run teste:agenda:cliente
-          npm run teste:anotacoes
       - name: Preparar bancos exclusivos de RH e comandas
         env:
           POSTGRES_SERVICO: ${{ job.services.postgres.id }}
@@ -243,6 +241,7 @@ jobs:
           npx prisma migrate deploy
       - name: Testes de fluxo (destinos exclusivos por área)
         env:
+          DATABASE_URL_ANOTACOES: postgresql://anotacoes:fixture_anotacoes_ci@127.0.0.1:55549/barberos_anotacoes_teste_20261109
           DATABASE_URL_RH: postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_regr_rh_20261108
           DATABASE_URL_COMANDAS: postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_regr_comandas_20261108
           DATABASE_URL_HISTORICO: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste

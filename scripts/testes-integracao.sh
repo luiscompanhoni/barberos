@@ -4,7 +4,7 @@
 # Uso: npm run teste:todos; destinos DATABASE_URL_* devem estar criados/migrados; RH e COMANDAS também precisam do seed.
 set -uo pipefail
 # Não executar outros fluxos antes de detectar a falta dos bancos exclusivos; nunca usar o banco genérico como fallback.
-for variavel in DATABASE_URL_RH DATABASE_URL_COMANDAS; do
+for variavel in DATABASE_URL_RH DATABASE_URL_COMANDAS DATABASE_URL_ANOTACOES; do
   if [ -z "${!variavel:-}" ]; then
     echo "FALHOU: informe $variavel para o banco local descartável exclusivo, migrado e com seed."
     exit 1
@@ -16,6 +16,8 @@ for t in $(node -e 'console.log(Object.keys(require("./package.json").scripts).f
     saida=$(DATABASE_URL="$DATABASE_URL_RH" npm run -s "$t" 2>&1)
   elif [ "$t" = "teste:comandas" ]; then
     saida=$(DATABASE_URL="$DATABASE_URL_COMANDAS" npm run -s "$t" 2>&1)
+  elif [ "$t" = "teste:agenda:cliente" ] || [ "$t" = "teste:anotacoes" ]; then
+    saida=$(DATABASE_URL="$DATABASE_URL_ANOTACOES" PAGAMENTOS_PROVIDER=simulado WHATSAPP_PROVIDER=simulador OTP_PROVIDER=console npm run -s "$t" 2>&1)
   elif [ "$t" = "teste:historico" ]; then
     saida=$(DATABASE_URL="${DATABASE_URL_HISTORICO:-}" npm run -s "$t" 2>&1)
   elif [ "$t" = "teste:agentes" ]; then
