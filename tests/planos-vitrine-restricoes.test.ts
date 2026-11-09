@@ -12,7 +12,7 @@ vi.mock("@/lib/agenda/carregar", () => ({ configuracao: vi.fn().mockResolvedValu
 vi.mock("@/lib/pagamentos/gateway", () => ({ gateway: m.gateway, gatewayPorId: vi.fn(), provedorPorId: vi.fn() }));
 vi.mock("@/lib/assinaturas/cobrancas", () => ({ cobrancaEmAberto: m.cobranca, linkAbsoluto: (x: string | null) => x, novoTokenPublico: () => "token", sincronizarAssinatura: vi.fn() }));
 vi.mock("@/lib/whatsapp/conversas", () => ({ notificarEmSegundoPlano: vi.fn() }));
-import { assinar, entrarNaListaDeEspera } from "@/lib/assinaturas/servico";
+import { assinar, entrarNaListaDeEspera, verificarNovaAdesao } from "@/lib/assinaturas/servico";
 import { schemaPlano } from "@/lib/assinaturas/schemas";
 
 const plano = { id: "p", nome: "Business", ativo: true, visivel: true, compravel: false, precoCentavos: 10000, formasPagamento: ["PIX"], vagas: null };
@@ -30,6 +30,26 @@ beforeEach(() => {
 });
 
 describe("planos visíveis para consulta", () => {
+  it.each(["SITE", "BOT", "BARBEIRO"] as const)("mantém Business visível, bloqueando contratação autônoma por %s", async origem => {
+    m.plano.mockResolvedValue({ ...plano, compravel: true, vendaSomenteEquipe: true });
+    await expect(assinar({ ...dados, origem })).rejects.toMatchObject({ codigo: "plano_venda_equipe" });
+    expect(m.gateway).not.toHaveBeenCalled(); expect(m.criar).not.toHaveBeenCalled();
+  });
+  it.each(["RECEPCAO", "PAINEL"] as const)("permite iniciar a contratação pela equipe: %s", async origem => {
+    m.plano.mockResolvedValue({ ...plano, compravel: true, vendaSomenteEquipe: true });
+    await expect(verificarNovaAdesao("p", origem)).resolves.toBeUndefined();
+  });
+  it("revalida restrição à equipe sob trava, sem registrar adesão autônoma", async () => {
+    m.plano.mockResolvedValue({ ...plano, compravel: true, vendaSomenteEquipe: false });
+    m.planoTx.mockResolvedValue({ ...plano, compravel: true, vendaSomenteEquipe: true });
+    await expect(assinar(dados)).rejects.toMatchObject({ codigo: "plano_venda_equipe" });
+    expect(m.lock).toHaveBeenCalled(); expect(m.criar).not.toHaveBeenCalled(); expect(m.atualizarCliente).not.toHaveBeenCalled();
+  });
+  it("não usa lista de espera pública para contornar contratação pela recepção", async () => {
+    m.planoTx.mockResolvedValue({ ...plano, compravel: true, vendaSomenteEquipe: true });
+    await expect(entrarNaListaDeEspera("c", "p")).rejects.toMatchObject({ codigo: "plano_venda_equipe" });
+    expect(m.filaUpsert).not.toHaveBeenCalled();
+  });
   it.each(["SITE", "BOT", "RECEPCAO"] as const)("bloqueia nova assinatura na origem %s antes de gateway ou registro", async origem => {
     await expect(assinar({ ...dados, origem })).rejects.toMatchObject({ status: 409 });
     expect(m.gateway).not.toHaveBeenCalled(); expect(m.criar).not.toHaveBeenCalled();

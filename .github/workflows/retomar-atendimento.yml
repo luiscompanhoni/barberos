@@ -1,0 +1,52 @@
+name: Retomar publicação 102a391 antes do isolamento
+on:
+  workflow_dispatch:
+    inputs:
+      chave_relatorio:
+        description: Chave pública RSA SPKI base64 do destinatário
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: publicacao-producao
+  cancel-in-progress: false
+jobs:
+  retomar:
+    if: github.ref == 'refs/heads/main'
+    environment: "produção"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Conferir regressão e CI exato da versão a retomar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -B scripts/publicacao/test_retomar_publicacao.py
+          gh api repos/${{ github.repository }}/actions/runs/42539561184 --jq '.head_sha == "102a3911fd6b38c635af9cf9cb7718e04f0796db" and .conclusion == "success" and .event == "push"' | grep -qx true
+      - name: Conferir instalação e retomar com backup e restauração
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
+        run: node scripts/publicacao/retomar-publicacao.mjs "$RUNNER_TEMP/retomada.cifrada.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retomada-registro-cifrado
+          path: ${{ runner.temp }}/retomada.cifrada.json
+          retention-days: 1
+          if-no-files-found: error

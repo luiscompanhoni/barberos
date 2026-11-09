@@ -3,6 +3,17 @@
  */
 const DIA = 86_400_000;
 
+export const TEMPERATURAS = ["quente", "morno", "frio", "muitoFrio"] as const;
+export type TemperaturaCliente = typeof TEMPERATURAS[number] | "semVisitaRegistrada" | "historicoIncompleto";
+
+/** Temperatura mede visita, não adimplência ou autorização de contato. */
+export function temperaturaDoCliente(ultima: number | null, agora: number, historicoCompleto = true): TemperaturaCliente {
+  if (!historicoCompleto || !Number.isFinite(agora) || (ultima !== null && (!Number.isFinite(ultima) || ultima > agora))) return "historicoIncompleto";
+  if (ultima === null) return "semVisitaRegistrada";
+  const dias = Math.floor((agora - ultima) / DIA);
+  return dias <= 30 ? "quente" : dias <= 90 ? "morno" : dias <= 365 ? "frio" : "muitoFrio";
+}
+
 export const FAIXAS_VISITA = ["0–30 dias", "31–60 dias", "61–90 dias", "91–180 dias", "+180 dias", "Nunca veio"] as const;
 export type FaixaVisita = (typeof FAIXAS_VISITA)[number];
 

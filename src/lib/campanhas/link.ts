@@ -5,7 +5,7 @@
 import { configuracao } from "@/lib/agenda/carregar";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { db } from "@/lib/db";
-import { noAr, paraCliente } from "@/lib/jogos/motor";
+import { noAr, paraCliente, premiosExibiveis } from "@/lib/jogos/motor";
 import { multiplicador } from "@/lib/jogos/regras";
 
 const DIA = 86_400_000;
@@ -29,6 +29,7 @@ export async function landingDaCampanha(token: string) {
   if (!j) return { ...base, jogo: null };
 
   const sit = await situacaoDoCliente(envio.cliente.id);
+  const premios = await premiosExibiveis(j.premios);
   const vencido = +(envio.enviadoEm ?? envio.liberadoEm) + j.validadeDias * DIA < Date.now();
   return {
     ...base,
@@ -37,8 +38,8 @@ export async function landingDaCampanha(token: string) {
       ativo: noAr(j),
       vencido: !envio.jogada && vencido,
       multiplicador: multiplicador(!!sit?.valida, j.bonusAssinantePct),
-      fatias: j.tipo === "ROLETA" ? j.premios.map((p) => ({ id: p.id, rotulo: p.rotulo, cor: p.cor, icone: p.icone, tipo: p.tipo, raridade: p.raridade })) : [],
-      vitrine: j.premios.filter((p) => p.tipo !== "NADA").map((p) => ({ id: p.id, rotulo: p.rotulo, tipo: p.tipo, raridade: p.raridade, icone: p.icone, cor: p.cor, chanceBps: p.chanceBps })),
+      fatias: j.tipo === "ROLETA" ? premios.map((p) => ({ id: p.id, rotulo: p.rotulo, cor: p.cor, icone: p.icone, tipo: p.tipo, raridade: p.raridade })) : [],
+      vitrine: premios.filter((p) => p.tipo !== "NADA").map((p) => ({ id: p.id, rotulo: p.rotulo, tipo: p.tipo, raridade: p.raridade, icone: p.icone, cor: p.cor, chanceBps: p.chanceBps })),
       // Ja jogou: a pagina mostra o que saiu (abrir o link de novo nao joga outra vez).
       jogada: envio.jogada ? paraCliente(envio.jogada) : null,
     },

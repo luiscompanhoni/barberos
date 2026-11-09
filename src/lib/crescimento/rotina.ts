@@ -136,7 +136,7 @@ export async function processarIndicacoes(opts: { clienteIds?: string[] } = {}) 
   const premiados = await converterIndicacoes(opts);
   let n = 0;
   for (const p of premiados) {
-    const texto = TEXTOS.INDICACAO_CONVERTIDA({ nome: p.indicador.nome, amigo: p.amigo, premio: p.premio });
+    const texto = TEXTOS.INDICACAO_CONVERTIDA({ nome: p.indicador.nome, amigo: p.amigo, premio: p.premio, assinatura: p.assinatura });
     if (await enviarAutomacao({ tipo: "INDICACAO", chave: p.indicacaoId, clienteId: p.indicador.id, telefone: p.indicador.telefone, texto })) n++;
   }
   return n;

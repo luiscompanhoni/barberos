@@ -49,6 +49,13 @@ const inicioDoMes = (agora = Date.now()) => {
 const premiosDoJogo = (tx: Tx | typeof db, jogoId: string) =>
   tx.jogoPremio.findMany({ where: { jogoId, ativo: true }, orderBy: [{ ordem: "asc" }, { criadoEm: "asc" }] });
 
+/** A vitrine segue o mesmo estoque, chance e limite mensal do sorteio. */
+export async function premiosExibiveis(premios: JogoPremio[]) {
+  if (!premios.length) return [];
+  const saiu = await db.premioGanho.groupBy({ by: ["premioId"], where: { premioId: { in: premios.map(p => p.id) }, criadoEm: { gte: inicioDoMes() } }, _count: true });
+  return elegiveis(premios, new Map(saiu.map(p => [p.premioId!, p._count])));
+}
+
 const fatia = (p: JogoPremio): FatiaRoleta => ({ id: p.id, rotulo: p.rotulo, cor: p.cor, icone: p.icone, tipo: p.tipo, raridade: p.raridade });
 
 // ---------------- jogada
@@ -97,6 +104,7 @@ export async function jogar(clienteId: string, jogoId: string, chave: string, o:
     const premios = await premiosDoJogo(tx, jogoId);
     const saiu = await tx.premioGanho.groupBy({ by: ["premioId"], where: { jogoId, criadoEm: { gte: inicioDoMes() }, premioId: { in: premios.map((p) => p.id) } }, _count: true });
     const noMes = new Map(saiu.map((s) => [s.premioId!, s._count]));
+    const exibiveis = elegiveis(premios, noMes);
     const estoque = new Map(premios.map((p) => [p.id, p.estoque]));
     const vezes = jogo.tipo === "CAIXA" ? Math.max(1, jogo.premiosPorJogada) : 1;
     const sorteados: JogoPremio[] = [];
@@ -115,7 +123,7 @@ export async function jogar(clienteId: string, jogoId: string, chave: string, o:
     }
 
     const ganhos = sorteados.filter((p) => p.tipo !== "NADA");
-    const resultado = montarResultado(jogo, premios, sorteados[0]);
+    const resultado = montarResultado(jogo, exibiveis, sorteados[0]);
     const nova = await tx.jogada.create({
       data: {
         chave, jogoId, tipo: jogo.tipo, clienteId, origem: ficha.origem, multiplicador: mult, vitoria: ganhos.length > 0,
@@ -241,10 +249,11 @@ export async function centralDoCliente(clienteId: string): Promise<CentralJogos>
     db.premioGanho.count({ where: { clienteId, status: { in: ["DISPONIVEL", "RESERVADO"] } } }),
   ]);
   const assinante = !!sit?.valida;
+  const exibiveis = await premiosExibiveis(premios);
   const multiplicadores = new Set(jogos.map(j => multiplicador(assinante, j.bonusAssinantePct)));
   return {
     jogos: jogos.map((j): JogoCliente => {
-      const doJogo = premios.filter((p) => p.jogoId === j.id);
+      const doJogo = exibiveis.filter((p) => p.jogoId === j.id);
       return {
         id: j.id, tipo: j.tipo, nome: j.nome, descricao: j.descricao, raridade: j.raridade, premiosPorJogada: j.premiosPorJogada,
         ativo: true, soAssinante: j.soAssinante, multiplicador: multiplicador(assinante, j.bonusAssinantePct),

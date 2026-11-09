@@ -7,11 +7,17 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { entrarNaEspera, esperasDoCliente } from "@/lib/crescimento/espera";
 import { painelDeIndicacao, registrarIndicacao } from "@/lib/crescimento/indicacao";
 import { db } from "@/lib/db";
+import { presentesDaConversa } from "./presentes";
 import type { ContextoBot, ResultadoFerramenta } from "./ferramentas";
 
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
 
 export const FERRAMENTAS_CRESCIMENTO: Anthropic.Beta.BetaTool[] = [
+  {
+    name: "meus_presentes",
+    description: "Consulta o convite de campanha e os últimos dez prêmios reais do próprio cliente: ganho, validade, reserva e uso. Use para dúvidas sobre roleta, raspadinha, caixas e como retirar; não concede nem gira de novo.",
+    input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
   {
     name: "avisar_quando_abrir",
     description:
@@ -53,6 +59,7 @@ const ENTRADAS = {
 };
 
 export async function executarCrescimento(nome: string, entrada: unknown, ctx: ContextoBot): Promise<ResultadoFerramenta> {
+  if (nome === "meus_presentes") return { texto: JSON.stringify(await presentesDaConversa(ctx.telefone)) };
   const cliente = await db.cliente.findUnique({ where: { telefone: ctx.telefone }, select: { id: true } });
   switch (nome) {
     case "avisar_quando_abrir": {
@@ -70,7 +77,8 @@ export async function executarCrescimento(nome: string, entrada: unknown, ctx: C
         texto: JSON.stringify({
           link: p.link, codigo: p.codigo,
           premio_de_quem_indica: reais(p.premioIndicadorCentavos), premio_do_amigo: reais(p.premioIndicadoCentavos),
-          amigos_indicados: p.indicados, amigos_que_ja_vieram: p.convertidos,
+          amigos_indicados: p.indicados, indicacoes_convertidas: p.convertidos,
+          condicao: p.regra === "ASSINATURA_V2" ? "Primeiro pagamento confirmado da assinatura elegível; novos assinantes ou ex há pelo menos 90 dias sem plano. Crédito válido por 30 dias, uma vez por indicado, sem saque. Migração não conta como nova indicação." : "Primeiro atendimento concluído conforme regra anterior.",
           descontos_disponiveis: p.beneficios.map((b) => `${b.descricao}: ${reais(b.valorCentavos)}`),
           mensagem_pronta_para_encaminhar: p.convite,
         }),
@@ -81,7 +89,7 @@ export async function executarCrescimento(nome: string, entrada: unknown, ctx: C
       if (!cliente) return { texto: "Cliente sem cadastro: pergunte o nome e salve com salvar_nome antes.", erro: true };
       const r = await registrarIndicacao(cliente.id, e.codigo, "BOT");
       const cfg = await configuracao();
-      return { texto: `Indicação registrada: indicado por ${r.indicador.nome.split(" ")[0]}.${r.premioCentavos ? ` Ele ganhou ${reais(r.premioCentavos)} de desconto no primeiro atendimento na ${cfg.nomeBarbearia} (sai na comanda).` : ""}` };
+      return { texto: `Indicação registrada: indicado por ${r.indicador.nome.split(" ")[0]}.${r.aguardandoPagamento ? " O crédito ainda não foi liberado: depende do primeiro pagamento confirmado da assinatura elegível. Após liberar, vale por 30 dias e não pode ser sacado." : r.premioCentavos ? ` Ele ganhou ${reais(r.premioCentavos)} de desconto no primeiro atendimento na ${cfg.nomeBarbearia} (sai na comanda).` : ""}` };
     }
     default:
       return { texto: `Ferramenta desconhecida: ${nome}`, erro: true };

@@ -10,6 +10,7 @@ import { reservarEnvioPiloto } from "./piloto";
 import { telefonePiloto } from "./piloto-regras";
 import { ehHomologacao } from "@/lib/ambiente";
 import { enviarTextoEvolution } from "./evolution";
+import { envioTesteEquipe, testeEquipeAtivo } from "./teste-equipe";
 
 export type ResultadoEnvio = { wamid: string | null };
 
@@ -58,7 +59,8 @@ async function postarCloud(corpo: Record<string, unknown>): Promise<ResultadoEnv
  * "digitando..."; na API oficial so espera; no simulador nao espera (testes rapidos).
  */
 export async function enviarTexto(para: string, texto: string, digitandoMs = 0, origem = "PADRAO"): Promise<ResultadoEnvio> {
-  if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") throw new Error("Envios de mensagens bloqueados nesta publicação.");
+  const teste = await envioTesteEquipe(para, origem);
+  if ((testeEquipeAtivo() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") && !teste) throw new Error("Envios de mensagens bloqueados nesta publicação.");
   await reservarEnvioPiloto(para, origem);
   return entregarTexto(para, texto, digitandoMs);
 }
@@ -72,6 +74,7 @@ async function entregarTexto(para: string, texto: string, digitandoMs = 0): Prom
 }
 
 export async function enviarTemplate(para: string, t: TemplateWhatsApp): Promise<ResultadoEnvio> {
+  if (testeEquipeAtivo()) throw new Error("Templates bloqueados durante o teste da equipe.");
   if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") throw new Error("Envios de mensagens bloqueados nesta publicação.");
   await reservarEnvioPiloto(para, "TEMPLATE");
   return entregarTemplate(para, t);

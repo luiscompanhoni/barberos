@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { aceitarDesconto, cancelarPeloCliente, falarComGerente, pausar, previaCancelamento } from "@/lib/assinaturas/retencao";
 import { MOTIVOS } from "@/lib/assinaturas/retencao-regras";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
+import { passarConversaParaEquipe } from "@/lib/assinaturas/retencao-avisos";
 import type { ContextoBot, ResultadoFerramenta } from "./ferramentas";
 
 const dataBr = (iso: string) => iso.split("-").reverse().join("/");
@@ -37,7 +38,9 @@ export async function executarCancelamento(nome: string, entrada: unknown, ctx: 
           : o.tipo === "GERENTE"
             ? "Ofereça falar com o gerente para resolver. Se aceitar, decisao=falar_com_gerente."
             : "Sem oferta para esse motivo: confirme se ele quer mesmo cancelar.";
-    const se = p.cancelamento.imediato
+    const se = p.cancelamento.cashbarber
+      ? "A cobrança está no sistema antigo: o pedido precisa de confirmação da equipe por lá. Não prometa ausência de novas cobranças."
+      : p.cancelamento.imediato
       ? "Se cancelar: cancela na hora, sem novas cobranças."
       : `Se cancelar: o mês já pago continua valendo até ${dataBr(p.cancelamento.ultimoDia!)}, sem novas cobranças.`;
     return { texto: `${oferta} ${se}${p.cancelamento.cashbarber ? " (Cobrança no sistema antigo: a equipe confirma o cancelamento por lá.)" : ""}` };
@@ -60,6 +63,10 @@ export async function executarCancelamento(nome: string, entrada: unknown, ctx: 
       return { texto: "Conversa passada para o gerente. Avise o cliente que o gerente vai responder por aqui em breve e que o plano continua valendo.", passouParaHumano: true };
     default: {
       const r = await cancelarPeloCliente(pedido);
+      if (r.cashbarber) {
+        await passarConversaParaEquipe(ctx.telefone, "Cancelamento registrado no BarberOS; confirmar encerramento e cobranças no CashBarber/Celcash. Não garantir ausência de cobranças antes da conferência.");
+        return { texto: "Pedido de cancelamento registrado no BarberOS e encaminhado à equipe. O encerramento da cobrança no sistema antigo ainda precisa de confirmação; não prometa que já parou de cobrar.", passouParaHumano: true };
+      }
       return {
         texto: r.ultimoDia
           ? `Plano cancelado. Continua valendo até ${dataBr(r.ultimoDia)}, sem novas cobranças. Horários depois disso continuam, como avulsos.`

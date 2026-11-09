@@ -15,6 +15,7 @@ import { gateway, gatewayPorId } from "@/lib/pagamentos/gateway";
 import { ErroPagarme, PREFIXO_PIX } from "@/lib/pagamentos/pagarme";
 import { cobrancaEmAberto, sincronizarAssinatura, sincronizarCobranca } from "./cobrancas";
 import { valorComRetencao } from "./retencao-regras";
+import { creditoDoCicloParaPix } from "@/lib/crescimento/credito-assinatura";
 import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, reservarPagamentoInicial } from "./operacao-inicial";
 
 /** Gera (e salva) a cobranca Pix de um mes da assinatura. */
@@ -39,8 +40,9 @@ export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
     }
     const existente = await tx.cobranca.findFirst({ where: { assinaturaId, vencimento: data, status: { not: "CANCELADA" } } });
     if (existente) return { existente };
+    const credito = await creditoDoCicloParaPix(tx, a, vencimento);
     const emissao = await tx.emissaoPixMensal.create({ data: { assinaturaId, vencimento: data } });
-    return { a, emissaoId: emissao.id };
+    return { a, emissaoId: emissao.id, credito };
   });
   if (reserva.existente) return reserva.existente;
   const { a, emissaoId } = reserva;
@@ -51,7 +53,7 @@ export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
     const cob = await g.criarCobrancaPix({
     clienteGatewayId: a.gatewayClienteId!,
     // Desconto de retencao nas mensalidades cobertas.
-    valorCentavos: valorComRetencao({
+    valorCentavos: reserva.credito?.valorCentavos ?? valorComRetencao({
       precoCentavos: a.precoCentavos, vencimento,
       pct: a.descontoRetencaoPct, ate: a.descontoRetencaoAte?.toISOString().slice(0, 10) ?? null,
     }),

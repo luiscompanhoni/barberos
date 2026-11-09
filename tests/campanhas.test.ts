@@ -7,13 +7,19 @@ const ha = (dias: number) => agora - dias * DIA;
 
 describe("campanhas: segmentos", () => {
   it("faixa pela ultima visita, perdido acima de 90 dias", () => {
-    expect(segmentosDoCliente({ ultima: ha(10), primeira: ha(400), assinatura: null }, agora)).toEqual(["ate30"]);
-    expect(segmentosDoCliente({ ultima: ha(45), primeira: ha(400), assinatura: null }, agora)).toEqual(["d31a60"]);
-    expect(segmentosDoCliente({ ultima: ha(91), primeira: ha(400), assinatura: null }, agora)).toEqual(["d91a180", "perdido"]);
-    expect(segmentosDoCliente({ ultima: ha(200), primeira: ha(400), assinatura: "ex" }, agora)).toEqual(["mais180", "perdido", "exAssinante"]);
+    expect(segmentosDoCliente({ ultima: ha(10), primeira: ha(400), assinatura: null }, agora)).toEqual(["quente", "ate30"]);
+    expect(segmentosDoCliente({ ultima: ha(45), primeira: ha(400), assinatura: null }, agora)).toEqual(["morno", "d31a60"]);
+    expect(segmentosDoCliente({ ultima: ha(91), primeira: ha(400), assinatura: null }, agora)).toEqual(["frio", "d91a180", "perdido"]);
+    expect(segmentosDoCliente({ ultima: ha(200), primeira: ha(400), assinatura: "ex" }, agora)).toEqual(["frio", "mais180", "d181a365", "perdido", "exAssinante"]);
+  });
+  it.each([180, 181, 365, 366])("separa mais de um ano sem mudar o segmento antigo: %s dias", (dias) => {
+    const segmentos = segmentosDoCliente({ ultima: ha(dias), primeira: ha(500), assinatura: null }, agora);
+    expect(segmentos.includes("mais180")).toBe(dias > 180);
+    expect(segmentos.includes("d181a365")).toBe(dias > 180 && dias <= 365);
+    expect(segmentos.includes("mais365")).toBe(dias > 365);
   });
   it("novo pela primeira visita; assinante soma com a faixa; quem nunca veio", () => {
-    expect(segmentosDoCliente({ ultima: ha(3), primeira: ha(20), assinatura: "ativa" }, agora)).toEqual(["ate30", "novo", "assinante"]);
+    expect(segmentosDoCliente({ ultima: ha(3), primeira: ha(20), assinatura: "ativa" }, agora)).toEqual(["quente", "ate30", "novo", "assinante"]);
     expect(segmentosDoCliente({ ultima: null, primeira: null, assinatura: null }, agora)).toEqual(["nunca"]);
   });
 });

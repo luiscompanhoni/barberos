@@ -39,7 +39,7 @@ describe("pedido de upgrade e downgrade", () => {
     await expect(solicitar()).rejects.toMatchObject({ codigo: "troca_indisponivel" });
     expect(m.criar).not.toHaveBeenCalled();
   });
-  it.each([{ visivel: false }, { compravel: false }, { ativo: false }])("cliente não escolhe plano indisponível: %j", async mudanca => {
+  it.each([{ visivel: false }, { compravel: false }, { ativo: false }, { vendaSomenteEquipe: true }])("cliente não escolhe plano indisponível: %j", async mudanca => {
     m.plano.mockResolvedValue({ ...plano(), ...mudanca });
     await expect(solicitar()).rejects.toMatchObject({ status: 404 });
   });
@@ -48,10 +48,22 @@ describe("pedido de upgrade e downgrade", () => {
     await expect(cancelarAlteracaoPlano("a", "u")).rejects.toMatchObject({ status: 409 });
     expect(m.atualizar).not.toHaveBeenCalled();
   });
+  it("permite à recepção solicitar Business visível com venda restrita", async () => {
+    m.plano.mockResolvedValue({ ...plano(), vendaSomenteEquipe: true });
+    await solicitarAlteracaoPlano({ assinaturaId: "a", planoId: "novo", origem: "RECEPCAO", usuarioId: "u" });
+    expect(m.criar).toHaveBeenCalledWith({ data: expect.objectContaining({ origem: "RECEPCAO", planoDestinoId: "novo" }) });
+  });
 });
 
 describe("aplicação da troca pela recepção", () => {
   beforeEach(() => { m.pedido.mockResolvedValue(pedido()); });
+  it("rejeita pedido autônomo quando o plano passa a ser exclusivo da equipe", async () => {
+    vi.mocked(Date.now).mockReturnValue(+new Date("2030-02-01T12:00:00Z"));
+    m.pedido.mockResolvedValue({ ...pedido(), origem: "SITE" });
+    m.plano.mockResolvedValue({ ...plano(), vendaSomenteEquipe: true });
+    await expect(aplicarAlteracaoPlano("a", "u")).rejects.toMatchObject({ status: 409 });
+    expect(m.aplicar).not.toHaveBeenCalled();
+  });
   it("não antecipa alteração dentro do ciclo pago", async () => {
     await expect(aplicarAlteracaoPlano("a", "u")).rejects.toMatchObject({ status: 409 });
     expect(m.aplicar).not.toHaveBeenCalled(); expect(m.gateway).not.toHaveBeenCalled();

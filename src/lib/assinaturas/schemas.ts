@@ -9,6 +9,7 @@ export const schemaPlano = z.object({
   ativo: z.boolean().optional(),
   visivel: z.boolean().optional(),
   compravel: z.boolean().optional(),
+  vendaSomenteEquipe: z.boolean().optional(),
   etiquetas: z.array(z.string().trim().min(1).max(40)).max(3)
     .refine(xs => new Set(xs.map(x => x.toLocaleLowerCase("pt-BR"))).size === xs.length, "As etiquetas não podem se repetir.").optional(),
   vagas: z.number().int().min(1).max(100_000).nullable().optional(),

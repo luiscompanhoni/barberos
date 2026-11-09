@@ -1,0 +1,380 @@
+{
+  "revisao": "2026-11-08-whatsapp-direto",
+  "fonte": "Interface do WhatsApp Desktop do usuário e exportação nativa de uma conversa",
+  "metodo": "Leitura visual dos trechos disponíveis; texto exportado de WD001 lido integralmente quanto ao conteúdo acessível",
+  "contagem": {
+    "conversasCatalogadas": 41,
+    "conversasInternasExcluidasAdicionais": 1,
+    "conversasExportadas": 1,
+    "audiosTranscritos": 0,
+    "figurinhasVistasNoContexto": 2
+  },
+  "exportacao": {
+    "conversa": "WD001",
+    "periodo": {
+      "inicio": "2026-07-19",
+      "fim": "2026-11-08"
+    },
+    "registros": 69,
+    "avisosDeMensagemIndisponivel": 13,
+    "documentosOmitidos": 3,
+    "arquivos": [
+      "chat.txt",
+      "chat.md"
+    ],
+    "midiasBinarias": 0,
+    "sha256Zip": "70eb815e3eed7611b0bb7c0a8408146cbbdc12fa4bd6a1691174b20eb37cf84e"
+  },
+  "limites": [
+    "Leitura parcial das conversas; não é histórico integral.",
+    "Sem deduplicação com as 100 conversas antes revisadas no BarberOS; não somar como clientes únicos.",
+    "Balões enviados não identificam por si só autoria humana ou automática.",
+    "Imagens foram examinadas visualmente; valores e dados pessoais não foram copiados para a base de conhecimento.",
+    "Áudios foram identificados, mas não ouvidos ou transcritos.",
+    "Resposta histórica não prova regra atual, confirmação bancária ou execução real no sistema."
+  ],
+  "conversas": [
+    {
+      "id": "WD001",
+      "assuntos": [
+        "cadastro",
+        "app",
+        "Pix expirado",
+        "competência",
+        "comprovantes omitidos",
+        "agenda"
+      ],
+      "leitura": "texto exportado disponível e trechos visuais; 13 mensagens inacessíveis"
+    },
+    {
+      "id": "WD002",
+      "assuntos": [
+        "plano bloqueado",
+        "vencimento",
+        "imagem de boleto"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD003",
+      "assuntos": [
+        "cabelo e barba",
+        "seleção de combo"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD004",
+      "assuntos": [
+        "Pix",
+        "vencimento e expiração",
+        "agradecimento",
+        "figurinha"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD005",
+      "assuntos": [
+        "áudios"
+      ],
+      "leitura": "contexto insuficiente; áudio não transcrito"
+    },
+    {
+      "id": "WD006",
+      "assuntos": [
+        "atendimento no dia"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD007",
+      "assuntos": [
+        "campanha incompatível com visita recente",
+        "reenvio de boleto"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD008",
+      "assuntos": [
+        "recado",
+        "indicação profissional",
+        "cartão de contato"
+      ],
+      "leitura": "trecho visual; não classificado como compra de serviço"
+    },
+    {
+      "id": "WD009",
+      "assuntos": [
+        "cartão recorrente",
+        "pedido de débito/Pix",
+        "imagem de pagamento",
+        "áudio"
+      ],
+      "leitura": "trecho visual; áudio não transcrito"
+    },
+    {
+      "id": "WD010",
+      "assuntos": [],
+      "leitura": "somente aviso de criptografia; excluído dos exemplos"
+    },
+    {
+      "id": "WD011",
+      "assuntos": [
+        "vídeos enviados"
+      ],
+      "leitura": "sem contexto suficiente; excluído dos exemplos; vídeos não assistidos"
+    },
+    {
+      "id": "WD012",
+      "assuntos": [
+        "fornecedor de sistema"
+      ],
+      "leitura": "trecho visual; encaminhamento administrativo"
+    },
+    {
+      "id": "WD013",
+      "assuntos": [
+        "pedido de Pix",
+        "imagem de pagamento",
+        "agradecimento"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD014",
+      "assuntos": [
+        "boleto",
+        "liberação do app"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD015",
+      "assuntos": [
+        "fornecedor",
+        "resposta automática",
+        "áudios"
+      ],
+      "leitura": "trecho visual; áudios não transcritos"
+    },
+    {
+      "id": "WD016",
+      "assuntos": [
+        "imagem de pagamento sem explicação textual"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD017",
+      "assuntos": [
+        "falha persistente no app",
+        "acesso",
+        "credenciais históricas"
+      ],
+      "leitura": "trecho visual; credenciais excluídas do material"
+    },
+    {
+      "id": "WD018",
+      "assuntos": [
+        "pagamento em dinheiro ao profissional",
+        "ajuste de cobrança",
+        "figurinha ambígua"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD019",
+      "assuntos": [
+        "reserva contestada",
+        "horário alternativo",
+        "cabelo e barba"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD020",
+      "assuntos": [
+        "cancelamento",
+        "motivo não informado",
+        "validade consultada do plano"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD021",
+      "assuntos": [
+        "cliente de outra cidade",
+        "avulso",
+        "reserva"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD022",
+      "assuntos": [
+        "como funcionam os planos",
+        "resposta em áudio"
+      ],
+      "leitura": "pergunta textual lida; resposta em áudio não transcrita"
+    },
+    {
+      "id": "WD023",
+      "assuntos": [
+        "preço do corte",
+        "próximo passo simples"
+      ],
+      "leitura": "trecho visual; preço histórico não copiado como regra atual"
+    },
+    {
+      "id": "WD024",
+      "assuntos": [
+        "remarcação",
+        "troca de barbeiro"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD025",
+      "assuntos": [
+        "fatura não recebida por e-mail",
+        "reenvio de link"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD026",
+      "assuntos": [
+        "cobrança após cancelamento",
+        "promessa de fim de cobranças",
+        "reserva após fim do plano"
+      ],
+      "leitura": "trecho visual; confirmação externa não comprovada"
+    },
+    {
+      "id": "WD027",
+      "assuntos": [
+        "negociação de horário",
+        "mudança de preferência em várias mensagens"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD028",
+      "assuntos": [
+        "reenvio de link ausente localmente",
+        "humano assume",
+        "comprovante por competência"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD029",
+      "assuntos": [
+        "profissional preferido",
+        "cliente decide retornar depois"
+      ],
+      "leitura": "trecho visual"
+    },
+    {
+      "id": "WD030",
+      "assuntos": [
+        "competência de boleto questionada"
+      ],
+      "leitura": "trecho visual; imagem reduzida não usada para inferir dados ilegíveis"
+    },
+    {
+      "id": "WD031",
+      "assuntos": [
+        "confirmação de presença",
+        "retorno de acesso"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD032",
+      "assuntos": [
+        "oferta de vaga por serviço/duração",
+        "indisponibilidade do cliente"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD033",
+      "assuntos": [
+        "pedido de link oficial após perda de outro canal"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD034",
+      "assuntos": [
+        "cancelamento",
+        "recusa em informar motivo"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD035",
+      "assuntos": [
+        "pedido para filho em trecho histórico",
+        "confirmação de presença em atendimento recente"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD036",
+      "assuntos": [
+        "confirmação de reserva",
+        "confirmação de presença",
+        "encerramento"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD037",
+      "assuntos": [
+        "confirmação de reserva e presença"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD038",
+      "assuntos": [
+        "remarcação preservando profissional"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD039",
+      "assuntos": [
+        "remarcação seguida de pedido para voltar ao horário anterior"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD040",
+      "assuntos": [
+        "pedido de tolerância de atraso",
+        "chamada sem pedido operacional"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    },
+    {
+      "id": "WD041",
+      "assuntos": [
+        "mensagem automática de outra empresa; excluída dos exemplos de clientes"
+      ],
+      "leitura": "trecho visual; sem autoria humana/automática presumida para balões enviados"
+    }
+  ],
+  "efeitos": {
+    "mensagensEnviadas": 0,
+    "reservasAlteradas": 0,
+    "cobrancasAlteradas": 0,
+    "publicacao": false,
+    "observacao": "Abrir conversas pode remover o indicador de não lida."
+  },
+  "pontoDeRetomada": "Revisão interrompida no bloco de conversas com última atividade exibida como quinta-feira; WD041 é a última conversa catalogada. Continuar abaixo dela após nova observação da interface."
+}

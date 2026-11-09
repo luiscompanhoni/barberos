@@ -49,6 +49,7 @@ export async function POST(req: Request) {
           nomePerfil: m.nomePerfil,
           texto: m.texto,
           wamid: m.wamid,
+          midia: m.midia,
         });
       } catch (e) {
         console.error("[whatsapp] falha ao processar mensagem", m.wamid, e);

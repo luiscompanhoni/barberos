@@ -67,6 +67,12 @@ describe("validacao das chances", () => {
     expect(validarPremios("CAIXA", [{ ...base, rotulo: "S", tipo: "SERVICO", chanceBps: 10_000, ativo: true }]).join()).toMatch(/serviço/);
     expect(validarPremios("CAIXA", [{ ...base, rotulo: "D", tipo: "DESCONTO", chanceBps: 10_000, ativo: true }]).join()).toMatch(/desconto entre/);
   });
+  it("não permite anunciar prêmio ativo impossível, mas preserva rascunho desativado", () => {
+    const real = { ...base, rotulo: "Brinde", tipo: "BRINDE", chanceBps: 10_000, ativo: true };
+    const impossivel = { ...base, rotulo: "Um ano grátis", tipo: "BRINDE", chanceBps: 0, ativo: true };
+    expect(validarPremios("CAIXA", [real, impossivel]).join()).toContain("chance real");
+    expect(validarPremios("CAIXA", [real, { ...impossivel, ativo: false }])).toEqual([]);
+  });
 
   it("jogos padrao ja nascem validos", () => {
     for (const j of [ROLETA_PADRAO, ...JOGOS_PADRAO]) {

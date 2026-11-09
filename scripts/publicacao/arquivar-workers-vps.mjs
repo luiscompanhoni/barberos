@@ -10,7 +10,7 @@ import { cifrar } from "./cifrar-relatorio.mjs";
 
 const shell = s => "'" + s.replace(/'/g, "'\\''") + "'";
 export const LEGADO = "legado-f7968a11";
-export const APP_ESPERADO = "sha256:000bf3cac4db8ce701711ebfbf3b50c7607c20602cddf9c8a4306f931e07148e";
+export const APP_ESPERADO = "sha256:a2a78e0a4ab504fa65cb72c9c21130e05a261c2b4134bc3b41532fc407a187d6";
 export const ALVOS = Object.freeze({
   d833182db751a74d3ce52017f11a2824fcb6c735: { id: "sha256:4d5728f7035eb38b0cb29c752936637047f997cf0e6eb240285c956a6f13b87e", bytesImagem: 1948259798 },
   "7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10": { id: "sha256:412eeeb7c3f1f1f555a5420d10a55311bd6a81c5b965f5c40fc5e354104466ab", bytesImagem: 1948279454 },
@@ -77,19 +77,20 @@ export function validarSmoke(texto) {
   if (r.concluido !== true || r.preset !== "black-vertical-v1" || r.largura !== 720 || r.altura !== 1280 ||
     r.audio !== true || !Number.isFinite(r.duracao) || Math.abs(r.duracao - 0.5) > 0.25) throw new Error("Render sintético não comprovado.");
 }
-export async function validarCopia(antes, arquivo, alvo, executar = execFileSync) {
+export async function validarCopia(antes, arquivo, alvo, executar = execFileSync, restaurar) {
   validarPreparacao(antes, alvo);
   const stat = lstatSync(arquivo);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== antes.bytes) throw new Error("Tamanho transportado divergente.");
   const hash = createHash("sha256");
   for await (const b of createReadStream(arquivo)) hash.update(b);
   if (hash.digest("hex") !== antes.sha256) throw new Error("Arquivo transportado divergente.");
-  executar("docker", ["load", "--input", arquivo], { timeout: 600_000, maxBuffer: 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
-  const i = antes.imagens[0];
-  const restaurada = JSON.parse(executar("docker", ["image", "inspect", i.tag], { timeout: 30_000 }).toString())[0];
-  validarRestauracao(i, restaurada, alvo);
-  const smoke = executar("docker", argumentosSmoke(i.tag), { timeout: 600_000, maxBuffer: 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
-  validarSmoke(smoke.toString());
+  // Reutiliza a cadeia OCI já validada: índice, manifest, configuração e todas as layers.
+  const validar = restaurar || (await import("./transferir-arquivos-workers.mjs")).validarRestauracao;
+  const prova = await validar(arquivo, antes, executar);
+  if (prova?.restauracaoIsoladaValidada !== true || prova.renderSinteticoValidado !== true ||
+      prova.sha256 !== antes.sha256 || JSON.stringify(prova.imagens) !== JSON.stringify(antes.imagens)) {
+    throw Error("Prova de restauração incompleta.");
+  }
 }
 export async function executarFluxo(etapas, alvo) {
   const antes = await etapas.preparar();
@@ -106,9 +107,10 @@ export function comprovanteCifrado(conteudo, publica) {
   return Buffer.from(JSON.stringify(cifrar(Buffer.from(JSON.stringify(conteudo)), publica)) + "\n");
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) await executarArquivamento();
+// Sem top-level await: o verificador OCI reutiliza as funções de smoke deste módulo.
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) void executarArquivamento();
 async function executarArquivamento() {
-  let privado, recibo;
+  let privado, recibo, etapa = "configuracao";
   const alvo = process.env.ARQUIVAMENTO_ALVO;
   try {
     selecionarAlvo(alvo);
@@ -142,23 +144,28 @@ async function executarArquivamento() {
       [modo + (alvo === LEGADO ? "" : "-alvo"), p.base, p.projeto, imagem,
         ...(alvo === LEGADO ? [] : [alvo]), ...extras].map(shell).join(" ")).toString());
     const r = await executarFluxo({
-      preparar: () => python("preparar"),
+      preparar: () => { etapa = "preparar"; return python(process.env.ARQUIVAMENTO_RETOMAR === "true" ? "retomar" : "preparar"); },
       transferir: antes => {
+        etapa = "transferencia";
         process.stdout.write("Arquivo preservado na VPS; validando cópia e render isolado.\n");
         const arquivo = join(privado, "workers.tar.gz"), fd = openSync(arquivo, "wx", 0o600);
         try { remoto("cat -- " + shell(p.base + "/worker-archives/" + antes.arquivo), { stdio: ["ignore", fd, "pipe"] }); }
         finally { closeSync(fd); }
         return arquivo;
       },
-      validar: (antes, arquivo) => validarCopia(antes, arquivo, alvo),
-      concluir: antes => python("concluir", [antes.arquivo, antes.sha256]),
+      validar: (antes, arquivo) => { etapa = "restauracao"; return validarCopia(antes, arquivo, alvo); },
+      concluir: antes => { etapa = "concluir"; return python("concluir", [antes.arquivo, antes.sha256]); },
     }, alvo);
     const comprovante = comprovanteCifrado(r, publica);
     ftruncateSync(recibo, 0);
     writeSync(recibo, comprovante, 0, comprovante.length, 0);
     fsyncSync(recibo);
     process.stdout.write("Uma tag arquivada; cópia na VPS e demais imagens/dados preservados. Espaço liberado depende de camadas compartilhadas.\n");
-  } catch {
+  } catch (erro) {
+    if (recibo !== undefined) {
+      const falha = comprovanteCifrado({ concluido: false, alvo, etapa, etapaRestauracao: erro?.etapa || null }, process.env.RELATORIO_CHAVE_PUBLICA);
+      ftruncateSync(recibo, 0); writeSync(recibo, falha, 0, falha.length, 0); fsyncSync(recibo);
+    }
     process.stderr.write("Arquivamento não comprovado. Não prosseguir com publicação; arquivos concluídos permanecem na VPS.\n");
     process.exitCode = 1;
   } finally {

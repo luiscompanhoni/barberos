@@ -14,7 +14,7 @@ from pathlib import Path
 # O modo antigo mantém o inventário f796, separado dos três alvos novos.
 TAGS = ["barberos-video-worker:f7968a11b1892b07eaad46b659ad7c5d18bb9bd4"]
 PREFIXO_ID = "sha256:32855fc2a5d7"
-APP_ESPERADO = "sha256:000bf3cac4db8ce701711ebfbf3b50c7607c20602cddf9c8a4306f931e07148e"
+APP_ESPERADO = "sha256:a2a78e0a4ab504fa65cb72c9c21130e05a261c2b4134bc3b41532fc407a187d6"
 ALVOS = {
     "d833182db751a74d3ce52017f11a2824fcb6c735": ("sha256:4d5728f7035eb38b0cb29c752936637047f997cf0e6eb240285c956a6f13b87e", 1948259798),
     "7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10": ("sha256:412eeeb7c3f1f1f555a5420d10a55311bd6a81c5b965f5c40fc5e354104466ab", 1948279454),
@@ -185,6 +185,31 @@ def preparar(base, projeto, esperada, alvo=None):
     return {k: v for k, v in r.items() if k != "antes"}
 
 
+def retomar(base, projeto, esperada, alvo):
+    validar_app_alvo(esperada, alvo)
+    conferir_app(projeto, esperada)
+    pasta = base / "worker-archives"
+    marcador = pasta / ("alvo-" + alvo + ".json")
+    if pasta.is_symlink() or marcador.is_symlink():
+        raise RuntimeError("Registro inesperado.")
+    estado = json.loads(marcador.read_text())
+    nome = estado.get("arquivo", "")
+    if (estado.get("alvo") != alvo or estado.get("concluido") is not False
+            or not re.fullmatch(r"workers-\d+\.tar\.gz", nome)):
+        raise RuntimeError("Alvo não possui preparação interrompida.")
+    arquivo, registro = pasta / nome, pasta / (nome + ".json")
+    if arquivo.is_symlink() or registro.is_symlink():
+        raise RuntimeError("Arquivo inesperado.")
+    r = json.loads(registro.read_text())
+    if (r.get("formato") != 2 or r.get("alvo") != alvo or r.get("imagemApp") != esperada
+            or r.get("arquivo") != nome or r.get("sha256") != estado.get("sha256")
+            or soma(arquivo) != r.get("sha256") or arquivo.stat().st_size != r.get("bytes")
+            or candidatos(alvo) != r.get("imagens")):
+        raise RuntimeError("Cópia ou inventário mudou; preservar e conferir manualmente.")
+    conferir_preservacao(r["antes"], retrato(base))
+    return {k: v for k, v in r.items() if k != "antes"}
+
+
 def concluir(base, projeto, esperada, nome, checksum, alvo=None):
     validar_app_alvo(esperada, alvo)
     if not re.fullmatch(r"workers-\d+\.tar\.gz", nome) or not re.fullmatch(r"[a-f0-9]{64}", checksum):
@@ -249,6 +274,8 @@ if __name__ == "__main__":
             r = concluir(base, projeto, imagem, *extras)
         elif modo == "preparar-alvo" and len(extras) == 1:
             r = preparar(base, projeto, imagem, extras[0])
+        elif modo == "retomar-alvo" and len(extras) == 1:
+            r = retomar(base, projeto, imagem, extras[0])
         elif modo == "concluir-alvo" and len(extras) == 3:
             r = concluir(base, projeto, imagem, extras[1], extras[2], extras[0])
         else:

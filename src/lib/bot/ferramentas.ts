@@ -12,6 +12,7 @@ import { ORIGENS_CLIENTE, zNascimento } from "@/lib/validacao-cliente";
 import { dataLocal, hhmmParaMin, instanteLocal, minParaHhmm, minutosLocal, parseData, somarDias } from "@/lib/agenda/tempo";
 import { atualizarPreferencia, travarPreferencia } from "@/lib/whatsapp/preferencia";
 import { orientarRemarcacaoGrupo } from "./remarcacao-grupo";
+import { FERRAMENTA_ATENDENTE, transferirComResumo } from "./handoff";
 /** Quem esta conversando: o bot so enxerga e altera os dados deste telefone. */
 export type ContextoBot = {
   conversaId: string;
@@ -101,17 +102,7 @@ export const FERRAMENTAS: Ferramenta[] = [
       additionalProperties: false,
     },
   },
-  {
-    name: "chamar_atendente",
-    description:
-      "Passa a conversa para uma pessoa da equipe (o bot para de responder). Use quando o cliente pedir, reclamar, ou o assunto fugir de agendamentos e informações da barbearia.",
-    input_schema: {
-      type: "object",
-      properties: { motivo: { type: "string" } },
-      required: ["motivo"],
-      additionalProperties: false,
-    },
-  },
+  FERRAMENTA_ATENDENTE,
   {
     name: "confirmar_presenca",
     description: "Confirma que o cliente vai comparecer a um horário marcado (ex.: respondeu SIM ao lembrete). Use o id de meus_agendamentos.",
@@ -158,7 +149,7 @@ const ENTRADAS = {
   cancelar_agendamento: z.object({ agendamento_id: z.string() }),
   remarcar_agendamento: z.object({ agendamento_id: z.string(), data: zData, horario: zHora, barbeiro_id: z.string().optional(), avulso: z.boolean().optional() }),
   salvar_nome: z.object({ nome: z.string().trim().min(2).max(60) }),
-  chamar_atendente: z.object({ motivo: z.string().max(300) }),
+  chamar_atendente: z.object({ motivo: z.string().max(300), resumo: z.string().max(900).optional() }),
   confirmar_presenca: z.object({ agendamento_id: z.string() }),
   receber_mensagens: z.object({ receber: z.boolean() }),
   salvar_perfil: z.object({ data_nascimento: zNascimento.optional(), origem: z.enum(ORIGENS_CLIENTE).optional(), origem_detalhe: z.string().trim().max(80).optional() }),
@@ -335,9 +326,8 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
     }
     case "chamar_atendente": {
       const e = ENTRADAS.chamar_atendente.parse(entrada);
-      await db.conversa.update({ where: { id: ctx.conversaId }, data: { estado: "HUMANO" } });
-      await db.mensagem.create({ data: { conversaId: ctx.conversaId, autor: "NOTA", texto: `Bot pediu atendente: ${e.motivo}` } });
-      return { texto: "Conversa passada para a equipe. Avise o cliente que alguém vai responder em breve.", passouParaHumano: true };
+      await transferirComResumo(ctx.conversaId, e.motivo, e.resumo);
+      return { texto: "Conversa passada para a equipe com nota interna. Não prometa prazo e não continue ações ou ofertas.", passouParaHumano: true };
     }
     default:
       return { texto: `Ferramenta desconhecida: ${nome}`, erro: true };

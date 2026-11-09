@@ -13,6 +13,8 @@ CONTROLES_PUBLICACAO = {
     "AGENTES_HABILITADOS": "true", "AGENTES_EXECUCAO_ATIVA": "false", "META_ADS_TOKEN": "",
     "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO": "false", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO": "true",
     "WHATSAPP_ATENDIMENTO_APOS_PILOTO": "false", "WHATSAPP_ATENDIMENTO_IA_PAGA": "false",
+    "WHATSAPP_ATENDIMENTO_TESTE_EQUIPE": "false",
+    "WHATSAPP_MIDIA_ATIVA": "false",
     "WHATSAPP_ENVIOS_BLOQUEADOS": "true", "PUSH_PROVIDER": "desativado",
     "COBRANCA_LEGADA_WHATSAPP_ATIVA": "false", "COBRANCA_AUTOMATICA_WHATSAPP_ATIVA": "false",
     "PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA": "false",
@@ -24,6 +26,8 @@ MIGRACOES_CLIENTE = {
     "20261104223000_cliente_pedidos_login_planos",
     "20261104224000_verificacao_telefone",
     "20261104224500_versao_sessao",
+    "20261108193000_plano_venda_equipe",
+    "20261108210000_crescimento_migracao",
 }
 MIGRACOES_ESTABILIZACAO = {
     "20261108010000_adicional_reserva_agenda",
@@ -170,9 +174,34 @@ def aguardar_saude(projeto, prazo=180):
     raise RuntimeError("Aplicação não manteve saúde estável.")
 
 
-def conferir_https(revisao):
-    with urllib.request.urlopen("https://painel.appblackbarber.com/api/saude", timeout=15) as r:
-        dados = json.load(r)
+def conferir_https(revisao, *, prazo=60, intervalo=2, relogio=None, esperar=None):
+    if prazo <= 0 or intervalo <= 0:
+        raise ValueError("Prazo e intervalo HTTPS devem ser positivos.")
+    relogio = relogio or time.monotonic
+    esperar = esperar or time.sleep
+    limite = relogio() + prazo
+    while True:
+        restante = limite - relogio()
+        if restante <= 0:
+            raise RuntimeError("HTTPS não ficou disponível dentro do prazo.")
+        try:
+            with urllib.request.urlopen("https://painel.appblackbarber.com/api/saude", timeout=min(15, restante)) as r:
+                dados = json.load(r)
+        except urllib.error.HTTPError as e:
+            if e.code not in (502, 503, 504):
+                raise
+            e.close()
+        except urllib.error.URLError as e:
+            if not isinstance(e.reason, (ConnectionRefusedError, TimeoutError)):
+                raise
+        except (ConnectionRefusedError, TimeoutError):
+            pass
+        else:
+            break
+        restante = limite - relogio()
+        if restante <= 0:
+            raise RuntimeError("HTTPS não ficou disponível dentro do prazo.")
+        esperar(min(intervalo, restante))
     if dados.get("ok") is not True or dados.get("revisao") != revisao:
         raise RuntimeError("HTTPS não confirmou a revisão publicada.")
     for caminho in ("/api/estudio/projetos", "/api/agentes"):

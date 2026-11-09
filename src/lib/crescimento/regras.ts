@@ -71,10 +71,11 @@ export const TEXTOS = {
     `Oi, ${primeiro(p.nome)}! Já faz ${p.dias} dias do seu último ${p.servico.toLowerCase()}, tá chegando a hora do trato. ✂️ ` +
     (p.opcoes.length ? `Separei: ${p.opcoes.join(" ou ")}${p.peloPlano ? " (pelo plano)" : ""}. Quer que eu marque? ` : "Quer que eu veja um horário? ") +
     `(Se não quiser esse lembrete, responda PARAR.)`,
-  INDICACAO_CONVERTIDA: (p: { nome: string; amigo: string; premio: number }) =>
-    `Oi, ${primeiro(p.nome)}! O ${primeiro(p.amigo)} veio pela sua indicação. 🙌 Você ganhou ${reais(p.premio)} de desconto, ` +
-    `já está guardado no seu cadastro e sai na próxima visita. Valeu por indicar!`,
-  CONVITE: (p: { nome: string; barbearia: string; link: string; codigo: string; premioIndicado: number }) =>
-    `Bora cortar na ${p.barbearia}? Usa meu link${p.premioIndicado ? ` e ganha ${reais(p.premioIndicado)} de desconto no primeiro corte` : ""}: ${p.link} ` +
+  INDICACAO_CONVERTIDA: (p: { nome: string; amigo: string; premio: number; assinatura?: boolean }) =>
+    p.assinatura
+      ? `Oi, ${primeiro(p.nome)}! O primeiro pagamento do plano de ${primeiro(p.amigo)} foi confirmado. Você ganhou ${reais(p.premio)} em crédito na Black, válido por 30 dias. Consulte o saldo e as condições no app. Não é dinheiro para saque.`
+      : `Oi, ${primeiro(p.nome)}! O ${primeiro(p.amigo)} veio pela sua indicação. 🙌 Você ganhou ${reais(p.premio)} de desconto, já está guardado no seu cadastro e sai na próxima visita. Valeu por indicar!`,
+  CONVITE: (p: { nome: string; barbearia: string; link: string; codigo: string; premioIndicado: number; assinatura?: boolean }) =>
+    `Bora conhecer a ${p.barbearia}? Usa meu link${p.premioIndicado ? (p.assinatura ? ` e ganha ${reais(p.premioIndicado)} em crédito após o primeiro pagamento do plano, válido por 30 dias (novos assinantes ou ex há pelo menos 90 dias sem plano; uma vez por pessoa; sem saque)` : ` e ganha ${reais(p.premioIndicado)} de desconto no primeiro corte`) : ""}: ${p.link} ` +
     `(ou fala no WhatsApp da barbearia o código ${p.codigo}). — ${primeiro(p.nome)}`,
 };
