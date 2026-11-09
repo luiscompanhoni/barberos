@@ -19,6 +19,7 @@ on:
           - deb1ecce366410404d3e2d403f9e091538a95975
           - 0367c9d1be036ad0433fbb53e447c2a0afdda3cb
           - 8a5566dc6c095090f23dbb72384c92b4e79de81c
+          - homolog-20261021
       imagem_anterior:
         description: ID sha256 da imagem app saudável confirmada no inventário
         required: true
@@ -31,6 +32,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: publicacao-producao
@@ -38,7 +40,7 @@ concurrency:
 
 jobs:
   arquivar:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.alvo != 'homolog-20261021'
     environment: "produção"
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -75,5 +77,53 @@ jobs:
         with:
           name: workers-arquivamento-comprovante-cifrado
           path: ${{ runner.temp }}/arquivamento.cifrado.json
+          retention-days: 1
+          if-no-files-found: error
+  arquivar-app-legado:
+    if: github.ref == 'refs/heads/main' && inputs.alvo == 'homolog-20261021'
+    environment: "produção"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Exigir CI push aprovado para este commit exato
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" --branch main --event push --json headSha,headBranch,event,status,conclusion > "$RUNNER_TEMP/ci.json"
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          import { validarCi } from './scripts/publicacao/arquivar-homolog-vps.mjs';
+          validarCi(JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/ci.json')), process.env);
+          JS
+      - name: Conferir guards nominais do app legado
+        run: |
+          python3 -B scripts/publicacao/test_arquivar_homolog.py
+          node --test scripts/publicacao/arquivar-homolog-vps.test.mjs
+      - name: Arquivar app legado e validar restauração e sintaxe sem rede
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_IMAGEM_ANTERIOR: ${{ inputs.imagem_anterior }}
+          ARQUIVAMENTO_ALVO: ${{ inputs.alvo }}
+          ARQUIVAMENTO_RETOMAR: ${{ inputs.retomar }}
+          RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
+        run: node scripts/publicacao/arquivar-homolog-vps.mjs "$RUNNER_TEMP/homolog-arquivamento.cifrado.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: homolog-arquivamento-comprovante-cifrado
+          path: ${{ runner.temp }}/homolog-arquivamento.cifrado.json
           retention-days: 1
           if-no-files-found: error
