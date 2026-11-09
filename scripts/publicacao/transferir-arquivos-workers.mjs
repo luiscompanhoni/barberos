@@ -40,12 +40,20 @@ with tarfile.open(sys.argv[1],"r|gz") as tar:
   if total>16*1024**3: raise RuntimeError("Limite do arquivo")
   entrada={"bytes":item.size}; arquivos[nome]=entrada
   pequeno=nome in ("manifest.json","index.json","oci-layout") or re.fullmatch(r"(?:blobs/sha256/[a-f0-9]{64}|[a-f0-9]{64}\.json)",nome)
-  if pequeno and item.size<=1024**2:
+  guardar=bool(pequeno and item.size<=1024**2)
+  if guardar:
    memoria+=item.size
    if memoria>16*1024**2: raise RuntimeError("Limite dos metadados")
-   raw=tar.extractfile(item).read(1024**2+1)
-   if len(raw)!=item.size: raise RuntimeError("Leitura incompleta")
-   entrada.update(sha256=hashlib.sha256(raw).hexdigest(),base64=base64.b64encode(raw).decode("ascii"))
+  digest=hashlib.sha256(); lidos=0; partes=[]
+  with tar.extractfile(item) as fonte:
+   while bloco:=fonte.read(1024**2):
+    lidos+=len(bloco)
+    if lidos>item.size: raise RuntimeError("Leitura excedente")
+    digest.update(bloco)
+    if guardar: partes.append(bloco)
+  if lidos!=item.size: raise RuntimeError("Leitura incompleta")
+  entrada["sha256"]=digest.hexdigest()
+  if guardar: entrada["base64"]=base64.b64encode(b"".join(partes)).decode("ascii")
 print(json.dumps(arquivos,separators=(",",":")))`;
 export function extrairMetadados(arquivo, executar = execFileSync) {
   return JSON.parse(executar("python3", ["-c", LEITOR_TAR, arquivo], { timeout: 120_000, maxBuffer: 24 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }).toString());
@@ -53,7 +61,8 @@ export function extrairMetadados(arquivo, executar = execFileSync) {
 function entrada(metadados, nome, descriptor) {
   const e = Object.hasOwn(metadados, nome) && metadados[nome];
   if (!e || !Number.isSafeInteger(e.bytes) || e.bytes < 0 ||
-      (descriptor && (e.bytes !== descriptor.size || nome !== "blobs/sha256/" + descriptor.digest.slice(7)))) throw Error("Blob ausente ou tamanho divergente.");
+      (descriptor && (e.bytes !== descriptor.size || nome !== "blobs/sha256/" + descriptor.digest.slice(7) ||
+        e.sha256 !== descriptor.digest.slice(7)))) throw Error("Blob ausente, tamanho ou digest divergente.");
   return e;
 }
 function jsonMetadados(metadados, nome, descriptor) {

@@ -55,14 +55,20 @@ test("smoke é não privilegiado, sem rede/volumes/env e sem executar servidor o
   for (const mudanca of [{ uid: 0 }, { gid: 0 }, { concluido: false }, { sintaxeServidorValidada: false }, { pacotesValidados: [] }]) assert.throws(() => validarSmoke(JSON.stringify({ ...smoke, ...mudanca })));
 });
 
-function ensaio({ falha, alteracao, ocupado, rootfs } = {}) {
+const imagemPreexistente = { ID: "sha256:" + "d".repeat(64), Repository: "outra-imagem", Tag: "fixture" };
+function ensaio({ falha, alteracao, imagens = [], containers = "", inventario, removerPreexistentes, rootfs } = {}) {
   const chamadas = [];
+  let carregada = false;
   const executar = (_cmd, args) => {
     chamadas.push(args);
-    if (args[0] === "load" && falha === "load") throw Error("Falha sintética");
+    if (args[0] === "image" && args[1] === "ls") {
+      if (falha === "cli") throw Object.assign(Error("SENTINELA_NAO_EXPORTAR"), { stderr: "TOKEN_PRIVADO" });
+      return Buffer.from(inventario ?? (carregada && removerPreexistentes ? [] : imagens).map(i => JSON.stringify(i)).join("\n"));
+    }
+    if (args[0] === "ps") return Buffer.from(containers);
+    if (args[0] === "load") { if (falha === "load") throw Error("Falha sintética"); carregada = true; }
     if (args[0] === "image" && args[1] === "inspect") return Buffer.from(JSON.stringify([{ ...restaurada(), ...alteracao }]));
     if (args[0] === "run") return Buffer.from(JSON.stringify(falha === "smoke" ? { ...smoke, uid: 0 } : smoke));
-    if ((args[0] === "image" || args[0] === "ps") && ocupado) return Buffer.from("preexistente");
     return Buffer.from("");
   };
   const conferir = async () => { if (falha === "arquivo") throw Error("Arquivo adulterado"); };
@@ -79,14 +85,42 @@ test("restauração exige arquivo íntegro e RootFS antes de tocar Docker", asyn
   }
 });
 
-test("Docker pré-existente impede load e nenhuma falha de identidade/smoke aprova restauração", async () => {
-  for (const opcoes of [{ ocupado: true }, { falha: "load" }, { alteracao: { Id: "sha256:" + "c".repeat(64) } },
+test("outras imagens são permitidas e preservadas; alvo por tag/índice/config ou container nega load", async () => {
+  const a = ensaio({ imagens: [imagemPreexistente] });
+  const r = await validarCopia(preparado(), "sintetico", a.executar, a.conferir, a.extrair, a.manifestar);
+  assert.deepEqual(r.executor, { imagensPreexistentesCount: 1, alvoAusenteAntesLoad: true,
+    containersAusentesAntesEDepois: true, imagensPreexistentesPreservadas: true, blobsVerificados: true });
+  assert.ok(!JSON.stringify(r).includes(imagemPreexistente.Repository));
+  for (const imagens of [[{ ...imagemPreexistente, Repository: "barberos-homolog", Tag: "20261021" }],
+    [{ ...imagemPreexistente, ID }], [{ ID, Repository: "<none>", Tag: "<none>" }],
+    [{ ...imagemPreexistente, ID: "sha256:" + "b".repeat(64) }], [{ ID: "sha256:" + "b".repeat(64), Repository: "<none>", Tag: "<none>" }]]) {
+    const b = ensaio({ imagens });
+    await assert.rejects(validarCopia(preparado(), "sintetico", b.executar, b.conferir, b.extrair, b.manifestar), e => e.etapa === "executor" && e.diagnosticoExecutor === "alvo_presente");
+    assert.ok(!b.chamadas.some(args => args[0] === "load"));
+  }
+  const b = ensaio({ containers: "a".repeat(64) });
+  await assert.rejects(validarCopia(preparado(), "sintetico", b.executar, b.conferir, b.extrair, b.manifestar), e => e.diagnosticoExecutor === "containers_presentes");
+  assert.ok(!b.chamadas.some(args => args[0] === "load"));
+});
+
+test("CLI, inventário e perda de imagem anterior têm diagnóstico fechado sem stderr bruto", async () => {
+  for (const [opcoes, codigo] of [[{ falha: "cli" }, "cli_indisponivel"], [{ inventario: "nao-json" }, "inventario_malformado"],
+    [{ imagens: [{ ...imagemPreexistente, ID: "id-curto" }] }, "inventario_malformado"],
+    [{ imagens: [{ ...imagemPreexistente, ID: [ID] }] }, "inventario_malformado"],
+    [{ containers: "id-curto" }, "inventario_malformado"], [{ imagens: [imagemPreexistente], removerPreexistentes: true }, "imagens_preexistentes_alteradas"]]) {
+    const a = ensaio(opcoes);
+    await assert.rejects(validarCopia(preparado(), "sintetico", a.executar, a.conferir, a.extrair, a.manifestar), e =>
+      e.etapa === "executor" && e.diagnosticoExecutor === codigo && !e.message.includes("SENTINELA") && !e.message.includes("TOKEN_PRIVADO"));
+  }
+});
+
+test("nenhuma falha de load, identidade ou smoke aprova restauração", async () => {
+  for (const opcoes of [{ falha: "load" }, { alteracao: { Id: "sha256:" + "c".repeat(64) } },
     { alteracao: { RepoTags: [TAG, "outra:tag"] } }, { alteracao: { RootFS: { Layers: [] } } },
     { alteracao: { Config: { Env: ["NODE_OPTIONS=--require=inesperado"] } } },
     { alteracao: { Config: { Env: ["NODE_OPTIONS=\n--require=inesperado"] } } }, { falha: "smoke" }]) {
     const a = ensaio(opcoes);
     await assert.rejects(validarCopia(preparado(), "sintetico", a.executar, a.conferir, a.extrair, a.manifestar));
-    if (opcoes.ocupado) assert.ok(!a.chamadas.some(args => args[0] === "load"));
   }
   const a = ensaio(), r = await validarCopia(preparado(), "sintetico", a.executar, a.conferir, a.extrair, a.manifestar);
   assert.equal(r.aplicacaoSinteticaValidada, true); assert.equal(r.restauracaoIsoladaValidada, true);

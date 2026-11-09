@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
 import { constants, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,14 +50,14 @@ const clonar = x => JSON.parse(JSON.stringify(x));
 const ler = (m, nome) => JSON.parse(Buffer.from(m[nome].base64, "base64"));
 
 // Recria os digests de todo o grafo para testar semântica, além de detectar bytes adulterados.
-function fixtureVazia({ alterarAtestacao = () => {}, alterarProva = () => {}, alterarPrincipal = () => {} } = {}) {
+function fixtureVazia({ alterarAtestacao = () => {}, alterarProva = () => {}, alterarPrincipal = () => {}, layerContent = { layer: "sintetica" } } = {}) {
   const m = {}, tag = "app:historico", diffIds = ["sha256:" + "c".repeat(64)];
   const blob = (valor, mediaType) => {
     const raw = Buffer.from(JSON.stringify(valor)), digest = "sha256:" + hash(raw);
     adicionar(m, "blobs/sha256/" + digest.slice(7), valor);
     return { mediaType, digest, size: raw.length };
   };
-  const layer = blob({ layer: "sintetica" }, LAYER);
+  const layer = blob(layerContent, LAYER);
   const principal = { os: "linux", architecture: "amd64", rootfs: { type: "layers", diff_ids: diffIds } };
   alterarPrincipal(principal);
   const config = blob(principal, CONFIG);
@@ -201,6 +201,40 @@ with tarfile.open(sys.argv[1],"w:gz") as t:
       execFileSync(python, ["-c", codigo, arquivo, modo], { input: JSON.stringify(metadados), stdio: ["pipe", "pipe", "pipe"] });
       if (modo === "ok") assert.equal(ler(extrairMetadados(arquivo, executar), "oci-layout").imageLayoutVersion, "1.0.0");
       else assert.throws(() => extrairMetadados(arquivo, executar));
+    }
+  } finally { rmSync(pasta, { recursive: true, force: true }); }
+});
+
+test("layer acima de 1 MiB é hasheada em stream; corrupção do mesmo tamanho falha antes do load", async () => {
+  const pasta = mkdtempSync(join(tmpdir(), "layer-digest-test-")), python = process.env.PYTHON_TEST_EXECUTABLE || "python3";
+  const v = fixtureVazia({ layerContent: { texto: randomBytes(1024 ** 2 + 128).toString("base64") } }), layer = v.manifesto[0].Layers[0];
+  const codigo = String.raw`import base64,io,json,sys,tarfile
+arquivos=json.load(sys.stdin)
+with tarfile.open(sys.argv[1],"w:gz") as tar:
+ for nome,e in arquivos.items():
+  raw=base64.b64decode(e["base64"])
+  if nome==sys.argv[2] and sys.argv[3]=="corromper": raw=b"X"+raw[1:]
+  item=tarfile.TarInfo(nome);item.size=len(raw);tar.addfile(item,io.BytesIO(raw))`;
+  try {
+    for (const modo of ["ok", "corromper"]) {
+      const arquivo = join(pasta, modo + ".tar.gz");
+      execFileSync(python, ["-c", codigo, arquivo, layer, modo], { input: JSON.stringify(v.metadados), stdio: ["pipe", "pipe", "pipe"] });
+      const executar = (bin, args, opts) => { assert.equal(bin, "python3", "Nenhum Docker antes de validar o digest"); return execFileSync(python, args, opts); };
+      const m = extrairMetadados(arquivo, executar), raw = readFileSync(arquivo), e = { ...v.esperado, bytes: raw.length, sha256: hash(raw) };
+      assert.equal(m[layer].bytes, v.metadados[layer].bytes); assert.ok(m[layer].bytes > 1024 ** 2);
+      assert.equal(Object.hasOwn(m[layer], "base64"), false);
+      if (modo === "ok") {
+        assert.equal(m[layer].sha256, v.metadados[layer].sha256);
+        assert.deepEqual(validarManifesto(v.manifesto, e, m, { permitirAtestacaoVazia: true }), v.identidades);
+        writeFileSync(join(pasta, "truncado.tar.gz"), raw.subarray(0, Math.floor(raw.length / 2)));
+        assert.throws(() => extrairMetadados(join(pasta, "truncado.tar.gz"), executar));
+      } else {
+        assert.notEqual(m[layer].sha256, v.metadados[layer].sha256);
+        assert.throws(() => validarManifesto(v.manifesto, e, m, { permitirAtestacaoVazia: true }), /digest divergente/);
+        await assert.rejects(validarRestauracao(arquivo, e, executar, async (a, esperado) => {
+          assert.equal(readFileSync(a).length, esperado.bytes); assert.equal(hash(readFileSync(a)), esperado.sha256);
+        }), erro => erro.etapa === "metadados");
+      }
     }
   } finally { rmSync(pasta, { recursive: true, force: true }); }
 });

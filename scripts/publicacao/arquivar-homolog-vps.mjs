@@ -68,6 +68,26 @@ export function validarSmoke(texto) {
   if (r.concluido !== true || r.sintaxeServidorValidada !== true || r.uid !== 1000 || r.gid !== 1000 ||
       JSON.stringify(r.pacotesValidados) !== JSON.stringify(["next", "react"])) throw Error("App isolado não comprovado.");
 }
+const CODIGOS_EXECUTOR = new Set(["cli_indisponivel", "alvo_presente", "containers_presentes", "inventario_malformado", "imagens_preexistentes_alteradas"]);
+const erroExecutor = codigo => Object.assign(Error("Executor Docker não comprovado."), { codigo });
+export function inventariarExecutor(executar = execFileSync) {
+  const consultar = args => {
+    try { return executar("docker", args, { timeout: 30_000, maxBuffer: 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }).toString().trim(); }
+    catch { throw erroExecutor("cli_indisponivel"); }
+  };
+  const texto = consultar(["image", "ls", "--all", "--no-trunc", "--format", "{{json .}}"]);
+  let imagens;
+  try {
+    imagens = texto ? texto.split(/\r?\n/).map(l => JSON.parse(l)) : [];
+    if (imagens.some(i => typeof i.ID !== "string" || !/^sha256:[a-f0-9]{64}$/.test(i.ID) || typeof i.Repository !== "string" || typeof i.Tag !== "string" ||
+        !/^(?:<none>|[a-zA-Z0-9][a-zA-Z0-9._/:@-]*)$/.test(i.Repository) || !/^(?:<none>|[a-zA-Z0-9_][a-zA-Z0-9_.-]*)$/.test(i.Tag))) throw Error();
+  } catch { throw erroExecutor("inventario_malformado"); }
+  const containers = consultar(["ps", "-aq", "--no-trunc"]);
+  if (containers && !containers.split(/\r?\n/).every(i => /^[a-f0-9]{64}$/.test(i))) throw erroExecutor("inventario_malformado");
+  if (containers) throw erroExecutor("containers_presentes");
+  return imagens;
+}
+const identidadeInventario = i => JSON.stringify([i.ID, i.Repository, i.Tag]);
 export async function validarCopia(antes, arquivo, executar = execFileSync, conferir = conferirArquivo, extrair = extrairMetadados, manifestar = validarManifesto) {
   let etapa = "arquivo";
   try {
@@ -79,10 +99,8 @@ export async function validarCopia(antes, arquivo, executar = execFileSync, conf
     const [imagem] = manifestar(manifesto, antes, metadados, { permitirAtestacaoVazia: true });
     if (JSON.stringify(imagem.diffIds) !== JSON.stringify(ROOTFS)) throw Error("RootFS nominal divergente.");
     etapa = "executor";
-    // Runner dedicado: nem imagens nem containers prévios podem mascarar o Docker load.
-    for (const args of [["image", "ls", "-aq"], ["ps", "-aq"]]) {
-      if (executar("docker", args, { timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] }).toString().trim()) throw Error("Docker não está vazio.");
-    }
+    const preexistentes = inventariarExecutor(executar);
+    if (preexistentes.some(i => i.ID === ID || i.ID === imagem.configId || i.Repository + ":" + i.Tag === TAG)) throw erroExecutor("alvo_presente");
     etapa = "carregar";
     executar("docker", ["load", "--input", arquivo], { timeout: 600_000, maxBuffer: 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
     etapa = "identidade";
@@ -93,9 +111,15 @@ export async function validarCopia(antes, arquivo, executar = execFileSync, conf
     if (!Array.isArray(r.Config?.Env) || r.Config.Env.some(e => /^(NODE_OPTIONS|NODE_PATH|LD_PRELOAD)=[\s\S]+$/.test(e))) throw Error("Preload inesperado na imagem histórica.");
     etapa = "app";
     validarSmoke(executar("docker", argumentosSmoke(), { timeout: 120_000, maxBuffer: 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] }).toString());
+    etapa = "executor";
+    const depois = new Set(inventariarExecutor(executar).map(identidadeInventario));
+    if (preexistentes.some(i => !depois.has(identidadeInventario(i)))) throw erroExecutor("imagens_preexistentes_alteradas");
     return { restauracaoIsoladaValidada: true, aplicacaoSinteticaValidada: true,
+      executor: { imagensPreexistentesCount: new Set(preexistentes.map(i => i.ID)).size, alvoAusenteAntesLoad: true,
+        containersAusentesAntesEDepois: true, imagensPreexistentesPreservadas: true, blobsVerificados: true },
       identidadeRestaurada: { idOriginal: ID, configId: imagem.configId, idRestaurado: r.Id, formato: imagem.formato } };
-  } catch { throw Object.assign(Error("Restauração do app não comprovada."), { etapa }); }
+  } catch (erro) { throw Object.assign(Error("Restauração do app não comprovada."), { etapa,
+    diagnosticoExecutor: CODIGOS_EXECUTOR.has(erro?.codigo) ? erro.codigo : null }); }
 }
 export async function executarFluxo(etapas) {
   const antes = await etapas.preparar();
@@ -153,7 +177,8 @@ async function executarArquivamento() {
     process.stdout.write("App histórico arquivado; restauração e sintaxe isoladas comprovadas; cópia preservada na VPS.\n");
   } catch (erro) {
     if (recibo !== undefined) {
-      const falha = comprovanteCifrado({ concluido: false, alvo: ALVO, etapa, etapaRestauracao: erro?.etapa || null }, process.env.RELATORIO_CHAVE_PUBLICA);
+      const falha = comprovanteCifrado({ concluido: false, alvo: ALVO, etapa, etapaRestauracao: erro?.etapa || null,
+        diagnosticoExecutor: CODIGOS_EXECUTOR.has(erro?.diagnosticoExecutor) ? erro.diagnosticoExecutor : null }, process.env.RELATORIO_CHAVE_PUBLICA);
       ftruncateSync(recibo, 0); writeSync(recibo, falha, 0, falha.length, 0); fsyncSync(recibo);
     }
     process.stderr.write("Arquivamento do app não comprovado; não prosseguir com publicação. Cópias concluídas permanecem na VPS.\n");
