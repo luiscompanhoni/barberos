@@ -335,4 +335,26 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           test "$novo" -lt "$anterior"
           test "$worker_novo" -lt "$worker_anterior"
+          python3 - "$anterior" "$novo" "$worker_anterior" "$worker_novo" "$RUNNER_TEMP" <<'PY'
+          import json, os, subprocess, sys
+          from pathlib import Path
+          p = Path(sys.argv[5])
+          medidas = {"formato": 1, "fonte": "imagens_sinteticas_ci", "appAnteriorBytes": int(sys.argv[1]), "appNovoBytes": int(sys.argv[2]),
+                     "workerAnteriorBytes": int(sys.argv[3]), "workerNovoBytes": int(sys.argv[4]),
+                     "transporteNovoBytes": int((p / "novo-gzip").read_text()), "exportNovoBytes": int((p / "novo-bruto").read_text())}
+          medidas["revisao"] = os.environ["GITHUB_SHA"]
+          medidas["imagens"] = []
+          for servico in ("app", "backup", "video-worker"):
+              nome = "barberos-" + servico + ":" + medidas["revisao"]
+              imagem = json.loads(subprocess.check_output(["docker", "image", "inspect", nome]))[0]
+              medidas["imagens"].append({"nome": nome, "id": imagem["Id"], "bytes": imagem["Size"], "camadas": imagem["RootFS"]["Layers"]})
+          (p / "medidas-imagens.json").write_text(json.dumps(medidas), encoding="utf8")
+          PY
+      - name: Preservar medidas sintéticas para o preflight de capacidade
+        uses: actions/upload-artifact@v4
+        with:
+          name: medidas-imagens-sinteticas
+          path: ${{ runner.temp }}/medidas-imagens.json
+          retention-days: 1
+          if-no-files-found: error
 

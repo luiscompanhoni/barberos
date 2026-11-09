@@ -412,6 +412,14 @@ O inventário de capacidade também coleta tamanhos agregados de caches do siste
 ### Arquivo reversível de workers históricos
 
 Quando não há cache descartável suficiente, `arquivar-workers-vps.yml` pode conservar em `worker-archives/*.tar.gz` três imagens antigas específicas do worker (55ee09e, 44ef999 e df76e4f), sem containers associados. O procedimento trava a publicação e exige a imagem atual saudável. Exporta com Docker Save, confere SHA-256 do transporte, restaura com Docker Load em executor isolado e confirma IDs e inicialização de Node sem rede antes de descarregar somente essas tags do Docker da VPS, sem force. O arquivo permanece no servidor, com acesso restrito, para recuperar as mesmas imagens. Conserva todas as outras imagens, containers, volumes, configurações e backups de banco/mídia e verifica a preservação. Não usa system/image/volume prune, não muda a reserva do publicador e não publica a aplicação. O relatório pequeno comprova a restauração; o arquivo grande não é enviado como artifact do GitHub.
+
+Para sete imagens de app legadas autorizadas por identidade, o wrapper separado
+`scripts/publicacao/arquivar_apps_legados.py` usa o mesmo canônico fixado, com catálogo
+fechado em `apps-legados-autorizados.json`. Preserva app 582, versões de retorno, ASR,
+três configurações privadas e controles gerais/teste interno. Exporta todos os aliases
+nominais de uma imagem; só conclui depois de prova Linux vinculada ao arquivo, load e
+sintaxe/pacotes isolados, sem executar o app ou conectar banco. Não é migração nem
+retorno desse binário ao schema atual. Regras e limites em [recuperação segura](recuperacao-segura.md).
 ## Recepção multimodal — preparação local
 
 Os ajustes de atendimento, consulta de cobrança e presentes, transferência e planos de 08/11 estão em [implantacao-atendimento-2026-11-08.md](implantacao-atendimento-2026-11-08.md). A contratação exclusiva da recepção usa `Plano.vendaSomenteEquipe`, independente da visibilidade, com migração expansiva e ativação individual após publicar todos os processos. Cadência de migração e piloto estão descritos separadamente; não são rotinas já ativadas.

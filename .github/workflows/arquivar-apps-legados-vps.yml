@@ -1,0 +1,92 @@
+name: Arquivar sete apps legados com restauração validada
+
+on:
+  workflow_dispatch:
+    inputs:
+      retomar:
+        description: Retomar a cópia íntegra já preparada para esta imagem
+        required: false
+        type: boolean
+        default: false
+      alvo:
+        description: Uma das sete imagens autorizadas, incluindo seus aliases fechados
+        required: true
+        type: choice
+        options:
+          - 38afc027c4826730b5c0328f839a90ea30ed2110
+          - antes-38afc027c4826730b5c0328f839a90ea30ed2110
+          - antes-ea5b5222b488f2aa45f9884e15624f501b7e9250
+          - 7a7d3e9cfd834ba933e54eadcb63f653b8a236f6
+          - antes-7a7d3e9cfd834ba933e54eadcb63f653b8a236f6
+          - 44ef999960b1739431c3333c4746556e02d11082
+          - antes-44ef999960b1739431c3333c4746556e02d11082
+      imagem_anterior:
+        description: ID sha256 da imagem app saudável confirmada no inventário
+        required: true
+        type: string
+        default: sha256:113e6edb76d93348f24a8fcf72c9003ffdc0074e47b9c29c13e70f8d25808ec8
+      chave_relatorio:
+        description: Chave pública RSA SPKI base64 para o comprovante cifrado
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: publicacao-producao
+  cancel-in-progress: false
+
+jobs:
+  arquivar:
+    if: github.ref == 'refs/heads/main'
+    environment: "produção"
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Exigir CI push aprovado para este commit exato
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow ci.yml --commit "$GITHUB_SHA" --branch main --event push --json headSha,headBranch,event,status,conclusion > "$RUNNER_TEMP/ci-apps-legados.json"
+          node --input-type=module <<'JS'
+          import { readFileSync } from 'node:fs';
+          import { validarCi } from './scripts/publicacao/arquivar-apps-legados-vps.mjs';
+          validarCi(JSON.parse(readFileSync(process.env.RUNNER_TEMP+'/ci-apps-legados.json')), process.env);
+          JS
+      - name: Conferir fonte nominal e recuperação sem acesso à VPS
+        run: |
+          python3 -B scripts/publicacao/test_arquivar_apps_legados.py
+          node --test scripts/publicacao/transferir-arquivos-workers.test.mjs
+          node --test scripts/publicacao/arquivar-homolog-vps.test.mjs
+          node --test scripts/publicacao/arquivar-apps-legados-vps.test.mjs
+      - name: Restaurar no Linux e verificar sintaxe antes de descarregar a imagem da VPS
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_IMAGEM_ANTERIOR: ${{ inputs.imagem_anterior }}
+          ARQUIVAMENTO_ALVO: ${{ inputs.alvo }}
+          ARQUIVAMENTO_RETOMAR: ${{ inputs.retomar }}
+          ARQUIVAMENTO_CI_JSON: ${{ runner.temp }}/ci-apps-legados.json
+          RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
+        run: node scripts/publicacao/arquivar-apps-legados-vps.mjs "$RUNNER_TEMP/apps-legados-arquivamento.cifrado.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apps-legados-arquivamento-comprovante-cifrado
+          path: ${{ runner.temp }}/apps-legados-arquivamento.cifrado.json
+          retention-days: 1
+          if-no-files-found: error

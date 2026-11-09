@@ -59,6 +59,26 @@ O verificador de restauração distingue o digest do índice OCI do digest da co
 
 Conferir os metadados não comprova restauração Docker nem render. Esses testes reais continuam obrigatórios no Linux antes de um descarte especificamente autorizado. O workflow de validação somente lê a VPS.
 
+### Sete imagens de app legadas — manutenção nominal
+
+`arquivar_apps_legados.py` reaproveita o arquivador canônico autenticado pelo SHA-256,
+sem alterá-lo. `apps-legados-autorizados.json`, também autenticado por hash, fecha as
+sete identidades, tamanhos, aliases, plataforma e RootFS. Cada operação seleciona
+uma imagem e conserva todos os aliases conhecidos dessa mesma identidade; qualquer
+alias extra, container inclusive parado ou mudança de metadados bloqueia a ação.
+Exige app 582 saudável, bloqueios gerais e teste interno preservados, três arquivos
+privados (`.env`, `.env.estudio`, `.env.atendimento`) íntegros e ausência de marcador
+de recuperação. Não remove versões atuais, anteriores, ASR, dados ou backups.
+
+Preparar e retomar mantêm a imagem intacta. Concluir exige prova externa vinculada
+ao alvo, nome, bytes, SHA-256 e aliases do arquivo: grafo OCI e todos os blobs íntegros,
+load isolado em Linux e prova de sintaxe/pacotes sem iniciar o app ou acessar banco,
+rede e credenciais. Essa prova não certifica HTTP nem compatibilidade do app antigo
+com o banco atual. Somente depois descarrega as tags nominais sem força; arquivo e
+recibo permanecem na VPS. Preservação e capacidade real são conferidas antes/depois;
+interromper assim que os gates existentes passarem, sem prometer compressão ou ganho.
+O código preparado e testes locais não comprovam execução dessa manutenção na VPS.
+
 ## Atualização de folha com versões
 
 As migrações da estabilização têm lista nominal fechada; não liberar por prefixo, quantidade de pastas ou aparência de alteração “aditiva”. Comparar nomes/checksums com o inventário atual, conferir contagens de conflitos sem expor pessoas e aplicar primeiro à restauração isolada. Índices novos podem falhar por duplicatas; não escolher nem apagar registros automaticamente.
