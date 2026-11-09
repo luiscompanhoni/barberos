@@ -17,10 +17,13 @@ describe("resposta do bot em bolhas", () => {
     expect(dividirEmBolhas("  oi  \n\n\n \n tudo certo? ")).toEqual(["oi", "tudo certo?"]);
     expect(dividirEmBolhas("")).toEqual([]);
   });
-  it("digitando proporcional ao tamanho, entre 2 s e 7 s", () => {
+  it("ritmo por palavra, entre 2 s e 25 s, sem penalizar o tamanho das palavras", () => {
     expect(tempoDigitando("ok")).toBe(2000);
-    expect(tempoDigitando("x".repeat(100))).toBe(4000);
-    expect(tempoDigitando("x".repeat(1000))).toBe(7000);
+    expect(tempoDigitando("x".repeat(1000))).toBe(2000);
+    expect(tempoDigitando("uma\tduas\ntrês\u00a0quatro")).toBe(3000);
+    expect(tempoDigitando(Array(30).fill("palavra").join(" "))).toBe(22500);
+    expect(tempoDigitando(Array(100).fill("palavra").join(" "))).toBe(25000);
+    expect(tempoDigitando("  ")).toBe(2000);
   });
   it("antes de responder, o tempo de ler: de 3 a 7 s", () => {
     expect(tempoLendo(0)).toBe(3000);

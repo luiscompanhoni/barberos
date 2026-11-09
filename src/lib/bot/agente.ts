@@ -72,9 +72,10 @@ export async function executarTurno(p: {
   ];
   const usadas: string[] = [];
   let passouParaHumano = false;
+  const interromper = (): ResultadoTurno => ({ resposta: "", historico, passouParaHumano: false, recusado: false, ferramentas: usadas, interrompido: true });
 
   for (let volta = 0; volta < MAX_VOLTAS; volta++) {
-    if (!passouParaHumano && p.podeContinuar && !await p.podeContinuar()) return { resposta: "", historico: p.historico, passouParaHumano: true, recusado: false, ferramentas: usadas, interrompido: true };
+    if (!passouParaHumano && p.podeContinuar && !await p.podeContinuar()) return interromper();
     const r = await modelo.criar({
       model: nomeModelo,
       max_tokens: 8000,
@@ -86,7 +87,7 @@ export async function executarTurno(p: {
     });
 
     if (r.stop_reason === "refusal") {
-      return { resposta: "", historico: p.historico, passouParaHumano: false, recusado: true, ferramentas: usadas };
+      return { resposta: "", historico: usadas.length ? historico : p.historico, passouParaHumano: false, recusado: true, ferramentas: usadas };
     }
 
     historico.push({ role: "assistant", content: r.content }); // conteudo inteiro, sem editar
@@ -106,7 +107,15 @@ export async function executarTurno(p: {
     // Todas as respostas das ferramentas voltam numa unica mensagem.
     const resultados: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const c of chamadas) {
-      if (!passouParaHumano && p.podeContinuar && !await p.podeContinuar()) return { resposta: "", historico: p.historico, passouParaHumano: true, recusado: false, ferramentas: usadas, interrompido: true };
+      if (!passouParaHumano && p.podeContinuar && !await p.podeContinuar()) {
+        // Todo tool_use precisa de um resultado, inclusive quando não foi executado.
+        for (const pendente of chamadas.slice(resultados.length)) resultados.push({
+          type: "tool_result", tool_use_id: pendente.id, is_error: true,
+          content: "Não executado: a conversa mudou ou a equipe assumiu. Confira o pedido atual antes de qualquer nova ação.",
+        });
+        historico.push({ role: "user", content: resultados });
+        return interromper();
+      }
       usadas.push(c.name);
       const consulta = ["listar_servicos", "consultar_horarios", "meus_agendamentos", "listar_planos", "minha_assinatura", "meus_presentes", "oferta_cancelamento", "chamar_atendente"].includes(c.name);
       const res: ResultadoFerramenta = passouParaHumano

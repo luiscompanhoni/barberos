@@ -28,7 +28,11 @@ beforeEach(() => {
   for (const flag of ["WHATSAPP_ENVIOS_BLOQUEADOS", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "WHATSAPP_ATENDIMENTO_APOS_PILOTO", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO"]) vi.stubEnv(flag, "false");
   vi.stubEnv("WHATSAPP_ATENDIMENTO_IA_PAGA", "true");
   m.piloto.mockResolvedValue(null); m.sessao.mockResolvedValue(null); m.cliente.mockResolvedValue(null); m.mensagens.mockResolvedValue([]);
+  m.enviar.mockResolvedValue({ ok: true });
   m.estado.mockResolvedValue({ estado: "BOT" });
+  m.update.mockImplementation(async (q: { data: { estado?: string } }) => {
+    if (q.data.estado) m.estado.mockResolvedValue({ estado: q.data.estado });
+  });
   m.entrada.mockResolvedValue({ id: "c1", telefone: entrada.telefone, estado: "BOT", sessao: null });
   m.cfg.mockResolvedValue({ botAtivo: true, fuso: "America/Sao_Paulo", janelaAgendamentoDias: 30, prazoCancelamentoMin: 60 });
   m.midia.mockResolvedValue({ texto: "[figurinha]", imagem: { tipo: "image/jpeg", base64: "BASE64_PRIVADO_TESTE" } });

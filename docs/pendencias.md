@@ -14,6 +14,8 @@ rastreável e o primeiro grupo de clientes pronto para entrar. Jogos, IA e finan
 
 ### A0. Abertos desta semana
 
+- [ ] Homologar o ritmo do bot preparado em 09/11 com número interno autorizado, após CI Linux e publicação com backup/restauração. Pausas locais de 2–25 segundos, interrupção por nova entrada/HUMANO e histórico de ferramentas preservado. Envios gerais, IA paga geral, campanhas e pagamentos continuam bloqueados. A correção da agenda do app foi separada e permanece fora desta entrega do bot.
+
 - [ ] Homologar/publicar o crescimento preparado em 08/11: quadro de migração, metas/margem, calendário dentro do sistema, indicação V2 e reserva de crédito para mensalidade. Flags novas permanecem desligadas. A leitura dos dois painéis encontrou bases nominais divergentes; falta conciliação por identidade, ciclo e valores individuais, além de sandbox/PostgreSQL/recuperação e piloto do gerente. [Entrega, evidências e rollback](implantacao-crescimento-2026-11-08.md).
 
 - [ ] Homologar/publicar os ajustes locais de atendimento de 08/11: aprendizados no prompt, resumo e parada após transferência, link de mensalidade conferido, consulta de presentes e vitrine de prêmios possíveis. Aplicar a migração do campo de contratação pela recepção, depois marcar os dois Business como visíveis e exclusivos da recepção. Migração financeira tem meta de 20/11/2026 com exceções; piloto de 20 clientes tem teto de R$ 200 em brindes. Fechar rota com provedores, cadência, custos/condições/enquadramento e teste com gerente antes da ativação. [Estado e procedimentos](implantacao-atendimento-2026-11-08.md).

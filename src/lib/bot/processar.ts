@@ -7,10 +7,11 @@ import { db } from "@/lib/db";
 import { publicar } from "@/lib/eventos";
 import { configuracao } from "@/lib/agenda/carregar";
 import { enviarNaConversa, registrarEntrada } from "@/lib/whatsapp/conversas";
+import { provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { pediuParar } from "@/lib/automacoes/regras";
 import { executarTurno, type Modelo } from "./agente";
-import { dividirEmBolhas } from "./bolhas";
+import { dividirEmBolhas, tempoDigitando } from "./bolhas";
 import { contextoDaMensagem, promptSistema } from "./prompt";
 import { historicoSemImagens, prepararMidia, type ImagemBot } from "./multimodal";
 import type { MidiaRecebida } from "@/lib/whatsapp/midia-tipos";
@@ -21,9 +22,10 @@ import { destinatarioTesteEquipe, testeEquipeAtivo } from "@/lib/whatsapp/teste-
 const SESSAO_INATIVA_MS = 3 * 3_600_000;
 const SESSAO_MAX_MENSAGENS = 60;
 
-// Uma mensagem por vez por conversa (o cliente costuma mandar varias seguidas).
-const g = globalThis as unknown as { filaConversas?: Map<string, Promise<unknown>> };
+// Entradas e turnos têm FIFO próprio: uma pausa nunca atrasa o registro de PARAR.
+const g = globalThis as unknown as { filaConversas?: Map<string, Promise<unknown>>; entradaBotAtual?: Map<string, AbortController> };
 const filas = (g.filaConversas ??= new Map());
+const entradasAtuais = (g.entradaBotAtual ??= new Map());
 
 function naFila<T>(chave: string, fn: () => Promise<T>): Promise<T> {
   const anterior = filas.get(chave) ?? Promise.resolve();
@@ -34,23 +36,46 @@ function naFila<T>(chave: string, fn: () => Promise<T>): Promise<T> {
 }
 
 export type Entrada = { telefone: string; waId?: string; nomePerfil?: string | null; texto: string | null; wamid?: string; midia?: MidiaRecebida };
+type ConversaRegistrada = NonNullable<Awaited<ReturnType<typeof registrarEntrada>>>;
 
 /** Mensagem que chegou (webhook ou simulador) -> registra, responde com o bot se for o caso. */
 export function receberMensagem(e: Entrada, opts: { modelo?: Modelo } = {}) {
-  return naFila(e.telefone, () => processar(e, opts));
+  const aguardavaTurno = filas.has(e.telefone);
+  const optOut = !!e.texto && pediuParar(e.texto);
+  const registro = naFila(`entrada:${e.telefone}`, async () => {
+    const texto = e.texto ?? "[mensagem que não e texto: áudio, foto, figurinha ou documento]";
+    const conversa = await registrarEntrada({ ...e, texto: registroSeguroEntrevista(texto), optOut });
+    if (!conversa) return null; // Duplicata não interrompe a resposta original.
+    entradasAtuais.get(e.telefone)?.abort();
+    const controle = new AbortController();
+    entradasAtuais.set(e.telefone, controle);
+    return { conversa, controle };
+  });
+  return naFila(e.telefone, async () => {
+    const entrada = await registro;
+    if (!entrada) return;
+    try {
+      // O turno anterior pode ter atualizado sessão ou transferido para a equipe.
+      const conversa = aguardavaTurno ? await db.conversa.findUniqueOrThrow({ where: { id: entrada.conversa.id } }) : entrada.conversa;
+      await processar(e, opts, conversa, optOut, entrada.controle.signal);
+    } finally {
+      if (entradasAtuais.get(e.telefone) === entrada.controle) entradasAtuais.delete(e.telefone);
+    }
+  });
 }
 
-async function processar(e: Entrada, opts: { modelo?: Modelo }) {
+async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: ConversaRegistrada, optOut: boolean, sinal: AbortSignal) {
   const inicioTurno = new Date();
   const texto = e.texto ?? "[mensagem que não e texto: áudio, foto, figurinha ou documento]";
-  // A preferência deve ser registrada mesmo quando o bot está desligado,
-  // a conversa está com a equipe ou o piloto impede respostas.
-  const optOut = !!e.texto && pediuParar(e.texto);
-  const conversa = await registrarEntrada({ ...e, texto: registroSeguroEntrevista(texto), optOut });
-  if (!conversa) return; // repetida
   const testeEquipe = await destinatarioTesteEquipe(conversa.telefone);
   if (testeEquipeAtivo() && !testeEquipe) return;
-  const aindaComBot = async () => (await db.conversa.findUnique({ where: { id: conversa.id }, select: { estado: true } }))?.estado === "BOT";
+  const estadoAtual = () => db.conversa.findUnique({ where: { id: conversa.id }, select: { estado: true, ultimaEntradaEm: true, recusaAutomaticas: true } });
+  const estaComBot = async () => (await estadoAtual())?.estado === "BOT";
+  const aindaComBot = async () => {
+    if (sinal.aborted) return false;
+    const atual = await estadoAtual();
+    return !sinal.aborted && atual?.estado === "BOT" && atual.ultimaEntradaEm?.getTime() === conversa.ultimaEntradaEm?.getTime() && !(atual.recusaAutomaticas && !conversa.recusaAutomaticas);
+  };
   // Mantém o registro de PARAR, mas não executa ações nem responde durante o bloqueio.
   if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" && !testeEquipe) return;
   const piloto = await estadoPiloto();
@@ -128,7 +153,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
     await enviarNaConversa(conversa.id, "Pronto, desativei os lembretes e novidades para você.", "BOT", { respostaAtendimento: true });
     return;
   }
-  if (!await aindaComBot()) return;
+  if (!await estaComBot()) return;
 
   const agora = Date.now();
   const sessaoValida =
@@ -170,11 +195,18 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
     return;
   }
 
-  if (resultado.interrompido || (!resultado.passouParaHumano && !await aindaComBot())) return;
+  if (resultado.interrompido || sinal.aborted || (!resultado.passouParaHumano && !await aindaComBot())) {
+    // Guarda inclusive resultados já executados, sem reabrir estado ou preferências.
+    await db.conversa.update({ where: { id: conversa.id }, data: {
+      sessao: historicoEntregue(resultado.historico, resultado.resposta, []) as unknown as Prisma.InputJsonValue,
+      sessaoInicioEm: historico.length ? conversa.sessaoInicioEm : new Date(),
+    } });
+    return;
+  }
 
   if (resultado.recusado) {
     await passarParaEquipe(conversa.id, "O modelo recusou responder essa mensagem.");
-    await db.conversa.update({ where: { id: conversa.id }, data: { sessao: [] } });
+    await db.conversa.update({ where: { id: conversa.id }, data: { sessao: historicoSemImagens(resultado.historico) as unknown as Prisma.InputJsonValue } });
     await enviarNaConversa(conversa.id, "Vou pedir para alguém da equipe te responder, tudo bem? 🙂", "BOT", { respostaAtendimento: true });
     return;
   }
@@ -182,21 +214,58 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   await db.conversa.update({
     where: { id: conversa.id },
     data: {
-      sessao: historicoSemImagens(resultado.historico) as unknown as Prisma.InputJsonValue,
+      sessao: historicoEntregue(resultado.historico, resultado.resposta, []) as unknown as Prisma.InputJsonValue,
       sessaoInicioEm: historico.length ? conversa.sessaoInicioEm : new Date(),
       ...(resultado.passouParaHumano ? { estado: "HUMANO" } : {}),
     },
   });
-  // Bolhas curtas, sem simular tempo de leitura ou digitação humana.
-  const bolhas = dividirEmBolhas(resultado.resposta);
-  for (const bolha of bolhas) {
-    if (!resultado.passouParaHumano && !await aindaComBot()) return;
+  const podeEnviar = async () => {
+    if (sinal.aborted) return false;
+    const atual = await db.conversa.findUnique({ where: { id: conversa.id }, select: { estado: true, recusaAutomaticas: true, ultimaEntradaEm: true } });
+    if (!atual || atual.estado !== (resultado.passouParaHumano ? "HUMANO" : "BOT")) return false;
+    if (atual.ultimaEntradaEm?.getTime() !== conversa.ultimaEntradaEm?.getTime() || (atual.recusaAutomaticas && !conversa.recusaAutomaticas)) return false;
+    const equipeAgora = await destinatarioTesteEquipe(conversa.telefone);
+    if ((testeEquipeAtivo() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") && !equipeAgora) return false;
+    if (!equipeAgora && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") return false;
+    const pilotoAgora = await estadoPiloto();
+    if (!equipeAgora && (pilotoAgora || recursoPiloto()) && !atendimentoAposPiloto(pilotoAgora)) return false;
+    if (!(await configuracao()).botAtivo) return false;
     if (resultado.passouParaHumano) {
       const equipe = await db.mensagem.findMany({ where: { conversaId: conversa.id, autor: "EQUIPE", criadoEm: { gte: inicioTurno } }, take: 1, select: { id: true } });
-      if (equipe.length) return;
+      if (equipe.length) return false;
     }
-    await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: 0, respostaAtendimento: true });
+    return !sinal.aborted;
+  };
+  const bolhas = dividirEmBolhas(resultado.resposta);
+  const enviadas: string[] = [];
+  for (const bolha of bolhas) {
+    if (!await podeEnviar()) return;
+    // A espera fica local e cancelável; o provedor não recebe uma entrega atrasada irrevogável.
+    if (provedorWhatsApp() !== "simulador" && !await esperarBolha(bolha, sinal)) return;
+    if (!await podeEnviar()) return;
+    const envio = await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: 0, respostaAtendimento: true });
+    if (!envio.ok) return;
+    enviadas.push(bolha);
+    await db.conversa.update({ where: { id: conversa.id }, data: { sessao: historicoEntregue(resultado.historico, resultado.resposta, enviadas) as unknown as Prisma.InputJsonValue } });
   }
+}
+
+function historicoEntregue(historico: Anthropic.Beta.BetaMessageParam[], resposta: string, enviadas: string[]) {
+  const ultima = historico.at(-1);
+  const blocos = ultima && Array.isArray(ultima.content) ? ultima.content : [];
+  const texto = typeof ultima?.content === "string" ? ultima.content : blocos.filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+  // Texto final pendente não é fala entregue. Chamadas e resultados de ferramentas ficam intactos.
+  const semPendente = ultima?.role === "assistant" && resposta && texto === resposta && !blocos.some(b => b.type === "tool_use") ? historico.slice(0, -1) : historico;
+  return historicoSemImagens([...semPendente, ...(enviadas.length ? [{ role: "assistant" as const, content: enviadas.join("\n\n") }] : [])]);
+}
+
+async function esperarBolha(texto: string, sinal: AbortSignal) {
+  if (sinal.aborted) return false;
+  return new Promise<boolean>((resolve) => {
+    const cancelar = () => { clearTimeout(timer); resolve(false); };
+    const timer = setTimeout(() => { sinal.removeEventListener("abort", cancelar); resolve(!sinal.aborted); }, tempoDigitando(texto));
+    sinal.addEventListener("abort", cancelar, { once: true });
+  });
 }
 
 /** Mensagens automaticas (SISTEMA) desde a fala anterior do cliente: o lembrete que ele esta respondendo. */

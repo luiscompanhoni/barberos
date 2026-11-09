@@ -41,7 +41,8 @@ export async function POST(req: Request) {
   const status = lerStatus(payload);
   after(async () => {
     await registrarStatus(status).catch((e) => console.error("[whatsapp] falha ao gravar status", e));
-    for (const m of mensagens) {
+    // Registra o lote em ordem sem prender PARAR à espera da resposta anterior.
+    await Promise.allSettled(mensagens.map(async (m) => {
       try {
         await receberMensagem({
           telefone: telefoneCanonico(m.waId),
@@ -54,7 +55,7 @@ export async function POST(req: Request) {
       } catch (e) {
         console.error("[whatsapp] falha ao processar mensagem", m.wamid, e);
       }
-    }
+    }));
   });
   return NextResponse.json({ ok: true });
 }

@@ -39,6 +39,33 @@ describe("executarTurno", () => {
     const executor = vi.fn();
     const r = await executarTurno({ ...base, historico: [], texto: "Pode marcar", modelo, executor, podeContinuar });
     expect(r.interrompido).toBe(true); expect(r.resposta).toBe(""); expect(executor).not.toHaveBeenCalled();
+    expect(r.historico.at(-1)?.content).toEqual([expect.objectContaining({ type: "tool_result", tool_use_id: "t1", is_error: true, content: expect.stringContaining("Não executado") })]);
+  });
+  it("preserva a mensagem quando uma entrada nova interrompe antes da chamada ao modelo", async () => {
+    const { modelo, chamadas } = modeloRoteirizado([]);
+    const r = await executarTurno({ ...base, historico: [], texto: "Pedido anterior", modelo, podeContinuar: async () => false });
+    expect(r.interrompido).toBe(true); expect(chamadas).toHaveLength(0);
+    expect(r.historico).toEqual([{ role: "user", content: [{ type: "text", text: base.contexto }, { type: "text", text: "Pedido anterior" }] }]);
+  });
+  it("guarda a primeira ação e pareia a segunda cancelada, sem repetir a ação no próximo turno", async () => {
+    let atual = true;
+    const { modelo } = modeloRoteirizado([resposta([
+      { type: "tool_use", id: "t1", name: "agendar", input: { horario: "14:00" } },
+      { type: "tool_use", id: "t2", name: "agendar", input: { horario: "15:00" } },
+    ], "tool_use")]);
+    const executor = vi.fn(async () => { atual = false; return { texto: "Agendamento a1 criado às 14:00." }; });
+    const r = await executarTurno({ ...base, historico: [], texto: "Pode marcar", modelo, executor, podeContinuar: async () => atual });
+    expect(r.interrompido).toBe(true); expect(r.passouParaHumano).toBe(false);
+    expect(executor).toHaveBeenCalledExactlyOnceWith("agendar", { horario: "14:00" }, ctx);
+    expect(r.ferramentas).toEqual(["agendar"]);
+    expect(r.historico.at(-1)?.content).toEqual([
+      { type: "tool_result", tool_use_id: "t1", content: "Agendamento a1 criado às 14:00.", is_error: undefined },
+      expect.objectContaining({ type: "tool_result", tool_use_id: "t2", is_error: true, content: expect.stringContaining("Não executado") }),
+    ]);
+    const proximo = modeloRoteirizado([resposta([{ type: "text", text: "O primeiro horário já foi criado; a equipe vai conferir a alteração." }], "end_turn")]);
+    await executarTurno({ ...base, historico: r.historico, texto: "Não faça o segundo", modelo: proximo.modelo, executor });
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect(proximo.chamadas[0].messages.slice(0, 3)).toEqual(r.historico);
   });
   it("conclui o aviso do próprio encaminhamento sem voltar a executar ações", async () => {
     let ativo = true;
@@ -115,6 +142,21 @@ describe("executarTurno", () => {
     const r = await executarTurno({ ...base, historico: [], texto: "...", modelo, executor: vi.fn() });
     expect(r.recusado).toBe(true);
     expect(r.historico).toEqual([]);
+  });
+  it("recusa posterior preserva o resultado de uma ferramenta já executada", async () => {
+    const { modelo } = modeloRoteirizado([
+      resposta([{ type: "tool_use", id: "t1", name: "agendar", input: {} }], "tool_use"),
+      resposta([], "refusal"),
+    ]);
+    const executor = vi.fn(async () => ({ texto: "Agendamento a1 criado." }));
+    const r = await executarTurno({ ...base, historico: [], texto: "Pode marcar", modelo, executor });
+    expect(r.recusado).toBe(true); expect(executor).toHaveBeenCalledTimes(1);
+    expect(r.historico).toHaveLength(3);
+    expect(r.historico.at(-1)?.content).toEqual([{ type: "tool_result", tool_use_id: "t1", content: "Agendamento a1 criado.", is_error: undefined }]);
+    const proximo = modeloRoteirizado([resposta([{ type: "text", text: "A equipe vai conferir o agendamento existente." }], "end_turn")]);
+    await executarTurno({ ...base, historico: r.historico, texto: "Confira", modelo: proximo.modelo, executor });
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect(proximo.chamadas[0].messages.slice(0, 3)).toEqual(r.historico);
   });
 
   it("marca passagem para humano quando a ferramenta pede", async () => {

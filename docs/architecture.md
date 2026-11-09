@@ -417,3 +417,14 @@ Quando não há cache descartável suficiente, `arquivar-workers-vps.yml` pode c
 Os ajustes de atendimento, consulta de cobrança e presentes, transferência e planos de 08/11 estão em [implantacao-atendimento-2026-11-08.md](implantacao-atendimento-2026-11-08.md). A contratação exclusiva da recepção usa `Plano.vendaSomenteEquipe`, independente da visibilidade, com migração expansiva e ativação individual após publicar todos os processos. Cadência de migração e piloto estão descritos separadamente; não são rotinas já ativadas.
 
 Entrada de mídia autenticada por ID, transcrição local opcional e visão no cliente Anthropic existente estão descritas em [atendimento-black.md](atendimento-black.md). `WHATSAPP_MIDIA_ATIVA` começa desligada e não altera os bloqueios de envio/IA/piloto. Nenhuma publicação foi feita. O manual de 18 procedimentos entra no prompt; cancelamento no CashBarber exige confirmação da equipe e não promete encerramento da cobrança. A revisão direta do WhatsApp ampliou exemplos de conciliação, acesso e remarcação, com cobertura parcial registrada no guia.
+
+Ritmo de resposta (09/11): cada bolha de resposta usa pausa de 750 ms por palavra,
+limitada a 2–25 segundos; 30 palavras correspondem a 22,5 segundos. A espera ocorre no
+processo antes de entregar ao provedor, que recebe atraso zero. Entradas e turnos têm
+filas separadas por telefone, inclusive nos lotes dos dois webhooks: nova mensagem
+válida cancela a resposta pendente; duplicatas WAMID não a cancelam. O envio revalida
+estado, entrada atual e bloqueios. O histórico preserva ferramentas executadas e
+somente as bolhas aceitas pelo provedor, sem presumir entrega ou leitura. A fila é local ao processo; uma ação ou
+entrega já iniciada não é desfeita pela pausa. Simulador e confirmações determinísticas
+urgentes continuam imediatos. O assistente mantém sua identificação. A correção não
+ativa envios, IA paga ou teste interno; esses controles têm aprovação separada.
