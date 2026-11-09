@@ -26,6 +26,14 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_atendimento_so_aceita_migracoes_expansivas_revisadas(self):
+        nomes = ["20261108193000_plano_venda_equipe", "20261108210000_crescimento_migracao"]
+        exigir_migracoes_da_publicacao(nomes)
+        for nome in nomes:
+            self.assertTrue((Path(__file__).resolve().parents[2] / "prisma/migrations" / nome / "migration.sql").is_file())
+            with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+                exigir_migracoes_da_publicacao([nome + "_extra"])
+
     def test_estabilizacao_aceita_somente_as_doze_migracoes_nominais_revisadas(self):
         revisadas = [
             "20261108010000_adicional_reserva_agenda", "20261108011000_identidade_importacao_stone",

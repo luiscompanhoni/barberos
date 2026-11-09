@@ -4,10 +4,15 @@ import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, proibido } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
 import { atendimentoAposPiloto, recursoPiloto, permitePiloto } from "./piloto-regras";
+import { envioTesteEquipe, testeEquipeAtivo } from "./teste-equipe";
 export async function estadoPiloto() {
   return recursoPiloto() ? db.pilotoEntrevistaWhatsApp.findUnique({ where: { id: 1 } }) : null;
 }
 export async function reservarEnvioPiloto(para: string, origem: string) {
+  if (testeEquipeAtivo()) {
+    if (await envioTesteEquipe(para, origem)) return;
+    throw new ErroNegocio("Teste de atendimento restrito à equipe.", 403);
+  }
   if (!recursoPiloto()) {
     if (origem === "ENTREVISTA_PILOTO") throw new ErroNegocio("Piloto indisponível.", 403);
     return;

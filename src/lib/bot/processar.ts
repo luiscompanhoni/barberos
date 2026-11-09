@@ -15,6 +15,7 @@ import { contextoDaMensagem, promptSistema } from "./prompt";
 import { historicoSemImagens, prepararMidia, type ImagemBot } from "./multimodal";
 import type { MidiaRecebida } from "@/lib/whatsapp/midia-tipos";
 import { atualizarPreferencia, travarPreferencia } from "@/lib/whatsapp/preferencia";
+import { destinatarioTesteEquipe, testeEquipeAtivo } from "@/lib/whatsapp/teste-equipe";
 
 /** Sessao com o modelo reinicia depois desse tempo sem mensagens (ou se ficar longa demais). */
 const SESSAO_INATIVA_MS = 3 * 3_600_000;
@@ -47,12 +48,14 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   const optOut = !!e.texto && pediuParar(e.texto);
   const conversa = await registrarEntrada({ ...e, texto: registroSeguroEntrevista(texto), optOut });
   if (!conversa) return; // repetida
+  const testeEquipe = await destinatarioTesteEquipe(conversa.telefone);
+  if (testeEquipeAtivo() && !testeEquipe) return;
   const aindaComBot = async () => (await db.conversa.findUnique({ where: { id: conversa.id }, select: { estado: true } }))?.estado === "BOT";
   // Mantém o registro de PARAR, mas não executa ações nem responde durante o bloqueio.
-  if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return;
+  if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" && !testeEquipe) return;
   const piloto = await estadoPiloto();
   const modoAtendimento = atendimentoAposPiloto(piloto);
-  if (piloto || recursoPiloto()) {
+  if (!testeEquipe && (piloto || recursoPiloto())) {
     if (piloto?.ativo) {
       if (optOut) return;
       if (!permitePiloto(piloto, conversa.telefone, "ENTREVISTA_PILOTO") || conversa.estado === "HUMANO") return;
@@ -62,7 +65,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
     }
     if (!modoAtendimento) return;
   }
-  const entrevistaAtiva = !modoAtendimento && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true";
+  const entrevistaAtiva = !testeEquipe && !modoAtendimento && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true";
   const cfgEntrevista = entrevistaAtiva ? await configuracao() : null;
   if (cfgEntrevista && !cfgEntrevista.botAtivo) return;
   // Uma sessão de entrevista existente não cai no modelo geral se o canal for desligado.
@@ -70,7 +73,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
     if (await db.entrevistaRecrutamento.findUnique({ where: { conversaId: conversa.id }, select: { id: true } })) return;
   }
   if (e.texto && conversa.estado !== "HUMANO" && (contemConviteEntrevista(e.texto) || comandoReservadoEntrevista(e.texto) || entrevistaAtiva)) {
-    if (modoAtendimento) return;
+    if (modoAtendimento || testeEquipe) return;
     const entrevista = await processarBotEntrevista({ conversaId: conversa.id, telefone: conversa.telefone }, e.texto);
     if (entrevista.tratado) {
       if (entrevista.resposta && entrevistaAtiva) await enviarNaConversa(conversa.id, entrevista.resposta, "BOT");
@@ -79,7 +82,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   }
   const cfg = cfgEntrevista ?? await configuracao();
   if (!cfg.botAtivo || conversa.estado === "HUMANO") return; // equipe responde pelo painel
-  if (process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true" && process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO !== "true") return;
+  if (!testeEquipe && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true" && process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO !== "true") return;
 
   // "PARAR": desliga as mensagens automaticas na hora, sem passar pelo modelo.
   if (optOut) {
@@ -88,7 +91,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   }
 
   // A autorização de IA é independente do estado do piloto e do bot geral.
-  if (process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") {
+  if (!testeEquipe && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") {
     await passarParaEquipe(conversa.id, "Atendimento encaminhado para a equipe; IA paga desativada.");
     await enviarNaConversa(conversa.id, "Olá! A equipe da Black vai te ajudar por aqui. Para agendar, você também pode acessar appblackbarber.com. 🙂", "BOT", { respostaAtendimento: true });
     return;

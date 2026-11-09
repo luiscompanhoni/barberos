@@ -19,7 +19,7 @@ trava = threading.Lock()
 
 @lru_cache(maxsize=1)
 def modelo():
-    return WhisperModel(os.environ.get("ASR_MODELO", "small"), device="cpu", compute_type="int8", cpu_threads=4)
+    return WhisperModel(os.environ.get("ASR_MODELO", "small"), device="cpu", compute_type="int8", cpu_threads=int(os.environ.get("ASR_THREADS", "1")))
 
 
 def decodificar(dados):

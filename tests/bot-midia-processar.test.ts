@@ -15,9 +15,16 @@ vi.mock("@/lib/db", () => ({ db: {
 vi.mock("@/lib/bot/entrevistas", () => ({ processarBotEntrevista: vi.fn(), registroSeguroEntrevista: (s: string) => s, contemConviteEntrevista: () => false, comandoReservadoEntrevista: () => false }));
 import { receberMensagem } from "@/lib/bot/processar";
 const entrada = { telefone: "5547999990000", waId: "5547999990000", texto: null, wamid: "m1", midia: { provedor: "evolution" as const, tipo: "figurinha" as const, id: "m1" } };
+const verificarEquipe = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/whatsapp/teste-equipe", () => ({
+  destinatarioTesteEquipe: verificarEquipe,
+  testeEquipeAtivo: () => process.env.WHATSAPP_ATENDIMENTO_TESTE_EQUIPE === "true",
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  verificarEquipe.mockResolvedValue(false);
+  vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_EQUIPE", "false");
   for (const flag of ["WHATSAPP_ENVIOS_BLOQUEADOS", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "WHATSAPP_ATENDIMENTO_APOS_PILOTO", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO"]) vi.stubEnv(flag, "false");
   vi.stubEnv("WHATSAPP_ATENDIMENTO_IA_PAGA", "true");
   m.piloto.mockResolvedValue(null); m.sessao.mockResolvedValue(null); m.cliente.mockResolvedValue(null); m.mensagens.mockResolvedValue([]);
@@ -30,6 +37,18 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("gates da entrada multimodal", () => {
+  it("teste restrito responde à equipe com bloqueio geral, mas ignora cliente externo", async () => {
+    vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_EQUIPE", "true");
+    vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "true");
+    vi.stubEnv("WHATSAPP_ATENDIMENTO_IA_PAGA", "false");
+    vi.stubEnv("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "true");
+    await receberMensagem(entrada);
+    expect(m.modelo).not.toHaveBeenCalled(); expect(m.midia).not.toHaveBeenCalled();
+    verificarEquipe.mockResolvedValue(true);
+    await receberMensagem({ ...entrada, wamid: "m2" });
+    expect(m.modelo).toHaveBeenCalledTimes(1);
+    expect(m.enviar).toHaveBeenCalledTimes(1);
+  });
   it.each(["bloqueio", "humano", "bot_desligado", "duplicada", "ia_desligada"])("não baixa mídia em %s", async (caso) => {
     if (caso === "bloqueio") vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "true");
     if (caso === "humano") m.entrada.mockResolvedValue({ id: "c1", telefone: entrada.telefone, estado: "HUMANO" });
