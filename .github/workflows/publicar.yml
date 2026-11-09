@@ -46,6 +46,8 @@ jobs:
             console.error('CI deste commit ainda não foi aprovado. Nenhum deploy executado.'); process.exit(1);
           }
           JS
+      - name: Instalar dependências da verificação pelo lock
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Conferir operação e preservação
         run: npm run check:publicacao:servidor
       - name: Preparar código do commit
