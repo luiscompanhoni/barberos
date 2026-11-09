@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 async function acesso(req: Request, itemId: string) {
   const token = new URL(req.url).searchParams.get("token");
   if (token) {
-    const pessoa = await db.checklistPessoa.findUnique({ where: { token }, select: { id: true, ativo: true } });
-    if (!pessoa?.ativo) throw naoEncontrado("Link");
+    const pessoa = await db.checklistPessoa.findUnique({ where: { token }, select: { id: true, ativo: true, funcao: true } });
+    if (!pessoa?.ativo || pessoa.funcao === null) throw naoEncontrado("Link");
     const item = await db.checklistItem.findFirst({ where: { id: itemId, pessoaId: pessoa.id } });
     if (!item) throw naoEncontrado("Tarefa");
     return { item, usuarioId: null };

@@ -37,6 +37,12 @@ describe("privacidade das fotos do checklist", () => {
     const r = await GET(new Request("http://localhost/api/checklist/fotos/tarefa"), ctx);
     expect(r.status).toBe(401); expect(m.fotos).not.toHaveBeenCalled();
   });
+  it("ficha exclusiva do RH não autoriza fotos por token", async () => {
+    m.pessoa.mockResolvedValue({ id: "pessoa", ativo: true, funcao: null });
+    m.itemPessoa.mockResolvedValue({ id: "tarefa" });
+    expect((await GET(new Request("http://localhost/api/checklist/fotos/tarefa?token=pessoal"), ctx)).status).toBe(404);
+    expect(m.fotos).not.toHaveBeenCalled();
+  });
   it("resposta autorizada não pode ser armazenada em cache público", async () => {
     const r = await GET(new Request("http://localhost/api/checklist/fotos/tarefa"), ctx);
     expect(r.status).toBe(200); expect(r.headers.get("cache-control")).toBe("private, no-store");

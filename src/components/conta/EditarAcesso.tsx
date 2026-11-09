@@ -37,7 +37,7 @@ function Formulario({ opcoes, onSalvo }: { opcoes: Opcoes; onSalvo: () => void }
   const [servicoIds, setServicoIds] = useState(u.barbeiro?.servicos.map((s) => s.servicoId) ?? []);
   const [criarCadastroEquipe, setCriarCadastroEquipe] = useState(false);
   const [cargo, setCargo] = useState(u.checklistPessoa?.cargo ?? "");
-  const [funcaoChecklist, setFuncaoChecklist] = useState(u.checklistPessoa?.funcao ?? "BARBEIRO");
+  const [funcaoChecklist, setFuncaoChecklist] = useState(u.checklistPessoa ? u.checklistPessoa.funcao ?? "" : "BARBEIRO");
   const [permissoes, setPermissoes] = useState<Record<string, boolean | null>>(() => Object.fromEntries(opcoes.permissoes.map((p) => [p.chave, p.excecao])));
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState("");
@@ -51,7 +51,7 @@ function Formulario({ opcoes, onSalvo }: { opcoes: Opcoes; onSalvo: () => void }
         acao: "editar", nome, telefone, login: login || null, papel, ativo, atende, cor,
         ...(JSON.stringify(servicoIds) !== JSON.stringify(u.barbeiro?.servicos.map((s) => s.servicoId) ?? [])
           ? { servicoIds: servicoIds.filter((id) => opcoes.servicos.some((s) => s.id === id)) } : {}),
-        ...(incluirCadastroEquipe ? { cargo: cargo || null, funcaoChecklist } : {}),
+        ...(incluirCadastroEquipe ? { cargo: cargo || null, ...(funcaoChecklist ? { funcaoChecklist } : {}) } : {}),
         permissoes: Object.fromEntries(aplicaveis.map((p) => [p.chave, permissoes[p.chave] ?? null])),
       } });
       onSalvo();
@@ -84,7 +84,7 @@ function Formulario({ opcoes, onSalvo }: { opcoes: Opcoes; onSalvo: () => void }
     {u.checklistPessoa && <p className="text-xs text-zinc-500">Esta pessoa já está vinculada ao checklist, RH e presença. O vínculo e o histórico serão mantidos.</p>}
     {incluirCadastroEquipe && <div className="grid gap-3 sm:grid-cols-2">
       <label className="rotulo">Cargo no RH<input className="campo" maxLength={80} value={cargo} onChange={(e) => setCargo(e.target.value)} /></label>
-      <label className="rotulo">Modelo de checklist<select className="campo" value={funcaoChecklist} onChange={(e) => setFuncaoChecklist(e.target.value as typeof funcaoChecklist)}><option value="BARBEIRO">Barbeiro</option><option value="GERENTE">Gerente / líder</option><option value="DIARISTA">Diarista</option></select><span className="text-xs font-normal text-zinc-500">Define as tarefas; não altera a função de acesso.</span></label>
+      <label className="rotulo">Modelo de checklist<select className="campo" value={funcaoChecklist} onChange={(e) => setFuncaoChecklist(e.target.value as typeof funcaoChecklist)}>{u.checklistPessoa?.funcao === null && <option value="">Sem checklist</option>}<option value="BARBEIRO">Barbeiro</option><option value="GERENTE">Gerente / líder</option><option value="DIARISTA">Diarista</option></select><span className="text-xs font-normal text-zinc-500">Define as tarefas; não altera a função de acesso.</span></label>
     </div>}
     <FotoAcesso acesso={u} />
     {!!aplicaveis.length && <fieldset className="space-y-3 rounded-xl border border-zinc-200 p-3">

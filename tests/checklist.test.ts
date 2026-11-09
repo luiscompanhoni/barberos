@@ -16,6 +16,7 @@ describe("checklist", () => {
     expect(tarefasDoDia(ts, "DIARISTA", 1).map((t) => t.id)).toEqual(["varrer", "banheiro", "toalhas"]);
     expect(tarefasDoDia(ts, "DIARISTA", 2).map((t) => t.id)).toEqual(["varrer", "banheiro"]);
     expect(tarefasDoDia(ts, "BARBEIRO", 0).map((t) => t.id)).toEqual(["bancada"]);
+    expect(tarefasDoDia(ts, null, 1)).toEqual([]);
   });
   it("hora em minutos", () => {
     expect(hhmmParaMinutos("08:00")).toBe(480);

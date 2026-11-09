@@ -6,9 +6,10 @@ import { Save } from "lucide-react";
 import { SeloNivel, type Nivel } from "@/components/checklist/SeloNivel";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
 import { useAcesso } from "@/components/AcessoContexto";
+import { NovaPessoaRh } from "./NovaPessoaRh";
 
 type Func = {
-  id: string; nome: string; telefone: string; funcao: string; ativo: boolean; cargo: string | null; salarioCentavos: number;
+  id: string; nome: string; telefone: string; funcao: string | null; ativo: boolean; cargo: string | null; salarioCentavos: number;
   salarioAtualCentavos: number; salarioHomologado: boolean;
   pix: { mascara: string; tipo: string | null; estado: string }; revisaoPix: number;
   admissao: string | null; barbeiroId: string | null; pontos: number; nivel: Nivel;
@@ -56,7 +57,8 @@ export function Funcionarios() {
   return (
     <div className="space-y-3">
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
-      <p className="text-sm text-zinc-500">O cadastro de pessoas é o mesmo do checklist. Para incluir alguém, vá em <Link href="/checklist" className="font-semibold text-ouro underline">Checklist → Tarefas e pessoas</Link>.</p>
+      <p className="text-sm text-zinc-500">Para incluir alguém com tarefas, vá em <Link href="/checklist" className="font-semibold text-ouro underline">Checklist → Tarefas e pessoas</Link>.</p>
+      {dono && <NovaPessoaRh competenciaAtual={d.competenciaAtual} competenciaPadrao={d.competenciaSalarioPadrao} aoCriar={async () => aplicar(await api<Dados>("/api/rh/funcionarios"))} />}
       {d.funcionarios.length === 0 && <div className="cartao text-sm text-zinc-500">Ninguém cadastrado ainda.</div>}
       <div className="grid gap-3 lg:grid-cols-2">
         {d.funcionarios.map((f) => {
@@ -67,10 +69,10 @@ export function Funcionarios() {
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <h2 className="font-semibold">{f.nome}{!f.ativo && <span className="ml-2 text-xs text-zinc-500">(inativo)</span>}</h2>
-                  <p className="text-xs text-zinc-500">{FUNCAO[f.funcao]} no checklist · {f.pontos} pts · salário atual {reais(f.salarioAtualCentavos)}</p>
+                  <p className="text-xs text-zinc-500">{f.funcao ? `${FUNCAO[f.funcao]} no checklist · ${f.pontos} pts` : "Somente RH · sem checklist"} · salário atual {reais(f.salarioAtualCentavos)}</p>
                   {!f.salarioHomologado && <p className="text-xs text-amber-700">Valor legado sem histórico mensal homologado.</p>}
                 </div>
-                <SeloNivel nivel={f.nivel} pequeno />
+                {f.funcao && <SeloNivel nivel={f.nivel} pequeno />}
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 <div><label className="rotulo">Cargo</label><input className="campo" placeholder="Ex.: Barbeiro, Recepcionista" value={v.cargo} onChange={(e) => muda(f.id, { cargo: e.target.value })} /></div>

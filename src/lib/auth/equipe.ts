@@ -54,6 +54,7 @@ export async function opcoesDeAcesso(s: Sessao, id: string) {
 /** O lock também serializa duas tentativas concorrentes de remover o último dono. */
 async function prepararEdicao(tx: Tx, s: Sessao) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('barberos:acessos-equipe'))`;
+  await tx.$queryRaw`SELECT 1 FROM pg_advisory_xact_lock(hashtext('rh:pessoa:criar'))`;
   const ator = await tx.usuario.findUnique({ where: { id: s.usuarioId }, select: { ativo: true, papel: true } });
   if (!ator?.ativo || ator.papel !== "DONO") throw proibido();
 }
@@ -75,6 +76,10 @@ async function atualizarPerfil(tx: Tx, usuarioId: string, d: EdicaoUsuario, ativ
     b = await tx.barbeiro.create({ data: { usuarioId: u.id, nome: u.nome, cor: d.cor ?? "#d3ab45", ordem: await tx.barbeiro.count() }, include: { checklistPessoa: true } });
   }
   const pessoa = u.checklistPessoa ?? b?.checklistPessoa;
+  if (pessoa || (b && atende) || d.funcaoChecklist) {
+    const neutras = await tx.checklistPessoa.findMany({ where: { funcao: null }, select: { id: true, telefone: true } });
+    if (neutras.some(n => n.id !== pessoa?.id && normalizarTelefone(n.telefone) === normalizarTelefone(u.telefone))) throw new ErroNegocio("Contato já cadastrado em ficha exclusiva do RH. Confira a identidade antes de criar outro vínculo.", 409, "rh_cadastro_duplicado");
+  }
   if (pessoa) {
     await tx.checklistPessoa.update({ where: { id: pessoa.id }, data: { usuarioId: u.id, nome: u.nome, telefone: u.telefone, ...(b ? { barbeiroId: b.id } : {}), ...(ativoAntes !== u.ativo ? { ativo: u.ativo } : {}), ...(d.cargo !== undefined ? { cargo: d.cargo || null } : {}), ...(d.funcaoChecklist ? { funcao: d.funcaoChecklist } : {}) } });
   } else if ((b && atende) || d.funcaoChecklist) {
