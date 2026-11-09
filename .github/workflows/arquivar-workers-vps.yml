@@ -15,7 +15,7 @@ on:
         description: ID sha256 da imagem app saudável confirmada no inventário
         required: true
         type: string
-        default: sha256:000bf3cac4db8ce701711ebfbf3b50c7607c20602cddf9c8a4306f931e07148e
+        default: sha256:a2a78e0a4ab504fa65cb72c9c21130e05a261c2b4134bc3b41532fc407a187d6
       chave_relatorio:
         description: Chave pública RSA SPKI base64 do destinatário do comprovante cifrado
         required: true

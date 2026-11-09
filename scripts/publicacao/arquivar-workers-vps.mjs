@@ -10,7 +10,7 @@ import { cifrar } from "./cifrar-relatorio.mjs";
 
 const shell = s => "'" + s.replace(/'/g, "'\\''") + "'";
 export const LEGADO = "legado-f7968a11";
-export const APP_ESPERADO = "sha256:000bf3cac4db8ce701711ebfbf3b50c7607c20602cddf9c8a4306f931e07148e";
+export const APP_ESPERADO = "sha256:a2a78e0a4ab504fa65cb72c9c21130e05a261c2b4134bc3b41532fc407a187d6";
 export const ALVOS = Object.freeze({
   d833182db751a74d3ce52017f11a2824fcb6c735: { id: "sha256:4d5728f7035eb38b0cb29c752936637047f997cf0e6eb240285c956a6f13b87e", bytesImagem: 1948259798 },
   "7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10": { id: "sha256:412eeeb7c3f1f1f555a5420d10a55311bd6a81c5b965f5c40fc5e354104466ab", bytesImagem: 1948279454 },
