@@ -52,6 +52,16 @@ const {createHmac}=require('node:crypto');
 })().catch(()=>process.exit(1));
 """
 
+MODELO = r"""
+const Anthropic=require('@anthropic-ai/sdk');
+(async()=>{
+ const c=new Anthropic.default({maxRetries:0,timeout:30000});
+ const r=await c.beta.messages.create({model:process.env.BOT_MODELO||'claude-opus-5-5',max_tokens:32,messages:[{role:'user',content:'Teste técnico interno. Responda somente OK.'}]});
+ if(!r.content.some(x=>x.type==='text'&&x.text.trim())) throw Error('Modelo sem resposta');
+ console.log('{"modeloRespondeu":true}');
+})().catch(()=>process.exit(1));
+"""
+
 
 def compor(base, projeto, arquivos, privado):
     args = ['docker', 'compose', '-p', projeto, '--env-file', str(base / '.env')]
@@ -82,6 +92,8 @@ def ativar(base, projeto, commit):
     if memoria < 1500 * 1024:
         raise RuntimeError('Reserva de memória insuficiente.')
     preflight = json.loads(executar(['docker', 'exec', app['Id'], 'node', '-e', PREFLIGHT], prazo=40))
+    # Uma chamada técnica curta, sem dados de cliente, à mesma IA já configurada.
+    prova_modelo = json.loads(executar(['docker', 'exec', app['Id'], 'node', '-e', MODELO], prazo=40))
     privado = base / '.env.atendimento'
     if privado.is_symlink():
         raise RuntimeError('Configuração privada inesperada.')
@@ -121,9 +133,9 @@ def ativar(base, projeto, commit):
             raise RuntimeError('Isolamento do teste não confirmado.')
         conferir_https(commit)
         executar(['docker', 'exec', novo_app['Id'], 'node', '-e', WEBHOOK], prazo=25)
-        # Não faz nenhuma chamada ao modelo nem envia mensagens durante a ativação.
+        # Não envia mensagem nem emite cobrança durante a ativação.
         resultado = json.loads(executar(['docker', 'exec', novo_app['Id'], 'node', '-e', ATIVAR], prazo=45))
-        estado = {'concluido': True, 'revisao': commit, 'compose': [*arquivos, str(override)], **preflight, **resultado}
+        estado = {'concluido': True, 'revisao': commit, 'compose': [*arquivos, str(override)], **preflight, **prova_modelo, **resultado}
         escrever_privado(pasta / 'atendimento-ativado.json', json.dumps(estado))
         return estado
     except BaseException:
