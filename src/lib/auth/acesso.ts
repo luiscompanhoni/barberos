@@ -14,7 +14,7 @@ import type { Sessao } from "./sessao";
 
 const MAX_FALHAS = 5;
 const BLOQUEIO_MS = 15 * 60_000;
-const incluir = { barbeiro: { select: { id: true, ativo: true } }, cliente: { select: { id: true } } } as const;
+const incluir = { barbeiro: { select: { id: true, ativo: true } }, cliente: { select: { id: true, excluidoEm: true } } } as const;
 // Mesma mensagem para usuario inexistente e senha errada (nao revela quem tem conta).
 const invalido = () => new ErroNegocio("Celular/usuário ou senha incorretos.", 401, "senha_invalida");
 
@@ -35,16 +35,17 @@ async function acharUsuario(identificador: string) {
 }
 
 export async function entrarComSenha(identificador: string, senha: string, area: Area) {
+  void area; // Compatibilidade com os aplicativos anteriores ao acesso único.
   limitarIdentificadorSenha(identificador);
   const u = await acharUsuario(identificador);
-  if (!u || !u.ativo || !u.senhaHash) {
+  if (!u || !u.ativo || !u.senhaHash || (u.papel === "CLIENTE" && (!u.cliente || u.cliente.excluidoEm))) {
     await conferirSenha(senha, "scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAA"); // tempo parecido com o caminho normal
     throw invalido();
   }
   const r = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`auth-usuario:${u.id}`}))`;
     const atual = await tx.usuario.findUnique({ where: { id: u.id }, include: incluir });
-    if (!atual?.ativo || !atual.senhaHash) return { erro: invalido() };
+    if (!atual?.ativo || !atual.senhaHash || (atual.papel === "CLIENTE" && (!atual.cliente || atual.cliente.excluidoEm))) return { erro: invalido() };
     if (atual.bloqueadoAte && atual.bloqueadoAte.getTime() > Date.now()) {
       const min = Math.ceil((atual.bloqueadoAte.getTime() - Date.now()) / 60_000);
       return { erro: new ErroNegocio(`Muitas tentativas erradas. Tente de novo em ${min} min ou use "esqueci a senha".`, 429, "bloqueado") };
@@ -56,8 +57,7 @@ export async function entrarComSenha(identificador: string, senha: string, area:
       // Lançar fora da transação preserva a falha e o bloqueio gravados.
       return { erro: invalido() };
     }
-    if (area === "equipe" && atual.papel === "CLIENTE") return { erro: new ErroNegocio("Esse número é de cliente. Entre pela área do cliente.", 403) };
-    if (area === "cliente" && atual.papel !== "CLIENTE") return { erro: new ErroNegocio("Esse número é da equipe. Entre pelo acesso da equipe.", 403) };
+    // O perfil vem exclusivamente do cadastro revalidado, nunca da área escolhida.
     if (atual.senhaFalhas || atual.bloqueadoAte) await tx.usuario.update({ where: { id: atual.id }, data: { senhaFalhas: 0, bloqueadoAte: null } });
     return { usuario: atual };
   });
@@ -77,7 +77,7 @@ export async function criarContaCliente(p: { nome: string; telefone: string; sen
 
   if (!/^\d{6}$/.test(p.codigo ?? "")) throw new ErroNegocio("Confirme seu celular com o código recebido.", 400, "confirmar_celular");
   const comprovado = await verificarCodigo(tel, p.codigo, "cliente", "acesso", { permitirNovoCadastro: true });
-  if (comprovado.papel !== "CLIENTE") throw new ErroNegocio("Esse número é da equipe. Entre pelo acesso da equipe.", 403);
+  if (comprovado.papel !== "CLIENTE") throw new ErroNegocio("Esse número já pertence à equipe. Volte e entre com senha ou código.", 403);
   const senhaHash = await gerarHash(p.senha);
   const nome = p.nome.trim();
   const aceite = { termosVersao: VERSAO_TERMOS, termosAceitosEm: new Date() };

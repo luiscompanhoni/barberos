@@ -33,7 +33,7 @@ jobs:
           POSTGRES_USER: barberos
           POSTGRES_PASSWORD: barberos
           POSTGRES_DB: barberos
-        ports: ["5432:5432", "55439:5432", "15439:5432"]
+        ports: ["5432:5432", "55439:5432", "15439:5432", "55549:5432"]
         options: >-
           --health-cmd "pg_isready -U barberos"
           --health-interval 5s
@@ -72,6 +72,28 @@ jobs:
           npx prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --exit-code
       - name: Dados de exemplo
         run: npm run db:seed
+      - name: Conferir os fluxos das anotações em banco nominal descartável
+        env:
+          POSTGRES_SERVICO: ${{ job.services.postgres.id }}
+          DATABASE_URL: postgresql://anotacoes:fixture_anotacoes_ci@127.0.0.1:55549/barberos_anotacoes_teste_20261109
+          PAGAMENTOS_PROVIDER: simulado
+          WHATSAPP_PROVIDER: simulador
+          WHATSAPP_ENVIOS_BLOQUEADOS: "true"
+          WHATSAPP_ATENDIMENTO_IA_PAGA: "false"
+          WHATSAPP_ATENDIMENTO_TESTE_EQUIPE: "false"
+          AGENTES_EXECUCAO_ATIVA: "false"
+          OTP_PROVIDER: console
+          MAQUININHA: manual
+          TZ: America/Sao_Paulo
+        run: |
+          set -euo pipefail
+          docker exec -i "$POSTGRES_SERVICO" psql -X -v ON_ERROR_STOP=1 -U barberos -d barberos <<'SQL'
+          CREATE ROLE anotacoes LOGIN PASSWORD 'fixture_anotacoes_ci';
+          SQL
+          docker exec "$POSTGRES_SERVICO" createdb -U barberos --owner=anotacoes barberos_anotacoes_teste_20261109
+          ./node_modules/.bin/prisma migrate deploy
+          npm run teste:agenda:cliente
+          npm run teste:anotacoes
       - name: Preparar bancos exclusivos de RH e comandas
         env:
           POSTGRES_SERVICO: ${{ job.services.postgres.id }}

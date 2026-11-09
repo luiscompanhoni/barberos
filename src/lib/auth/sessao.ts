@@ -1,37 +1,43 @@
 import { cookies } from "next/headers";
 import type { Papel } from "@prisma/client";
 import { db } from "@/lib/db";
-import { cookieSeguro } from "@/lib/dominios";
-import { naoAutorizado, proibido } from "@/lib/erros";
-import { assinarToken, COOKIE_SESSAO, DURACAO_SESSAO_S, lerToken, type Sessao } from "./token";
+import { acessoUnicoCompativel, cookieSeguro, dominioDaSessao } from "@/lib/dominios";
+import { ErroNegocio, naoAutorizado, proibido } from "@/lib/erros";
+import { assinarToken, COOKIE_SESSAO, COOKIE_SESSAO_LEGADA, DURACAO_SESSAO_S, lerToken, tokenDoCookie, type Sessao } from "./token";
 
 export { COOKIE_SESSAO, lerToken, type Sessao };
 
 export async function criarSessao(s: Sessao) {
+  if (!acessoUnicoCompativel()) throw new ErroNegocio("Configuração de acesso incompatível. A administração precisa usar o mesmo host ou site e subdomínio HTTPS.", 503, "dominios_incompativeis");
   (await cookies()).set(COOKIE_SESSAO, await assinarToken(s), {
     httpOnly: true,
     sameSite: "lax",
     secure: cookieSeguro(),
     path: "/",
     maxAge: DURACAO_SESSAO_S,
+    domain: dominioDaSessao(),
   });
 }
 
 export async function encerrarSessao() {
-  (await cookies()).delete(COOKIE_SESSAO);
+  const jar = await cookies();
+  jar.delete(COOKIE_SESSAO_LEGADA);
+  // Tombstone compartilhado impede fallback para cookies host-only dos dois apps.
+  jar.set(COOKIE_SESSAO, "", { httpOnly: true, sameSite: "lax", secure: cookieSeguro(), path: "/", domain: dominioDaSessao(), maxAge: DURACAO_SESSAO_S });
 }
 
 /**
  * Sessao atual, revalidada no banco (usuario desativado perde acesso na hora).
  */
 export async function sessaoAtual(): Promise<Sessao | null> {
-  const s = await lerToken((await cookies()).get(COOKIE_SESSAO)?.value);
+  const s = await lerToken(tokenDoCookie(await cookies()));
   if (!s) return null;
   const u = await db.usuario.findUnique({
     where: { id: s.usuarioId },
-    include: { barbeiro: { select: { id: true, ativo: true } }, cliente: { select: { id: true } } },
+    include: { barbeiro: { select: { id: true, ativo: true } }, cliente: { select: { id: true, excluidoEm: true } } },
   });
   if (!u || !u.ativo) return null;
+  if (u.papel === "CLIENTE" && (!u.cliente || u.cliente.excluidoEm)) return null;
   if ((s.sessaoVersao ?? 0) !== (u.sessaoVersao ?? 0)) return null;
   return {
     usuarioId: u.id,

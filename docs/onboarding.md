@@ -17,13 +17,15 @@ cp .env.example .env           # troque SESSION_SECRET; ANTHROPIC_API_KEY é opc
 docker compose up -d           # Postgres na porta 5433
 npm run db:migrate             # prisma migrate dev: cria as tabelas
 npm run db:seed                # dados de exemplo (barbearia, equipe, serviços)
-npm run dev                    # site: http://localhost:3000 · painel: http://painel.localhost:3000
+npm run dev                    # acesso comum: http://localhost:3000/entrar
 ```
 
 O `.env.example` já vem pronto para teste local, sem nada sair do computador: `OTP_PROVIDER="console"`,
 `WHATSAPP_PROVIDER="simulador"`, `PAGAMENTOS_PROVIDER="simulado"`, `MAQUININHA=""` (simulada fora de produção),
-`SITE_URL="http://localhost:3000"` e `PAINEL_URL="http://painel.localhost:3000"` (o navegador entende
-`*.localhost` sem configuração). Gere o `SESSION_SECRET` (32+ caracteres) como indicado no comentário do arquivo.
+`SITE_URL="http://localhost:3000"` e `PAINEL_URL="http://localhost:3000"`. Em produção, endereços separados
+exigem site e seu subdomínio HTTPS, por exemplo `appblackbarber.com` e `painel.appblackbarber.com`.
+Domínios independentes e subdomínios HTTP não compartilham a sessão do acesso único; a emissão é recusada
+com erro de configuração. Gere o `SESSION_SECRET` (32+ caracteres) como indicado no comentário do arquivo.
 Nunca commite o `.env` (está no `.gitignore`).
 
 Variáveis do `.env.example`: `DATABASE_URL`, `SESSION_SECRET`, `TZ_BARBEARIA`, `OTP_PROVIDER`,
@@ -44,8 +46,8 @@ Instalação e configuração definitiva: [app-notificacoes.md](app-notificacoes
 
 ### Entrar
 
-- Equipe: `http://painel.localhost:3000/entrar`. Cliente: `http://localhost:3000/entrar` (qualquer celular; "Criar
-  conta" com senha ou entrar pelo código).
+- Todos os perfis: `http://localhost:3000/entrar`. O papel registrado no banco define a área de destino.
+  Cadastro público cria somente CLIENTE; promoção para equipe exige o dono.
 - Os usuários do seed (dono, recepção e três barbeiros; telefones em `prisma/seed.ts`) não têm senha: use
   **"Primeiro acesso ou esqueci a senha"**. Com `OTP_PROVIDER="console"` o código aparece na própria tela de login
   (botão "Usar"); depois de entrar, crie a senha. O dono também gera senha temporária em Configurações (`/equipe`).

@@ -5,6 +5,16 @@ const charge = { id: "ch_1", amount: 6000, currency: "BRL", status: "paid", paid
 const pedido = { id: "or_teste", status: "paid", amount: 6000, currency: "BRL", charges: [charge] };
 
 describe("prova monetária de pedidos Pagar.me", () => {
+  it("só libera outra tentativa de cartão quando todas as tentativas foram recusadas sem recebimento", () => {
+    const recusada = { ...charge, status: "failed", payment_method: "credit_card", paid_amount: 0, last_transaction: { status: "not_authorized" } };
+    const r = { ...pedido, status: "failed", charges: [recusada] };
+    expect(converterPedido(r).recusaComprovada).toBe(true);
+    expect(converterPedido({ ...r, charges: [recusada, { ...recusada, id: "ch_2", status: "processing" }] }).recusaComprovada).toBe(false);
+    expect(converterPedido({ ...r, charges: [{ ...recusada, paid_amount: 1 }] }).recusaComprovada).toBe(false);
+    expect(converterPedido({ ...r, charges: [{ ...recusada, paid_at: "2026-11-09T12:00:00Z" }] }).recusaComprovada).toBe(false);
+    expect(converterPedido({ ...r, charges: [{ ...recusada, paid_amount: undefined }] }).recusaComprovada).toBe(false);
+    expect(converterPedido({ ...r, charges: [] }).recusaComprovada).toBe(false);
+  });
   it("usa paid_amount autoritativo e moeda, sem alterar a tradução legada de status", () => {
     const c = converterPedido(pedido);
     expect(c).toMatchObject({ status: "PAGA", valorCentavos: 6000, moeda: "BRL", liquidadoCentavos: 6000 });

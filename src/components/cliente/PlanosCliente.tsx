@@ -7,6 +7,7 @@ import { api, reais } from "@/lib/cliente-api";
 import { itensDoPlano, planoEmDestaque, porDia } from "@/lib/assinaturas/itens";
 import { TrocarPlano, type AlteracaoPlano } from "@/components/assinaturas/TrocarPlano";
 import { CancelarOperacaoInicial } from "@/components/assinaturas/CancelarOperacaoInicial";
+import { ContinuarPagamentoInicial } from "@/components/assinaturas/ContinuarPagamentoInicial";
 
 type Plano = {
   id: string; nome: string; descricao: string | null; precoCentavos: number;
@@ -129,7 +130,7 @@ export function PlanosCliente() {
             </a>
           )}
           {!atual.operacaoEmConferencia && !atual.cobrancaEmAberto?.link && atual.status === "PENDENTE" && atual.linkPendente && <a className="btn-primario w-full py-3" href={atual.linkPendente}>Continuar pagamento da assinatura</a>}
-          {atual.status === "PENDENTE" && <CancelarOperacaoInicial endpoint="/api/cliente/assinatura" onAlterado={carregar} />}
+          {atual.status === "PENDENTE" && <CancelarOperacaoInicial key={atual.id} endpoint="/api/cliente/assinatura" continuar={<ContinuarPagamentoInicial forma={atual.formaPagamento} emConferencia={atual.operacaoEmConferencia} link={atual.cobrancaEmAberto?.link ?? atual.linkPendente} />} onAlterado={carregar} />}
           {atual.status === "ATIVA" && !atual.pausada && !atual.valeAte && <TrocarPlano endpoint="/api/cliente/assinatura" planoAtualId={atual.plano.id}
             valorAtual={atual.precoCentavos} renovacao={atual.proximoVencimento} pedido={atual.alteracaoPlano}
             planos={d.planos.filter(p => p.compravel && p.formasPagamento.includes(atual.formaPagamento))} onAlterado={carregar} />}

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 type UsuarioFixture = { id: string; ativo: boolean; nome: string; telefone: string; papel: string; sessaoVersao: number;
-  telefoneVerificadoEm: Date; senhaHash: string; senhaFalhas: number; bloqueadoAte: Date | null; cliente: null; barbeiro: null; trocarSenha?: boolean };
+  telefoneVerificadoEm: Date; senhaHash: string; senhaFalhas: number; bloqueadoAte: Date | null; cliente: { id: string; excluidoEm: Date | null } | null; barbeiro: null; trocarSenha?: boolean };
 const m = vi.hoisted(() => ({ usuario: {} as UsuarioFixture, cauda: Promise.resolve() as Promise<unknown>, consultar: vi.fn(), atualizar: vi.fn(), auditar: vi.fn(), lock: vi.fn(), token: { usuarioId: "fixture-u", sessaoVersao: 4 } }));
 vi.mock("@/lib/db", () => ({ db: {
   usuario: { findUnique: m.consultar },
@@ -16,7 +16,7 @@ vi.mock("@/lib/db", () => ({ db: {
 vi.mock("@/lib/auditoria", () => ({ auditar: m.auditar }));
 vi.mock("@/lib/whatsapp/canal", () => ({ enviarCodigoAcesso: vi.fn() }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "fixture-token" }) }) }));
-vi.mock("@/lib/auth/token", () => ({ COOKIE_SESSAO: "fixture", DURACAO_SESSAO_S: 60, lerToken: async () => m.token, assinarToken: vi.fn() }));
+vi.mock("@/lib/auth/token", async original => ({ ...await original<typeof import("@/lib/auth/token")>(), COOKIE_SESSAO: "fixture", DURACAO_SESSAO_S: 60, lerToken: async () => m.token, assinarToken: vi.fn() }));
 import { definirSenhaTemporaria, entrarComSenha, redefinirSenhaTemporaria, trocarPropriaSenha } from "@/lib/auth/acesso";
 import { conferirSenha, gerarHash } from "@/lib/auth/senha";
 import { sessaoAtual } from "@/lib/auth/sessao";
@@ -35,6 +35,16 @@ beforeEach(async () => {
 });
 
 describe("tentativas de senha serializadas", () => {
+  it.each([null, { id: "c-excluido", excluidoEm: new Date() }])("rejeita senha de cliente sem ficha disponível", async cliente => {
+    m.usuario.papel = "CLIENTE"; m.usuario.cliente = cliente;
+    await expect(entrarComSenha("11999990000", "fixture-senha-forte-atual", "cliente")).rejects.toMatchObject({ status: 401 });
+  });
+  it("o mesmo login aceita equipe na entrada comum sem mudar função ou conceder acesso novo", async () => {
+    expect(await entrarComSenha("11999990000", "fixture-senha-forte-atual", "cliente")).toMatchObject({ id: "fixture-u", papel: "DONO", sessaoVersao: 4 });
+    expect(m.usuario.papel).toBe("DONO"); expect(m.usuario.sessaoVersao).toBe(4);
+    m.usuario.ativo = false;
+    await expect(entrarComSenha("11999990000", "fixture-senha-forte-atual", "cliente")).rejects.toMatchObject({ status: 401 });
+  });
   it("cinco falhas concorrentes persistem o bloqueio e a próxima senha certa recebe 429", async () => {
     const r = await Promise.allSettled(Array.from({ length: 5 }, () => entrarComSenha("11999990000", "senha-errada", "equipe")));
     expect(r.every(x => x.status === "rejected")).toBe(true);

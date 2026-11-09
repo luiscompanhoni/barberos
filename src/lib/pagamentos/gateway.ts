@@ -55,6 +55,8 @@ export type CobrancaAvulsa = {
   expiraEm?: string | null;
   /** Motivo da recusa do cartao (texto para o cliente). */
   erro?: string | null;
+  /** Recusa definitiva: todas as tentativas encerradas e nenhum valor recebido. */
+  recusaComprovada?: boolean;
 };
 
 export type ClienteParaGateway = { nome: string; cpf: string; telefone: string; email?: string | null; referencia: string };

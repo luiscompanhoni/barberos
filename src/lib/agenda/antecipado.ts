@@ -6,14 +6,14 @@
 import type { FormaPagamento, PagamentoAntecipado, Prisma } from "@prisma/client";
 import { auditar } from "@/lib/auditoria";
 import { linkAbsoluto } from "@/lib/assinaturas/cobrancas";
-import { cpfValido } from "@/lib/assinaturas/regras";
 import { db } from "@/lib/db";
-import { ErroNegocio, naoEncontrado } from "@/lib/erros";
-import { pixVencido, validadePixSeg, type EstadoCheckout } from "@/lib/pagamentos/checkout-regras";
+import { cancelamentoSemRecebimento } from "@/lib/assinaturas/operacao-inicial";
+import type { EstadoCheckout } from "@/lib/pagamentos/checkout-regras";
 import { gateway, gatewayPorId } from "@/lib/pagamentos/gateway";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
 import { configuracao } from "./carregar";
-import { dataLocal, minParaHhmm, minutosLocal } from "./tempo";
+import { dataLocal } from "./tempo";
+import { travarBarbeiro } from "./agendamentos";
 
 type Tx = Prisma.TransactionClient;
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -35,7 +35,7 @@ export async function antecipadoDisponivel() {
 /** Pagina do checkout do BarberOS para pagar o horario (area do cliente). */
 export const caminhoCheckoutHorario = (agendamentoId: string) => `/c/pagar-horario/${agendamentoId}`;
 
-function resposta(a: PagamentoAntecipado) {
+export function respostaAntecipado(a: PagamentoAntecipado) {
   return {
     id: a.id, status: a.status, forma: a.forma, valorCentavos: a.valorCentavos,
     link: linkAbsoluto(a.link), pixCopiaECola: a.pixCopiaECola, pixQrUrl: a.pixQrUrl, pixExpiraEm: a.pixExpiraEm, pagoEm: a.pagoEm,
@@ -45,6 +45,7 @@ function resposta(a: PagamentoAntecipado) {
 /** Estado para a tela do checkout. */
 export function estadoCheckoutAntecipado(a: PagamentoAntecipado | null): EstadoCheckout {
   if (!a) return { status: "PENDENTE", forma: null, pix: null, link: null };
+  if (a.emissaoChave) return { status: "PENDENTE", forma: a.forma === "BOLETO" ? null : a.forma, pix: null, link: null, processando: true, mensagem: "Pagamento em conferência. Aguarde o resultado antes de tentar novamente." };
   // Tentativa cancelada (Pix trocado, cartao recusado) nao fecha o checkout: da para tentar de novo.
   if (a.status === "CANCELADO") return { status: "PENDENTE", forma: null, pix: null, link: null };
   const status = a.status === "PAGO" || a.status === "CREDITADO" ? "PAGO" : "PENDENTE";
@@ -57,107 +58,19 @@ export function estadoCheckoutAntecipado(a: PagamentoAntecipado | null): EstadoC
   return { status, forma: a.forma === "BOLETO" ? null : a.forma, pix, link: externo, processando: aberto && a.forma === "CARTAO" };
 }
 
-/** Gera (ou reaproveita) o link para o cliente pagar o horario agora. */
+/** Emissão com claim durável; o total contempla o atendimento inteiro. */
 export async function pagarAntecipado(p: {
-  clienteId: string; agendamentoId: string; forma: FormaPagamento; cpf?: string; email?: string; usuarioId?: string | null;
-  /** Checkout do BarberOS: cartao tokenizado no navegador, cobrado na hora. */
+  clienteId: string; agendamentoId: string; forma: FormaPagamento; cpf?: string; email?: string; usuarioId?: string | null; sessaoVersao?: number;
   cartaoToken?: string;
 }) {
-  const g = await gateway();
-  if (!g.criarCobrancaAvulsa) throw new ErroNegocio("O pagamento antecipado ainda não está disponível. Pague no balcão.", 409, "indisponivel");
-  if (p.forma === "BOLETO") throw new ErroNegocio("Para pagar antes, use Pix ou cartão.", 422);
-
-  const ag = await db.agendamento.findFirst({
-    where: { id: p.agendamentoId, clienteId: p.clienteId },
-    include: { servico: { select: { nome: true } }, barbeiro: { select: { nome: true } }, antecipado: true, itemComanda: { select: { id: true } } },
-  });
-  if (!ag) throw naoEncontrado("Horário");
-  if (await db.agendamento.count({ where: { adicionalDeId: ag.id, origem: "SITE", status: { not: "CANCELADO" } } })) {
-    throw new ErroNegocio("Para horários com vários serviços, o pagamento é feito na barbearia.", 422, "pagamento_multiplos");
-  }
-  const motivo = motivoParaNaoPagar(ag);
-  if (motivo) throw new ErroNegocio(motivo, 409, "nao_pode");
-  if (ag.itemComanda) throw new ErroNegocio("Esse atendimento já está na comanda: pague no balcão.", 409, "na_comanda");
-
-  let atual = ag.antecipado;
-  if (atual?.status === "PENDENTE") atual = (await sincronizarAntecipado(atual.id)) ?? atual;
-  if (atual?.status === "PAGO") throw new ErroNegocio("Esse horário já está pago. ✅", 409, "ja_pago");
-  // Estornado: o registro guarda o historico do financeiro; o novo pagamento e no balcao.
-  if (atual?.status === "ESTORNADO") throw new ErroNegocio("O pagamento desse horário foi estornado: pague no balcão.", 409, "estornado");
-  const tokenizado = g.cartao === "token" || !!p.cartaoToken;
-  // Cartao no checkout do BarberOS ainda sem token: devolve a pagina do checkout (bot, botao "cartao").
-  if (p.forma === "CARTAO" && g.cartao === "token" && !p.cartaoToken) {
-    return {
-      id: atual?.id ?? "", status: "PENDENTE" as const, forma: "CARTAO" as const, valorCentavos: ag.precoCentavos,
-      link: linkAbsoluto(caminhoCheckoutHorario(ag.id)), pixCopiaECola: null, pixQrUrl: null, pixExpiraEm: null, pagoEm: null,
-    };
-  }
-  const reaproveita = atual?.status === "PENDENTE" && atual.forma === p.forma && atual.valorCentavos === ag.precoCentavos && !!atual.link &&
-    !p.cartaoToken && !(p.forma === "PIX" && pixVencido(atual.pixExpiraEm));
-  if (reaproveita && atual) return resposta(atual);
-  // Trocou a forma (ou o preco mudou, ou o Pix venceu): cancela o pagamento antigo antes de gerar outro.
-  if (atual?.status === "PENDENTE" && atual.gatewayId) await (await gatewayPorId(atual.gatewayId)).cancelarCobrancaAvulsa?.(atual.gatewayId).catch(() => {});
-
-  const cliente = await db.cliente.findUniqueOrThrow({ where: { id: p.clienteId } });
-  const email = (p.email ?? cliente.email ?? "").trim().toLowerCase();
-  if (g.exigeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-    throw new ErroNegocio("Para pagar online precisamos do seu e-mail (exigência do meio de pagamento).", 422, "email");
-  }
-  const cpf = (p.cpf ?? cliente.cpf ?? "").replace(/\D/g, "");
-  if (!cpfValido(cpf)) throw new ErroNegocio("Para pagar online precisamos de um CPF válido (exigência do meio de pagamento).", 422, "cpf");
-  if (cpf !== cliente.cpf || (email && email !== cliente.email)) {
-    await db.cliente.update({ where: { id: cliente.id }, data: { cpf, ...(email ? { email } : {}) } });
-  }
-
-  const cfg = await configuracao();
-  const quando = `${dataLocal(ag.inicio, cfg.fuso).split("-").reverse().slice(0, 2).join("/")} ${minParaHhmm(minutosLocal(ag.inicio, cfg.fuso))}`;
-  let cob;
-  try {
-    const clienteGatewayId = await g.criarCliente({ nome: cliente.nome, cpf, telefone: cliente.telefone, email: email || null, referencia: cliente.id });
-    cob = await g.criarCobrancaAvulsa({
-      clienteGatewayId,
-      valorCentavos: ag.precoCentavos,
-      forma: p.forma,
-      vencimento: dataLocal(ag.inicio, cfg.fuso),
-      descricao: `${ag.servico.nome} com ${ag.barbeiro.nome} - ${quando} - ${cfg.nomeBarbearia}`,
-      referencia: `ag-${ag.id}-${Date.now().toString(36)}`,
-      ...(p.forma === "CARTAO" && p.cartaoToken ? { cartaoToken: p.cartaoToken, parcelas: 1 } : {}),
-      // Pix vale 1 dia, sem passar do horario.
-      ...(p.forma === "PIX" ? { pixValidadeSeg: validadePixSeg(ag.inicio) } : {}),
-    });
-  } catch (e) {
-    console.error("[antecipado] falha no gateway:", e);
-    if (p.cartaoToken) throw new ErroNegocio("O cartão não foi aceito. Confira os dados ou tente outro cartão.", 422, "cartao_recusado");
-    throw new ErroNegocio("Não foi possível gerar o pagamento agora. Tente de novo em instantes.", 502, "gateway");
-  }
-
-  const recusado = !!p.cartaoToken && (cob.status === "ATRASADA" || cob.status === "CANCELADA");
-  const dados = {
-    clienteId: cliente.id, valorCentavos: ag.precoCentavos, forma: p.forma, status: recusado ? ("CANCELADO" as const) : ("PENDENTE" as const),
-    gatewayId: cob.id,
-    // No checkout do BarberOS o "link" e a propria pagina (o bot manda ela no WhatsApp).
-    link: cob.link ?? (tokenizado ? caminhoCheckoutHorario(ag.id) : null),
-    pixCopiaECola: cob.pixCopiaECola ?? null, pixQrUrl: cob.pixQrUrl ?? null, pixExpiraEm: cob.expiraEm ? new Date(cob.expiraEm) : null, pagoEm: null,
-  };
-  const a = await db.$transaction(async (tx) => {
-    const salvo = await tx.pagamentoAntecipado.upsert({ where: { agendamentoId: ag.id }, create: { agendamentoId: ag.id, ...dados }, update: dados });
-    await auditar(tx, p.usuarioId ?? null, "gerar_pagamento_antecipado", "agendamento", ag.id, { forma: p.forma, valorCentavos: ag.precoCentavos, recusado });
-    return salvo;
-  });
-  if (recusado) throw new ErroNegocio(cob.erro ?? "O cartão não foi aceito. Confira os dados ou tente outro cartão.", 422, "cartao_recusado");
-  // Cartao aprovado na hora: ja confirma (o webhook depois so repete).
-  if (cob.status === "PAGA") {
-    await marcarPago(a.id, cob.pagaEm);
-    return resposta(await db.pagamentoAntecipado.findUniqueOrThrow({ where: { id: a.id } }));
-  }
-  return resposta(a);
+  return (await import("./antecipado-emissao")).emitirAntecipado(p);
 }
 
 /** Situacao do pagamento antecipado de um horario (consulta o gateway se ainda estiver em aberto). */
 export async function antecipadoDoHorario(clienteId: string, agendamentoId: string) {
   const a = await db.pagamentoAntecipado.findFirst({ where: { agendamentoId, clienteId } });
   if (!a) return null;
-  return resposta((await sincronizarAntecipado(a.id)) ?? a);
+  return respostaAntecipado((await sincronizarAntecipado(a.id)) ?? a);
 }
 
 /** Estado do checkout do horario (sincroniza se estiver em aberto). */
@@ -178,20 +91,35 @@ export async function aplicarNaComanda(tx: Tx, comandaId: string, a: Pick<Pagame
   return true;
 }
 
-/** Pago no gateway: marca, lanca na comanda aberta (se ja tiver) ou credita se o horario caiu. */
-async function marcarPago(id: string, pagoEm: string | null) {
+/** Mesma ordem da abertura/cancelamento da comanda; recebimento também deve sobreviver à exclusão da ficha. */
+async function travarAntecipado(tx: Tx, id: string) {
+  const ref = await tx.pagamentoAntecipado.findUnique({ where: { id }, select: { clienteId: true, agendamento: { select: { barbeiroId: true } } } });
+  if (!ref) return null;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente-ciclo:${ref.clienteId}`}))`;
+  await travarBarbeiro(tx, ref.agendamento.barbeiroId);
+  const a = await tx.pagamentoAntecipado.findUniqueOrThrow({ where: { id }, include: {
+    agendamento: { include: { itemComanda: { include: { comanda: { select: { id: true, status: true } } } } } },
+    pagamentoComanda: true, cliente: { select: { nome: true, telefone: true } },
+  } });
+  if (a.clienteId !== ref.clienteId || a.agendamento.clienteId !== ref.clienteId || a.agendamento.barbeiroId !== ref.agendamento.barbeiroId) return null;
+  return a;
+}
+
+/** A prova pertence à tentativa consultada; uma resposta antiga nunca confirma a substituta. */
+export async function marcarPago(id: string, pagoEm: string, prova: { gatewayId: string; valorCentavos: number }) {
+  if (!Number.isFinite(Date.parse(pagoEm))) return;
   const r = await db.$transaction(async (tx) => {
-    const ok = await tx.pagamentoAntecipado.updateMany({ where: { id, status: "PENDENTE" }, data: { status: "PAGO", pagoEm: pagoEm ? new Date(pagoEm) : new Date() } });
+    const a = await travarAntecipado(tx, id);
+    if (!a) return null;
+    const instante = new Date(pagoEm);
+    const ok = await tx.pagamentoAntecipado.updateMany({ where: { id, status: "PENDENTE", emissaoChave: null, gatewayId: prova.gatewayId, valorCentavos: prova.valorCentavos }, data: { status: "PAGO", pagoEm: instante } });
     if (!ok.count) return null;
-    const a = await tx.pagamentoAntecipado.findUniqueOrThrow({
-      where: { id },
-      include: { agendamento: { include: { itemComanda: { include: { comanda: { select: { id: true, status: true } } } } } }, cliente: { select: { nome: true, telefone: true } } },
-    });
-    await auditar(tx, null, "pagamento_antecipado_recebido", "agendamento", a.agendamentoId, { valorCentavos: a.valorCentavos });
-    if (a.agendamento.status === "CANCELADO") return { a, creditado: await creditar(tx, a) };
+    const pago = { ...a, status: "PAGO" as const, pagoEm: instante };
+    await auditar(tx, null, "pagamento_antecipado_recebido", "agendamento", a.agendamentoId, { valorCentavos: a.valorCentavos, gatewayId: prova.gatewayId });
+    if (a.agendamento.status === "CANCELADO" && !a.pagamentoComanda) return { a: pago, creditado: await creditar(tx, pago) };
     const comanda = a.agendamento.itemComanda?.comanda;
-    if (comanda?.status === "ABERTA") await aplicarNaComanda(tx, comanda.id, a);
-    return { a, creditado: false, comandaId: comanda?.status === "ABERTA" ? comanda.id : null };
+    if (comanda?.status === "ABERTA") await aplicarNaComanda(tx, comanda.id, pago);
+    return { a: pago, creditado: false, comandaId: comanda?.status === "ABERTA" ? comanda.id : null };
   });
   if (!r) return;
   if ("comandaId" in r && r.comandaId) (await import("@/lib/comandas/servico")).avisarComanda(r.comandaId);
@@ -226,13 +154,19 @@ export async function sincronizarAntecipado(id: string) {
   if (!g.buscarCobrancaAvulsa) return a;
   try {
     const c = await g.buscarCobrancaAvulsa(a.gatewayId);
-    if (c.status === "PAGA") await marcarPago(a.id, c.pagaEm);
+    if (c.id !== a.gatewayId || c.valorCentavos !== a.valorCentavos || c.moeda !== "BRL") return a;
+    const tentativa = { id: a.id, status: "PENDENTE" as const, emissaoChave: null, gatewayId: a.gatewayId, valorCentavos: a.valorCentavos };
+    if (c.status === "PAGA" && c.liquidadoCentavos === a.valorCentavos && c.pagaEm && Number.isFinite(Date.parse(c.pagaEm))) await marcarPago(a.id, c.pagaEm, { gatewayId: a.gatewayId, valorCentavos: a.valorCentavos });
     // Cancelado, ou cartao do checkout recusado depois da analise.
-    else if (c.status === "CANCELADA" || (c.status === "ATRASADA" && g.cartao === "token")) {
-      await db.pagamentoAntecipado.updateMany({ where: { id: a.id, status: "PENDENTE" }, data: { status: "CANCELADO" } });
+    else if (cancelamentoSemRecebimento(c, a.gatewayId, a.valorCentavos) ||
+      (a.forma === "CARTAO" && c.status === "ATRASADA" && c.recusaComprovada === true && c.liquidadoCentavos === 0 && !c.pagaEm)) {
+      await db.$transaction(async tx => {
+        const r = await tx.pagamentoAntecipado.updateMany({ where: tentativa, data: { status: "CANCELADO" } });
+        if (r.count) await auditar(tx, null, "pagamento_antecipado_cancelado", "agendamento", a.agendamentoId, { gatewayId: a.gatewayId, valorCentavos: a.valorCentavos });
+      });
     }
     else if (c.link !== a.link || (c.pixCopiaECola && c.pixCopiaECola !== a.pixCopiaECola)) {
-      await db.pagamentoAntecipado.update({ where: { id: a.id }, data: { link: c.link ?? a.link, pixCopiaECola: c.pixCopiaECola ?? a.pixCopiaECola, pixQrUrl: c.pixQrUrl ?? a.pixQrUrl } });
+      await db.pagamentoAntecipado.updateMany({ where: tentativa, data: { link: c.link ?? a.link, pixCopiaECola: c.pixCopiaECola ?? a.pixCopiaECola, pixQrUrl: c.pixQrUrl ?? a.pixQrUrl } });
     }
   } catch (e) {
     console.error(`[antecipado] falha ao consultar ${a.gatewayId}:`, e);
@@ -245,18 +179,25 @@ export async function aoCancelarHorario(agendamentoId: string) {
   try {
     let a = await db.pagamentoAntecipado.findUnique({ where: { agendamentoId } });
     if (!a) return;
+    if (a.emissaoChave) return; // Emissão ainda em voo: o retorno tratará o cancelamento.
     if (a.status === "PENDENTE") a = await sincronizarAntecipado(a.id); // pode ter pago agora ha pouco
     if (!a) return;
     if (a.status === "PENDENTE") {
-      if (a.gatewayId) await (await gatewayPorId(a.gatewayId)).cancelarCobrancaAvulsa?.(a.gatewayId).catch(() => {});
-      await db.pagamentoAntecipado.updateMany({ where: { id: a.id, status: "PENDENTE" }, data: { status: "CANCELADO" } });
+      if (!a.gatewayId) return;
+      const g = await gatewayPorId(a.gatewayId);
+      // DELETE em um provedor real pode devolver um pagamento recém-recebido.
+      // Conserva a pendência até haver prova consultável de encerramento sem recebimento.
+      if (g.nome === "simulado") await g.cancelarCobrancaAvulsa?.(a.gatewayId);
+      const c = await g.buscarCobrancaAvulsa?.(a.gatewayId);
+      if (c && cancelamentoSemRecebimento(c, a.gatewayId, a.valorCentavos)) await sincronizarAntecipado(a.id);
+      else if (c?.status === "PAGA") await sincronizarAntecipado(a.id);
       return;
     }
     if (a.status !== "PAGO") return;
     const id = a.id;
     const r = await db.$transaction(async (tx) => {
-      const x = await tx.pagamentoAntecipado.findUniqueOrThrow({ where: { id }, include: { agendamento: true, pagamentoComanda: true, cliente: true } });
-      if (x.pagamentoComanda) return null; // ja usado na comanda
+      const x = await travarAntecipado(tx, id);
+      if (!x || x.agendamento.status !== "CANCELADO" || x.pagamentoComanda) return null; // já usado ou horário reativado
       return (await creditar(tx, x)) ? x : null;
     });
     if (r) {

@@ -3,6 +3,7 @@ import type { Papel } from "@prisma/client";
 import { COOKIE_INDICACAO, registrarIndicacao } from "@/lib/crescimento/indicacao";
 import { criarSessao } from "./sessao";
 import { revogarAoTrocarConta } from "@/lib/notificacoes/inscricoes";
+import { urlPainel, urlSite } from "@/lib/dominios";
 
 type UsuarioLogin = {
   id: string; papel: Papel; nome: string; senhaHash: string | null; trocarSenha: boolean;
@@ -31,6 +32,7 @@ export async function abrirSessao(u: UsuarioLogin) {
   return {
     ok: true,
     papel: u.papel,
+    base: u.papel === "CLIENTE" ? urlSite() : urlPainel(),
     precisaNome: u.papel === "CLIENTE" && !u.nome.trim(),
     // Entrou por codigo e ainda nao tem senha, ou recebeu senha temporaria do dono.
     definirSenha: !u.senhaHash || u.trocarSenha,

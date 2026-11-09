@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { api } from "@/lib/cliente-api";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 import { DetalheModal } from "./DetalheModal";
@@ -93,24 +94,23 @@ export function AgendaTela(p: {
 
   return (
     <div className="space-y-3">
-      <div className="crm-filterbar flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1">
+      <div className="crm-filterbar crm-agenda-toolbar grid">
+        <div className="flex flex-wrap items-center gap-1">
           <button className="btn" onClick={() => setData(somarDias(data, -passo))} aria-label="Anterior">‹</button>
           <button className="btn" onClick={() => setData(dataLocal(Date.now(), FUSO))}>Hoje</button>
           <button className="btn" onClick={() => setData(somarDias(data, passo))} aria-label="Próximo">›</button>
-        </div>
         <input aria-label="Data da agenda" type="date" className="campo w-auto" value={data} onChange={(e) => e.target.value && setData(e.target.value)} />
-        <span className="text-sm font-medium capitalize text-zinc-700">
+        </div>
+        <span className="crm-agenda-date text-sm font-medium capitalize text-zinc-700">
           {modo === "semana" ? `Semana de ${new Date(`${dataConsulta}T12:00:00Z`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", timeZone: "UTC" })}` : rotuloData}
         </span>
 
-        {p.permitirTrocarModo && (
-          <div className="crm-subtabs flex rounded-lg border border-zinc-300 bg-white p-0.5 text-sm" aria-label="Visualização da agenda">
-            {(["dia", "semana"] as const).map((m) => (
-              <button key={m} aria-pressed={modo === m} className={`rounded-md px-3 py-1 capitalize ${modo === m ? "bg-zinc-900 text-white" : ""}`} onClick={() => setModo(m)}>{m}</button>
-            ))}
-          </div>
-        )}
+        <div className="crm-agenda-tools flex flex-wrap items-center gap-2">
+        <nav className="crm-subtabs crm-agenda-views" aria-label="Visualização da agenda">
+          <button aria-pressed={modo === "dia"} onClick={() => setModo("dia")}>Agenda</button>
+          {p.meuBarbeiroId && <Link href="/meu-dia">Meu dia</Link>}
+          <button aria-pressed={modo === "semana"} onClick={() => setModo("semana")}>Semana</button>
+        </nav>
         {p.escolherBarbeiro && !p.barbeiroFixo && (
           <select aria-label="Profissional da agenda" className="campo w-auto" value={filtro ?? ""} onChange={(e) => setBarbeiroSel(e.target.value || undefined)}>
             {modo === "dia" && <option value="">Todos os profissionais</option>}
@@ -118,12 +118,13 @@ export function AgendaTela(p: {
           </select>
         )}
 
-        <div className="ml-auto flex items-center gap-3">
+        <div className="flex items-center gap-3">
           <span className={`flex items-center gap-1.5 text-xs ${aoVivo ? "text-emerald-700" : "text-zinc-400"}`}>
             <span className={`h-2 w-2 rounded-full ${aoVivo ? "bg-emerald-500" : "bg-zinc-300"}`} />
             {aoVivo ? "Ao vivo" : "Reconectando"}
           </span>
           <button className="btn-primario" onClick={() => setEncaixe({ coluna: null, inicio: null })}>+ Atendimento</button>
+        </div>
         </div>
       </div>
 

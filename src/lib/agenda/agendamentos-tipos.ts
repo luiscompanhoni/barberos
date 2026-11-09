@@ -5,6 +5,8 @@ export type NovoAgendamento = {
   /** Somente a conferência da recepção vincula um pedido do cliente à reserva. */
   pedidoId?: string;
   titular?: TitularAgenda;
+  /** Somente a API autenticada do app habilita confirmação direta. */
+  canalApp?: true;
   barbeiroId: string;
   servicoId: string;
   servicosAdicionais?: string[];

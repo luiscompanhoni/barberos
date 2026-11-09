@@ -2,6 +2,14 @@
 
 ## Stack efetiva
 
+Preparado localmente em 09/11: [acesso único, agenda e ajustes das anotações](ajustes-anotacoes-2026-11-09.md).
+Sessão nova `barberos_acesso` compartilha apenas o domínio HTTPS explicitamente configurado;
+`barberos_sessao` tem leitura de compatibilidade. Logout grava tombstone para impedir fallback legado.
+Acesso único exige o mesmo host/protocolo ou site e seu subdomínio HTTPS; configuração incompatível
+é recusada antes de gravar o cookie. Localmente, os dois endereços usam `http://localhost:3000`.
+A autorização continua revalidando papel, atividade e versão da sessão no banco.
+Antecipação de grupo reserva claim durável antes do gateway; [migração e recuperação](ajustes-anotacoes-2026-11-09.md#recuperação).
+
 - Next.js 16.3.7 (App Router, saída `standalone`), React 19.2.8, TypeScript 5.
 - Prisma 6.19 (`@prisma/client` + CLI) com PostgreSQL 16 (`postgres:16-alpine`). **Exceção ao padrão Drizzle do
   toolkit:** o projeto nasceu em Prisma e continua em Prisma (ver [PRODUCT.md](../PRODUCT.md#exceções-de-stack)).
@@ -18,7 +26,7 @@
 src/app/(app)/       painel da equipe (agenda, recepcao, comandas, financeiro, jogos, rh, campanhas, auditoria...)
 src/app/c/           área do cliente: (area)/ com login; assinar, pagar, link, r, pagamento-simulado públicos
 src/app/assine/      página de venda dos planos (a "/" do site)
-src/app/entrar/      login da equipe; i/ (indicação), t/ (checklist sem login)
+src/app/entrar/      acesso único por perfil; i/ (indicação), t/ (checklist sem login)
 src/app/api/         route handlers das telas, do cliente (/api/cliente), webhooks e /api/saude
 src/proxy.ts         separa site × painel e faz a checagem otimista de login
 src/instrumentation.ts  log de erros com código; agenda as rotinas; confere o .env e cria o dono em produção

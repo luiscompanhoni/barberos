@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
 import styles from "./conversas-crm.module.css";
+import { NovoContato } from "./NovoContato";
 
 type Resumo = {
   id: string;
@@ -36,14 +37,27 @@ export function ConversasTela() {
   const [detalhe, setDetalhe] = useState<Detalhe | null>(null);
   const [texto, setTexto] = useState("");
   const [erro, setErro] = useState("");
+  const [busca, setBusca] = useState("");
+  const [consulta, setConsulta] = useState("");
+  const [novo, setNovo] = useState(false);
+  const consultaRef = useRef("");
+  const ultimaLista = useRef(0);
   const fim = useRef<HTMLDivElement>(null);
   const abertaRef = useRef<string | null>(null);
 
-  const carregarLista = useCallback(() => api<Resumo[]>("/api/conversas").then(setLista).catch((e) => setErro(e.message)), []);
+  const carregarLista = useCallback(async () => {
+    const pedido = ++ultimaLista.current;
+    try {
+      const r = await api<Resumo[]>(`/api/conversas?busca=${encodeURIComponent(consultaRef.current)}`);
+      if (pedido === ultimaLista.current) setLista(r);
+    } catch (e) { if (pedido === ultimaLista.current) setErro((e as Error).message); }
+  }, []);
   const carregarDetalhe = useCallback((id: string) => api<Detalhe>(`/api/conversas/${id}`).then(setDetalhe).catch((e) => setErro(e.message)), []);
 
+  useEffect(() => { const t = setTimeout(() => setConsulta(busca.trim()), 200); return () => clearTimeout(t); }, [busca]);
+  useEffect(() => { consultaRef.current = consulta; carregarLista(); }, [consulta, carregarLista]);
+
   useEffect(() => {
-    carregarLista();
     const es = new EventSource("/api/eventos");
     es.onmessage = (ev) => {
       const e = JSON.parse(ev.data);
@@ -75,9 +89,12 @@ export function ConversasTela() {
 
   return (
     <div className={`${styles.grade} grid h-[calc(100vh-90px)] gap-3 md:grid-cols-[320px_1fr]`}>
+      {novo && <NovoContato fechar={() => setNovo(false)} criado={id => { setNovo(false); setBusca(""); setAberta(id); void carregarLista(); }} />}
       <aside aria-label="Lista de conversas" className={`cartao overflow-y-auto p-0 ${aberta ? "hidden md:block" : ""}`}>
         <header className={styles.titulo}><p className="eyebrow">Relacionamento</p><h1 className="titulo-marca text-xl">Conversas</h1></header>
-        {lista.length === 0 && <p className="p-4 text-sm text-zinc-500">Nenhuma conversa ainda.</p>}
+        <div className="space-y-2 p-3"><label className="sr-only" htmlFor="busca-conversa">Buscar por nome ou WhatsApp</label><input id="busca-conversa" type="search" className="campo" placeholder="Buscar nome ou WhatsApp" maxLength={100} value={busca} onChange={e => setBusca(e.target.value)} /><button className="btn w-full" onClick={() => setNovo(true)}>+ Adicionar cliente</button></div>
+        {lista.length === 0 && <p role="status" className="p-4 text-sm text-zinc-500">{consulta ? "Nenhuma conversa encontrada." : "Nenhuma conversa ainda."}</p>}
+        {erro && <p role="alert" className="px-3 text-sm text-red-700">{erro}</p>}
         <ul className="divide-y divide-zinc-100">
           {lista.map((c) => (
             <li key={c.id}>

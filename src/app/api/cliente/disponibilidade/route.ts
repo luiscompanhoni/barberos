@@ -21,5 +21,6 @@ export const GET = rota(async (req: Request) => {
     if (!ag) throw naoEncontrado("Agendamento");
     if (JSON.stringify([ag.servicoId, ...ag.adicionais.map(a => a.servicoId)]) !== JSON.stringify([q.servicoId, ...servicosAdicionais])) throw new ErroNegocio("Os serviços do agendamento não coincidem.", 409);
   }
-  return NextResponse.json(await horariosDisponiveis({ ...q, servicosAdicionais, paraCliente: true, ignorarAgendamentoId: q.remarcar }));
+  return NextResponse.json(await horariosDisponiveis({ ...q, servicosAdicionais, paraCliente: true, ignorarAgendamentoId: q.remarcar,
+    app: { clienteId: s.clienteId, titular: { usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0 } } }));
 });

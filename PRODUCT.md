@@ -2,6 +2,10 @@
 
 Sistema de gestão da barbearia Black Barber, em produção. Substitui o CashBarber.
 
+Ajustes de 09/11 preparados localmente: acesso único por perfil, agenda direta com múltiplos serviços,
+antecipação do grupo, cadastro e pesquisa em Conversas, posição de planos e navegação/temas da gestão.
+Não publicados. [Escopo, validação e dependências](docs/ajustes-anotacoes-2026-11-09.md).
+
 ## Problema e objetivo
 
 A barbearia operava agenda, assinaturas, comandas e financeiro no CashBarber, com cobrança de assinaturas pela

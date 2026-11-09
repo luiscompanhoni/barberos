@@ -104,7 +104,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
       <main id="conteudo-principal" tabIndex={-1} className="black-workspace-main">
         <AbasPainel links={links} chave={s.usuarioId} />
         {appBlack && <AberturaBlack area="barbeiro" />}
-        {cfg.agendaExternaAtiva && <p className="cartao-destaque mb-5 text-sm" role="status">Agenda em transição: confira e confirme os horários no Cash Barber antes de responder ao cliente. A agenda do BarberOS ainda não é sincronizada automaticamente.</p>}
+        {cfg.agendaExternaAtiva && <p className="cartao-destaque mb-5 text-sm" role="status">O app do cliente agenda diretamente no BarberOS. Durante a transição, confira também os horários do Cash Barber antes de oferecer uma reserva pelo atendimento; as duas agendas ainda não são sincronizadas.</p>}
         <AcessoProvider valor={{ papel: s.papel, permissoes }}>{appBlack ? children : <TransicaoCrm>{children}</TransicaoCrm>}</AcessoProvider>
       </main>
       </div>

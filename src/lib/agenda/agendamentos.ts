@@ -8,6 +8,7 @@ import { exigirPermissao } from "@/lib/auth/permissoes";
 import { validarCadeira } from "./cadeiras";
 import { grupoTemComanda } from "./grupo-comanda";
 import { conferirSemReservaAdicional } from "./reservas-adicionais";
+import { conferirAntecipadoParaRemarcar } from "./antecipado-grupo";
 import { validarHorarioCliente } from "./cliente-conflitos";
 import { erroDuracao } from "./encaixes-regras";
 import { exigirGestaoBarbeiro, type Sessao } from "@/lib/auth/sessao";
@@ -123,7 +124,8 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
         const anterior = await validarPedidoReserva(tx, input.pedidoId, ator, { clienteId: input.cliente.id, barbeiroId: input.barbeiroId, servicoIds: [input.servicoId, ...idsAdicionais], inicio: input.inicio });
         if (anterior) return anterior;
       }
-      if (!equipe) await checarTransicaoNaReserva(tx);
+      if (input.canalApp && !input.titular) throw new ErroNegocio("Entre novamente para agendar.", 401, "sessao_invalida");
+      if (!equipe) await checarTransicaoNaReserva(tx, input.canalApp && input.titular ? { clienteId, titular: input.titular } : undefined);
       await validarEncaixe(tx, input.barbeiroId, int, { fuso: cfg.fuso, intervaloEntreClientes: cfg.intervaloEntreClientes });
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${clienteId}`}))`;
       if (autoatendimento) {
@@ -174,7 +176,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
       if (input.precoEsperadoCentavos !== undefined && input.precoEsperadoCentavos !== totalCentavos) throw new ErroNegocio("O valor mudou. Consulte o horário e confirme novamente.", 409, "preco_alterado");
       if (input.premioId) await reservarPremio(tx, clienteId, input.premioId, criado);
       if (input.pedidoId) await concluirPedido(tx, input.pedidoId, ator!.usuarioId, agendamentoIds);
-      await auditar(tx, ator?.usuarioId ?? null, "criar", "agendamento", criado.id, {
+      await auditar(tx, ator?.usuarioId ?? input.titular?.usuarioId ?? null, "criar", "agendamento", criado.id, {
         inicio: criado.inicio.toISOString(),
         barbeiroId: criado.barbeiroId,
         origem: criado.origem,
@@ -232,6 +234,7 @@ export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, 
       const vigente = await tx.agendamento.findUniqueOrThrow({ where: { id } });
       if (+vigente.inicio !== +atual.inicio || +vigente.fim !== +atual.fim || vigente.status !== atual.status || vigente.barbeiroId !== atual.barbeiroId || vigente.cadeiraId !== atual.cadeiraId) throw conflitoHorario();
       await conferirSemReservaAdicional(tx, id, vigente.ocupaAgenda);
+      await conferirAntecipadoParaRemarcar(tx, vigente.adicionalDeId ?? id);
       await validarHorarioCliente(tx, atual.clienteId, { inicio, fim }, [id]);
       if (vigente.adicionalDeId && vigente.origem === "SITE" || await tx.agendamento.count({ where: { adicionalDeId: id, origem: "SITE", status: { not: "CANCELADO" } } })) throw new ErroNegocio("Este horário tem serviços agendados em conjunto. Cancele e reagende todos os serviços para alterar o horário.", 422, "alteracao_multiplos");
       await validarEncaixe(tx, barbeiroId, { inicio, fim }, {

@@ -1,21 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CalendarCheck, Clock3, Gift, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import type { PremioCliente } from "@/lib/jogos/tipos";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { SemVaga } from "./SemVaga";
-import { ConfirmacaoEquipe } from "./ConfirmacaoEquipe";
-import { SolicitarAgendamento } from "./SolicitarAgendamento";
+import { PagarAntes } from "./PagarAntes";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 
 const FUSO = "America/Sao_Paulo";
 type Barbeiro = { id: string; nome: string; cor: string; fotoVersao: number };
 type Servico = { id: string; nome: string; duracaoMin: number; precoCentavos: number; barbeiros: Barbeiro[] };
-type Catalogo = { nomeBarbearia: string; janelaDias: number; servicos: Servico[]; confirmacaoEquipe?: boolean; atendimentoUrl?: string | null };
+type Catalogo = { nomeBarbearia: string; janelaDias: number; servicos: Servico[]; pagarAntes: boolean; checkout: boolean };
 type Disp = { barbeiroId: string; nome: string; duracaoMin: number; precoCentavos: number; horarios: string[] };
 /** Horario escolhido: com "qualquer barbeiro", fica com o primeiro livre naquele horario. */
 type Opcao = { inicio: string; barbeiroId: string; barbeiroNome: string; duracaoMin: number; precoCentavos: number };
@@ -32,7 +31,6 @@ const diaCurto = (d: string) => {
 
 /** Agendamento em 4 passos: servico -> barbeiro -> dia e hora -> confirmar. Tambem remarca. */
 export function AgendarTela() {
-  const router = useRouter();
   const q = useSearchParams();
   const remarcarId = q.get("remarcar");
   // "Agendar para resgatar": o premio do jogo fica reservado nesse horario.
@@ -49,6 +47,7 @@ export function AgendarTela() {
   const [escolha, setEscolha] = useState<Opcao | null>(null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [agendado, setAgendado] = useState<{ id: string; total: number; pago?: boolean } | null>(null);
   const [recarregar, setRecarregar] = useState(0);
   const [recarregarCatalogo, setRecarregarCatalogo] = useState(0);
   const confirmando = useRef(false);
@@ -83,13 +82,13 @@ export function AgendarTela() {
   const disp = resultadoDisp?.itens ?? null;
 
   useEffect(() => {
-    if (!servicoId || !barbeiroId || catalogo?.confirmacaoEquipe) return;
+    if (!servicoId || !barbeiroId) return;
     let vivo = true;
     api<Disp[]>(`/api/cliente/disponibilidade?${consulta}`)
       .then((r) => vivo && setRespostaDisp({ chave: consulta, itens: r, erro: "" }))
       .catch((e) => vivo && setRespostaDisp({ chave: consulta, itens: [], erro: e.message }));
     return () => { vivo = false; };
-  }, [servicoId, barbeiroId, consulta, catalogo?.confirmacaoEquipe, recarregar]);
+  }, [servicoId, barbeiroId, consulta, recarregar]);
 
   // Junta os horarios de todos os barbeiros (modo "qualquer um").
   const opcoes = useMemo<Opcao[]>(() => {
@@ -111,12 +110,12 @@ export function AgendarTela() {
       if (remarcarId) {
         await api(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId, forcarAvulso: !!previa?.bloqueio, precoEsperadoCentavos: previa?.precoCentavos, duracaoEsperadaMin: escolha.duracaoMin } });
       } else {
-        await api("/api/cliente/agendamentos", { method: "POST", body: { servicoId, servicosAdicionais: adicionais, precoEsperadoCentavos: previa?.precoCentavos, duracaoEsperadaMin: escolha.duracaoMin, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio, ...(premio ? { premioId: premio.id } : {}) } });
+        const r = await api<{ id: string }>("/api/cliente/agendamentos", { method: "POST", body: { servicoId, servicosAdicionais: adicionais, precoEsperadoCentavos: previa?.precoCentavos, duracaoEsperadaMin: escolha.duracaoMin, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio, ...(premio ? { premioId: premio.id } : {}) } });
+        setAgendado({ id: r.id, total: previa.precoCentavos });
       }
-      router.push("/c");
-      router.refresh();
+      if (remarcarId) setAgendado({ id: remarcarId, total: previa.precoCentavos });
     } catch (e) {
-      setErro((e as Error).message);
+      setErro(`${(e as Error).message} Confira seus horários antes de tentar novamente.`);
       setSalvando(false);
       confirmando.current = false;
       setEscolha(null); // horario pode ter sido ocupado: mostra a lista atualizada
@@ -126,17 +125,18 @@ export function AgendarTela() {
   }
 
   if (!catalogo) return <div className="space-y-3"><p role={erro ? "alert" : "status"} className="text-sm text-zinc-500">{erro || "Carregando..."}</p>{erro && <button className="btn" onClick={() => { setErro(""); setRecarregarCatalogo(n => n + 1); }}>Tentar carregar novamente</button>}</div>;
-  if (catalogo.confirmacaoEquipe) return remarcarId ? <ConfirmacaoEquipe atendimentoUrl={catalogo.atendimentoUrl ?? null} /> : <SolicitarAgendamento catalogo={catalogo} />;
+  if (agendado && escolha) return <section className="space-y-5 entrar-suave"><CalendarCheck size={36} className="text-ouro" aria-hidden="true" /><h1 className="titulo-marca text-3xl">{remarcarId ? "Horário remarcado" : "Seu horário está agendado"}</h1><p role="status" className="text-sm">{new Date(escolha.inicio).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short", timeZone: FUSO })} · {escolha.barbeiroNome}</p><p>{servicosEscolhidos.map(s => s.nome).join(" + ")}</p><p className="font-bold">Total: {reais(agendado.total)}</p>{agendado.total > 0 && catalogo.pagarAntes && <div className="cartao"><p className="text-sm">Quer adiantar o pagamento? Você também pode pagar na barbearia.</p><PagarAntes agendamentoId={agendado.id} precoCentavos={agendado.total} status={agendado.pago ? "PAGO" : null} checkout={catalogo.checkout} aoPagar={() => setAgendado({ ...agendado, pago: true })} /></div>}<Link href="/c" className="btn-primario w-full">Ver meus horários</Link></section>;
   const dias = Array.from({ length: catalogo.janelaDias + 1 }, (_, i) => somarDias(hoje, i));
   const barbeiroEscolhido = barbeiroId === QUALQUER ? null : servico?.barbeiros.find((b) => b.id === barbeiroId);
   const voltarPasso = () => {
+    if (confirmando.current) return;
     if (passo === 4) setEscolha(null);
     else if (passo === 3) { setBarbeiroId(""); setRespostaDisp(null); }
     else if (passo === 2 && !remarcarId) setServicosConfirmados(false);
   };
 
   return (
-    <div>
+    <div aria-busy={salvando}>
       <div className="flex items-center justify-between">
         <span className="eyebrow">{remarcarId ? "Remarcar horário" : "Agendar"}</span>
         <span className="text-xs font-bold text-zinc-500 uppercase">Passo {passo} de 4</span>
@@ -144,14 +144,14 @@ export function AgendarTela() {
       <div className="mt-3 grid grid-cols-4 gap-2">
         {[1, 2, 3, 4].map((n) => <div key={n} className={`h-1 rounded-full transition ${n <= passo ? "bg-ouro" : "bg-zinc-200"}`} />)}
       </div>
-      {erro && <p className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      {erro && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
       {premio && (
         <div className="mt-5 flex items-center gap-3 rounded-xl border border-ouro/50 bg-ouro/10 p-3 text-sm">
           <Gift className="shrink-0 text-ouro" size={20} />
           <span className="min-w-0 flex-1">Usando o prêmio <b>{premio.rotulo}</b> <span className="font-mono text-xs text-zinc-500">{premio.codigo}</span>
             {premio.expiraEm && <span className="block text-xs text-zinc-500">Escolha um horário até {new Date(premio.expiraEm).toLocaleDateString("pt-BR", { timeZone: FUSO })}.</span>}
           </span>
-          <button type="button" className="text-xs font-semibold text-zinc-500 underline" onClick={() => setPremio(null)}>Não usar</button>
+          <button type="button" disabled={salvando} className="text-xs font-semibold text-zinc-500 underline" onClick={() => setPremio(null)}>Não usar</button>
         </div>
       )}
 
@@ -160,16 +160,14 @@ export function AgendarTela() {
           <p className="mb-4 text-sm text-zinc-500">Escolha um ou mais serviços para o mesmo atendimento.</p>
           <div className="space-y-3">
             {catalogo.servicos.map((s) => (
-              <button key={s.id} type="button" aria-pressed={escolhidos.includes(s.id)} className={`cartao-clicavel flex w-full items-center gap-4 p-5 text-left ${escolhidos.includes(s.id) ? "border-ouro" : ""}`} onClick={() => {
+              <button key={s.id} type="button" aria-pressed={escolhidos.includes(s.id)} className={`cartao-clicavel flex w-full items-center gap-4 p-5 text-left ${escolhidos.includes(s.id) ? "border-ouro ring-1 ring-ouro" : ""}`} onClick={() => {
                 const ids = escolhidos.includes(s.id) ? escolhidos.filter((id) => id !== s.id) : [...escolhidos, s.id];
                 setServicoId(ids[0] ?? ""); setAdicionais(ids.slice(1));
               }}>
-                <Scissors className="shrink-0 text-ouro" size={20} />
                 <span className="flex-1">
                   <span className="block font-bold">{s.nome}</span>
                   <span className="mt-1 block text-xs text-zinc-500">{s.duracaoMin} min · {reais(s.precoCentavos)}</span>
                 </span>
-                <span className="text-xs font-bold text-ouro">{escolhidos.includes(s.id) ? "Selecionado" : "Adicionar"}</span>
               </button>
             ))}
           </div>
@@ -212,13 +210,13 @@ export function AgendarTela() {
           </div>
           <p className="rotulo mt-6">Horários disponíveis</p>
           {resultadoDisp?.erro ? <div className="mt-3 space-y-3"><p role="alert" className="text-sm text-red-700">{resultadoDisp.erro}</p><button className="btn" onClick={() => { setRespostaDisp(null); setRecarregar(n => n + 1); }}>Tentar buscar horários novamente</button></div> : !disp ? (
-            <p className="mt-3 text-sm text-zinc-500">Buscando horários...</p>
+            <p role="status" className="mt-3 text-sm text-zinc-500">Buscando horários…</p>
           ) : opcoes.length === 0 ? (
             adicionais.length ? <p className="mt-3 text-sm">Não há horários para todos os serviços neste dia. Tente outra data ou altere os serviços.</p> : <SemVaga key={`${data}|${barbeiroId}`} data={data} servicoId={servico.id} barbeiroId={barbeiroId === QUALQUER ? null : barbeiroId} />
           ) : (
             <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
               {opcoes.map((o) => (
-                <button key={o.inicio} onClick={() => setEscolha(o)}
+                <button key={o.inicio} onClick={() => { setErro(""); setEscolha(o); }}
                   className="rounded-lg border border-zinc-200 bg-white py-3 text-sm font-bold transition hover:border-ouro hover:text-ouro">
                   {hora(o.inicio)}
                 </button>
@@ -241,18 +239,18 @@ export function AgendarTela() {
               valor={!previa ? reais(escolha.precoCentavos) : previa.peloPlano ? "Incluso no seu plano" : `${reais(previa.precoCentavos)}${previa.nota ? ` (${previa.nota})` : ""}`}
               destaque={!!previa?.peloPlano} />
           </div>
+          {!previa && <p role="status" className="mt-3 text-sm text-zinc-500">Conferindo o valor final…</p>}
           {previa?.bloqueio && (
             <div className="mt-4 rounded-xl border border-ouro/30 bg-ouro/5 p-4 text-xs leading-5 text-zinc-600">
               <strong className="text-ouro">Regra do plano:</strong> {previa.bloqueio}
             </div>
           )}
-          {adicionais.length > 0 && <p className="mt-4 text-xs text-zinc-500">O pagamento destes serviços será feito na barbearia.</p>}
         </Passo>
       )}
 
       <div className="mt-8 flex gap-3">
         {passo > 1 && !(passo === 2 && remarcarId) && (
-          <button className="btn h-12 w-12 shrink-0 p-0" aria-label="Voltar" onClick={voltarPasso}><ArrowLeft size={18} /></button>
+          <button className="btn h-12 w-12 shrink-0 p-0" aria-label="Voltar" disabled={salvando} onClick={voltarPasso}><ArrowLeft size={18} /></button>
         )}
         {passo === 1 && <button className="btn-primario h-12 flex-1" disabled={!servico || !barbeirosCompativeis.length || escolhidos.length > 10} onClick={() => setServicosConfirmados(true)}>Continuar</button>}
         {passo === 4 && (
@@ -269,10 +267,12 @@ export function AgendarTela() {
 }
 
 function Passo({ eyebrow, titulo, children }: { eyebrow: string; titulo: string; children: React.ReactNode }) {
+  const cabecalho = useRef<HTMLHeadingElement>(null);
+  useEffect(() => { cabecalho.current?.focus(); }, [titulo]);
   return (
     <section className="entrar-suave">
       <p className="eyebrow mt-8">{eyebrow}</p>
-      <h1 className="titulo-marca mt-3 mb-7 text-4xl">{titulo}</h1>
+      <h1 ref={cabecalho} tabIndex={-1} className="titulo-marca mt-3 mb-7 text-4xl">{titulo}</h1>
       {children}
     </section>
   );

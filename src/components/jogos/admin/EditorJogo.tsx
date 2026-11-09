@@ -117,6 +117,7 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
 
   return (
     <div className="space-y-4">
+      {jogo.tipo === "ROLETA" && <section className="cartao space-y-3" aria-label="Prévia visual da roleta"><h2 className="font-semibold">Teste visual da roleta</h2><PreviaRoleta fatias={premios.filter((p) => p.ativo && p.rotulo.trim()).map((p) => ({ id: p.chave, rotulo: p.rotulo.trim(), cor: p.cor, icone: p.icone, tipo: p.tipo, raridade: p.raridade }))} /></section>}
       <section className="cartao space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="flex items-center gap-3 font-semibold">
@@ -219,7 +220,6 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
           <h2 className="font-semibold">Simulação antes de publicar</h2>
           <button className="btn" onClick={simular} disabled={!somaOk}><FlaskConical size={15} /> Simular 10.000 jogadas</button>
         </div>
-        {jogo.tipo === "ROLETA" && <PreviaRoleta fatias={premios.filter((p) => p.ativo && p.rotulo.trim()).map((p) => ({ id: p.chave, rotulo: p.rotulo.trim(), cor: p.cor, icone: p.icone, tipo: p.tipo, raridade: p.raridade }))} />}
         {sim ? (
           <>
             <div className="overflow-x-auto">

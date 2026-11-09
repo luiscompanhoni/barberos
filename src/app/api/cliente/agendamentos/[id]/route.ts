@@ -14,13 +14,13 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/cliente/a
   const b = await corpoPedido(req, z.object({ inicio: zInstante, barbeiroId: zId.optional(), forcarAvulso: z.boolean().optional(),
     precoEsperadoCentavos: z.number().int().nonnegative().optional(), duracaoEsperadaMin: z.number().int().min(5).max(480) }).strict());
   return NextResponse.json(await remarcarPeloCliente(s.clienteId, id, b.inicio, b.barbeiroId, b.forcarAvulso, b.precoEsperadoCentavos,
-    { usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0 }, b.duracaoEsperadaMin));
+    { usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0 }, b.duracaoEsperadaMin, true));
 });
 
 export const DELETE = rota(async (req: Request, ctx: RouteContext<"/api/cliente/agendamentos/[id]">) => {
   const s = await exigirCliente();
   exigirOrigemCliente(req);
   const { id } = await ctx.params;
-  await cancelarPeloCliente(s.clienteId, id, { usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0 });
+  await cancelarPeloCliente(s.clienteId, id, { usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0 }, true);
   return NextResponse.json({ ok: true });
 });

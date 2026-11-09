@@ -26,6 +26,16 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_anotacoes_aceita_somente_a_expansao_nominal_revisada(self):
+        nome = "20261109220000_antecipado_emissao_segura"
+        exigir_migracoes_da_publicacao([nome])
+        arquivo = Path(__file__).resolve().parents[2] / "prisma/migrations" / nome / "migration.sql"
+        sql = "\n".join(l for l in arquivo.read_text(encoding="utf8").splitlines() if not l.lstrip().startswith("--")).strip()
+        self.assertEqual(sql, 'ALTER TABLE "pagamentos_antecipados" ADD COLUMN "emissaoChave" TEXT;\nCREATE UNIQUE INDEX "pagamentos_antecipados_emissaoChave_key" ON "pagamentos_antecipados"("emissaoChave");')
+        for outra in (nome + "_extra", "20261109220001_antecipado_emissao_segura"):
+            with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+                exigir_migracoes_da_publicacao([nome, outra])
+
     def test_rh_sem_checklist_aceita_somente_a_expansao_nominal_revisada(self):
         nome = "20261109000000_rh_sem_checklist"
         exigir_migracoes_da_publicacao([nome])

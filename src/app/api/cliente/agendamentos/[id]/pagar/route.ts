@@ -5,6 +5,7 @@ import { exigirCliente } from "@/lib/auth/sessao";
 import { rota } from "@/lib/erros";
 import { limitarTentativas, zCartaoToken } from "@/lib/pagamentos/checkout";
 import { corpo } from "@/lib/validacao";
+import { exigirOrigemCliente } from "@/lib/auth/http-cliente";
 
 /** Situacao do pagamento antecipado do horario (consulta o meio de pagamento: serve de "ja paguei"). */
 // ?rapido=1 (polling do checkout): so le o banco, sem consultar o meio de pagamento.
@@ -20,6 +21,7 @@ export const GET = rota(async (req: Request, ctx: RouteContext<"/api/cliente/age
 export const POST = rota(async (req: Request, ctx: RouteContext<"/api/cliente/agendamentos/[id]/pagar">) => {
   const s = await exigirCliente();
   const { id } = await ctx.params;
+  exigirOrigemCliente(req);
   const b = await corpo(req, z.object({
     forma: z.enum(["PIX", "CARTAO"]),
     cpf: z.string().max(20).optional(),
@@ -27,6 +29,6 @@ export const POST = rota(async (req: Request, ctx: RouteContext<"/api/cliente/ag
     cartaoToken: zCartaoToken.optional(),
   }));
   if (b.cartaoToken) limitarTentativas(`horario:${id}`);
-  const pagamento = await pagarAntecipado({ clienteId: s.clienteId, agendamentoId: id, ...b });
+  const pagamento = await pagarAntecipado({ clienteId: s.clienteId, usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0, agendamentoId: id, ...b });
   return NextResponse.json({ pagamento, checkout: await checkoutDoHorario(s.clienteId, id, false) }, { status: 201 });
 });

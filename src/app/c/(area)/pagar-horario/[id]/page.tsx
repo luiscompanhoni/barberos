@@ -21,12 +21,13 @@ export default async function PagarHorario(props: PageProps<"/c/pagar-horario/[i
   const { id } = await props.params;
   const ag = await db.agendamento.findFirst({
     where: { id, clienteId: s.clienteId },
-    include: { servico: { select: { nome: true } }, barbeiro: { select: { nome: true } }, cliente: { select: { cpf: true, email: true } } },
+    include: { servico: { select: { nome: true } }, barbeiro: { select: { nome: true } }, cliente: { select: { cpf: true, email: true } }, adicionais: { where: { origem: "SITE", status: { not: "CANCELADO" } }, select: { precoCentavos: true, servico: { select: { nome: true } } } } },
   });
   if (!ag) notFound();
   const cfg = await configuracao();
   const inicial = await checkoutDoHorario(s.clienteId, ag.id);
-  const motivo = inicial.status === "PAGO" ? null : motivoParaNaoPagar(ag);
+  const total = ag.precoCentavos + ag.adicionais.reduce((s, a) => s + a.precoCentavos, 0);
+  const motivo = inicial.status === "PAGO" ? null : ag.adicionalDeId ? "Abra o atendimento principal para pagar todos os serviços." : motivoParaNaoPagar({ ...ag, precoCentavos: total, assinaturaId: total > 0 ? null : ag.assinaturaId });
   const dia = new Date(ag.inicio).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit", timeZone: cfg.fuso });
   const g = await gateway();
 
@@ -39,9 +40,9 @@ export default async function PagarHorario(props: PageProps<"/c/pagar-horario/[i
         <Checkout
           alvo={{ tipo: "horario", id: ag.id }}
           resumo={{
-            titulo: `${ag.servico.nome} com ${ag.barbeiro.nome}`,
+            titulo: `${[ag.servico.nome, ...ag.adicionais.map(a => a.servico.nome)].join(" + ")} com ${ag.barbeiro.nome}`,
             descricao: `${dia} às ${minParaHhmm(minutosLocal(ag.inicio, cfg.fuso))}`,
-            valorCentavos: ag.precoCentavos,
+            valorCentavos: total,
           }}
           formas={["PIX", "CARTAO"]}
           modoCartao={modoCartaoCheckout()}

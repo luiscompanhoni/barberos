@@ -40,9 +40,9 @@ describe("contratos das mutações de agenda do cliente", () => {
     expect((await POST(req("POST", novo))).status).toBe(201);
     expect(m.agendar).toHaveBeenCalledWith(expect.objectContaining({ clienteId: "c", usuarioId: "u", sessaoVersao: 7, origem: "SITE", duracaoEsperadaMin: 50 }));
     expect((await PATCH(req("PATCH", { inicio: novo.inicio, precoEsperadoCentavos: 8000, duracaoEsperadaMin: 50 }), ctx)).status).toBe(200);
-    expect(m.remarcar).toHaveBeenCalledWith("c", "ag", new Date(novo.inicio), undefined, undefined, 8000, { usuarioId: "u", sessaoVersao: 7 }, 50);
+    expect(m.remarcar).toHaveBeenCalledWith("c", "ag", new Date(novo.inicio), undefined, undefined, 8000, { usuarioId: "u", sessaoVersao: 7 }, 50, true);
     expect((await DELETE(req("DELETE"), ctx)).status).toBe(200);
-    expect(m.cancelar).toHaveBeenCalledWith("c", "ag", { usuarioId: "u", sessaoVersao: 7 });
+    expect(m.cancelar).toHaveBeenCalledWith("c", "ag", { usuarioId: "u", sessaoVersao: 7 }, true);
   });
   it.each([undefined, null, 0, 4, 50.5, 481, "50"])("recusa duração ausente ou inválida %s antes de reservar ou remarcar", async duracaoEsperadaMin => {
     expect((await POST(req("POST", { ...novo, duracaoEsperadaMin }))).status).toBe(400);

@@ -5,7 +5,7 @@ import { ocupacaoCadeira } from "./cadeiras";
 import { erroDuracao } from "./encaixes-regras";
 import { ErroNegocio } from "@/lib/erros";
 import { somarDias } from "./tempo";
-import { checarConfirmacaoAutomatica } from "./transicao";
+import { checarConfirmacaoAutomatica, checarTransicaoNaReserva, type AgendaApp } from "./transicao";
 
 /** Tudo que a tela de agenda precisa para desenhar um dia (ou varios, na semana). */
 export async function agendaDoPeriodo(dataInicial: string, dias: number, filtroBarbeiroId?: string) {
@@ -100,13 +100,16 @@ export async function horariosDisponiveis(p: {
   servicosAdicionais?: string[];
   barbeiroId?: string;
   paraCliente: boolean;
+  /** Identidade injetada pela API autenticada, não por parâmetros públicos. */
+  app?: AgendaApp;
   duracaoMin?: number;
   cadeiraId?: string | null;
   /** Apenas a rota autenticada fornece o ID do próprio atendimento ao remarcar. */
   ignorarAgendamentoId?: string;
 }) {
   const cfg = await configuracao();
-  if (p.paraCliente) checarConfirmacaoAutomatica(cfg);
+  if (p.app) await db.$transaction(tx => checarTransicaoNaReserva(tx, p.app));
+  if (p.paraCliente && !p.app) checarConfirmacaoAutomatica(cfg);
   const barbeiros = await db.barbeiro.findMany({
     where: { ativo: true, ...(p.barbeiroId ? { id: p.barbeiroId } : {}), servicos: { some: { servicoId: p.servicoId } } },
     orderBy: [{ ordem: "asc" }, { nome: "asc" }],

@@ -275,7 +275,7 @@ export const pagarme: Gateway = {
       items: [{ code: "avulso", description: c.descricao.slice(0, 256), quantity: 1, amount: c.valorCentavos }],
       payments: [pagamento],
       metadata: { referencia: c.referencia },
-    }, c.referencia.startsWith("lk-") ? c.referencia : undefined);
+    }, /^(lk-|ag-)/.test(c.referencia) ? c.referencia : undefined);
     return converterPedido(r);
   },
 
@@ -344,6 +344,9 @@ export function converterPedido(o: PedidoPagarme): CobrancaAvulsa {
     pixQrUrl: forma === "PIX" ? (t?.qr_code_url ?? null) : null,
     expiraEm: forma === "PIX" ? (t?.expires_at ?? null) : null,
     erro: status === "ATRASADA" ? motivoRecusa(t) : null,
+    recusaComprovada: prova && o.status === "failed" && charges.length > 0 && charges.every(c =>
+      c.status === "failed" && c.payment_method === "credit_card" && c.paid_amount === 0 && !c.paid_at &&
+      ["failed", "not_authorized"].includes(c.last_transaction?.status ?? "")),
   };
 }
 

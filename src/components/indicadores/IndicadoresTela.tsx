@@ -34,7 +34,8 @@ export function IndicadoresTela() {
       <header className="crm-page-header flex flex-wrap items-end gap-3">
         <div>
           <p className="eyebrow">Visão do negócio</p>
-          <h1 className="titulo-marca text-3xl">Indicadores</h1>
+          <h2 className="titulo-marca text-3xl">Painel do dono</h2>
+          <p className="mt-2 text-sm text-zinc-500">Veja os sinais da operação e o próximo passo para cada prioridade.</p>
         </div>
         <div className="ml-auto"><SeletorPeriodo valor={periodo} onChange={trocar} /></div>
       </header>
@@ -52,11 +53,11 @@ export function IndicadoresTela() {
 }
 
 function Leituras({ d }: { d: Dados }) {
-  if (!d.leituras.length) return null;
   return (
-    <Secao titulo="O que os números dizem" descricao="Leituras automáticas do período, com o próximo passo.">
+    <Secao titulo="Prioridades do período" descricao="Alertas e oportunidades calculados com os dados registrados; confira o recebimento no financeiro antes de decidir um gasto.">
+      {!d.leituras.length && <p className="cartao text-sm">Sem alertas calculados neste período. Confira a conciliação e a agenda para completar a análise.</p>}
       <div className="grid gap-3 md:grid-cols-2">
-        {d.leituras.map((l) => {
+        {[...d.leituras].sort((a, b) => Number(b.tipo === "atencao") - Number(a.tipo === "atencao")).map((l) => {
           const Icone = l.tipo === "atencao" ? AlertTriangle : l.tipo === "bom" ? CheckCircle2 : Lightbulb;
           return (
             <div key={l.titulo} className={`cartao flex gap-3 ${l.tipo === "atencao" ? "border-amber-300" : ""}`}>

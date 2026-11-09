@@ -115,7 +115,7 @@ function celcash(metodo: string, caminho: string, u: URL) {
     return json({ Transactions: [{ galaxPayId: Number(ids), subscriptionGalaxPayId: null, value: 7000, payday: HOJE, paydayDate: HOJE, status: "payedPix", Pix: { qrCode: "pix-cel" } }] });
   }
   if (metodo === "GET" && caminho === "/charges") {
-    return json({ Charges: [{ galaxPayId: Number(ids), mainPaymentMethodId: "pix", Transactions: [{ galaxPayId: 7001, value: 4321, payday: HOJE, paydayDate: HOJE, status: "payedPix" }] }] });
+    return json({ Charges: [{ galaxPayId: Number(ids), mainPaymentMethodId: "pix", Transactions: [{ galaxPayId: 7001, value: 4321, payday: HOJE, paydayDate: HOJE, paydayDateDateTime: `${HOJE} 12:00:00`, status: "payedPix" }] }] });
   }
   if (metodo === "DELETE") return json({ type: true });
   return json({ error: { message: `rota falsa nao implementada: ${metodo} ${caminho}` } }, 404);

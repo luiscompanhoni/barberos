@@ -1,12 +1,13 @@
 export type LinkNavegacao = { href: string; rotulo: string };
 export type GrupoNavegacao = { titulo: string; itens: LinkNavegacao[]; agrupado: boolean };
 const GRUPOS = [
-  { titulo: "Visão geral", rotas: ["/painel", "/indicadores", "/agentes"], agrupado: false },
+  { titulo: "Visão geral", rotas: ["/painel"], agrupado: false },
   { titulo: "Agenda", rotas: ["/recepcao", "/meu-dia", "/minha-agenda", "/semana"], agrupado: true },
-  { titulo: "Operação", rotas: ["/comandas", "/caixa", "/conversas", "/financeiro"], agrupado: false },
+  { titulo: "Operação", rotas: ["/comandas", "/caixa", "/conversas", "/estoque"], agrupado: false },
+  { titulo: "Financeiro", rotas: ["/financeiro", "/indicadores"], agrupado: false },
   { titulo: "Relacionamento", rotas: ["/clientes", "/assinaturas", "/planos", "/campanhas", "/recompras", "/jogos"], agrupado: true },
   { titulo: "Equipe", rotas: ["/reunioes", "/desempenho", "/avaliacoes", "/checklist", "/rh", "/recrutamento", "/expediente", "/campanhas-equipe", "/cultura-black"], agrupado: true },
-  { titulo: "Criação e estoque", rotas: ["/estudio", "/estoque"], agrupado: false },
+  { titulo: "Criações", rotas: ["/agentes", "/estudio"], agrupado: false },
   { titulo: "Configurações", rotas: ["/equipe", "/whatsapp", "/notificacoes", "/auditoria", "/simulador"], agrupado: true },
 ];
 export function rotaAtiva(path: string, href: string) {

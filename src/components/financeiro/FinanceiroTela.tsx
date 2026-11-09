@@ -10,9 +10,11 @@ import { LinksPagamentoTela } from "./LinksPagamentoTela";
 import { ResultadoTela } from "./ResultadoTela";
 import { ResumoTela } from "./ResumoTela";
 import { HistoricoTela } from "./HistoricoTela";
+import { IndicadoresTela } from "@/components/indicadores/IndicadoresTela";
 
-export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | "resumo" | "resultado" | "historico";
+export type Aba = "caixa" | "despesas" | "links" | "estornos" | "conciliacao" | "resumo" | "resultado" | "historico" | "indicadores";
 const ABAS: { k: Aba; r: string; lucro?: boolean }[] = [
+  { k: "indicadores", r: "Painel do dono" },
   { k: "caixa", r: "Caixa" }, { k: "despesas", r: "Despesas" }, { k: "links", r: "Links de pagamento" }, { k: "estornos", r: "Estornos" },
   { k: "conciliacao", r: "Conciliação" }, { k: "resumo", r: "Resumo do mês", lucro: true },
   { k: "resultado", r: "Resultado (Celcash e Stone)", lucro: true },
@@ -20,10 +22,10 @@ const ABAS: { k: Aba; r: string; lucro?: boolean }[] = [
 ];
 
 /** Financeiro: caixa, contas a pagar, links, estornos, conciliacao e (com a permissao "lucro") o resumo e o resultado do mes. */
-export function FinanceiroTela({ verLucro, gestao, dono = false, abaInicial = "caixa", estornosPendentes = 0 }: { verLucro: boolean; gestao: boolean; dono?: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
+export function FinanceiroTela({ verLucro, verIndicadores = false, gestao, dono = false, abaInicial = "caixa", estornosPendentes = 0 }: { verLucro: boolean; verIndicadores?: boolean; gestao: boolean; dono?: boolean; abaInicial?: Aba; estornosPendentes?: number }) {
   const aba = abaInicial;
   const [pendentes, setPendentes] = useState(estornosPendentes);
-  const abas = ABAS.filter((a) => a.k !== "caixa" && (!a.lucro || verLucro) && (a.k !== "historico" || dono));
+  const abas = ABAS.filter((a) => a.k !== "caixa" && (!a.lucro || verLucro) && (a.k !== "historico" || dono) && (a.k !== "indicadores" || verIndicadores));
   return (
     <div className="space-y-4">
       <header className="crm-page-header cabecalho-gestao">
@@ -42,7 +44,7 @@ export function FinanceiroTela({ verLucro, gestao, dono = false, abaInicial = "c
           </Link>
         ))}
       </nav>
-      {aba === "caixa" ? <CaixaTela /> : aba === "despesas" ? <DespesasTela /> : aba === "links" ? <LinksPagamentoTela />
+      {aba === "indicadores" && verIndicadores ? <IndicadoresTela /> : aba === "caixa" ? <CaixaTela /> : aba === "despesas" ? <DespesasTela /> : aba === "links" ? <LinksPagamentoTela />
         : aba === "estornos" ? <EstornosTela onMudou={() => fetch("/api/estornos").then((r) => r.json()).then((x) => setPendentes(x.pendentes?.filter((p: { status: string }) => p.status === "PENDENTE").length ?? 0)).catch(() => {})} />
           : aba === "historico" && dono ? <HistoricoTela /> : aba === "conciliacao" ? <ConciliacaoTela gestao={gestao} /> : aba === "resultado" ? <ResultadoTela /> : <ResumoTela />}
     </div>

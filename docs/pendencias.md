@@ -14,6 +14,13 @@ rastreável e o primeiro grupo de clientes pronto para entrar. Jogos, IA e finan
 
 ### A0. Abertos desta semana
 
+- [ ] Homologar para futura publicação os [ajustes das 15 anotações de 09/11](ajustes-anotacoes-2026-11-09.md).
+  [Quatro ciclos locais concluídos](revisao-anotacoes-4-ciclos-2026-11-09.md), oito achados corrigidos,
+  check e cinco fluxos aprovados; backup sintético restaurado e migração/rollback validados.
+  Login social aguarda criação dos aplicativos Google/Facebook/Apple;
+  nenhuma credencial foi inventada. Antes de eventual deploy, validar CI Linux, versão instalada e
+  restauração de backup com bloqueios de envio, IA paga, campanhas e pagamentos preservados.
+
 - [ ] Homologar o ritmo do bot preparado em 09/11 com número interno autorizado, após CI Linux e publicação com backup/restauração. Pausas locais de 2–25 segundos, interrupção por nova entrada/HUMANO e histórico de ferramentas preservado. Envios gerais, IA paga geral, campanhas e pagamentos continuam bloqueados. A correção da agenda do app foi separada e permanece fora desta entrega do bot.
 
 - [ ] Homologar/publicar o crescimento preparado em 08/11: quadro de migração, metas/margem, calendário dentro do sistema, indicação V2 e reserva de crédito para mensalidade. Flags novas permanecem desligadas. A leitura dos dois painéis encontrou bases nominais divergentes; falta conciliação por identidade, ciclo e valores individuais, além de sandbox/PostgreSQL/recuperação e piloto do gerente. [Entrega, evidências e rollback](implantacao-crescimento-2026-11-08.md).

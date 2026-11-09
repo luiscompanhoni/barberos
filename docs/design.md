@@ -1,5 +1,13 @@
 # Design e acessibilidade
 
+Preparado em 09/11: seleção de serviços por cartão com `aria-pressed`, agenda direta e abas locais,
+indicadores dentro do Financeiro, contato/pesquisa em Conversas e quatro opções de aparência da gestão.
+Automático usa faixas fixas em São Paulo; cliente e barbeiro mantêm a identidade Black.
+Prévia da roleta no topo e botão central sem translação duplicada.
+[Escopo e condições](ajustes-anotacoes-2026-11-09.md).
+Revisão: confirmação preserva a seleção durante o salvamento; títulos de etapa recebem foco e
+carregamento de horário/preço é anunciado. [Quatro ciclos e evidências](revisao-anotacoes-4-ciclos-2026-11-09.md).
+
 Logo BarberOS aprovada em 03/11/2026: opção 01, chama verde-lima `#C6F566` sobre grafite
 `#101316`. Arquivos vetoriais em `public/brand/`; o nome BarberOS está convertido em contornos.
 `Marca` apresenta a identidade do sistema e mantém o nome configurado da barbearia como identificação

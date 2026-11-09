@@ -67,7 +67,7 @@ type Transacao = {
   Boleto?: { pdf?: string | null; bankLine?: string | null } | null;
 };
 type Assinatura = { galaxPayId: number; paymentLink?: string | null; mainPaymentMethodId: string; Transactions?: Transacao[] };
-type Avulsa = { galaxPayId: number; paymentLink?: string | null; mainPaymentMethodId: string; Transactions?: Transacao[] };
+type Avulsa = { galaxPayId: number; value?: number; paymentLink?: string | null; mainPaymentMethodId: string; Transactions?: Transacao[] };
 
 const METODO: Record<FormaPagamento, string> = { PIX: "pix", CARTAO: "creditcard", BOLETO: "boleto" };
 const FORMA: Record<string, FormaPagamento> = { pix: "PIX", creditcard: "CARTAO", boleto: "BOLETO" };
@@ -115,10 +115,15 @@ export function converter(t: Transacao, a: Pick<Assinatura, "paymentLink" | "mai
 
 /** Cobranca avulsa -> formato interno (status pela transacao unica dela). */
 export function converterAvulsa(c: Avulsa): CobrancaAvulsa {
-  const t = c.Transactions?.[0];
+  // Mais de uma transação exige conciliação; não escolhe uma delas por posição.
+  const t = c.Transactions?.length === 1 ? c.Transactions[0] : null;
   const base = t ? converter(t, { mainPaymentMethodId: c.mainPaymentMethodId, paymentLink: c.paymentLink }) : null;
   return {
     id: `${PREFIXO.avulsa}${c.galaxPayId}`,
+    valorCentavos: c.value !== undefined && c.value !== base?.valorCentavos ? undefined : base?.valorCentavos,
+    moeda: "BRL",
+    liquidadoCentavos: base?.recebimento?.valorCentavos,
+    forma: base?.forma ?? FORMA[c.mainPaymentMethodId] ?? null,
     // Avulsa nao "atrasa": em aberto continua pendente ate pagar ou cancelar.
     status: !base ? "PENDENTE" : base.status === "ATRASADA" && t && ABERTOS.includes(t.status) ? "PENDENTE" : base.status,
     pagaEm: base?.pagaEm ?? null,

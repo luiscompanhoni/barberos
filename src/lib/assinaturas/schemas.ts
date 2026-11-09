@@ -4,6 +4,7 @@ import { MOTIVOS } from "./retencao-regras";
 /** Cadastro/edicao de plano (painel do dono). */
 export const schemaPlano = z.object({
   nome: z.string().trim().min(2).max(80),
+  ordem: z.number().int().min(0).max(10_000).optional(),
   descricao: z.string().trim().max(500).nullable().optional(),
   precoCentavos: z.number().int().min(100).max(100_000_00),
   ativo: z.boolean().optional(),

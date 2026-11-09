@@ -1,0 +1,33 @@
+/* Somente gestão: cliente e barbeiro mantêm preto e dourado da Black. */
+html .crm-workspace .crm-theme-picker { display: flex; justify-content: center; flex-wrap: wrap; gap: 4px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 16px; background: var(--surface-card); }
+html .crm-workspace .crm-theme-picker button { display: grid; place-items: center; min-width: 36px; min-height: 36px; border-radius: 10px; color: var(--text-secondary); }
+html .crm-workspace .crm-theme-picker button[aria-pressed="true"] { background: var(--surface-active); color: var(--text-primary); box-shadow: inset 0 0 0 1px var(--border-default); }
+html[data-crm-tema="escuro"] .black-workspace.crm-workspace { background-image: none; --surface-card: #1b1f22; --surface-card-raised: #282e31; }
+html[data-crm-tema="espacial"] .black-workspace.crm-workspace { --surface-app: #080f23; --surface-card: rgb(16 25 50 / 88%); --surface-card-raised: #202c49; --surface-sidebar: #101a32; background-color: #080f23; background-image: radial-gradient(circle at 20% 13%, #dce6ff 0 1px, transparent 1.6px), radial-gradient(circle at 72% 45%, #c4cded 0 .8px, transparent 1.4px), radial-gradient(ellipse at 75% 10%, #342959 0, transparent 65%); background-size: 163px 173px, 239px 211px, 100% 100%; }
+html[data-crm-tema="claro"] .black-workspace.crm-workspace {
+  color-scheme: light;
+  --surface-app: #f4f6f3; --surface-card: #fff; --surface-card-raised: #f0f4ed; --surface-inset: #f4f6f3; --surface-hover: #edf2e8; --surface-active: #e2efcd; --surface-sidebar: #fff;
+  --border-subtle: #dce2d7; --border-default: #b8c3b0; --border-control: #a6b39d;
+  --text-primary: #182119; --text-secondary: #52604f; --color-ouro: #46681e; --color-fundo: #f4f6f3;
+  --agenda-cabecalho: #f0f4ed; --agenda-horarios: #f4f6f3; --agenda-coluna: #edf0ea;
+  --color-white: #fff; --color-zinc-50: #f7f8f6; --color-zinc-100: #edf0ea; --color-zinc-200: #dce2d7; --color-zinc-300: #b3bdb0; --color-zinc-400: #6c7968; --color-zinc-500: #52604f; --color-zinc-600: #45513f; --color-zinc-700: #34402f; --color-zinc-800: #263023; --color-zinc-900: #182119; --color-zinc-950: #0c120d;
+  --color-red-50: #fff0f1; --color-red-100: #ffe0e4; --color-red-600: #c71e35; --color-red-700: #ad172c; --color-red-800: #891327;
+  --color-amber-50: #fff8e6; --color-amber-100: #ffedc2; --color-amber-700: #83520c; --color-amber-800: #724410; --color-amber-900: #5c360f;
+  --color-emerald-50: #ecf9ee; --color-emerald-100: #dbf4df; --color-emerald-600: #14732b; --color-emerald-700: #14622a; --color-emerald-800: #135025;
+  --glow-ouro: radial-gradient(100% 100% at 100% 0, #eaf5d9, transparent 72%);
+  background: var(--surface-app); color: var(--text-primary);
+}
+html[data-crm-tema="claro"] .crm-workspace :is(.text-zinc-400, .text-zinc-500, .text-zinc-600, .black-nav-item, .crm-tab) { color: var(--text-secondary); }
+html[data-crm-tema="claro"] .crm-workspace :is(.eyebrow, .black-nav-item[aria-current="page"], .black-nav-item[aria-current="page"] svg) { color: #46681e; }
+html[data-crm-tema="claro"] .crm-workspace :is(.black-nav-item:hover, .crm-tab:hover, .crm-tab[data-ativa="true"]) { color: var(--text-primary); background: var(--surface-hover); }
+html[data-crm-tema="claro"] .crm-workspace :is(.crm-tabs, .crm-tabs-menu, .black-mobile-header, .black-bottom-nav, .crm-modal, .crm-more-dialog, .black-more-dialog, .crm-filterbar, .crm-subtabs) { background: var(--surface-card); border-color: var(--border-subtle); color: var(--text-primary); }
+html[data-crm-tema="claro"] .crm-workspace .crm-tabs-indicator { background: var(--surface-active); }
+html[data-crm-tema="claro"] .crm-workspace .black-brand-name img { filter: brightness(.12); }
+html[data-crm-tema="claro"] .crm-workspace :is(input[type="date"], input[type="time"]) { color-scheme: light; }
+html[data-crm-tema="claro"] .crm-workspace .crm-filterbar :is(button, input, select) { color: var(--text-primary); }
+html[data-crm-tema="claro"] .crm-workspace .crm-subtabs :is(a, button) { color: var(--text-secondary); }
+html[data-crm-tema="claro"] .crm-workspace .crm-subtabs :is(a[aria-current="page"], button[aria-pressed="true"]) { color: var(--text-primary); background: var(--surface-active); }
+html .crm-workspace .crm-agenda-toolbar { display: grid; grid-template-columns: minmax(0, 1fr); align-items: center; gap: 12px; }
+.crm-agenda-date { text-align: center; }
+.crm-agenda-views { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+@media (min-width: 1280px) { html .crm-workspace .crm-agenda-toolbar { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); } .crm-agenda-tools { justify-content: flex-end; } }

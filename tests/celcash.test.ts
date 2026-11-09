@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { converter, traduzirStatus } from "@/lib/pagamentos/celcash";
+import { converter, converterAvulsa, traduzirStatus } from "@/lib/pagamentos/celcash";
 
 describe("Celcash: status", () => {
   const hoje = "2026-10-05";
@@ -20,6 +20,15 @@ describe("Celcash: status", () => {
 });
 
 describe("Celcash: conversao da transacao", () => {
+  it("avulsa exige valor e instante efetivo sem confundir pago externo ou transações múltiplas", () => {
+    const t = { galaxPayId: 1, value: 8000, payday: "2026-11-09", paydayDateDateTime: "2026-11-09 12:00:00", status: "payedPix" };
+    const c = { galaxPayId: 2, mainPaymentMethodId: "pix", Transactions: [t] };
+    expect(converterAvulsa(c)).toMatchObject({ id: "celchg_2", valorCentavos: 8000, liquidadoCentavos: 8000, moeda: "BRL", pagaEm: "2026-11-09T15:00:00.000Z" });
+    expect(converterAvulsa({ ...c, value: 9000 }).valorCentavos).toBeUndefined();
+    expect(converterAvulsa({ ...c, Transactions: [{ ...t, paydayDateDateTime: undefined }] }).liquidadoCentavos).toBeUndefined();
+    expect(converterAvulsa({ ...c, Transactions: [{ ...t, payedOutsideGalaxPay: true }] }).liquidadoCentavos).toBeUndefined();
+    expect(converterAvulsa({ ...c, Transactions: [t, { ...t, galaxPayId: 3 }] }).liquidadoCentavos).toBeUndefined();
+  });
   const pix = { galaxPayId: 10, subscriptionGalaxPayId: 7, value: 11800, payday: "2099-01-01", status: "pendingPix", Pix: { qrCode: "000201...", image: "https://img", page: "https://pagina-pix" } };
   it("Pix usa a pagina e o copia e cola da transacao", () => {
     const c = converter(pix, { mainPaymentMethodId: "pix", paymentLink: "https://link-assinatura" });

@@ -13,6 +13,13 @@
 | `npm run teste:historico` | correções, estorno histórico, auditoria, bloqueios e concorrência num PostgreSQL local descartável |
 | `npm run build` | build de produção do Next |
 | `npm run check` | lint, lint:rules, tipos, testes unitários e build, em sequência |
+| `npm run teste:agenda:cliente` | app autenticado, agenda local, grupos, concorrência e preservação do fluxo legado |
+| `npm run teste:anotacoes` | contato e sessão revogada, auditoria, grupo, retorno antigo do gateway, comanda concorrente e claim incerto |
+
+Os dois scripts novos recusam bancos fora da instância descartável nominal em 127.0.0.1:55549.
+Configuração e critérios em [ajustes de 09/11](ajustes-anotacoes-2026-11-09.md).
+[Quatro ciclos concluídos](revisao-anotacoes-4-ciclos-2026-11-09.md): oito achados corrigidos,
+check final aprovado, cinco fluxos aprovados e restauração sintética com comparação integral de 124 tabelas.
 
 Durante o trabalho, rode o teste escopado (`npx vitest run tests/<arquivo>.test.ts` ou `npm run teste:<área>`). Antes de commit, `npm run check`; se a mudança mexe em banco, fluxo ou migration, também o `teste:<área>` correspondente. O CI (`.github/workflows/ci.yml`) roda tudo isso e ainda aplica as migrations num banco limpo, confere o schema e roda o seed.
 

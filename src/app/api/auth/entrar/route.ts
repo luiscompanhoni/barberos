@@ -19,11 +19,5 @@ export const POST = rota(async (req: Request) => {
   const tel = normalizarTelefone(b.telefone);
   if (!tel) throw new ErroNegocio("Telefone inválido.", 400);
   const u = await verificarCodigo(tel, b.codigo, b.area);
-  if (b.area === "equipe" && u.papel === "CLIENTE") {
-    throw new ErroNegocio("Esse número é de cliente. Entre pela área do cliente.", 403);
-  }
-  if (b.area === "cliente" && u.papel !== "CLIENTE") {
-    throw new ErroNegocio("Esse número é da equipe. Entre pelo acesso da equipe.", 403);
-  }
   return NextResponse.json(await abrirSessao(u));
 });

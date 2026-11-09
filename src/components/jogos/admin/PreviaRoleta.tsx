@@ -27,15 +27,15 @@ export function PreviaRoleta({ fatias }: { fatias: FatiaRoleta[] }) {
   }
 
   return (
-    <div className="rounded-xl bg-zinc-950 p-4 text-white">
-      <p className="text-center text-xs font-semibold uppercase tracking-wide text-amber-300">Prévia visual — sem prêmio real</p>
+    <div className="rounded-xl bg-[#090c0b] p-4 text-[#f5f0e0]">
+      <p className="text-center text-xs font-semibold uppercase tracking-wide text-[#eacb72]">Prévia visual — sem prêmio real</p>
       <div className="mx-auto mt-3 max-w-[320px]">
         <RodaBlack ref={roda} fatias={fatias} girando={girando} podeGirar={fatias.length >= 2} aoGirar={demonstrar} rotuloBotao="TESTAR" rotuloAcessivel="Testar a roleta sem gerar prêmio" />
       </div>
-      <p className="mt-3 text-center text-xs text-zinc-300" aria-live="polite">
+      <p className="mt-3 text-center text-xs text-[#d4d6d2]" aria-live="polite">
         {fatias.length < 2 ? "Adicione pelo menos dois prêmios ativos com nome para testar a roleta." : resultado ? `Exemplo: ${resultado}. Nenhum prêmio foi gerado.` : "Toque em testar para visualizar o giro. Nenhuma rodada será consumida."}
       </p>
-      <p className="mt-1 text-center text-xs text-zinc-400">Demonstração visual; o resultado não representa as chances reais.</p>
+      <p className="mt-1 text-center text-xs text-[#b5bbb3]">Demonstração visual; o resultado não representa as chances reais.</p>
     </div>
   );
 }

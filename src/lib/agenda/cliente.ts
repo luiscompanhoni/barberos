@@ -19,6 +19,7 @@ import { dataLocal } from "./tempo";
 import { checarTransicaoNaReserva } from "./transicao";
 import { travarClienteAgenda, type TitularAgenda } from "./cliente-identidade";
 import { conferirSemReservaAdicional } from "./reservas-adicionais";
+import { conferirAntecipadoParaRemarcar } from "./antecipado-grupo";
 
 const MIN = 60_000;
 const ATIVOS_FUTUROS = ["MARCADO", "CONFIRMADO"] as const;
@@ -85,6 +86,8 @@ export async function agendarPeloCliente(p: {
   clienteId?: string;
   usuarioId?: string;
   sessaoVersao?: number;
+  /** Injetado pela rota autenticada, sem relação com a origem do agendamento. */
+  canalApp?: true;
   telefone: string;
   nome: string;
   barbeiroId: string;
@@ -126,6 +129,7 @@ export async function agendarPeloCliente(p: {
       premioId: p.premioId,
       precoEsperadoCentavos: p.precoEsperadoCentavos,
       duracaoEsperadaMin: p.duracaoEsperadaMin,
+      canalApp: p.canalApp,
       inicio: p.inicio,
       cliente: cliente ? { id: cliente.id } : { telefone: p.telefone, nome: p.nome },
       ...(p.usuarioId ? { titular: { usuarioId: p.usuarioId, sessaoVersao: p.sessaoVersao ?? 0 } } : {}),
@@ -155,19 +159,20 @@ async function doCliente(clienteId: string, agendamentoId: string) {
   return { ag, cfg };
 }
 
-export async function cancelarPeloCliente(clienteId: string, agendamentoId: string, titular?: TitularAgenda) {
+export async function cancelarPeloCliente(clienteId: string, agendamentoId: string, titular?: TitularAgenda, canalApp?: true) {
+  if (canalApp && !titular) throw new ErroNegocio("Entre novamente para alterar seu horário.", 401, "sessao_invalida");
   const { ag, cfg } = await doCliente(clienteId, agendamentoId);
   await db.$transaction(async (tx) => {
     await travarClienteAgenda(tx, clienteId, titular);
-    await checarTransicaoNaReserva(tx);
+    await checarTransicaoNaReserva(tx, canalApp && titular ? { clienteId, titular } : undefined);
     await travarBarbeiro(tx, ag.barbeiroId);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${clienteId}`}))`;
     const atual = await tx.agendamento.findUniqueOrThrow({ where: { id: ag.id } });
-    if (atual.status !== ag.status || +atual.inicio !== +ag.inicio || atual.barbeiroId !== ag.barbeiroId) throw conflitoHorario();
+    if (atual.clienteId !== clienteId || atual.adicionalDeId || atual.status !== ag.status || +atual.inicio !== +ag.inicio || atual.barbeiroId !== ag.barbeiroId) throw conflitoHorario();
     if (await grupoTemComanda(tx, ag.id)) throw new ErroNegocio("Este atendimento já tem comanda. Fale com a barbearia para cancelar.", 409, "comanda_existente");
     await tx.agendamento.update({ where: { id: ag.id }, data: { status: "CANCELADO" } });
     await tx.agendamento.updateMany({ where: { adicionalDeId: ag.id }, data: { status: "CANCELADO" } });
-    await auditar(tx, null, "cancelar_pelo_cliente", "agendamento", ag.id);
+    await auditar(tx, titular?.usuarioId ?? null, "cancelar_pelo_cliente", "agendamento", ag.id);
   });
   void aoCancelarHorario(ag.id);
   publicar({ tipo: "agenda", barbeiroIds: [ag.barbeiroId], datas: [dataLocal(ag.inicio, cfg.fuso)] });
@@ -175,7 +180,8 @@ export async function cancelarPeloCliente(clienteId: string, agendamentoId: stri
 }
 
 /** Remarca mantendo o servico; pode trocar de barbeiro. */
-export async function remarcarPeloCliente(clienteId: string, agendamentoId: string, novoInicio: Date, barbeiroId?: string, forcarAvulso = false, precoEsperadoCentavos?: number, titular?: TitularAgenda, duracaoEsperadaMin?: number) {
+export async function remarcarPeloCliente(clienteId: string, agendamentoId: string, novoInicio: Date, barbeiroId?: string, forcarAvulso = false, precoEsperadoCentavos?: number, titular?: TitularAgenda, duracaoEsperadaMin?: number, canalApp?: true) {
+  if (canalApp && !titular) throw new ErroNegocio("Entre novamente para alterar seu horário.", 401, "sessao_invalida");
   const { ag, cfg } = await doCliente(clienteId, agendamentoId);
   const adicionais = await db.agendamento.findMany({ where: { adicionalDeId: ag.id, origem: "SITE", status: { not: "CANCELADO" } }, orderBy: { inicio: "asc" } });
   if (adicionais.length && precoEsperadoCentavos === undefined) throw new ErroNegocio("Consulte o valor antes de remarcar.", 422, "preco_obrigatorio");
@@ -191,13 +197,14 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
   try {
     const novo = await db.$transaction(async (tx) => {
       await travarClienteAgenda(tx, clienteId, titular);
-      await checarTransicaoNaReserva(tx);
+      await checarTransicaoNaReserva(tx, canalApp && titular ? { clienteId, titular } : undefined);
       // Trava origem e destino sempre na mesma ordem (evita deadlock entre remarcacoes cruzadas).
       for (const id of [...new Set([ag.barbeiroId, destino])].sort()) await travarBarbeiro(tx, id);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`cliente:${clienteId}`}))`;
       const atual = await tx.agendamento.findUniqueOrThrow({ where: { id: ag.id } });
-      if (atual.status !== ag.status || +atual.inicio !== +ag.inicio || +atual.fim !== +ag.fim || atual.barbeiroId !== ag.barbeiroId) throw conflitoHorario();
+      if (atual.clienteId !== clienteId || atual.adicionalDeId || atual.status !== ag.status || +atual.inicio !== +ag.inicio || +atual.fim !== +ag.fim || atual.barbeiroId !== ag.barbeiroId) throw conflitoHorario();
       await conferirSemReservaAdicional(tx, ag.id);
+      await conferirAntecipadoParaRemarcar(tx, ag.id);
       const adicionaisAtuais = await tx.agendamento.findMany({ where: { adicionalDeId: ag.id, origem: "SITE", status: { not: "CANCELADO" } }, orderBy: { inicio: "asc" } });
       if (adicionaisAtuais.length !== adicionais.length || adicionaisAtuais.some((a, i) => a.id !== adicionais[i].id || a.status !== adicionais[i].status || +a.inicio !== +adicionais[i].inicio || a.barbeiroId !== adicionais[i].barbeiroId)) throw conflitoHorario();
       if (adicionais.length && await tx.itemComanda.findFirst({ where: { agendamentoId: { in: [ag.id, ...adicionais.map((a) => a.id)] } } })) throw new ErroNegocio("Este atendimento já tem comanda. Fale com a barbearia para alterar.", 409);
@@ -240,7 +247,7 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
         await tx.agendamento.update({ where: { id: adicionais[i].id }, data: { barbeiroId: destino, inicio: new Date(posicao), fim: new Date(fimItem), precoCentavos: precos[i + 1].precoCentavos, assinaturaId: precos[i + 1].assinaturaId } });
         posicao = fimItem;
       }
-      await auditar(tx, null, "remarcar_pelo_cliente", "agendamento", ag.id, {
+      await auditar(tx, titular?.usuarioId ?? null, "remarcar_pelo_cliente", "agendamento", ag.id, {
         de: ag.inicio.toISOString(),
         para: n.inicio.toISOString(),
         barbeiroId: destino,

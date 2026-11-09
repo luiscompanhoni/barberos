@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Smartphone, UserRound } from "lucide-react";
 import { api, ErroApi } from "@/lib/cliente-api";
-import { destinoAposLogin } from "@/lib/auth/destino";
+import { destinoAposLogin, destinoDoPerfil } from "@/lib/auth/destino";
 import { Marca } from "@/components/Marca";
 import { AcessosSociais } from "./AcessosSociais";
 import { CadastroSocial } from "./CadastroSocial";
@@ -24,7 +24,7 @@ type Props = {
   provedoresSociais?: { id: "google" | "facebook" | "apple"; disponivel: boolean }[];
 };
 type Modo = "senha" | "cadastro" | "codigo-tel" | "codigo";
-type RespostaLogin = { definirSenha?: boolean; precisaNome?: boolean; completarCadastro?: boolean };
+type RespostaLogin = { papel?: string; base?: string; definirSenha?: boolean; precisaNome?: boolean; completarCadastro?: boolean };
 
 function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, provedoresSociais = [] }: Props) {
   const router = useRouter();
@@ -56,8 +56,10 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
 
   /** Depois de entrar: cria a senha (quem entrou por codigo ou com senha temporaria) ou segue. */
   function seguir(r: RespostaLogin) {
-    const destino = destinoAposLogin(voltar, destinoPadrao);
-    router.replace(area === "cliente" && busca.get("social") === "pendente" ? "/c/perfil?social=pendente" : r.completarCadastro ? "/c/perfil?foto=1" : r.definirSenha ? (area === "cliente" ? "/c/perfil#senha" : "/conta") : destino);
+    const cliente = (r.papel ?? "CLIENTE") === "CLIENTE";
+    const destino = cliente && busca.get("social") === "pendente" ? "/c/perfil?social=pendente" : r.completarCadastro ? "/c/perfil?foto=1" : r.definirSenha ? (cliente ? "/c/perfil#senha" : "/conta") : destinoDoPerfil(r.papel ?? "CLIENTE", voltar);
+    if (r.base && new URL(r.base).origin !== window.location.origin) { window.location.assign(new URL(destino, r.base).href); return; }
+    router.replace(destino);
     router.refresh();
   }
 
@@ -146,8 +148,8 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
       <label className="rotulo" htmlFor="tel">{rotulo}</label>
       <div className="relative">
         {area === "equipe" && modo === "senha" ? <UserRound className="absolute top-3 left-0 text-zinc-500" size={18} /> : <Smartphone className="absolute top-3 left-0 text-zinc-500" size={18} />}
-        <input id="tel" className="campo-linha pl-7 text-lg" inputMode={area === "equipe" && modo === "senha" ? "text" : "tel"} autoFocus={autoFoco}
-          autoComplete="username" placeholder={area === "equipe" && modo === "senha" ? "(11) 99999-8888 ou usuário" : "(11) 99999-8888"}
+        <input id="tel" className="campo-linha pl-7 text-lg" inputMode={modo === "senha" ? "text" : "tel"} autoFocus={autoFoco}
+          autoComplete="username" placeholder={modo === "senha" ? "(11) 99999-8888 ou usuário" : "(11) 99999-8888"}
           value={identificador} onChange={(e) => { setIdentificador(e.target.value); setCodigo(""); setErro(""); }} />
       </div>
     </div>
@@ -175,7 +177,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
 
         {modo === "senha" && (
           <form onSubmit={entrar} className="mt-10 space-y-6">
-            {campoCelular(area === "cliente" ? "Celular" : "Celular ou usuário")}
+            {campoCelular("Celular ou usuário")}
             {campoSenha}
             <button className="btn-primario w-full py-3" disabled={enviando}>{enviando ? "Entrando..." : <>Entrar <ArrowRight size={16} /></>}</button>
             <div className="flex flex-wrap justify-between gap-2 text-sm">

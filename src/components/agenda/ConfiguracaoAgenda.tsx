@@ -37,8 +37,8 @@ export function ConfiguracaoAgenda(p: { onFechar: () => void }) {
       {!dados ? <p>Carregando…</p> : <>
         <section className="cartao-destaque space-y-3" aria-label="Transição de agenda">
           <h3 className="font-semibold">Convivência com o Cash Barber</h3>
-          <p className="text-sm text-zinc-500">Enquanto a agenda principal estiver no Cash Barber, a equipe confirma os horários por lá. Este modo impede confirmações automáticas no bot e no aplicativo; não sincroniza dados.</p>
-          <p className="text-sm">{dados.agendaExternaAtiva ? "Ativo: confirmação pela equipe." : "Desativado: o BarberOS confirma os próprios horários."}</p>
+          <p className="text-sm text-zinc-500">Este modo encaminha os pedidos do bot à equipe para conferir no Cash Barber. O aplicativo do cliente confirma diretamente na agenda do BarberOS. Não há sincronização automática: mantenha os horários das duas agendas conferidos.</p>
+          <p className="text-sm">{dados.agendaExternaAtiva ? "Ativo para o bot: confirmação pela equipe. O app agenda diretamente no BarberOS." : "Desativado: o BarberOS confirma os próprios horários."}</p>
           <button className="btn" disabled={ocupado} onClick={() => void salvar({ tipo: "fonte", agendaExternaAtiva: !dados.agendaExternaAtiva })}>{dados.agendaExternaAtiva ? "Encerrar transição e usar agenda BarberOS" : "Ativar confirmação pela equipe"}</button>
           <p className="text-xs text-zinc-500">Encerre a transição depois de trazer os horários futuros e parar de receber marcações na agenda anterior.</p>
         </section>

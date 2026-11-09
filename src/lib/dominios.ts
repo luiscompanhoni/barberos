@@ -3,7 +3,7 @@
  * - SITE_URL   (ex.: https://blackbarber.com.br): pagina de venda, area do cliente e links de pagamento;
  * - PAINEL_URL (ex.: https://painel.blackbarber.com.br): sistema da equipe.
  * Sem PAINEL_URL tudo fica num endereco so (como antes). APP_URL continua valendo como padrao.
- * No computador: SITE_URL=http://localhost:3000 e PAINEL_URL=http://painel.localhost:3000.
+ * No computador: use o mesmo endereço localhost nos dois campos para o acesso único.
  */
 const semBarra = (u: string) => u.replace(/\/$/, "");
 const padrao = () => semBarra(process.env.APP_URL || "http://localhost:3000");
@@ -30,3 +30,17 @@ export function ehPaginaDoSite(path: string) {
  * Secure em http, e o login parece nao funcionar). Com o dominio + https, vira seguro sozinho.
  */
 export const cookieSeguro = () => urlSite().startsWith("https://") && urlPainel().startsWith("https://");
+
+/** Compartilha só o domínio explicitamente configurado, nunca um sufixo inferido. */
+export function dominioDaSessao() {
+  const site = new URL(urlSite()).hostname;
+  const painel = new URL(urlPainel()).hostname;
+  if (!cookieSeguro() || site === painel || !site.includes(".") || /^\d+\./.test(site)) return undefined;
+  return painel.endsWith(`.${site}`) ? site : undefined;
+}
+
+/** Cookies não atravessam domínios independentes; portas distintas no mesmo host são compatíveis. */
+export function acessoUnicoCompativel() {
+  const site = new URL(urlSite()), painel = new URL(urlPainel());
+  return (site.hostname === painel.hostname && site.protocol === painel.protocol) || !!dominioDaSessao();
+}

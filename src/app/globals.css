@@ -5,6 +5,7 @@
 @import "./crm-components.css";
 @import "./crm-public.css";
 @import "./black-app.css";
+@import "./crm-temas.css";
 
 /* Black Barber: tokens atualizados com compatibilidade para as classes legadas.
  * white continua sendo superfície, zinc é invertido; status mantêm seus significados.
@@ -341,8 +342,8 @@ textarea {
   box-shadow: 0 0 0 4px #7a5a1e, 0 0 0 7px #e9c46a, 0 0 0 9px #5e4518, 0 0 26px rgba(233, 196, 106, 0.45), 0 8px 16px rgba(0, 0, 0, 0.8);
   transition: transform 0.15s ease, box-shadow 0.3s ease;
 }
-.rb-botao:not(:disabled):hover { transform: translate(-50%, -50%) scale(1.04); }
-.rb-botao:not(:disabled):active { transform: translate(-50%, -50%) scale(0.95); }
+.rb-botao:not(:disabled):hover { transform: scale(1.04); }
+.rb-botao:not(:disabled):active { transform: scale(0.95); }
 .rb-botao:not(:disabled) { animation: rb-convida 2.2s ease-in-out infinite; }
 .rb-botao:disabled { cursor: default; }
 @keyframes rb-convida { 0%, 100% { box-shadow: 0 0 0 4px #7a5a1e, 0 0 0 7px #e9c46a, 0 0 0 9px #5e4518, 0 0 18px rgba(233, 196, 106, 0.3), 0 8px 16px rgba(0, 0, 0, 0.8); } 50% { box-shadow: 0 0 0 4px #7a5a1e, 0 0 0 7px #fff3c4, 0 0 0 9px #5e4518, 0 0 36px rgba(233, 196, 106, 0.7), 0 8px 16px rgba(0, 0, 0, 0.8); } }

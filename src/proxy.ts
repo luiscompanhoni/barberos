@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { COOKIE_SESSAO, lerToken } from "@/lib/auth/token";
+import { lerToken, tokenDoCookie } from "@/lib/auth/token";
 import { dominiosSeparados, ehHostPainel, ehPaginaDoSite, urlPainel, urlSite } from "@/lib/dominios";
 
 /**
  * 1) Site x painel (quando PAINEL_URL esta configurado): cada pagina so abre no seu endereco.
- *    No site, "/" e a pagina de venda e "/entrar" e o login do cliente.
- * 2) Checagem otimista de login: sem sessao, manda para o login certo. A autorizacao de
+ *    No site, "/" é a vitrine e "/entrar" é o acesso único de todos os perfis.
+ * 2) Checagem otimista de login: sem sessão, manda para o acesso único. A autorização de
  *    verdade acontece em cada rota da API (exigirSessao / exigirCliente).
  */
 export async function proxy(req: NextRequest) {
@@ -15,6 +15,7 @@ export async function proxy(req: NextRequest) {
 
   if (separados) {
     const painel = ehHostPainel(req.headers.get("x-forwarded-host") ?? req.headers.get("host"));
+    if (painel && (path === "/entrar" || path === "/c/entrar")) return NextResponse.redirect(`${urlSite()}/entrar${busca}`);
     const doSite = ehPaginaDoSite(path);
     if (painel && doSite && path !== "/" && path !== "/entrar") return NextResponse.redirect(`${urlSite()}${path}${busca}`);
     if (!painel) {
@@ -27,12 +28,11 @@ export async function proxy(req: NextRequest) {
   // Logins, vitrine e paginas de pagamento (link com codigo aleatorio) sao publicos.
   const PUBLICAS = ["/vagas/", "/c/pagamento-simulado/", "/c/pagar/", "/c/assinar/", "/c/link/", "/c/r/", "/i/", "/t/"];
   if (path === "/entrevistas" || path === "/entrar" || path === "/c/entrar" || path === "/assine" || path === "/privacidade" || path === "/termos" || PUBLICAS.some((p) => path.startsWith(p))) return NextResponse.next();
-  const sessao = await lerToken(req.cookies.get(COOKIE_SESSAO)?.value);
+  const sessao = await lerToken(tokenDoCookie(req.cookies));
   if (!sessao) {
-    const cliente = path === "/c" || path.startsWith("/c/");
     // Com enderecos separados, monta pelo endereco configurado (req.url pode vir com o host interno do servidor).
-    const base = separados ? (cliente ? urlSite() : urlPainel()) : req.url;
-    const url = new URL(cliente ? (separados ? "/entrar" : "/c/entrar") : "/entrar", base);
+    const base = separados ? urlSite() : req.url;
+    const url = new URL("/entrar", base);
     // Mantem a query (ex.: /c/planos?plano=... vindo da vitrine) para voltar ao mesmo lugar.
     url.searchParams.set("voltar", path + busca);
     return NextResponse.redirect(url);

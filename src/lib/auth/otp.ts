@@ -67,6 +67,7 @@ export async function solicitarCodigo(telefone: string, area: Area = "equipe", f
 
     const usuario = await tx.usuario.findUnique({ where: { telefone }, include: { cliente: { select: { excluidoEm: true } } } });
     if (usuario && !usuario.ativo) return null;
+    if (usuario?.papel === "CLIENTE" && usuario.cliente?.excluidoEm) return null;
     if (!usuario && area === "equipe") return null;
     if (finalidade === "recuperacao" && (usuario?.papel !== "CLIENTE" || !usuario.cliente || usuario.cliente.excluidoEm)) return null;
 
@@ -85,7 +86,7 @@ export async function solicitarCodigo(telefone: string, area: Area = "equipe", f
   return teste ? codigo : null;
 }
 
-const incluir = { barbeiro: { select: { id: true, ativo: true } }, cliente: { select: { id: true } } } as const;
+const incluir = { barbeiro: { select: { id: true, ativo: true } }, cliente: { select: { id: true, excluidoEm: true } } } as const;
 
 /**
  * Login comum só cria acesso para uma ficha existente. Criar ficha nova é uma
@@ -122,6 +123,7 @@ export async function verificarCodigo(telefone: string, codigo: string, area: Ar
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`auth-usuario:${usuario.id}`}))`;
       usuario = await tx.usuario.findUniqueOrThrow({ where: { id: usuario.id }, include: incluir });
       if (!usuario.ativo) throw invalido;
+      if (usuario.papel === "CLIENTE" && usuario.cliente?.excluidoEm) throw invalido;
       if (finalidade === "recuperacao") {
         if (usuario.papel !== "CLIENTE" || !usuario.cliente) throw invalido;
         const cliente = await tx.cliente.findUnique({ where: { id: usuario.cliente.id } });

@@ -44,6 +44,6 @@ export const POST = rota(async (req: Request) => {
     throw new ErroNegocio(`Esse prêmio vale até ${new Date(premio.expiraEm).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}: escolha um horário até lá.`, 422, "premio_validade");
   }
   const ag = await agendarPeloCliente({ ...dados, premioId, clienteId: s.clienteId, usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0,
-    telefone: cliente.telefone, nome: cliente.nome, origem: "SITE" });
+    telefone: cliente.telefone, nome: cliente.nome, origem: "SITE", canalApp: true });
   return NextResponse.json(ag, { status: 201 });
 });

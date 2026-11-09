@@ -38,8 +38,8 @@ async function main() {
     const e2 = await erroDe(() => entrarComSenha("11933334001", "errada-123", "cliente"));
     const e3 = await erroDe(() => entrarComSenha("11900009999", "errada-123", "cliente"));
     ok(e2?.message === e3?.message && e2?.status === 401, "senha errada e celular inexistente dão a mesma mensagem");
-    const e4 = await erroDe(() => entrarComSenha("11933334001", "navalha-forte-1", "equipe"));
-    ok(e4?.status === 403, "cliente não entra pela área da equipe");
+    const comum = await entrarComSenha("11933334001", "navalha-forte-1", "equipe");
+    ok(comum.id === u.id && comum.papel === "CLIENTE", "acesso único preserva papel CLIENTE mesmo vindo do link antigo da equipe");
 
     // ---- bloqueio por tentativas
     for (let i = 0; i < 5; i++) await erroDe(() => entrarComSenha("11933334001", `errada-${i}xx`, "cliente"));
@@ -72,6 +72,7 @@ async function main() {
     const temp = await definirSenhaTemporaria(dono.id);
     const logado = await entrarComSenha(dono.telefone, temp, "equipe");
     ok(logado.trocarSenha === true, "senha temporária entra e obriga a trocar");
+    ok((await entrarComSenha(dono.telefone, temp, "cliente")).papel === "DONO", "dono usa o mesmo acesso público sem perder ou ampliar seu perfil");
     await db.usuario.update({ where: { id: dono.id }, data: { senhaHash: senhaOriginal, trocarSenha: trocar } });
   } finally {
     await limpar();

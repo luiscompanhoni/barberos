@@ -4,6 +4,8 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { contatoParaConfirmacao } from "@/lib/agenda/transicao";
+import { antecipadoDisponivel } from "@/lib/agenda/antecipado";
+import { checkoutProprio } from "@/lib/pagamentos/checkout";
 
 /** Servicos e barbeiros para o cliente escolher (so o que esta ativo). */
 export const GET = rota(async () => {
@@ -21,9 +23,12 @@ export const GET = rota(async () => {
   ]);
   return NextResponse.json({
     nomeBarbearia: cfg.nomeBarbearia,
-    confirmacaoEquipe: cfg.agendaExternaAtiva,
+    // O app confirma na agenda local; o modo legado continua valendo para o bot.
+    confirmacaoEquipe: false,
     atendimentoUrl: contatoParaConfirmacao(process.env.WHATSAPP_NUMERO_PUBLICO),
     janelaDias: cfg.janelaAgendamentoDias,
+    pagarAntes: await antecipadoDisponivel(),
+    checkout: checkoutProprio(),
     prazoCancelamentoMin: cfg.prazoCancelamentoMin,
     servicos: servicos.map((s) => ({ ...s, barbeiros: s.barbeiros.map((b) => b.barbeiro) })),
   });

@@ -6,7 +6,7 @@ import { api, reais } from "@/lib/cliente-api";
 
 type PlanoApi = {
   id: string; nome: string; descricao: string | null; precoCentavos: number; ativo: boolean;
-  visivel: boolean; compravel: boolean; vendaSomenteEquipe: boolean; etiquetas: string[];
+  visivel: boolean; compravel: boolean; vendaSomenteEquipe: boolean; etiquetas: string[]; ordem: number;
   vagas: number | null; intervaloMinDias: number | null; maxAgendamentosAbertos: number;
   diasSemana: number[]; descontoExtrasPct: number; formasPagamento: string[];
   servicos: { servicoId: string; usosPorCiclo: number | null; servico: { nome: string } }[];
@@ -61,6 +61,7 @@ export function PlanosTela() {
               {p.descontoExtrasPct > 0 && <Tag>{p.descontoExtrasPct}% nos extras</Tag>}
             </div>
             <p className="text-sm">
+              <span className="text-zinc-500">Posição {p.ordem + 1} · </span>
               <b>{p._count.assinaturas}</b> assinante(s)
               {p.vagas !== null && <> · {p.vagasRestantes} de {p.vagas} vagas livres</>}
               {p._count.listaEspera > 0 && <> · <span className="text-amber-700">{p._count.listaEspera} na lista de espera</span></>}
@@ -98,6 +99,7 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
   const [compravel, setCompravel] = useState(x?.compravel ?? true);
   const [vendaSomenteEquipe, setVendaSomenteEquipe] = useState(x?.vendaSomenteEquipe ?? false);
   const [etiquetas, setEtiquetas] = useState((x?.etiquetas ?? []).join(", "));
+  const [posicao, setPosicao] = useState(String((x?.ordem ?? 0) + 1));
   const [erro, setErro] = useState("");
 
   const alterna = <T,>(lista: T[], v: T) => (lista.includes(v) ? lista.filter((i) => i !== v) : [...lista, v]);
@@ -111,9 +113,11 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
     if (!Object.keys(inclusos).length) return setErro("Escolha pelo menos um serviço incluído.");
     if (!formas.length) return setErro("Escolha pelo menos uma forma de pagamento.");
     if (!dias.length) return setErro("Escolha pelo menos um dia da semana.");
+    if (!Number.isInteger(Number(posicao)) || Number(posicao) < 1 || Number(posicao) > 10001) return setErro("Informe uma posição de 1 a 10.001.");
     const body = {
       nome: nome.trim(), descricao: descricao.trim() || null, precoCentavos, ativo, visivel, compravel, vendaSomenteEquipe,
       etiquetas: etiquetas.split(",").map(s => s.trim()).filter(Boolean),
+      ordem: Number(posicao) - 1,
       vagas: vagas ? Number(vagas) : null, intervaloMinDias: intervalo ? Number(intervalo) : null,
       maxAgendamentosAbertos: Number(abertos) || 1, diasSemana: dias.length === 7 ? [] : dias,
       descontoExtrasPct: Number(desconto) || 0, formasPagamento: formas,
@@ -137,6 +141,7 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
         </div>
         <div><label className="rotulo">Descrição (aparece para o cliente)</label><input className="campo" value={descricao} onChange={(e) => setDescricao(e.target.value)} /></div>
         <div><label className="rotulo" htmlFor="etiquetas-plano">Etiquetas (até 3, separadas por vírgula)</label><input id="etiquetas-plano" className="campo" value={etiquetas} onChange={(e) => setEtiquetas(e.target.value)} placeholder="Preferido da galera" maxLength={122} /></div>
+        <div><label className="rotulo" htmlFor="posicao-plano">Posição na lista de planos</label><input id="posicao-plano" type="number" min="1" max="10001" required className="campo" value={posicao} onChange={e => setPosicao(e.target.value)} /><p className="mt-1 text-xs text-zinc-500">1 aparece primeiro. Empates seguem do menor preço para o maior.</p></div>
 
         <div>
           <label className="rotulo">Serviços incluídos (usos por mês: vazio = à vontade)</label>

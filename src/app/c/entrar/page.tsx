@@ -12,7 +12,7 @@ export default async function EntrarCliente() {
     <FormularioLogin
       area="cliente"
       titulo={cfg.nomeBarbearia}
-      subtitulo="Área do cliente"
+      subtitulo="Seu acesso à Black"
       destinoPadrao="/c" codigoDisponivel={modoCodigoNaTela() || process.env.OTP_PROVIDER === "whatsapp"}
       provedoresSociais={provedoresDisponiveis()}
     />

@@ -44,6 +44,12 @@ it("preserva senha e vínculos de cliente já verificado", async () => {
   expect(await verificarCodigo("5547999990000", "123456", "cliente")).toBe(cliente);
   expect(m.salvarUsuario).not.toHaveBeenCalled(); expect(m.apagarIdentidades).not.toHaveBeenCalled();
 });
+it("não autentica nem altera credenciais de cliente cuja ficha foi excluída", async () => {
+  m.consumir.mockResolvedValue({ count: 1 });
+  m.usuario.mockResolvedValue({ id: "u1", ativo: true, papel: "CLIENTE", telefoneVerificadoEm: null, cliente: { id: "c1", excluidoEm: new Date() } });
+  await expect(verificarCodigo("5547999990000", "123456", "cliente")).rejects.toMatchObject({ codigo: "codigo_invalido" });
+  expect(m.salvarUsuario).not.toHaveBeenCalled(); expect(m.apagarIdentidades).not.toHaveBeenCalled();
+});
 it("não procura um código antigo depois que o mais recente foi usado", async () => {
   m.consulta.mockResolvedValueOnce({ usadoEm: new Date(), expiraEm: new Date(Date.now() + 60_000), tentativas: 0 });
   await expect(verificarCodigo("5547999990000", "123456", "cliente")).rejects.toMatchObject({ codigo: "codigo_invalido" });

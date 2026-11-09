@@ -9,6 +9,7 @@ import { SinoNotificacoes } from "./notificacoes/SinoNotificacoes";
 import { agruparLinks, atalhosMobile, rotaAtiva, type LinkNavegacao } from "./navegacao/estrutura";
 import { iconeDaRota, iconeDoGrupo } from "./navegacao/icones";
 import { desativarPushLocal } from "@/lib/pwa/push-cliente";
+import { SeletorTema } from "./navegacao/SeletorTema";
 
 const PAPEIS: Record<string, string> = { DONO: "Dono", GERENTE: "Gerente", LIDER: "Líder de equipe", RECEPCAO: "Recepção", BARBEIRO: "Barbeiro" };
 const iniciais = (nome: string) => nome.trim().split(/\s+/).slice(0, 2).map(p => p[0]?.toUpperCase() ?? "").join("");
@@ -59,6 +60,10 @@ export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
     const temAtivo = g.itens.some(l => rotaAtiva(path, l.href));
     const Icone = iconeDoGrupo(g.titulo);
     const pendencias = g.itens.reduce((n, l) => n + (selos[l.href] ?? 0), 0);
+    if (g.titulo === "Agenda") {
+      const destino = g.itens.find(l => l.href === (black ? "/minha-agenda" : "/recepcao")) ?? g.itens[0];
+      return <Link key="agenda" href={destino.href} onClick={() => setMais(false)} className="black-nav-item" aria-current={temAtivo ? "page" : undefined} title="Agenda" aria-label="Agenda"><Icone size={19} aria-hidden="true" /><span className="crm-nav-label">Agenda</span></Link>;
+    }
     return g.agrupado && !mobile ? <details key={`${g.titulo}:${path}`} className="black-nav-disclosure" open={temAtivo}>
       <summary className="black-nav-item" aria-label={g.titulo} title={g.titulo}><Icone size={19} strokeWidth={1.65} aria-hidden="true" /><span className="crm-nav-label">{g.titulo}</span>
         {!!pendencias && <span className="black-nav-count">{pendencias}</span>}<ChevronDown size={14} className="black-disclosure-arrow" aria-hidden="true" />
@@ -89,7 +94,7 @@ export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
         <button className="crm-nav-toggle black-nav-item" aria-expanded={!compacto} aria-controls="crm-menu-principal" aria-label={compacto ? "Expandir menu" : "Recolher menu"} title={compacto ? "Expandir menu" : "Recolher menu"} onClick={() => setCompacto(c => !c)}><PanelLeft size={18} aria-hidden="true" /><span className="crm-nav-label">Recolher menu</span></button>
         <nav id="crm-menu-principal" aria-label="Menu principal" className="black-sidebar-nav">{menu()}</nav>
       </div>
-      {perfil}
+      <SeletorTema />{perfil}
     </aside>}
     <header className="black-mobile-header"><Marca nome={nomeBarbearia} identidade={identidade} /><SinoNotificacoes href="/notificacoes" area="equipe" /></header>
     <nav className="black-bottom-nav" aria-label="Menu do celular">
@@ -103,7 +108,7 @@ export function Navegacao({ nome, papel, links, nomeBarbearia, selos = {} }: {
     </nav>
     <dialog ref={dialogo} id="black-menu-mais" className="black-more-dialog" aria-labelledby="black-menu-titulo" onClose={() => setMais(false)} onClick={e => { if (e.target === e.currentTarget) setMais(false); }}>
       <div className="black-more-header"><div><p className="eyebrow">Tudo em seu lugar</p><h2 id="black-menu-titulo">Explorar a Black</h2></div><button className="black-icon-button" onClick={() => setMais(false)} aria-label="Fechar menu"><X size={21} aria-hidden="true" /></button></div>
-      <nav aria-label="Todas as áreas">{menu(true)}</nav>{perfil}
+      <nav aria-label="Todas as áreas">{menu(true)}</nav>{!black && <SeletorTema />}{perfil}
     </dialog>
     {erro && <p role="alert" className="black-nav-error">{erro}</p>}
   </>;

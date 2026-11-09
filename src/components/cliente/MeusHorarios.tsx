@@ -179,8 +179,8 @@ export function MeusHorarios() {
                       {a.assinaturaId && !(a.adicionais?.length)
                         ? <span className="selo-ouro mt-3"><Check size={11} /> Pelo plano</span>
                         : <p className="mt-2 text-xs font-semibold text-zinc-700">{reais(a.precoCentavos + (a.adicionais ?? []).reduce((t, x) => t + x.precoCentavos, 0))}</p>}
-                      {!a.adicionais?.length && !a.assinaturaId && a.precoCentavos > 0 && (dados.pagarAntes || a.antecipado?.status === "PAGO") && (
-                        <PagarAntes agendamentoId={a.id} precoCentavos={a.precoCentavos} status={a.antecipado?.status ?? null} checkout={!!dados.checkout}
+                      {a.precoCentavos + (a.adicionais ?? []).reduce((s, x) => s + x.precoCentavos, 0) > 0 && (dados.pagarAntes || a.antecipado?.status === "PAGO") && (
+                        <PagarAntes agendamentoId={a.id} precoCentavos={a.precoCentavos + (a.adicionais ?? []).reduce((s, x) => s + x.precoCentavos, 0)} status={a.antecipado?.status ?? null} checkout={!!dados.checkout}
                           aoPagar={() => { setAviso("Pagamento recebido! É só vir no horário."); carregar(); }} />
                       )}
                     </div>

@@ -2,7 +2,13 @@ import { jwtVerify, SignJWT } from "jose";
 import type { Papel } from "@prisma/client";
 
 // Separado de sessao.ts para o proxy nao carregar o Prisma.
-export const COOKIE_SESSAO = "barberos_sessao";
+export const COOKIE_SESSAO = "barberos_acesso";
+export const COOKIE_SESSAO_LEGADA = "barberos_sessao";
+
+/** Cookie novo prevalece inclusive no logout; uma sessão antiga não ressuscita. */
+export function tokenDoCookie(jar: { get: (nome: string) => { value: string } | undefined }) {
+  return jar.get(COOKIE_SESSAO)?.value ?? jar.get(COOKIE_SESSAO_LEGADA)?.value;
+}
 export const DURACAO_SESSAO_S = 60 * 60 * 24 * 30; // 30 dias
 
 export type Sessao = {
