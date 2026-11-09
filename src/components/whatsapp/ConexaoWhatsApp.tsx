@@ -3,9 +3,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Loader2, LogOut, QrCode, ShieldCheck, Smartphone, TriangleAlert } from "lucide-react";
 import { api } from "@/lib/cliente-api";
+import { formatarTelefone } from "@/lib/telefone";
+import { type Cadastro, ConectarOficial } from "./ConectarOficial";
 
 type Estado = "conectado" | "conectando" | "desconectado" | "sem_instancia" | "fora_do_ar";
-type Info = { modo: "cloud" | "evolution" | "simulador"; estado: Estado | null; numeroOficial: string | null; temChaveBot: boolean };
+type Oficial = { numero: string | null; conectadoEm: string; sincronizacaoErro: string | null; desconectadoEm: string | null; motivoDesconexao: string | null };
+type Info = {
+  modo: "cloud" | "evolution" | "simulador"; estado: Estado | null; numeroOficial: string | null; temChaveBot: boolean;
+  cadastro: Cadastro | null; oficial: Oficial | null;
+};
 
 const MODOS = {
   evolution: { nome: "WhatsApp não oficial (QR code)", desc: "Conecta o número da barbearia lendo um QR code, como o WhatsApp Web. Sem custo por mensagem." },
@@ -120,6 +126,24 @@ export function ConexaoWhatsApp() {
           </ol>
         </section>
       )}
+
+      {info.oficial && (
+        <section className="cartao space-y-1 text-sm">
+          <h2 className="font-semibold">API oficial (número no celular e na Meta)</h2>
+          {info.oficial.desconectadoEm ? (
+            <p className="text-red-600">Desconectado pela Meta ({info.oficial.motivoDesconexao ?? "sem motivo"}). Conecte de novo abaixo.</p>
+          ) : (
+            <p className="flex items-center gap-2 font-semibold text-emerald-600">
+              <CheckCircle2 size={16} /> Conectado{info.oficial.numero ? ` · ${formatarTelefone(info.oficial.numero)}` : ""}
+            </p>
+          )}
+          {info.modo !== "cloud" && !info.oficial.desconectadoEm && (
+            <p className="text-amber-700">O sistema ainda envia pelo modo {MODOS[info.modo].nome.toLowerCase()}: falta trocar WHATSAPP_PROVIDER para &quot;cloud&quot; no servidor.</p>
+          )}
+          {info.oficial.sincronizacaoErro && <p className="text-amber-700">Cópia do histórico: {info.oficial.sincronizacaoErro}</p>}
+        </section>
+      )}
+      {info.cadastro && (!info.oficial || info.oficial.desconectadoEm) && <ConectarOficial cadastro={info.cadastro} onConectado={carregar} />}
 
       {info.modo === "evolution" && (
         <p className="flex gap-2 text-xs text-zinc-500">

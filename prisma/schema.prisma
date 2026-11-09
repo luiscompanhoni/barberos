@@ -267,6 +267,27 @@ model CodigoLogin {
   @@map("codigos_login")
 }
 
+/// Linha unica (id = 1): numero conectado a API oficial pelo cadastro incorporado da Meta.
+model WhatsAppOficial {
+  id             Int       @id @default(1)
+  wabaId         String
+  phoneNumberId  String
+  numero         String?
+  /// Token comercial cifrado (AES-256-GCM, chave derivada do SESSION_SECRET).
+  tokenCifrado   String
+  /// Numero continua no app WhatsApp Business do celular (coexistencia).
+  coexistencia   Boolean   @default(false)
+  conectadoEm    DateTime  @default(now()) @db.Timestamptz(3)
+  /// Pedido de sincronizacao de contatos e historico (a Meta da 24h e so aceita uma vez).
+  sincronizacaoEm DateTime? @db.Timestamptz(3)
+  sincronizacaoErro String?
+  /// Meta avisou que o numero saiu da API (account_update).
+  desconectadoEm DateTime? @db.Timestamptz(3)
+  motivoDesconexao String?
+
+  @@map("whatsapp_oficial")
+}
+
 /// Linha unica (id = 1) com as regras gerais da barbearia.
 model Configuracao {
   id                     Int     @id @default(1)

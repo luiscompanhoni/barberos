@@ -280,6 +280,15 @@ depois para a produção.
   `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`; webhook `<PAINEL_URL>/api/whatsapp/webhook` com o campo `messages`.
   Templates: Autenticação com botão "copiar código" → `WHATSAPP_TEMPLATE_CODIGO` (depois `OTP_PROVIDER="whatsapp"`);
   Utilidade com corpo `Olá {{1}}! {{2}}` → `WHATSAPP_TEMPLATE_AVISO` (avisos fora da janela de 24 h).
+- **WhatsApp oficial com o número no celular (coexistência):** o app da Meta precisa ser Provedor de Tecnologia
+  (verificação da empresa + análise do app). Com `WHATSAPP_APP_ID`, `WHATSAPP_ES_CONFIG_ID` (configuração
+  "Cadastro incorporado do WhatsApp" do Login do Facebook para Empresas, domínio do painel nos domínios permitidos) e
+  `WHATSAPP_APP_SECRET`, a tela WhatsApp (dono) mostra "Conectar com o Facebook". O servidor troca o código pelo token
+  comercial, assina a WABA, grava em `whatsapp_oficial` (token cifrado com chave derivada do `SESSION_SECRET`) e pede
+  a cópia de contatos e histórico (a Meta só aceita uma vez, em até 24 h). `WHATSAPP_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID`
+  no `.env` têm prioridade sobre essa linha. Assine no webhook também `smb_message_echoes` (o que a equipe manda pelo
+  celular entra na conversa e passa ela para a equipe), `history` e `account_update` (desconexão). Conectar derruba os
+  aparelhos vinculados, inclusive a Evolution: troque `WHATSAPP_PROVIDER` para `cloud` logo depois.
 - **Evolution:** sem custo por mensagem nem templates, mas sem garantia da Meta (envio em massa pode bloquear o
   número). `WHATSAPP_PROVIDER="evolution"` e `COMPOSE_PROFILES="evolution"`, deploy, e na tela WhatsApp (dono) leia o
   QR code (Aparelhos conectados). Depois `OTP_PROVIDER="whatsapp"`. Quem conectou antes do status de entrega toca em

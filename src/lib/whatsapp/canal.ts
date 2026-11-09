@@ -10,6 +10,7 @@ import { reservarEnvioPiloto } from "./piloto";
 import { telefonePiloto } from "./piloto-regras";
 import { ehHomologacao } from "@/lib/ambiente";
 import { enviarTextoEvolution } from "./evolution";
+import { credenciaisOficial } from "./oficial";
 import { envioTesteEquipe, testeEquipeAtivo } from "./teste-equipe";
 
 export type ResultadoEnvio = { wamid: string | null };
@@ -34,16 +35,15 @@ export function provedorWhatsApp(): ProvedorWhatsApp {
 /** So a API oficial tem a janela de 24h (fora dela, so modelo aprovado pela Meta). */
 export const temJanela24h = () => provedorWhatsApp() === "cloud";
 
-function configCloud() {
-  const token = process.env.WHATSAPP_TOKEN;
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (!token || !phoneId) throw new Error("WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID são obrigatórios com WHATSAPP_PROVIDER=cloud.");
+async function configCloud() {
+  const c = await credenciaisOficial();
+  if (!c) throw new Error("API oficial sem número: conecte em WhatsApp no painel ou preencha WHATSAPP_TOKEN e WHATSAPP_PHONE_NUMBER_ID.");
   const versao = process.env.WHATSAPP_API_VERSION ?? "v23.0";
-  return { token, url: `https://graph.facebook.com/${versao}/${phoneId}/messages` };
+  return { token: c.token, url: `https://graph.facebook.com/${versao}/${c.phoneId}/messages` };
 }
 
 async function postarCloud(corpo: Record<string, unknown>): Promise<ResultadoEnvio> {
-  const { token, url } = configCloud();
+  const { token, url } = await configCloud();
   const r = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

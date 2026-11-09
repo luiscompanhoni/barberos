@@ -7,6 +7,7 @@ import { ErroNegocio, rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 import { provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { conectarEvolution, desconectarEvolution, estadoEvolution } from "@/lib/whatsapp/evolution";
+import { estadoOficial } from "@/lib/whatsapp/oficial";
 
 export const dynamic = "force-dynamic";
 
@@ -14,11 +15,16 @@ export const dynamic = "force-dynamic";
 export const GET = rota(async () => {
   await exigirSessao(["DONO"]);
   const modo = provedorWhatsApp();
+  const appId = process.env.WHATSAPP_APP_ID;
+  const configId = process.env.WHATSAPP_ES_CONFIG_ID;
   return NextResponse.json({
     modo,
     estado: modo === "evolution" ? await estadoEvolution() : null,
     numeroOficial: modo === "cloud" ? (process.env.WHATSAPP_NUMERO_PUBLICO || null) : null,
     temChaveBot: !!process.env.ANTHROPIC_API_KEY || !!process.env.ANTHROPIC_AUTH_TOKEN,
+    // Ids públicos do cadastro incorporado (o SDK da Meta precisa deles no navegador).
+    cadastro: appId && configId ? { appId, configId, versao: process.env.WHATSAPP_API_VERSION ?? "v23.0" } : null,
+    oficial: await estadoOficial(),
   });
 });
 

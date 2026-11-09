@@ -28,6 +28,7 @@ export type MensagemRecebida = {
 type Payload = {
   entry?: {
     changes?: {
+      field?: string;
       value?: {
         contacts?: { wa_id?: string; profile?: { name?: string } }[];
         statuses?: { id?: string; status?: string; timestamp?: string; errors?: { title?: string; message?: string }[] }[];
@@ -53,6 +54,8 @@ export function lerMensagens(payload: unknown): MensagemRecebida[] {
   const out: MensagemRecebida[] = [];
   for (const entry of (payload as Payload)?.entry ?? []) {
     for (const change of entry.changes ?? []) {
+      // Histórico da coexistência também traz "messages" (mídia antiga): não é mensagem nova.
+      if (change.field && change.field !== "messages") continue;
       const v = change.value;
       for (const m of v?.messages ?? []) {
         if (!m.id || !m.from) continue;

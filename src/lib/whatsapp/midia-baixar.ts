@@ -1,4 +1,5 @@
 import type { MidiaRecebida } from "./midia-tipos";
+import { credenciaisOficial } from "./oficial";
 
 export const MAX_MIDIA_BYTES = 8 * 1024 * 1024;
 
@@ -50,7 +51,7 @@ export async function baixarMidia(m: MidiaRecebida, waId: string, requisitar: ty
     if (!dados.length || dados.length > MAX_MIDIA_BYTES) throw new Error("Mídia vazia ou muito grande.");
     return dados;
   }
-  const token = process.env.WHATSAPP_TOKEN;
+  const token = (await credenciaisOficial())?.token;
   if (!token) throw new Error("Meta não configurada.");
   const versao = process.env.WHATSAPP_API_VERSION || "v23.0";
   if (!/^v\d+\.\d+$/.test(versao)) throw new Error("Versão Meta inválida.");

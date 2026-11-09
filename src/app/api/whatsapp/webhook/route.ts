@@ -1,5 +1,7 @@
 import { after, NextResponse } from "next/server";
 import { receberMensagem } from "@/lib/bot/processar";
+import { espelhar, lerDesconexoes, lerEcos, lerHistorico } from "@/lib/whatsapp/coexistencia";
+import { marcarDesconectado } from "@/lib/whatsapp/oficial";
 import { registrarStatus } from "@/lib/whatsapp/status";
 import { assinaturaValida, lerMensagens, lerStatus, telefoneCanonico } from "@/lib/whatsapp/webhook";
 
@@ -39,8 +41,15 @@ export async function POST(req: Request) {
 
   const mensagens = lerMensagens(payload);
   const status = lerStatus(payload);
+  const ecos = lerEcos(payload);
+  const historico = lerHistorico(payload);
+  const desconexoes = lerDesconexoes(payload);
   after(async () => {
     await registrarStatus(status).catch((e) => console.error("[whatsapp] falha ao gravar status", e));
+    // Coexistência: espelha o que aconteceu no app do celular, sem acionar o bot.
+    if (ecos.length) await espelhar(ecos, { equipeAssume: true }).catch((e) => console.error("[whatsapp] falha ao espelhar ecos", e));
+    if (historico.length) await espelhar(historico, { equipeAssume: false }).catch((e) => console.error("[whatsapp] falha ao gravar histórico", e));
+    for (const d of desconexoes) await marcarDesconectado(d.wabaId, d.motivo).catch((e) => console.error("[whatsapp] falha ao marcar desconexão", e));
     // Registra o lote em ordem sem prender PARAR à espera da resposta anterior.
     await Promise.allSettled(mensagens.map(async (m) => {
       try {
