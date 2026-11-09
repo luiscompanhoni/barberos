@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, CalendarCheck, Clock3, Gift, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
+import { ArrowLeft, CalendarCheck, Check, Clock3, Gift, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import type { PremioCliente } from "@/lib/jogos/tipos";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
@@ -160,18 +160,21 @@ export function AgendarTela() {
           <p className="mb-4 text-sm text-zinc-500">Escolha um ou mais serviços para o mesmo atendimento.</p>
           <div className="space-y-3">
             {catalogo.servicos.map((s) => (
-              <button key={s.id} type="button" aria-pressed={escolhidos.includes(s.id)} className={`cartao-clicavel flex w-full items-center gap-4 p-5 text-left ${escolhidos.includes(s.id) ? "border-ouro ring-1 ring-ouro" : ""}`} onClick={() => {
+              <button key={s.id} type="button" aria-pressed={escolhidos.includes(s.id)} className="cartao-clicavel black-agendar-servico flex w-full items-center gap-4 p-5 text-left" onClick={() => {
                 const ids = escolhidos.includes(s.id) ? escolhidos.filter((id) => id !== s.id) : [...escolhidos, s.id];
                 setServicoId(ids[0] ?? ""); setAdicionais(ids.slice(1));
               }}>
-                <span className="flex-1">
+                <span className="min-w-0 flex-1">
                   <span className="block font-bold">{s.nome}</span>
                   <span className="mt-1 block text-xs text-zinc-500">{s.duracaoMin} min · {reais(s.precoCentavos)}</span>
                 </span>
+                <Check size={20} className={`shrink-0 text-ouro ${escolhidos.includes(s.id) ? "" : "invisible"}`} aria-hidden="true" />
               </button>
             ))}
           </div>
-          {servicosEscolhidos.length > 0 && <p className="mt-4 text-sm">{servicosEscolhidos.length} selecionado(s) · {servicosEscolhidos.reduce((t, s) => t + s.duracaoMin, 0)} min · valor de tabela {reais(servicosEscolhidos.reduce((t, s) => t + s.precoCentavos, 0))}. O valor final pode variar conforme o profissional e o plano.</p>}
+          <p role="status" aria-live="polite" aria-atomic="true" className={servicosEscolhidos.length > 0 ? "mt-4 text-sm" : "sr-only"}>
+            {servicosEscolhidos.length > 0 ? <>{servicosEscolhidos.length} selecionado(s) · {servicosEscolhidos.reduce((t, s) => t + s.duracaoMin, 0)} min · valor de tabela {reais(servicosEscolhidos.reduce((t, s) => t + s.precoCentavos, 0))}. O valor final pode variar conforme o profissional e o plano.</> : "Nenhum serviço selecionado."}
+          </p>
         </Passo>
       )}
 

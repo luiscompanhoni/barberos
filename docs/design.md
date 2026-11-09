@@ -163,6 +163,7 @@ O que está implementado:
   (`AbasPainel`, até 8) lembra a última página e a rolagem.
 - **Área do cliente:** coluna única centralizada `max-w-2xl` (`src/app/c/(area)/layout.tsx`), navegação em
   `NavCliente`.
+- **Seleção dos serviços:** no agendamento, `aria-pressed` controla o contorno dourado, o fundo destacado e o símbolo de confirmação. A regra fica no tema Black, após a superfície dos cartões, para que o destaque não seja sobrescrito; o segundo toque desmarca o serviço. O espaço do símbolo permanece reservado para evitar mudança de altura com nomes longos. O resumo é uma região de status persistente, com atualização educada e atômica, inclusive quando não há serviços selecionados.
 - **Tempo real:** recepção, comandas e conversas atualizam por SSE.
 - Revisão em aparelho: a tela inicial com jogada pendente foi testada em iPhone e Android emulados no Chromium;
   teste em aparelho real está pendente ([pendencias.md](pendencias.md)).

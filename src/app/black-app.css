@@ -48,6 +48,11 @@ html .black-sereno :is(.cartao, .cartao-clicavel):not([class*="bg-"]) {
   background: var(--surface-card); border-color: var(--border-default); border-radius: 18px;
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 3%);
 }
+/* O estado precisa vencer a superfície do tema, que sobrescreve as utilities. */
+html .black-app .black-agendar-servico[aria-pressed="true"] {
+  border-color: var(--color-ouro); background: var(--surface-active);
+  box-shadow: 0 0 0 1px var(--color-ouro);
+}
 .black-sereno .cartao-destaque { background: var(--glow-ouro), var(--surface-card); }
 .black-sereno :is(.text-zinc-500, .text-zinc-600) { color: var(--text-secondary); }
 .black-sereno .btn-primario { background: var(--brand-metal); color: #18170d; border-color: transparent; }
