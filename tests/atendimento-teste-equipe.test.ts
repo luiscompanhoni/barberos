@@ -46,3 +46,15 @@ it("bloqueio geral deixa passar somente resposta de atendimento a membro ativo",
   await expect(enviarTexto("5547999990001", "Cliente externo", 0, "ATENDIMENTO")).rejects.toThrow("bloqueados");
   expect(m.enviar).toHaveBeenCalledTimes(1);
 });
+it("autoriza o wa_id brasileiro sem nono dígito somente para o mesmo dono ativo", async () => {
+  vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "true");
+  vi.stubEnv("WHATSAPP_PROVIDER", "evolution");
+  vi.stubEnv("AMBIENTE", "producao");
+  m.usuario.mockImplementation(({ where }) => Promise.resolve(where.telefone === "5547999990000" ? { id: "dono" } : null));
+  m.enviar.mockResolvedValue({ wamid: "fixture" });
+  await expect(enviarTexto("554799990000", "Resposta solicitada", 0, "ATENDIMENTO")).resolves.toEqual({ wamid: "fixture" });
+  expect(m.enviar).toHaveBeenCalledWith("554799990000", "Resposta solicitada", 0);
+  await expect(enviarTexto("554799990001", "Outro contato", 0, "ATENDIMENTO")).rejects.toThrow("bloqueados");
+  await expect(enviarTexto("554799990000", "Campanha", 0, "CAMPANHA")).rejects.toThrow("bloqueados");
+  expect(m.enviar).toHaveBeenCalledTimes(1);
+});

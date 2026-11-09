@@ -63,6 +63,14 @@ A migração foi preparada e comparada ao esquema anterior sem conexão com banc
 4. Para avisos de mensalidade, configurar data inicial sem retroagir ao histórico, hosts oficiais conferidos e uma única rotina de cobrança. Os exemplos de ambiente ficam desativados. Verificar consentimento, template/canal e situação do contrato antes de habilitar envios.
 5. Em erro de identidade, cobrança duplicada, cancelamento indevido, prêmio inexistente ou mensagem após recusa: interromper o lote, chamar gerente, preservar evidência e corrigir antes de retomar.
 
+## Falha do teste interno: nono dígito
+
+O diagnóstico restrito de 08/11 confirmou entrada e geração da resposta, mas envio bloqueado: o cadastro da equipe usava telefone canônico de 13 dígitos e o `wa_id` recebido tinha 12. A autorização de saída passa a aplicar a mesma conversão brasileira da entrada, após a validação estrita do destinatário. O transporte conserva o `wa_id` original. Permanecem os bloqueios de clientes externos, campanhas, templates e quarentena. A consulta operacional limita-se a seis metadados de mensagens de uma conversa; não lê textos, não reenvia e produz relatório cifrado.
+
+Regressão local: envio de atendimento pelo `wa_id` sem nono dígito do mesmo dono ativo, com rejeição de outro contato e de campanha. Publicação e entrega real devem ser comprovadas separadamente dos testes locais.
+
+Revisão sugerida para esta correção: três ciclos. Prompt: “Revise em 3 ciclos: equivalência de telefone e validação estrita; preservação dos bloqueios por papel, origem e quarentena; transporte e evidências de entrega sem reenvio de histórico. Execute os testes de atendimento/teste-equipe e WhatsApp, lint e tipos. Não publique nem envie mensagens por efeito da revisão.”
+
 ## Revisão semanal
 
 Automação do Codex criada: **Revisão semanal do atendimento Black Barber**, segunda-feira às 9h no horário local do aplicativo. ID: `revis-o-semanal-do-atendimento-black-barber`. Ela consulta fontes acessíveis, informa cobertura, registra os três principais problemas e mantém casos sintéticos. Não envia campanhas nem publica código. Sem acesso a conversas novas, deve declarar a limitação. O computador/aplicativo e os acessos necessários precisam estar disponíveis para a execução local.
