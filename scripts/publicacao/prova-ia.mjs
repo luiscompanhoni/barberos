@@ -1,6 +1,6 @@
 /** Prova técnica sintética, com o mesmo SDK, modelo e autenticação do bot. */
-const Anthropic = require('@anthropic-ai/sdk');
-const { createRequire } = require('node:module');
+import Anthropic from '@anthropic-ai/sdk';
+import { createRequire } from 'node:module';
 (async () => {
   const modelo = process.env.BOT_MODELO || 'claude-opus-5-5';
   const mensagem = process.env.BARBEROS_PROVA_IA === 'mensagem';
@@ -9,7 +9,7 @@ const { createRequire } = require('node:module');
   try { createRequire('/app/server.js').resolve('@anthropic-ai/sdk'); r.sdkExternalizado = true; }
   catch { r.sdkExternalizado = false; }
   try {
-    const c = new Anthropic.default({ timeout: 30000, maxRetries: 0 });
+    const c = new Anthropic({ timeout: 30000, maxRetries: 0 });
     if (mensagem) {
       const m = await c.beta.messages.create({ model: modelo, max_tokens: 32,
         messages: [{ role: 'user', content: 'Teste técnico interno. Responda somente OK.' }] });

@@ -28,7 +28,7 @@ test("bundle executa sem SDK externo e valida GET, mensagem sintética e autenti
   });
   await new Promise(resolve => servidor.listen(0, '127.0.0.1', resolve));
   try {
-    await build({ entryPoints: ['scripts/publicacao/prova-ia.cjs'], outfile: arquivo,
+    await build({ entryPoints: ['scripts/publicacao/prova-ia.mjs'], outfile: arquivo,
       bundle: true, platform: 'node', format: 'cjs', minify: true, logLevel: 'error' });
     const rodar = acao => new Promise((resolve, reject) => {
       const filho = spawn(process.execPath, [arquivo], { cwd: pasta, env: {
