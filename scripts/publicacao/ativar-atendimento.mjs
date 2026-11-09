@@ -30,9 +30,9 @@ try {
   finally { closeSync(fd); }
   resultado.etapa = "ativacao_restrita";
   // O procedimento operacional atual usa os helpers da release comprovada, sem reescrevê-la.
-  const codigo = "import sys\nsys.path.insert(0," + JSON.stringify(`${p.base}/releases/${commit}/barberos/scripts/publicacao`) + ")\n" +
+  const codigoAtivacao = "import sys\nsys.path.insert(0," + JSON.stringify(`${p.base}/releases/${commit}/barberos/scripts/publicacao`) + ")\n" +
     readFileSync(new URL("./ativar_atendimento.py", import.meta.url), "utf8");
-  const comando = ["python3", "-c", codigo, p.base, p.projeto, commit, "--prova-sdk-stdin"];
+  const comando = ["python3", "-c", codigoAtivacao, p.base, p.projeto, commit, "--prova-sdk-stdin"];
   resultado = JSON.parse(remoto(comando.map(shell).join(" "), { input: readFileSync(process.argv[4]) }).toString());
   if (!resultado.concluido) throw Error("Ativação não comprovada");
   process.stdout.write("Atendimento ativado somente para dono/gerente; campanhas bloqueadas.\n");

@@ -39,6 +39,9 @@ jobs:
       - name: Preparar prova com o mesmo SDK do bot
         run: |
           npm ci --ignore-scripts
+          node --check scripts/publicacao/ativar-atendimento.mjs
+          node --check scripts/publicacao/diagnosticar-ia.mjs
+          npx eslint scripts/publicacao/ativar-atendimento.mjs scripts/publicacao/diagnosticar-ia.mjs scripts/publicacao/prova-ia.mjs scripts/publicacao/prova-ia.test.mjs scripts/publicacao/preparar-prova-ia.mjs
           python3 -B scripts/publicacao/test_ativar_atendimento.py
           node --test scripts/publicacao/prova-ia.test.mjs
           node scripts/publicacao/preparar-prova-ia.mjs "$RUNNER_TEMP/prova-ia.cjs"
