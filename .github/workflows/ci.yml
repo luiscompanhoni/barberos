@@ -14,6 +14,15 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  atendimento-audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Conferir ASR com áudio sintético e sem rede no runtime
+        run: |
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t atendimento-ci workers/atendimento
+          docker run --rm --network none --read-only --memory 768m --cpus 0.5 --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:rw,size=32m --entrypoint python atendimento-ci smoke.py teste.wav
   verificar:
     runs-on: ubuntu-latest
     timeout-minutes: 30

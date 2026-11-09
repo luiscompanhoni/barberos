@@ -33,6 +33,42 @@ const ctx = { conversaId: "c1", telefone: "5511999990000", nomePerfil: "Ana" };
 const base = { sistema: "sistema", contexto: "<contexto>agora</contexto>", ctx, nomeModelo: "claude-opus-5-5" };
 
 describe("executarTurno", () => {
+  it("interrompe ferramentas se a equipe assumir enquanto o modelo responde", async () => {
+    const { modelo } = modeloRoteirizado([resposta([{ type: "tool_use", id: "t1", name: "agendar", input: {} }], "tool_use")]);
+    const podeContinuar = vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
+    const executor = vi.fn();
+    const r = await executarTurno({ ...base, historico: [], texto: "Pode marcar", modelo, executor, podeContinuar });
+    expect(r.interrompido).toBe(true); expect(r.resposta).toBe(""); expect(executor).not.toHaveBeenCalled();
+  });
+  it("conclui o aviso do próprio encaminhamento sem voltar a executar ações", async () => {
+    let ativo = true;
+    const { modelo, chamadas } = modeloRoteirizado([
+      resposta([{ type: "tool_use", id: "t1", name: "chamar_atendente", input: {} }], "tool_use"),
+    ]);
+    const executor = vi.fn(async () => { ativo = false; return { texto: "Encaminhado", passouParaHumano: true }; });
+    const r = await executarTurno({ ...base, historico: [], texto: "Quero uma pessoa", modelo, executor, podeContinuar: async () => ativo });
+    expect(r.interrompido).not.toBe(true); expect(r.resposta).toBe("Pedi para a equipe continuar por aqui."); expect(executor).toHaveBeenCalledTimes(1);
+    expect(chamadas).toHaveLength(1);
+  });
+  it("encaminha imagem ao modelo existente e bloqueia alteração baseada só em figurinha", async () => {
+    const { modelo, chamadas } = modeloRoteirizado([
+      resposta([{ type: "tool_use", id: "t1", name: "agendar", input: {} }], "tool_use"),
+      resposta([{ type: "text", text: "Confirma por texto o dia e o horário?" }], "end_turn"),
+    ]);
+    const executor = vi.fn();
+    await executarTurno({ ...base, historico: [], texto: "[figurinha]", imagem: { tipo: "image/jpeg", base64: "aW1hZ2Vt" }, somenteConsulta: true, modelo, executor });
+    expect(chamadas[0].messages[0].content).toContainEqual({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: "aW1hZ2Vt" } });
+    expect(executor).not.toHaveBeenCalled();
+  });
+  it("não executa chamadas posteriores depois de transferir para humano", async () => {
+    const { modelo } = modeloRoteirizado([
+      resposta([{ type: "tool_use", id: "t1", name: "chamar_atendente", input: {} }, { type: "tool_use", id: "t2", name: "agendar", input: {} }], "tool_use"),
+      resposta([{ type: "text", text: "A equipe vai conferir." }], "end_turn"),
+    ]);
+    const executor = vi.fn().mockResolvedValue({ texto: "Encaminhado", passouParaHumano: true });
+    await executarTurno({ ...base, historico: [], texto: "Quero atendente", modelo, executor });
+    expect(executor).toHaveBeenCalledTimes(1);
+  });
   it("executa ferramentas e devolve o texto final", async () => {
     const { modelo, chamadas } = modeloRoteirizado([
       resposta([
@@ -100,6 +136,15 @@ describe("executarTurno", () => {
 });
 
 describe("prompt", () => {
+  it("permite consultar um presente a partir de imagem sem autorizar ação", async () => {
+    const { modelo } = modeloRoteirizado([
+      resposta([{ type: "tool_use", id: "p", name: "meus_presentes", input: {} }], "tool_use"),
+      resposta([{ type: "text", text: "Esse prêmio está disponível." }], "end_turn"),
+    ]);
+    const executor = vi.fn().mockResolvedValue({ texto: "Prêmio confirmado disponível" });
+    await executarTurno({ ...base, historico: [], texto: "[imagem recebida]", somenteConsulta: true, modelo, executor });
+    expect(executor).toHaveBeenCalledWith("meus_presentes", {}, base.ctx);
+  });
   it("calendario marca hoje e amanha com o dia da semana", () => {
     const c = calendario("2026-09-29", 3);
     expect(c).toBe("terça 2026-09-29 (hoje); quarta 2026-09-30 (amanhã); quinta 2026-10-01");

@@ -251,8 +251,10 @@ export async function cancelarPeloCliente(p: Pedido) {
   const ultimo = c.fim ? ultimoDia(c.fim) : null;
   await registrar(p, "CANCELOU", { encerraEm: c.fim, cashbarber });
   aoCliente(p, a.cliente.telefone,
-    `Oi, ${primeiroNome(a.cliente.nome)}! Seu ${a.plano.nome} foi cancelado.` +
-    (ultimo ? ` Você já pagou este mês, então ele continua valendo até ${dataBr(ultimo)} e não haverá novas cobranças.` : " Não haverá novas cobranças.") +
+    (cashbarber
+      ? `Oi, ${primeiroNome(a.cliente.nome)}! Registramos seu pedido de cancelamento do ${a.plano.nome} no BarberOS. A equipe ainda precisa confirmar o encerramento da cobrança no sistema antigo.`
+      : `Oi, ${primeiroNome(a.cliente.nome)}! Seu ${a.plano.nome} foi cancelado.` +
+        (ultimo ? ` Você já pagou este mês, então ele continua valendo até ${dataBr(ultimo)} e não haverá novas cobranças.` : " Não haverá novas cobranças.")) +
     " Horários marcados depois disso continuam, como avulsos. Se mudar de ideia, é só chamar aqui. 💈");
   await avisarDono(
     `❌ Cancelamento: ${a.cliente.nome} (${formatarTelefone(a.cliente.telefone)}) cancelou o ${a.plano.nome}. Motivo: ${motivo}.` +

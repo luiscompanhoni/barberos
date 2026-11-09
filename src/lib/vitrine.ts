@@ -54,7 +54,7 @@ export async function dadosDaVitrine() {
         nome: p.nome,
         descricao: p.descricao,
         etiquetas: p.etiquetas,
-        compravel: p.compravel,
+        compravel: p.compravel && !p.vendaSomenteEquipe,
         precoCentavos: p.precoCentavos,
         intervaloMinDias: p.intervaloMinDias,
         diasSemana: p.diasSemana,

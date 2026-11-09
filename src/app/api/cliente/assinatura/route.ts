@@ -54,7 +54,7 @@ export const GET = rota(async () => {
     planos: await Promise.all(
       planos.map(async (p) => ({
         id: p.id, nome: p.nome, descricao: p.descricao, precoCentavos: p.precoCentavos,
-        etiquetas: p.etiquetas, compravel: p.compravel,
+        etiquetas: p.etiquetas, compravel: p.compravel && !p.vendaSomenteEquipe,
         intervaloMinDias: p.intervaloMinDias, diasSemana: p.diasSemana, descontoExtrasPct: p.descontoExtrasPct,
         formasPagamento: p.formasPagamento,
         servicos: p.servicos.map((x) => ({ nome: x.servico.nome, usosPorCiclo: x.usosPorCiclo })),

@@ -66,9 +66,11 @@ async function main() {
     // ---------- configuracao
     const invalida = await falha(() => salvarJogo(s, "teste-roleta", CONFIG, [premio({ rotulo: "A", tipo: "CREDITO", valorCentavos: 500, chanceBps: 5000 }), premio({ rotulo: "B", tipo: "NADA", chanceBps: 4000 })]));
     ok(invalida?.codigo === "config_invalida", "não publica com chances somando 90%");
+    const semChance = await falha(() => salvarJogo(s, "teste-roleta", CONFIG, [premio({ rotulo: "R$ 5", tipo: "CREDITO", valorCentavos: 500, chanceBps: 10_000 }), premio({ rotulo: "Nada", tipo: "NADA", chanceBps: 0 })]));
+    ok(semChance?.codigo === "config_invalida", "não publica prêmio ativo sem chance real");
     await salvarJogo(s, "teste-roleta", { ...CONFIG, ativo: false }, [
-      premio({ rotulo: "R$ 5", tipo: "CREDITO", valorCentavos: 500, chanceBps: 10_000 }),
-      premio({ rotulo: "Nada", tipo: "NADA", chanceBps: 0 }),
+      premio({ rotulo: "R$ 5 — primeira fatia", tipo: "CREDITO", valorCentavos: 500, chanceBps: 5000 }),
+      premio({ rotulo: "R$ 5 — segunda fatia", tipo: "CREDITO", valorCentavos: 500, chanceBps: 5000 }),
     ]);
     ok((await falha(() => jogar(c1.id, "teste-roleta", chave())))?.codigo === "desligado", "jogo desligado não joga");
     const premiosRoleta = (await painelJogos()).jogos.find((j) => j.id === "teste-roleta")!.premios;
@@ -81,7 +83,8 @@ async function main() {
     const k = chave();
     const j1 = await jogar(c1.id, "teste-roleta", k);
     ok(j1.vitoria && j1.premios[0].tipo === "CREDITO", "vitória: prêmio decidido no servidor");
-    ok(j1.resultado.tipo === "ROLETA" && j1.resultado.fatias[j1.resultado.indice].id === premiosRoleta.find((p) => p.tipo === "CREDITO")!.id, "a fatia devolvida é a do prêmio sorteado");
+    const premioPersistido = await db.premioGanho.findUniqueOrThrow({ where: { id: j1.premios[0].id } });
+    ok(j1.resultado.tipo === "ROLETA" && j1.resultado.fatias[j1.resultado.indice].id === premioPersistido.premioId, "a fatia devolvida é a do prêmio sorteado e persistido");
     ok((await saldoDoCliente(c1.id)) === 500, "crédito entra no saldo na hora (R$ 5)");
     const repetida = await jogar(c1.id, "teste-roleta", k);
     ok(repetida.id === j1.id && (await db.jogada.count({ where: { clienteId: c1.id } })) === 1, "mesma chave (atualizou a página) devolve a mesma jogada");
@@ -104,7 +107,7 @@ async function main() {
 
     // ---------- nao vitoria
     const pr = (await painelJogos()).jogos.find((j) => j.id === "teste-roleta")!.premios;
-    await salvarJogo(s, "teste-roleta", CONFIG, pr.map((p) => ({ ...premio(p), id: p.id, chanceBps: p.tipo === "NADA" ? 10_000 : 0 })));
+    await salvarJogo(s, "teste-roleta", CONFIG, pr.map((p, i) => ({ ...premio(p), id: p.id, rotulo: `Sem prêmio ${i + 1}`, tipo: "NADA", valorCentavos: 0, chanceBps: 5000 })));
     await atendimento(c1.id);
     const perdeu = await jogar(c1.id, "teste-roleta", chave());
     ok(!perdeu.vitoria && perdeu.premios.length === 0, "não vitória: nenhum prêmio gravado");
@@ -180,7 +183,7 @@ async function main() {
 
     // ---------- campanha: presente sem login, um por mensagem
     const camp = await db.campanha.create({ data: { nome: "teste-jogos", segmentos: ["ate30"], mensagem: "{link}", limiteDiario: 1, jogoId: "teste-roleta" } });
-    await salvarJogo(s, "teste-roleta", CONFIG, pr.map((p) => ({ ...premio(p), id: p.id, chanceBps: p.tipo === "CREDITO" ? 10_000 : 0 })));
+    await salvarJogo(s, "teste-roleta", CONFIG, pr.map((p) => ({ ...premio(p), id: p.id })));
     const envio = await db.campanhaEnvio.create({ data: { campanhaId: camp.id, clienteId: c2.id, lote: 1, status: "ENVIADO", enviadoEm: new Date(), token: `tst${Date.now()}abc` } });
     const duas = await Promise.allSettled([jogarPelaCampanha(envio.token!), jogarPelaCampanha(envio.token!)]);
     for (const r of duas) if (r.status === "rejected") console.error("campanha:", r.reason);

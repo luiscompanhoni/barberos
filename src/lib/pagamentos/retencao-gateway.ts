@@ -12,6 +12,7 @@
  * a oferta vira "falar com o gerente".
  */
 import { provedorPorId } from "./gateway";
+import { ehHomologacao } from "@/lib/ambiente";
 
 const BASE = "https://api.pagar.me/core/v5";
 export const PREFIXO_CASHBARBER = "cashbarber:";
@@ -24,18 +25,34 @@ export function _usarFetch(f: Fetch) {
   fetchImpl = f;
 }
 
-async function pagarme(metodo: string, caminho: string, corpo: unknown) {
+async function pagarme(metodo: string, caminho: string, corpo?: unknown, idempotencia?: string): Promise<unknown> {
   const k = process.env.PAGARME_SECRET_KEY;
   if (!k) throw new Error("PAGARME_SECRET_KEY nao configurada.");
   const r = await fetchImpl(`${BASE}${caminho}`, {
     method: metodo,
-    headers: { Authorization: `Basic ${Buffer.from(`${k}:`).toString("base64")}`, "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(corpo),
+    cache: "no-store",
+    headers: { Authorization: `Basic ${Buffer.from(`${k}:`).toString("base64")}`, "Content-Type": "application/json", Accept: "application/json", ...(idempotencia ? { "Idempotency-key": idempotencia } : {}) },
+    body: corpo === undefined ? undefined : JSON.stringify(corpo),
   });
   if (!r.ok) {
     const j = (await r.json().catch(() => ({}))) as { message?: string };
     throw new Error(`Pagar.me ${r.status}: ${j.message ?? "erro"}`);
   }
+  return r.status === 204 ? null : r.json().catch(() => null);
+}
+
+/** Mesmo transporte autenticado da retenção; nenhuma chamada quando a funcionalidade está desligada. */
+export async function consultarParaCredito(caminho: string): Promise<unknown> {
+  if (process.env.CREDITOS_MENSALIDADE_ATIVOS !== "true" || ehHomologacao()) throw new Error("Crédito em mensalidade indisponível no provedor real.");
+  if (!/^\/(subscriptions|invoices|charges|orders)\//.test(caminho) && !caminho.startsWith("/invoices?subscription_id=")) throw new Error("Consulta de crédito inválida.");
+  return pagarme("GET", caminho);
+}
+
+/** Desconto fixo de um ciclo. Sem retry automático após erro/timeout. */
+export async function aplicarCreditoFixo(gatewayId: string, centavos: number, reservaId: string): Promise<unknown> {
+  if (process.env.CREDITOS_MENSALIDADE_ATIVOS !== "true" || ehHomologacao() || comoAplicar(gatewayId) !== "gateway") throw new Error("Crédito em mensalidade indisponível no provedor real.");
+  if (!Number.isSafeInteger(centavos) || centavos <= 0 || !reservaId) throw new Error("Desconto de crédito inválido.");
+  return pagarme("POST", `/subscriptions/${encodeURIComponent(gatewayId)}/discounts`, { value: centavos, discount_type: "flat", cycles: 1 }, reservaId);
 }
 
 /** Onde a pausa/desconto e aplicada: "gateway", "local" (BarberOS gera a cobranca) ou null (nao da). */

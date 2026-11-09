@@ -1,5 +1,7 @@
 # Preparação local
 
+Atendimento por áudio, imagem e figurinha: preparação opcional em [atendimento-black.md](atendimento-black.md). O worker de transcrição local precisa de Python e token privado. A leitura de mídia fica desligada no `.env.example`; instalar dependências não ativa o atendimento nem o transporte WhatsApp.
+
 ## Pré-requisitos
 
 - **Node 24** e **npm 11** (versões da máquina de desenvolvimento; o Dockerfile usa `node:24-alpine` e o CI

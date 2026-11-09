@@ -6,7 +6,7 @@ import { api, reais } from "@/lib/cliente-api";
 
 type PlanoApi = {
   id: string; nome: string; descricao: string | null; precoCentavos: number; ativo: boolean;
-  visivel: boolean; compravel: boolean; etiquetas: string[];
+  visivel: boolean; compravel: boolean; vendaSomenteEquipe: boolean; etiquetas: string[];
   vagas: number | null; intervaloMinDias: number | null; maxAgendamentosAbertos: number;
   diasSemana: number[]; descontoExtrasPct: number; formasPagamento: string[];
   servicos: { servicoId: string; usosPorCiclo: number | null; servico: { nome: string } }[];
@@ -53,7 +53,9 @@ export function PlanosTela() {
             </div>
             <p className="text-sm text-zinc-600">{p.servicos.map((s) => s.servico.nome + (s.usosPorCiclo ? ` (${s.usosPorCiclo}x)` : "")).join(" · ")}</p>
             <div className="flex flex-wrap gap-1.5 text-xs text-zinc-600">
-              {p.intervaloMinDias && <Tag>1 uso a cada {p.intervaloMinDias} dias</Tag>}
+              {p.intervaloMinDias ? <Tag>1 uso a cada {p.intervaloMinDias} dias</Tag> : <Tag>Sem intervalo entre usos</Tag>}
+              {p.vendaSomenteEquipe && <Tag>Venda somente pela recepção</Tag>}
+              {p.etiquetas.map(etiqueta => <Tag key={etiqueta}>{etiqueta}</Tag>)}
               <Tag>{p.maxAgendamentosAbertos} horário(s) por vez</Tag>
               {p.diasSemana.length > 0 && p.diasSemana.length < 7 && <Tag>{[...p.diasSemana].sort().map((d) => DIAS[d]).join(", ")}</Tag>}
               {p.descontoExtrasPct > 0 && <Tag>{p.descontoExtrasPct}% nos extras</Tag>}
@@ -82,7 +84,7 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
   const [descricao, setDescricao] = useState(x?.descricao ?? "");
   const [preco, setPreco] = useState(x ? String(x.precoCentavos / 100).replace(".", ",") : "");
   const [vagas, setVagas] = useState(x?.vagas ? String(x.vagas) : "");
-  const [intervalo, setIntervalo] = useState(x?.intervaloMinDias ? String(x.intervaloMinDias) : "7");
+  const [intervalo, setIntervalo] = useState(x?.intervaloMinDias != null ? String(x.intervaloMinDias) : "");
   const [abertos, setAbertos] = useState(String(x?.maxAgendamentosAbertos ?? 1));
   const [dias, setDias] = useState<number[]>(x?.diasSemana.length ? x.diasSemana : [1, 2, 3, 4, 5, 6]);
   const [desconto, setDesconto] = useState(String(x?.descontoExtrasPct ?? 10));
@@ -94,6 +96,7 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
   const [ativo, setAtivo] = useState(x?.ativo ?? true);
   const [visivel, setVisivel] = useState(x?.visivel ?? true);
   const [compravel, setCompravel] = useState(x?.compravel ?? true);
+  const [vendaSomenteEquipe, setVendaSomenteEquipe] = useState(x?.vendaSomenteEquipe ?? false);
   const [etiquetas, setEtiquetas] = useState((x?.etiquetas ?? []).join(", "));
   const [erro, setErro] = useState("");
 
@@ -109,7 +112,7 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
     if (!formas.length) return setErro("Escolha pelo menos uma forma de pagamento.");
     if (!dias.length) return setErro("Escolha pelo menos um dia da semana.");
     const body = {
-      nome: nome.trim(), descricao: descricao.trim() || null, precoCentavos, ativo, visivel, compravel,
+      nome: nome.trim(), descricao: descricao.trim() || null, precoCentavos, ativo, visivel, compravel, vendaSomenteEquipe,
       etiquetas: etiquetas.split(",").map(s => s.trim()).filter(Boolean),
       vagas: vagas ? Number(vagas) : null, intervaloMinDias: intervalo ? Number(intervalo) : null,
       maxAgendamentosAbertos: Number(abertos) || 1, diasSemana: dias.length === 7 ? [] : dias,
@@ -192,7 +195,10 @@ function FormPlano(p: { plano: PlanoApi | null; servicos: Servico[]; barbeiros: 
         <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />Plano ativo</label>
         <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" checked={visivel} onChange={(e) => setVisivel(e.target.checked)} />Mostrar na vitrine e no app</label>
         <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" checked={compravel} onChange={(e) => setCompravel(e.target.checked)} />Permitir novas assinaturas</label>
+        <label className="flex items-center gap-2"><input type="checkbox" className="h-4 w-4" checked={vendaSomenteEquipe} onChange={(e) => setVendaSomenteEquipe(e.target.checked)} />Contratação somente pela recepção/gerência</label>
+        <p className="text-xs text-zinc-500">Essa restrição não oculta o plano. Mantenha “Mostrar na vitrine” para exibir preço e condições, com contratação pela recepção.</p>
         <p className="text-xs text-zinc-500">Se visível sem compra, o cliente verá “Consultar condições”. Mudanças não cancelam assinaturas existentes.</p>
+        <p className="text-xs text-zinc-500">Para cortes ilimitados sem intervalo, deixe os usos do serviço e os dias entre usos vazios. Dias válidos e horários por vez são regras independentes.</p>
         {x && <p className="text-xs text-zinc-500">Mudar o preço vale só para novas assinaturas: quem já assina continua pagando o valor de quando entrou.</p>}
         {erro && <p className="text-red-600">{erro}</p>}
         <div className="flex justify-end gap-2">

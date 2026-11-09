@@ -10,8 +10,12 @@ import { enviarNaConversa, registrarEntrada } from "@/lib/whatsapp/conversas";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { pediuParar } from "@/lib/automacoes/regras";
 import { executarTurno, type Modelo } from "./agente";
-import { dividirEmBolhas, tempoDigitando, tempoLendo } from "./bolhas";
+import { dividirEmBolhas } from "./bolhas";
 import { contextoDaMensagem, promptSistema } from "./prompt";
+import { historicoSemImagens, prepararMidia, type ImagemBot } from "./multimodal";
+import type { MidiaRecebida } from "@/lib/whatsapp/midia-tipos";
+import { atualizarPreferencia, travarPreferencia } from "@/lib/whatsapp/preferencia";
+import { destinatarioTesteEquipe, testeEquipeAtivo } from "@/lib/whatsapp/teste-equipe";
 
 /** Sessao com o modelo reinicia depois desse tempo sem mensagens (ou se ficar longa demais). */
 const SESSAO_INATIVA_MS = 3 * 3_600_000;
@@ -29,7 +33,7 @@ function naFila<T>(chave: string, fn: () => Promise<T>): Promise<T> {
   return atual;
 }
 
-export type Entrada = { telefone: string; waId?: string; nomePerfil?: string | null; texto: string | null; wamid?: string };
+export type Entrada = { telefone: string; waId?: string; nomePerfil?: string | null; texto: string | null; wamid?: string; midia?: MidiaRecebida };
 
 /** Mensagem que chegou (webhook ou simulador) -> registra, responde com o bot se for o caso. */
 export function receberMensagem(e: Entrada, opts: { modelo?: Modelo } = {}) {
@@ -37,17 +41,21 @@ export function receberMensagem(e: Entrada, opts: { modelo?: Modelo } = {}) {
 }
 
 async function processar(e: Entrada, opts: { modelo?: Modelo }) {
+  const inicioTurno = new Date();
   const texto = e.texto ?? "[mensagem que não e texto: áudio, foto, figurinha ou documento]";
   // A preferência deve ser registrada mesmo quando o bot está desligado,
   // a conversa está com a equipe ou o piloto impede respostas.
   const optOut = !!e.texto && pediuParar(e.texto);
   const conversa = await registrarEntrada({ ...e, texto: registroSeguroEntrevista(texto), optOut });
   if (!conversa) return; // repetida
+  const testeEquipe = await destinatarioTesteEquipe(conversa.telefone);
+  if (testeEquipeAtivo() && !testeEquipe) return;
+  const aindaComBot = async () => (await db.conversa.findUnique({ where: { id: conversa.id }, select: { estado: true } }))?.estado === "BOT";
   // Mantém o registro de PARAR, mas não executa ações nem responde durante o bloqueio.
-  if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return;
+  if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" && !testeEquipe) return;
   const piloto = await estadoPiloto();
   const modoAtendimento = atendimentoAposPiloto(piloto);
-  if (piloto || recursoPiloto()) {
+  if (!testeEquipe && (piloto || recursoPiloto())) {
     if (piloto?.ativo) {
       if (optOut) return;
       if (!permitePiloto(piloto, conversa.telefone, "ENTREVISTA_PILOTO") || conversa.estado === "HUMANO") return;
@@ -57,7 +65,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
     }
     if (!modoAtendimento) return;
   }
-  const entrevistaAtiva = !modoAtendimento && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true";
+  const entrevistaAtiva = !testeEquipe && !modoAtendimento && process.env.RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO === "true";
   const cfgEntrevista = entrevistaAtiva ? await configuracao() : null;
   if (cfgEntrevista && !cfgEntrevista.botAtivo) return;
   // Uma sessão de entrevista existente não cai no modelo geral se o canal for desligado.
@@ -65,7 +73,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
     if (await db.entrevistaRecrutamento.findUnique({ where: { conversaId: conversa.id }, select: { id: true } })) return;
   }
   if (e.texto && conversa.estado !== "HUMANO" && (contemConviteEntrevista(e.texto) || comandoReservadoEntrevista(e.texto) || entrevistaAtiva)) {
-    if (modoAtendimento) return;
+    if (modoAtendimento || testeEquipe) return;
     const entrevista = await processarBotEntrevista({ conversaId: conversa.id, telefone: conversa.telefone }, e.texto);
     if (entrevista.tratado) {
       if (entrevista.resposta && entrevistaAtiva) await enviarNaConversa(conversa.id, entrevista.resposta, "BOT");
@@ -74,12 +82,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   }
   const cfg = cfgEntrevista ?? await configuracao();
   if (!cfg.botAtivo || conversa.estado === "HUMANO") return; // equipe responde pelo painel
-  if (process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true" && process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO !== "true") return;
-
-  if (!e.texto) {
-    await enviarNaConversa(conversa.id, "Por enquanto só consigo ler mensagens de texto. Pode me escrever o que precisa? 🙂", "BOT", { respostaAtendimento: true });
-    return;
-  }
+  if (!testeEquipe && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true" && process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO !== "true") return;
 
   // "PARAR": desliga as mensagens automaticas na hora, sem passar pelo modelo.
   if (optOut) {
@@ -88,11 +91,44 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   }
 
   // A autorização de IA é independente do estado do piloto e do bot geral.
-  if (process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") {
+  if (!testeEquipe && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") {
     await passarParaEquipe(conversa.id, "Atendimento encaminhado para a equipe; IA paga desativada.");
     await enviarNaConversa(conversa.id, "Olá! A equipe da Black vai te ajudar por aqui. Para agendar, você também pode acessar appblackbarber.com. 🙂", "BOT", { respostaAtendimento: true });
     return;
   }
+
+  let textoCliente = e.texto ?? "";
+  let imagem: ImagemBot | undefined;
+  if (e.midia) {
+    try {
+      const midia = await prepararMidia(e.midia, e.waId ?? e.telefone);
+      textoCliente = [textoCliente, midia.texto].filter(Boolean).join("\n");
+      imagem = midia.imagem;
+      if (e.wamid && e.midia.tipo === "audio") await db.mensagem.updateMany({
+        where: { conversaId: conversa.id, wamid: e.wamid, autor: "CLIENTE" },
+        data: { texto: registroSeguroEntrevista(textoCliente) },
+      });
+    } catch {
+      if (!await aindaComBot()) return;
+      await passarParaEquipe(conversa.id, "Mídia não interpretada com segurança. Conferir o original no WhatsApp; não repetir ações ou cobranças.");
+      await enviarNaConversa(conversa.id, "Não consegui interpretar esse arquivo com segurança. Pedi para a equipe conferir por aqui.", "BOT", { respostaAtendimento: true });
+      return;
+    }
+  }
+  if (!textoCliente) {
+    await passarParaEquipe(conversa.id, "Arquivo sem conteúdo disponível no sistema. Conferir no WhatsApp original.");
+    await enviarNaConversa(conversa.id, "Recebi um arquivo, mas não consegui abrir por aqui. A equipe vai conferir.", "BOT", { respostaAtendimento: true });
+    return;
+  }
+  if (e.midia?.tipo === "audio" && pediuParar(textoCliente)) {
+    await db.$transaction(async (tx) => {
+      await travarPreferencia(tx, conversa.telefone);
+      await atualizarPreferencia(tx, conversa.telefone, false);
+    });
+    await enviarNaConversa(conversa.id, "Pronto, desativei os lembretes e novidades para você.", "BOT", { respostaAtendimento: true });
+    return;
+  }
+  if (!await aindaComBot()) return;
 
   const agora = Date.now();
   const sessaoValida =
@@ -119,16 +155,22 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
         janelaDias: cfg.janelaAgendamentoDias, cliente: cliente?.nome.trim() ? cliente : null, nomePerfil: conversa.nomePerfil, plano,
         avisos: await avisosRecentes(conversa.id, agora),
       }),
-      texto: registroSeguroEntrevista(e.texto),
+      texto: registroSeguroEntrevista(textoCliente),
+      imagem,
+      somenteConsulta: !!e.midia && e.midia.tipo !== "audio" && !e.texto?.trim(),
+      podeContinuar: aindaComBot,
       ctx: { conversaId: conversa.id, telefone: conversa.telefone, nomePerfil: conversa.nomePerfil },
       modelo: opts.modelo,
     });
   } catch (err) {
-    console.error("[bot] falha ao chamar o modelo:", err);
-    await passarParaEquipe(conversa.id, `Bot indisponível: ${(err as Error).message}`);
+    console.error("[bot] falha ao chamar o modelo:", err instanceof Error ? err.name : "Erro");
+    if (!await aindaComBot()) return;
+    await passarParaEquipe(conversa.id, "Bot indisponível. Conferir o pedido e o histórico antes de executar qualquer ação.");
     await enviarNaConversa(conversa.id, "Opa! Tive um problema aqui. Já chamei alguém da equipe para te responder. 🙏", "BOT", { respostaAtendimento: true });
     return;
   }
+
+  if (resultado.interrompido || (!resultado.passouParaHumano && !await aindaComBot())) return;
 
   if (resultado.recusado) {
     await passarParaEquipe(conversa.id, "O modelo recusou responder essa mensagem.");
@@ -140,16 +182,20 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }) {
   await db.conversa.update({
     where: { id: conversa.id },
     data: {
-      sessao: resultado.historico as unknown as Prisma.InputJsonValue,
+      sessao: historicoSemImagens(resultado.historico) as unknown as Prisma.InputJsonValue,
       sessaoInicioEm: historico.length ? conversa.sessaoInicioEm : new Date(),
       ...(resultado.passouParaHumano ? { estado: "HUMANO" } : {}),
     },
   });
-  // Em bolhas curtas, com "digitando..." antes de cada uma (como uma pessoa no WhatsApp);
-  // a primeira ainda espera o tempo de ler a mensagem.
+  // Bolhas curtas, sem simular tempo de leitura ou digitação humana.
   const bolhas = dividirEmBolhas(resultado.resposta);
-  for (const [i, bolha] of bolhas.entries()) {
-    await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: (i === 0 ? tempoLendo() : 0) + tempoDigitando(bolha), respostaAtendimento: true });
+  for (const bolha of bolhas) {
+    if (!resultado.passouParaHumano && !await aindaComBot()) return;
+    if (resultado.passouParaHumano) {
+      const equipe = await db.mensagem.findMany({ where: { conversaId: conversa.id, autor: "EQUIPE", criadoEm: { gte: inicioTurno } }, take: 1, select: { id: true } });
+      if (equipe.length) return;
+    }
+    await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: 0, respostaAtendimento: true });
   }
 }
 

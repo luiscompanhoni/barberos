@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import type { ImagemBot } from "./multimodal";
 import { executarFerramenta, FERRAMENTAS, type ContextoBot, type ResultadoFerramenta } from "./ferramentas";
 
 type Msg = Anthropic.Beta.BetaMessageParam;
@@ -37,6 +38,7 @@ export type ResultadoTurno = {
   passouParaHumano: boolean;
   recusado: boolean;
   ferramentas: string[];
+  interrompido?: boolean;
 };
 
 /**
@@ -48,6 +50,11 @@ export async function executarTurno(p: {
   historico: Msg[];
   contexto: string;
   texto: string;
+  imagem?: ImagemBot;
+  /** Imagem/figurinha sem texto não autoriza efeitos operacionais. */
+  somenteConsulta?: boolean;
+  /** Recepção pode assumir enquanto download/modelo está em andamento. */
+  podeContinuar?: () => Promise<boolean>;
   ctx: ContextoBot;
   modelo?: Modelo;
   nomeModelo?: string;
@@ -58,12 +65,16 @@ export async function executarTurno(p: {
   const executor = p.executor ?? executarFerramenta;
   const historico: Msg[] = [
     ...p.historico,
-    { role: "user", content: [{ type: "text", text: p.contexto }, { type: "text", text: p.texto }] },
+    { role: "user", content: [
+      { type: "text", text: p.contexto }, { type: "text", text: p.texto },
+      ...(p.imagem ? [{ type: "image" as const, source: { type: "base64" as const, media_type: p.imagem.tipo, data: p.imagem.base64 } }] : []),
+    ] },
   ];
   const usadas: string[] = [];
   let passouParaHumano = false;
 
   for (let volta = 0; volta < MAX_VOLTAS; volta++) {
+    if (!passouParaHumano && p.podeContinuar && !await p.podeContinuar()) return { resposta: "", historico: p.historico, passouParaHumano: true, recusado: false, ferramentas: usadas, interrompido: true };
     const r = await modelo.criar({
       model: nomeModelo,
       max_tokens: 8000,
@@ -95,12 +106,23 @@ export async function executarTurno(p: {
     // Todas as respostas das ferramentas voltam numa unica mensagem.
     const resultados: Anthropic.Beta.BetaToolResultBlockParam[] = [];
     for (const c of chamadas) {
+      if (!passouParaHumano && p.podeContinuar && !await p.podeContinuar()) return { resposta: "", historico: p.historico, passouParaHumano: true, recusado: false, ferramentas: usadas, interrompido: true };
       usadas.push(c.name);
-      const res = await executor(c.name, c.input, p.ctx);
+      const consulta = ["listar_servicos", "consultar_horarios", "meus_agendamentos", "listar_planos", "minha_assinatura", "meus_presentes", "oferta_cancelamento", "chamar_atendente"].includes(c.name);
+      const res: ResultadoFerramenta = passouParaHumano
+        ? { texto: "A equipe assumiu. Não execute mais ações nesta conversa.", erro: true }
+        : p.somenteConsulta && !consulta
+          ? { texto: "Imagem ou figurinha sem texto não autoriza esta ação. Peça confirmação explícita em texto com os detalhes.", erro: true }
+          : await executor(c.name, c.input, p.ctx);
       if (res.passouParaHumano) passouParaHumano = true;
       resultados.push({ type: "tool_result", tool_use_id: c.id, content: res.texto, is_error: res.erro || undefined });
     }
     historico.push({ role: "user", content: resultados });
+    if (passouParaHumano) {
+      // A transferência já ocorreu. Não chamar novamente o modelo para inventar
+      // prazo, reabrir venda ou atrasar a entrada da recepção.
+      return { resposta: "Pedi para a equipe continuar por aqui.", historico, passouParaHumano: true, recusado: false, ferramentas: usadas };
+    }
   }
 
   return {

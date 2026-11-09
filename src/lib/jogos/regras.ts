@@ -44,6 +44,7 @@ export function validarPremios(tipo: TipoJogoRegra, premios: PremioConfig[]): st
   if (!ativos.length) erros.push("Deixe pelo menos um prêmio ativo.");
   if (soma !== TOTAL_BPS) erros.push(`A soma das chances dos prêmios ativos precisa dar 100% (está em ${pct(soma)}).`);
   for (const p of premios) {
+    if (p.ativo && p.chanceBps === 0) erros.push(`"${p.rotulo}": prêmio ativo precisa de chance real. Desative para não exibir como possível.`);
     if (p.chanceBps < 0 || p.chanceBps > TOTAL_BPS) erros.push(`"${p.rotulo}": chance entre 0% e 100%.`);
     if (p.tipo === "CREDITO" && p.valorCentavos <= 0) erros.push(`"${p.rotulo}": prêmio em dinheiro precisa de valor.`);
     if (p.tipo === "DESCONTO" && (p.percentual < 1 || p.percentual > 100)) erros.push(`"${p.rotulo}": desconto entre 1% e 100%.`);

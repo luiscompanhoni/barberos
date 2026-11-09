@@ -1,0 +1,50 @@
+name: Ativar teste interno do atendimento
+on:
+  workflow_dispatch:
+    inputs:
+      chave_relatorio:
+        description: Chave pública RSA SPKI base64 do destinatário
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: publicacao-producao
+  cancel-in-progress: false
+jobs:
+  ativar:
+    if: github.ref == 'refs/heads/main'
+    environment: "produção"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Construir ASR com modelo fixado e teste HTTP sintético
+        run: |
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-atendimento:$GITHUB_SHA" workers/atendimento
+          docker run --rm --network none --read-only --memory 768m --cpus 0.5 --cap-drop ALL --security-opt no-new-privileges:true --tmpfs /tmp:rw,size=32m --entrypoint python "barberos-atendimento:$GITHUB_SHA" smoke.py teste.wav
+          docker save "barberos-atendimento:$GITHUB_SHA" | gzip -1 > "$RUNNER_TEMP/asr.tar.gz"
+      - name: Ativar somente para dono e gerente após deploy
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
+        run: node scripts/publicacao/ativar-atendimento.mjs "$RUNNER_TEMP/asr.tar.gz" "$RUNNER_TEMP/atendimento.cifrado.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atendimento-registro-cifrado
+          path: ${{ runner.temp }}/atendimento.cifrado.json
+          retention-days: 1
+          if-no-files-found: ignore

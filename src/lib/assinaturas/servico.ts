@@ -21,9 +21,10 @@ import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, cancelarOperac
 /** Assinaturas que ocupam vaga: ativas, atrasadas e pendentes recentes (link ainda valendo). */
 const PENDENTE_SEGURA_VAGA_MS = 3 * 86_400_000;
 
-function exigirVenda(plano: Pick<Plano, "ativo" | "visivel" | "compravel"> | null, origem?: OrigemAgendamento) {
+function exigirVenda(plano: Pick<Plano, "ativo" | "visivel" | "compravel" | "vendaSomenteEquipe"> | null, origem?: OrigemAgendamento) {
   if (!plano || !plano.ativo || ((origem === "SITE" || origem === "BOT") && !plano.visivel)) throw naoEncontrado("Plano");
   if (!plano.compravel) throw new ErroNegocio("Este plano está disponível apenas para consulta. Fale com a equipe para conhecer as condições.", 409, "plano_consulta");
+  if (plano.vendaSomenteEquipe && origem !== "RECEPCAO" && origem !== "PAINEL") throw new ErroNegocio("A contratação deste plano é feita somente pela recepção. Posso chamar a equipe para ajudar.", 409, "plano_venda_equipe");
 }
 
 /** Verificação inicial, antes de cadastrar um novo cliente; a transação revalida sob trava. */
@@ -283,7 +284,7 @@ export async function cancelar(
 /** Vaga abriu: avisa o primeiro da fila que ainda nao foi avisado. */
 async function avisarListaEspera(planoId: string) {
   const plano = await db.plano.findUniqueOrThrow({ where: { id: planoId } });
-  if (!plano.ativo || !plano.visivel || !plano.compravel) return;
+  if (!plano.ativo || !plano.visivel || !plano.compravel || plano.vendaSomenteEquipe) return;
   if ((await vagasRestantes(plano)) === 0) return;
   const primeiro = await db.listaEsperaPlano.findFirst({
     where: { planoId, avisadoEm: null },
