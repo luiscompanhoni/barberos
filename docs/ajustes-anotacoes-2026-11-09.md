@@ -109,7 +109,17 @@ comparadas integralmente e migração/rollback ensaiados preservando sete claims
 
 O CI Linux inclui os fluxos `teste:agenda:cliente` e `teste:anotacoes` em banco efêmero nominal na porta 55549,
 com role exclusiva sem criação de bancos e gateways simulados. As guardas dos testes foram preservadas.
+`teste:todos` exige `DATABASE_URL_ANOTACOES` para esses dois fluxos, sem fallback para o banco genérico;
+o destino deve ser o banco nominal em `127.0.0.1:55549`, migrado e com seed sintético.
 O publicador aceita nominalmente a migração aditiva `20261109220000_antecipado_emissao_segura`;
 variações do nome e migrações não revisadas continuam bloqueadas por teste.
 A troca continua condicionada à conferência da imagem instalada, espaço, backup restaurado e ensaio no clone.
 Os controles de publicação também desativam o teste interno de atendimento e a mídia, além dos bloqueios gerais.
+
+O dono autorizou a manutenção nominal dos renderizadores `102a391` e `d10b3b1` para obter reserva de disco.
+`renderizadores-autorizados.json` fixa somente esses dois IDs, tags e RootFS, vinculados ao app instalado `28422c5`.
+O workflow `arquivar-renderizadores-vps.yml` reutiliza o protocolo de arquivo autenticado, preserva o catálogo
+histórico de apps e exige CI da main aprovado. Uma imagem por operação: cópia preservada na VPS, restauração
+em executor Linux sem a imagem preexistente, conferência de identidade e render sintético de vídeo e áudio
+sem rede. A remoção recebe somente a prova exata de arquivo/alvo/hash/bytes; versões atual e anterior,
+ASR, bancos, volumes, mídias e backups continuam fora dos alvos. Parar quando houver espaço suficiente.
