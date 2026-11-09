@@ -133,7 +133,7 @@
       }
     },
     {
-      "alvo": "7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a",
+      "alvo": "app-7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a",
       "id": "sha256:dce9adf19a53f6018714ed03258b0342b177685891fbb28ee8b3ffc5842c46b0",
       "bytes": 933209419,
       "tags": [
@@ -163,7 +163,7 @@
       }
     },
     {
-      "alvo": "7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10",
+      "alvo": "app-7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10",
       "id": "sha256:99d3debcd3f7c2230aecb08ac5457d38d8b85ef287db21304132ea4ca990593d",
       "bytes": 936233154,
       "tags": [

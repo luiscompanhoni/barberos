@@ -76,6 +76,10 @@ test("fonte única fecha seis IDs e todos os aliases, sem incluir configuração
   assert.equal(new Set(NOMINAIS.alvos.flatMap(n => n.tags)).size, NOMINAIS.alvos.flatMap(n => n.tags).length);
   assert.equal(nominal.tags.length, 2); assert.ok(!NOMINAIS.alvos.some(n => n.tags.includes("barberos-app:latest")));
   assert.equal(NOMINAIS.revisaoApp, "6aeefd9ccba45be23fc345105afedefbbcc564c1");
+  for (const n of NOMINAIS.alvos.slice(4)) {
+    assert.ok(n.alvo.startsWith("app-"));
+    assert.ok(n.tags.includes("barberos-app:" + n.alvo.slice(4)));
+  }
   for (const k of ["WHATSAPP_ATENDIMENTO_TESTE_EQUIPE", "WHATSAPP_MIDIA_ATIVA", "WHATSAPP_ATENDIMENTO_IA_PAGA", "AGENTES_EXECUCAO_ATIVA", "PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA"]) assert.equal(NOMINAIS.flags[k], "false");
   assert.equal(hash(readFileSync(new URL("./arquivar_workers.py", import.meta.url))), NOMINAIS.canonicoSha256);
   assert.ok(!codigoAlvos.includes("configuracoesHashes")); assert.throws(() => selecionarAlvo("qualquer"));

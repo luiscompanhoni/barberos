@@ -203,6 +203,33 @@ class ArquivarAppsDestaqueTest(unittest.TestCase):
                         {"modo": "preparar", "alvo": self.alvo, "todos": True}):
             with self.assertRaises(RuntimeError): h.executar(entrada)
 
+    def test_apps_com_sha_do_renderizador_usam_marcador_distinto_sem_alterar_o_antigo(self):
+        for ref in CATALOGO["alvos"][4:]:
+            self.assertTrue(ref["alvo"].startswith("app-"))
+            sha = ref["alvo"].removeprefix("app-")
+            self.assertIn("barberos-app:" + sha, ref["tags"])
+            lista = [{"tag": tag, "id": ref["id"], "bytesImagem": ref["bytes"]} for tag in ref["tags"]]
+            with self.subTest(alvo=ref["alvo"]), tempfile.TemporaryDirectory() as pasta:
+                base = Path(pasta)
+                arquivos = base / "worker-archives"
+                arquivos.mkdir()
+                antigo = arquivos / ("alvo-" + sha + ".json")
+                conteudo = json.dumps({"concluido": True, "arquivo": "workers-123.tar.gz",
+                                      "imagem": "barberos-video-worker:" + sha}).encode()
+                antigo.write_bytes(conteudo)
+                proc = Mock(stdout=io.BytesIO(b"imagem de app sintetica"))
+                proc.wait.return_value = 0
+                with patch.dict(self.a, conferir_app=Mock(), candidatos=Mock(return_value=lista),
+                                retrato=Mock(return_value=self.retrato)), \
+                        patch.object(self.a["subprocess"], "Popen", return_value=proc) as popen, \
+                        patch.object(self.a["threading"], "Timer"), \
+                        patch.object(self.a["shutil"], "disk_usage", return_value=SimpleNamespace(free=8 * 1024**3)):
+                    r = self.a["preparar"](base, "barberos", h.APP_ESPERADO, ref["alvo"])
+                self.assertEqual(popen.call_args.args[0], ["docker", "save", *ref["tags"]])
+                self.assertEqual(r["imagens"], lista)
+                self.assertTrue((arquivos / ("alvo-" + ref["alvo"] + ".json")).is_file())
+                self.assertEqual(antigo.read_bytes(), conteudo)
+
 
 if __name__ == "__main__":
     unittest.main()

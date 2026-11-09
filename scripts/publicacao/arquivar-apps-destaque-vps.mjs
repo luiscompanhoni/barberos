@@ -11,7 +11,7 @@ import { argumentosSmoke as smokeHomolog, TAG as TAG_HOMOLOG, validarCi, validar
 import { conferirArquivo, extrairMetadados, validarManifesto } from "./transferir-arquivos-workers.mjs";
 
 export { validarCi };
-export const ALVOS_SHA256 = "6721fd0a49b9cd434f91503d2617a998236c6eb18040423d8357eade1eb16f3d";
+export const ALVOS_SHA256 = "eedb1ec316f86f742e673cd7ed758f8593a02b03ab03421780a60befd1a61b72";
 const digest = raw => createHash("sha256").update(raw).digest("hex");
 export const codigoAlvos = readFileSync(new URL("./apps-destaque-autorizados.json", import.meta.url), "utf8");
 if (digest(codigoAlvos) !== ALVOS_SHA256) throw Error("Inventário nominal alterado.");

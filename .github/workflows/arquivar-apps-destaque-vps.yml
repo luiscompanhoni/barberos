@@ -17,8 +17,8 @@ on:
           - 085fc5b8c85b274e18e9e4b9c4e3ae0a0a63b1c1
           - 9d170a722ecbc9b48870a2fec1327712fc407a90
           - antes-7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a
-          - 7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a
-          - 7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10
+          - app-7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a
+          - app-7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10
       imagem_anterior:
         description: ID sha256 da imagem app saudável confirmada no inventário
         required: true

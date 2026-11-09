@@ -88,6 +88,9 @@ saudável e mantém envios, teste interno, mídia, IA paga, campanhas e pagament
 bloqueados. A restauração Docker no Linux e a verificação isolada de sintaxe e
 pacotes precedem a remoção sem força; não inicia o aplicativo antigo, banco ou rede.
 Executar uma imagem por vez e interromper assim que as reservas reais passarem.
+Os dois seletores que compartilham revisão com renderizadores históricos usam o
+prefixo `app-`; identidades e aliases das imagens permanecem os mesmos. Isso evita
+colidir com marcadores anteriores, que continuam preservados e válidos.
 
 Para evitar incluir alterações paralelas da `main`, o workflow
 `publicar-destaque-servicos.yml` publica exclusivamente a revisão
