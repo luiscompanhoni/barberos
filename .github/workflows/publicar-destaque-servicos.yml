@@ -1,0 +1,102 @@
+name: Publicar somente destaque dos serviços revisado
+
+on:
+  workflow_dispatch:
+    inputs:
+      imagem_anterior:
+        description: ID sha256 da imagem app confirmada no inventário anterior
+        required: true
+        type: string
+      chave_relatorio:
+        description: Chave pública RSA SPKI base64 do destinatário do relatório
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: publicacao-producao
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    if: github.ref == 'refs/heads/main'
+    environment: "produção"
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      REVISAO_PUBLICACAO: 28e5266888ad87078cecd046dca73bb3888c0548
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 28e5266888ad87078cecd046dca73bb3888c0548
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Exigir CI do workflow e da correção isolada e conferir escopo
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGEM_ANTERIOR: ${{ inputs.imagem_anterior }}
+        run: |
+          node --input-type=module <<'JS'
+          import { execFileSync } from 'node:child_process';
+          const alvo = '28e5266888ad87078cecd046dca73bb3888c0548';
+          const pai = '6aeefd9ccba45be23fc345105afedefbbcc564c1';
+          const git = (...args) => execFileSync('git', args, { encoding:'utf8' }).trim();
+          if (process.env.GITHUB_REF !== 'refs/heads/main' || process.env.REVISAO_PUBLICACAO !== alvo ||
+            process.env.IMAGEM_ANTERIOR !== 'sha256:606fe395e35bb22d1085b4008f6543b74d633ee8214d2758dd9eb6c2365caf1a' ||
+            git('rev-parse','HEAD') !== alvo || git('rev-parse','HEAD^') !== pai || git('status','--porcelain')) throw Error('Revisão ou instalação divergente.');
+          const arquivos = git('diff','--name-only',pai,alvo).split('\n').sort();
+          if (JSON.stringify(arquivos) !== JSON.stringify(['docs/design.md','src/app/black-app.css','src/components/cliente/AgendarTela.tsx'])) throw Error('Escopo da publicação divergente.');
+          for (const sha of new Set([process.env.GITHUB_SHA, alvo])) {
+            if (!/^[a-f0-9]{40}$/.test(sha || '')) throw Error('SHA inválido.');
+            const runs = JSON.parse(execFileSync('gh',['run','list','--repo',process.env.GITHUB_REPOSITORY,'--workflow','ci.yml','--commit',sha,'--branch','main','--event','push','--json','headSha,headBranch,event,status,conclusion'],{encoding:'utf8'}));
+            if (!runs.some(r => r.headSha === sha && r.headBranch === 'main' && r.event === 'push' && r.status === 'completed' && r.conclusion === 'success')) throw Error('CI do commit exato não aprovado.');
+          }
+          JS
+      - name: Instalar dependências da verificação pelo lock
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Conferir operação e preservação
+        run: npm run check:publicacao:servidor
+      - name: Preparar código do commit
+        run: |
+          node scripts/publicacao/preparar.mjs "$RUNNER_TEMP/release"
+          tar -czf "$RUNNER_TEMP/release/entrega.tar.gz" -C "$RUNNER_TEMP/release" codigo.tar.gz versao.json
+      - name: Construir imagens fora da VPS
+        run: |
+          docker build --build-arg VCS_REF="$REVISAO_PUBLICACAO" -t "barberos-app:$REVISAO_PUBLICACAO" .
+          docker build --build-arg VCS_REF="$REVISAO_PUBLICACAO" -t "barberos-backup:$REVISAO_PUBLICACAO" -f deploy/backup.Dockerfile deploy
+          docker build --build-arg VCS_REF="$REVISAO_PUBLICACAO" -t "barberos-video-worker:$REVISAO_PUBLICACAO" workers/video
+      - name: Conferir restauração e render com dados sintéticos
+        run: |
+          node scripts/publicacao/teste-imagem-app.mjs "barberos-app:$REVISAO_PUBLICACAO"
+          docker build --target rclone_legado -t "barberos-rclone-legado:$REVISAO_PUBLICACAO" -f deploy/backup.Dockerfile deploy
+          docker tag "barberos-backup:$REVISAO_PUBLICACAO" "barberos-backup-validacao:$REVISAO_PUBLICACAO"
+          python3 scripts/publicacao/teste-backup-container.py "barberos-backup-validacao:$REVISAO_PUBLICACAO" "barberos-rclone-legado:$REVISAO_PUBLICACAO"
+          docker run --rm --network none --entrypoint node -v "$PWD/workers/video/tests:/worker/tests:ro" "barberos-video-worker:$REVISAO_PUBLICACAO" --test tests/render.test.mjs tests/templates.test.mjs
+          docker run --rm --network none --read-only --memory 2g --cpus 0.75 --pids-limit 256 --cap-drop ALL --security-opt no-new-privileges:true --shm-size 256m --tmpfs /worker/jobs:rw,nosuid,size=1536m,uid=1000,gid=1000,mode=0700 --tmpfs /tmp:rw,nosuid,size=256m,mode=1777 --tmpfs /home/node:rw,nosuid,size=64m,uid=1000,gid=1000 --entrypoint node -v "$PWD/workers/video/tests:/worker/tests:ro" "barberos-video-worker:$REVISAO_PUBLICACAO" tests/smoke-templates.mjs
+      - name: Preparar transporte das imagens
+        run: docker save "barberos-app:$REVISAO_PUBLICACAO" "barberos-backup:$REVISAO_PUBLICACAO" "barberos-video-worker:$REVISAO_PUBLICACAO" | gzip -1 > "$RUNNER_TEMP/release/imagens.tar.gz"
+      - name: Publicar com backup e recuperação
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_IMAGEM_ANTERIOR: ${{ inputs.imagem_anterior }}
+          RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
+        run: GITHUB_SHA="$REVISAO_PUBLICACAO" node scripts/publicacao/publicar-vps.mjs "$RUNNER_TEMP/release" "$RUNNER_TEMP/publicacao.cifrada.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: publicacao-registro-cifrado
+          path: ${{ runner.temp }}/publicacao.cifrada.json
+          retention-days: 1
+          if-no-files-found: ignore

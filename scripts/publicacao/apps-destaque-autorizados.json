@@ -1,0 +1,196 @@
+{
+  "formato": 1,
+  "imagemApp": "sha256:606fe395e35bb22d1085b4008f6543b74d633ee8214d2758dd9eb6c2365caf1a",
+  "revisaoApp": "6aeefd9ccba45be23fc345105afedefbbcc564c1",
+  "canonicoSha256": "d355f9472f75ecf1c79584a7350572c20f22dd9db77564e163d1b13735c14897",
+  "flags": {
+    "WHATSAPP_ENVIOS_BLOQUEADOS": "true",
+    "WHATSAPP_ATENDIMENTO_IA_PAGA": "false",
+    "WHATSAPP_ATENDIMENTO_TESTE_EQUIPE": "false",
+    "WHATSAPP_MIDIA_ATIVA": "false",
+    "AGENTES_EXECUCAO_ATIVA": "false",
+    "PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA": "false"
+  },
+  "alvos": [
+    {
+      "alvo": "55ee09e462437a5fe6951232b89c5be53845f760",
+      "id": "sha256:c51185087c16105a32e8db3c50265530fb982b5c543c55917edc77046251fe1d",
+      "bytes": 931241544,
+      "tags": [
+        "barberos-app:55ee09e462437a5fe6951232b89c5be53845f760",
+        "barberos-app:antes-085fc5b8c85b274e18e9e4b9c4e3ae0a0a63b1c1"
+      ],
+      "os": "linux",
+      "architecture": "amd64",
+      "rootfs": {
+        "Type": "layers",
+        "Layers": [
+          "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+          "sha256:60bd9d2f4730a6e88dc76690b7365cf7110e0874b02e6280eab51f005e88d0de",
+          "sha256:593de0610faaafca8df2a031200415501e7ae657c22c6a069b46e66ff89ce71e",
+          "sha256:c5462dd18906793ff52ede1f6c13cd94f643e549ddfc2b0bed9f865fa1911f6f",
+          "sha256:c5e9c5738c4407c4d895a68611094c20d2d66af55707827c27a9171f2c7b0ac8",
+          "sha256:f932670225265fb888c30b535ee001f47e792347324d160a5b81dcac9c9621d8",
+          "sha256:e7906779708859c814ffb8e981336ec11dae242172b44c7d715dcbb75f63208c",
+          "sha256:183b02946564ddad0825ef8bcd9c18faeb6ce2f56920708f267f6332389efcc8",
+          "sha256:2497f3f067ece2a4db8341a5d403ecca26bd299ed8360be4e87024d8ea152d56",
+          "sha256:6601f62f7968a2b3993c044f9b5ea639af666694a776f82cc59f72efb1e18fc9",
+          "sha256:432ccd14dfa354dc869ac79dc351c9197778337bfc5c0b6a7011d9c3edf8b0b2",
+          "sha256:732085961d3dbf7fcefeefbc90034351b71703f5a09436ac937d396ca61b1bd2",
+          "sha256:b41d62b19cf8287ddaa48052794517bed94e15bb3c6fbbc382b75a0da7d7d5a7",
+          "sha256:506b839556b45c3f408b984b4c1f5ae9d8863f041f316240038bc6377cc499fa"
+        ]
+      }
+    },
+    {
+      "alvo": "085fc5b8c85b274e18e9e4b9c4e3ae0a0a63b1c1",
+      "id": "sha256:f84943957949929cb2ca860856355661e704e0d3f747a8fb71d06f6dc35989d3",
+      "bytes": 931692738,
+      "tags": [
+        "barberos-app:085fc5b8c85b274e18e9e4b9c4e3ae0a0a63b1c1",
+        "barberos-app:antes-9d170a722ecbc9b48870a2fec1327712fc407a90"
+      ],
+      "os": "linux",
+      "architecture": "amd64",
+      "rootfs": {
+        "Type": "layers",
+        "Layers": [
+          "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+          "sha256:60bd9d2f4730a6e88dc76690b7365cf7110e0874b02e6280eab51f005e88d0de",
+          "sha256:593de0610faaafca8df2a031200415501e7ae657c22c6a069b46e66ff89ce71e",
+          "sha256:c5462dd18906793ff52ede1f6c13cd94f643e549ddfc2b0bed9f865fa1911f6f",
+          "sha256:a1dd74171ed5980273a87513ca107d7254722ec65698a3c3885db82324b572a6",
+          "sha256:7f7dcfd3f8232966a5a6a67adddef710dfc39ba6184d5b0caa669d2cadbf26f4",
+          "sha256:53393f61a44ba816f9600db36309cb2d3f2a4ca52d14bce850f6fe607f0bf2ea",
+          "sha256:c5d7efc70db417503ef26ffca35e4d00ba3fd3e13a0f7eadc737cd429f852d5a",
+          "sha256:3b768d5013f7ce66c4d501ab3014488010935137cf39d3c55012610b0b8757e2",
+          "sha256:ce624637d31e43f674f73f384c8986c413425270802fa4d33b33f00d8e757955",
+          "sha256:434ce1ae37783da341b25cb61d250f368183f88ca9d4e9b96f0209d254cecd0b",
+          "sha256:945a47b96dcee4931186eb1fd43932487903e9ffdb759ff0e4fa0dc07f949a2a",
+          "sha256:f20074aae301d861feaa9eb4a43e472723af06e9809c345e0d3c4578eaef4e43",
+          "sha256:23c1c5b336205646ea545e802a498226e0d18d31a0a3d8d6c769c97e06b41e50"
+        ]
+      }
+    },
+    {
+      "alvo": "9d170a722ecbc9b48870a2fec1327712fc407a90",
+      "id": "sha256:7aceb7ea3fc66f0eca91caaa2315e8bf31dcafb9d0f2508143744bed7f5ccb74",
+      "bytes": 931939552,
+      "tags": [
+        "barberos-app:9d170a722ecbc9b48870a2fec1327712fc407a90",
+        "barberos-app:antes-f7968a11b1892b07eaad46b659ad7c5d18bb9bd4"
+      ],
+      "os": "linux",
+      "architecture": "amd64",
+      "rootfs": {
+        "Type": "layers",
+        "Layers": [
+          "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+          "sha256:60bd9d2f4730a6e88dc76690b7365cf7110e0874b02e6280eab51f005e88d0de",
+          "sha256:593de0610faaafca8df2a031200415501e7ae657c22c6a069b46e66ff89ce71e",
+          "sha256:c5462dd18906793ff52ede1f6c13cd94f643e549ddfc2b0bed9f865fa1911f6f",
+          "sha256:e17c81f1cd2da9ffd41782669b835fa081c6d1f932a7ef7ac7dd30c6f7217b7d",
+          "sha256:e4c983d70397a74649aa417cdd2c671a2d246ab8e10f1d01e27e1be63e8a7231",
+          "sha256:2e13472f6d530062012148e2a2c39383b24305511d2cb9f6f65926396e1f005a",
+          "sha256:fdc8f23f44988297e36007f86e5181af36f0eec75d84bec11c332328813fb8a6",
+          "sha256:0ef8dc99c548c8284b8853ca7e7e1747e5824f762084eb4f94d1f2ba9491429a",
+          "sha256:5f2a4003bd83b0a41164d3f3ae0f0f2f4073d2ff0dd3be8f25472f98bd206384",
+          "sha256:47725337823d077ec4748663716d460b6a7127c856983bdfa1a6f16decb11801",
+          "sha256:43b5ec869114fb9865f11c4fff3ab5f9ccafcff0f103254617ba59612694faf6",
+          "sha256:27587439c64a52fc83c84d202e7c15a0d94660375027c6cafc4973f621faaa09",
+          "sha256:f03195605dcba1b24dac5c5a266de8fcb9bf502460a0edc1ea89577594cb8993"
+        ]
+      }
+    },
+    {
+      "alvo": "antes-7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a",
+      "id": "sha256:c889dc1985d66ee0b8c398cab72f67e86be0c8560f3be4b0fb4e1191f03cee32",
+      "bytes": 933339967,
+      "tags": [
+        "barberos-app:antes-7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a",
+        "barberos-app:f7968a11b1892b07eaad46b659ad7c5d18bb9bd4"
+      ],
+      "os": "linux",
+      "architecture": "amd64",
+      "rootfs": {
+        "Type": "layers",
+        "Layers": [
+          "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+          "sha256:60bd9d2f4730a6e88dc76690b7365cf7110e0874b02e6280eab51f005e88d0de",
+          "sha256:593de0610faaafca8df2a031200415501e7ae657c22c6a069b46e66ff89ce71e",
+          "sha256:c5462dd18906793ff52ede1f6c13cd94f643e549ddfc2b0bed9f865fa1911f6f",
+          "sha256:442aa29c786aff3e492bdcd27007a4883e124e5a22414fa192b155e265466f8b",
+          "sha256:1820a82164ca57044d057a7074a4e13abf42054ddbc019468df84c4ccae48bd1",
+          "sha256:18b11198f8f360fcf22082b585cf319ed4ce3aabfd4a4e344ae28f2b63b5044c",
+          "sha256:b07badd4f52ef005dd3d3de9df15f207aaf670f8daee649d9d577722f744445e",
+          "sha256:30458f11806563cfb211156ed97b432ea9c2704460c54207749f4deb623b90fe",
+          "sha256:0afb6a37b6d6ec55d0f15db54f3ef7b555f2cea3d9bbb6b25386d7d491575b34",
+          "sha256:b25f04dfe87359e388f268559ab8986418d7ca69af4d4cc38bcdcfe4b9457717",
+          "sha256:7c13b9fe6809c903843eb8de0540dd57273db5fc211470426853436b7da83446",
+          "sha256:f939ff88af67543705e84ebb910a52338368906c62f12bb3784d20855448449a",
+          "sha256:8ad7fbf8516064c8058ffa82a1d38cc82e04d04b11c8a525efe5e3b425414aa8"
+        ]
+      }
+    },
+    {
+      "alvo": "7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a",
+      "id": "sha256:dce9adf19a53f6018714ed03258b0342b177685891fbb28ee8b3ffc5842c46b0",
+      "bytes": 933209419,
+      "tags": [
+        "barberos-app:7efefa8daf285b2b46b8bb9d8e57663c2a2b6a8a",
+        "barberos-app:antes-7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10"
+      ],
+      "os": "linux",
+      "architecture": "amd64",
+      "rootfs": {
+        "Type": "layers",
+        "Layers": [
+          "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+          "sha256:60bd9d2f4730a6e88dc76690b7365cf7110e0874b02e6280eab51f005e88d0de",
+          "sha256:593de0610faaafca8df2a031200415501e7ae657c22c6a069b46e66ff89ce71e",
+          "sha256:c5462dd18906793ff52ede1f6c13cd94f643e549ddfc2b0bed9f865fa1911f6f",
+          "sha256:321c228d4d4a0ce89eed47b1fab15e71bd91c92fcbc3a16ffaab1547bd7def8e",
+          "sha256:01e88da6d36eea055a091840b64c82d829fa52595fbfa4b66a2b9dc2c21a11d8",
+          "sha256:33d9d1e8e01531d851c90411454bde8131d790a64879ae71bea34a30ec3ba139",
+          "sha256:90a068cd9e2bdeda9b6bec3174c3a745fac50959f4d49db388bfd8017174ad2b",
+          "sha256:e35f61645ccf9f71a45befa5fed885df06c294efa2b506ca12224742f4b72cf3",
+          "sha256:27037a0d48839a212b8a1dcb9c518af40f17839042792249ba85f160abc1211f",
+          "sha256:3ca3f1c5f091c0e272a8bba96ee822d0bb6c02a5a78bb9a58636e905c1b048cb",
+          "sha256:b4ac5398154e2a8c3b08c2d5ee0dc376ac80f108be037650bbd784d4de5d8b2e",
+          "sha256:0b60488471b15f5b6bd57088b1aa171e11ab1ec1d1fe74ee0e154ddbc5146cc4",
+          "sha256:08c040e9177f38d26152c89e58a7b3ff33a73c3879a398086bc15babf265de80"
+        ]
+      }
+    },
+    {
+      "alvo": "7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10",
+      "id": "sha256:99d3debcd3f7c2230aecb08ac5457d38d8b85ef287db21304132ea4ca990593d",
+      "bytes": 936233154,
+      "tags": [
+        "barberos-app:7f8c8f2e3dc77a1ffe39e01fc4cf1c00a752dd10",
+        "barberos-app:antes-d833182db751a74d3ce52017f11a2824fcb6c735"
+      ],
+      "os": "linux",
+      "architecture": "amd64",
+      "rootfs": {
+        "Type": "layers",
+        "Layers": [
+          "sha256:75c137aedfb2760f88629236cb7b797630aed0c3d91d626d1d1bb694878fc2ba",
+          "sha256:60bd9d2f4730a6e88dc76690b7365cf7110e0874b02e6280eab51f005e88d0de",
+          "sha256:593de0610faaafca8df2a031200415501e7ae657c22c6a069b46e66ff89ce71e",
+          "sha256:c5462dd18906793ff52ede1f6c13cd94f643e549ddfc2b0bed9f865fa1911f6f",
+          "sha256:03868c22aa5dac50e9b91f58a800dd19c3cd7a7a317ccc382700beb7f09b6db1",
+          "sha256:1b976a8a636c28c2e0d754f52c1c807e5fd2444160afed654bc9cbcfc18bbeaf",
+          "sha256:3a5c044d5b45bc6c7b576b89156f82424ad0f2e0598217210fe81030b4da0366",
+          "sha256:448932b079f7d209b991b0489114d065298e063ef917801249cc063fc8f0fe52",
+          "sha256:57f076ed30af5f26342b7bd12c4083c160a02a0eef4847230fd34a37b31336c4",
+          "sha256:5f2fdc3111220aea9ab88fe5d546f749676264f286180cd247ddde12ade0acc8",
+          "sha256:cde1fbae6487024fd0da394b4159017a152c1521d4225f43d5e30d19e5063609",
+          "sha256:7c32fb875078f999008b23adc7b4d12b5817e3c1417b5b0b11d6e80c93eb56a1",
+          "sha256:196bf0591d559f4f53acc3dc5f45c87746c155463cb28476b51245743b13cad8",
+          "sha256:295c8c56ea7acba95d3ec52adef501df7b722be2fef08950bf2c990ca2e4e879"
+        ]
+      }
+    }
+  ]
+}

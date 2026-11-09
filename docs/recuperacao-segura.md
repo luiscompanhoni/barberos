@@ -79,6 +79,24 @@ recibo permanecem na VPS. Preservação e capacidade real são conferidas antes/
 interromper assim que os gates existentes passarem, sem prometer compressão ou ganho.
 O código preparado e testes locais não comprovam execução dessa manutenção na VPS.
 
+### Seis apps históricos — publicação do destaque dos serviços
+
+O workflow `arquivar-apps-destaque-vps.yml` usa um inventário separado e fechado,
+`apps-destaque-autorizados.json`, com seis imagens e seus aliases, conferidos por
+hash. Reutiliza o mesmo arquivador canônico intacto, exige a instalação 6aeefd9
+saudável e mantém envios, teste interno, mídia, IA paga, campanhas e pagamentos
+bloqueados. A restauração Docker no Linux e a verificação isolada de sintaxe e
+pacotes precedem a remoção sem força; não inicia o aplicativo antigo, banco ou rede.
+Executar uma imagem por vez e interromper assim que as reservas reais passarem.
+
+Para evitar incluir alterações paralelas da `main`, o workflow
+`publicar-destaque-servicos.yml` publica exclusivamente a revisão
+`28e5266888ad87078cecd046dca73bb3888c0548`, após comprovar seu CI e o CI do workflow.
+Confere o pai instalado 6aeefd9 e o diff limitado aos três arquivos da correção;
+não inclui a integração paralela do WhatsApp nem sua migração. A publicação usa
+o procedimento canônico dessa revisão, com backup restaurado na janela antes da
+troca, preservação de dados e todos os bloqueios operacionais.
+
 ## Atualização de folha com versões
 
 As migrações da estabilização têm lista nominal fechada; não liberar por prefixo, quantidade de pastas ou aparência de alteração “aditiva”. Comparar nomes/checksums com o inventário atual, conferir contagens de conflitos sem expor pessoas e aplicar primeiro à restauração isolada. Índices novos podem falhar por duplicatas; não escolher nem apagar registros automaticamente.
