@@ -14,7 +14,7 @@ Conferir cópia externa restaurável e cofre de configuração/segredos, código
 
 O publicador grava `recuperacao-pendente.json` fora do banco antes de isolar. O marcador persiste se o processo cair e impede repetir a publicação sem revisão humana. Exige banco sem porta publicada, só na rede prevista, nenhum container de outro projeto nessa rede e nenhuma conexão cliente após parar os containers do projeto. Mantém apenas o banco. Conexão desconhecida bloqueia, não é terminada cegamente. O isolamento pressupõe acesso administrativo host/Docker controlado.
 
-Com escritores parados: backup, restauração isolada, comparação dos dados/schema/mídia e ensaio da migração. Só depois migra o banco real. O app novo sobe com todos os efeitos externos bloqueados. O ingresso volta após saúde interna/controles; worker, backup posterior e controles finais são conferidos. Evolution anterior só retorna ao terminar. Sucesso registra revisão e remove marcador.
+Com escritores parados: backup, restauração isolada, comparação dos dados/schema/mídia e ensaio da migração. Só depois migra o banco real. O app novo sobe com todos os efeitos externos bloqueados. O ingresso volta após saúde interna/controles; worker, backup posterior e controles finais são conferidos. Evolution e transcrição (`atendimento`) anteriores só retornam ao terminar. Sucesso registra revisão e remove marcador.
 
 | Falha | Estado seguro | Continuação |
 |---|---|---|
