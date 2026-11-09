@@ -185,6 +185,31 @@ def preparar(base, projeto, esperada, alvo=None):
     return {k: v for k, v in r.items() if k != "antes"}
 
 
+def retomar(base, projeto, esperada, alvo):
+    validar_app_alvo(esperada, alvo)
+    conferir_app(projeto, esperada)
+    pasta = base / "worker-archives"
+    marcador = pasta / ("alvo-" + alvo + ".json")
+    if pasta.is_symlink() or marcador.is_symlink():
+        raise RuntimeError("Registro inesperado.")
+    estado = json.loads(marcador.read_text())
+    nome = estado.get("arquivo", "")
+    if (estado.get("alvo") != alvo or estado.get("concluido") is not False
+            or not re.fullmatch(r"workers-\d+\.tar\.gz", nome)):
+        raise RuntimeError("Alvo não possui preparação interrompida.")
+    arquivo, registro = pasta / nome, pasta / (nome + ".json")
+    if arquivo.is_symlink() or registro.is_symlink():
+        raise RuntimeError("Arquivo inesperado.")
+    r = json.loads(registro.read_text())
+    if (r.get("formato") != 2 or r.get("alvo") != alvo or r.get("imagemApp") != esperada
+            or r.get("arquivo") != nome or r.get("sha256") != estado.get("sha256")
+            or soma(arquivo) != r.get("sha256") or arquivo.stat().st_size != r.get("bytes")
+            or candidatos(alvo) != r.get("imagens")):
+        raise RuntimeError("Cópia ou inventário mudou; preservar e conferir manualmente.")
+    conferir_preservacao(r["antes"], retrato(base))
+    return {k: v for k, v in r.items() if k != "antes"}
+
+
 def concluir(base, projeto, esperada, nome, checksum, alvo=None):
     validar_app_alvo(esperada, alvo)
     if not re.fullmatch(r"workers-\d+\.tar\.gz", nome) or not re.fullmatch(r"[a-f0-9]{64}", checksum):
@@ -249,6 +274,8 @@ if __name__ == "__main__":
             r = concluir(base, projeto, imagem, *extras)
         elif modo == "preparar-alvo" and len(extras) == 1:
             r = preparar(base, projeto, imagem, extras[0])
+        elif modo == "retomar-alvo" and len(extras) == 1:
+            r = retomar(base, projeto, imagem, extras[0])
         elif modo == "concluir-alvo" and len(extras) == 3:
             r = concluir(base, projeto, imagem, extras[1], extras[2], extras[0])
         else:

@@ -36,6 +36,8 @@ A tentativa `42540222787`, revisão `102a3911fd6b38c635af9cf9cb7718e04f0796db`, 
 
 O fluxo de arquivamento conserva os mesmos três workers históricos e IDs exatos; a imagem saudável esperada foi atualizada conforme inventário para `a2a78e0a4ab504fa65cb72c9c21130e05a261c2b4134bc3b41532fc407a187d6`. Cada alvo exige cópia com checksum, Docker Load e render isolado antes de descarregar somente sua tag. Containers, volumes, backups, configurações e cópia comprimida permanecem.
 
+A restauração reutiliza o verificador OCI existente, que valida a cadeia de índice, manifesto, configuração e layers, incluindo a identidade retornada pelo Docker clássico ou containerd. A opção `retomar` do arquivamento reutiliza somente uma preparação ainda incompleta com checksum, identidade e preservação reconferidos; não cria outra cópia nem repete uma conclusão.
+
 `retomar-atendimento.yml` atende exclusivamente essa revisão interrompida. Exige o registro exato anterior ao isolamento, ausência de recuperação pendente, mesma imagem/compose/backup, as mesmas duas migrações pendentes e reserva suficiente. Preserva o registro em `operacao-interrompida-preservar.json` e executa o publicador original, sem pular backup, restauração ou ensaio. Recusa segunda retomada. A ativação pode selecionar o SHA efetivamente publicado, conferido novamente pelo script instalado.
 
 Para revisão posterior, sugiro 4 ciclos: identidade e preservação do arquivamento; recusa de retomada após isolamento; backup/ensaio/recuperação; integração e ativação restrita. Prompt: “Revise estes quatro ciclos, com evidência por arquivo e checks reais; corrija achados e termine verificando integração, sem ampliar ações externas.”

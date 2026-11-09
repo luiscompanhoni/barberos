@@ -137,6 +137,25 @@ class ArquivarAlvoTest(unittest.TestCase):
             a.preparar(Path("nao-acessar"), "barberos", "sha256:" + "a" * 64, self.alvo)
         cmd.assert_not_called()
 
+    def test_retomada_reutiliza_copia_integra_e_recusa_conclusao_ou_adulteracao(self):
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            arquivo, r = self.registro(base)
+            with patch.object(a, "conferir_app"), patch.object(a, "candidatos", return_value=self.lista), \
+                    patch.object(a, "retrato", return_value=self.retrato), patch.object(a, "cmd") as cmd:
+                retomado = a.retomar(base, "barberos", a.APP_ESPERADO, self.alvo)
+                self.assertEqual(retomado["sha256"], r["sha256"])
+                cmd.assert_not_called()
+                arquivo.write_bytes(b"adulterado")
+                with self.assertRaises(RuntimeError):
+                    a.retomar(base, "barberos", a.APP_ESPERADO, self.alvo)
+                arquivo.write_bytes(b"arquivo ficticio")
+                marcador = arquivo.parent / ("alvo-" + self.alvo + ".json")
+                estado = json.loads(marcador.read_text()); estado["concluido"] = True
+                marcador.write_text(json.dumps(estado))
+                with self.assertRaises(RuntimeError):
+                    a.retomar(base, "barberos", a.APP_ESPERADO, self.alvo)
+
     def test_retrato_inclui_todos_backups_e_archives_anteriores(self):
         with tempfile.TemporaryDirectory() as d:
             base = Path(d)

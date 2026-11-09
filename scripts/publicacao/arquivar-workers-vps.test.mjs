@@ -93,18 +93,20 @@ test("arquivo adulterado ou incompleto impede qualquer comando Docker", async ()
   } finally { rmSync(pasta, { recursive: true, force: true }); }
 });
 
-test("cópia íntegra exige load, inspect e render antes de aceitar", async () => {
+test("cópia íntegra delega a prova ao verificador OCI e exige conclusão completa", async () => {
   const pasta = mkdtempSync(join(tmpdir(), "worker-archive-test-"));
   try {
-    const arquivo = join(pasta, "worker.tar.gz"), chamadas = [];
+    const arquivo = join(pasta, "worker.tar.gz"), antes = preparado();
     writeFileSync(arquivo, conteudo);
-    await validarCopia(preparado(), arquivo, alvo, (bin, args) => {
-      assert.equal(bin, "docker"); chamadas.push(args);
-      if (args[0] === "load") return Buffer.from("carregado");
-      if (args[0] === "image") return Buffer.from(JSON.stringify([{ Id: imagem.id, RepoTags: [imagem.tag], Size: imagem.bytesImagem }]));
-      return Buffer.from(JSON.stringify(smoke));
-    });
-    assert.deepEqual(chamadas.map(args => args[0]), ["load", "image", "run"]);
+    const executar = () => assert.fail("Verificador deve controlar Docker");
+    const validar = async (a, e, x) => {
+      assert.equal(a, arquivo); assert.equal(e, antes); assert.equal(x, executar);
+      return { ...antes, restauracaoIsoladaValidada: true, renderSinteticoValidado: true };
+    };
+    await validarCopia(antes, arquivo, alvo, executar, validar);
+    for (const alteracao of [{ restauracaoIsoladaValidada: false }, { renderSinteticoValidado: false }, { sha256: "outro" }, { imagens: [] }]) {
+      await assert.rejects(validarCopia(antes, arquivo, alvo, executar, async (...args) => ({ ...await validar(...args), ...alteracao })));
+    }
   } finally { rmSync(pasta, { recursive: true, force: true }); }
 });
 

@@ -3,6 +3,11 @@ name: Arquivar workers históricos com restauração validada
 on:
   workflow_dispatch:
     inputs:
+      retomar:
+        description: Retomar cópia íntegra já preparada, sem criar outro arquivo
+        required: false
+        type: boolean
+        default: false
       alvo:
         description: Uma única revisão histórica do worker; cada alvo pode ser preparado uma vez
         required: true
@@ -45,7 +50,9 @@ jobs:
       - name: Conferir bloqueios e preservação
         run: |
           python3 -B scripts/publicacao/test_arquivar_workers.py
+          python3 -B scripts/publicacao/test_transferir_arquivos_workers.py
           node --test scripts/publicacao/arquivar-workers-vps.test.mjs
+          node --test scripts/publicacao/transferir-arquivos-workers.test.mjs
       - name: Arquivar uma tag, restaurar e renderizar sem rede antes de descarregá-la
         env:
           VPS_HOST: ${{ vars.VPS_HOST }}
@@ -57,6 +64,7 @@ jobs:
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           VPS_IMAGEM_ANTERIOR: ${{ inputs.imagem_anterior }}
           ARQUIVAMENTO_ALVO: ${{ inputs.alvo }}
+          ARQUIVAMENTO_RETOMAR: ${{ inputs.retomar }}
           RELATORIO_CHAVE_PUBLICA: ${{ inputs.chave_relatorio }}
         run: node scripts/publicacao/arquivar-workers-vps.mjs "$RUNNER_TEMP/arquivamento.cifrado.json"
       - uses: actions/upload-artifact@v4
