@@ -228,6 +228,39 @@ jobs:
           DATABASE_URL_ENTREVISTAS: postgresql://barberos:barberos@127.0.0.1:55439/barberos_recrutamento_entrevistas_teste
           DATABASE_URL_RECRUTAMENTO: postgresql://barberos:barberos@127.0.0.1:55439/barberos_recrutamento_formularios_teste
         run: npm run teste:todos
+      - name: Conferir cadastro exclusivo do RH e concorrência sem skips
+        env:
+          POSTGRES_SERVICO: ${{ job.services.postgres.id }}
+          DATABASE_URL: postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_regr_rh_20261109
+          TESTE_RH_SEM_CHECKLIST_LOCAL: "1"
+          AMBIENTE: homologacao
+          WHATSAPP_PROVIDER: simulador
+          WHATSAPP_ENVIOS_BLOQUEADOS: "true"
+          WHATSAPP_ATENDIMENTO_IA_PAGA: "false"
+          PAGAMENTOS_PROVIDER: simulado
+          PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA: "false"
+          COBRANCA_AUTOMATICA_WHATSAPP_ATIVA: "false"
+          AGENTES_EXECUCAO_ATIVA: "false"
+          MAQUININHA: manual
+          OTP_PROVIDER: console
+          PUSH_PROVIDER: simulado
+        run: |
+          set -euo pipefail
+          docker exec "$POSTGRES_SERVICO" createdb -U barberos --owner=auditoria_teste barberos_ci_local_regr_rh_20261109
+          ./node_modules/.bin/prisma migrate deploy
+          npm run db:seed
+          cat > "$RUNNER_TEMP/rh-sem-checklist-sem-http.cjs" <<'JS'
+          const bloquear = () => { throw Error('HTTP externo bloqueado na revisão sintética do RH'); };
+          globalThis.fetch = async () => bloquear();
+          for (const nome of ['node:http', 'node:https']) {
+            const transporte = require(nome);
+            transporte.request = transporte.get = bloquear;
+          }
+          JS
+          export NODE_OPTIONS="--require=$RUNNER_TEMP/rh-sem-checklist-sem-http.cjs"
+          ./node_modules/.bin/vitest run tests/rh-sem-checklist-banco.test.ts \
+            --maxWorkers=1 --reporter=json --outputFile="$RUNNER_TEMP/rh-sem-checklist.json"
+          node -e 'const r=require(process.argv[1]); if (!r.success || r.numPassedTests < 9 || r.numPendingTests || r.numTotalTests !== r.numPassedTests) process.exit(1); console.log(r.numPassedTests, "cenários RH sem checklist aprovados sem skips")' "$RUNNER_TEMP/rh-sem-checklist.json"
       - name: Build
         run: npm run build
 

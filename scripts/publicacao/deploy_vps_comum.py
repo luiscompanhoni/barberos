@@ -43,6 +43,7 @@ MIGRACOES_ESTABILIZACAO = {
     "20261108020000_pote_arredondamento_versionado",
     "20261108030000_folha_retificacao_teste",
 }
+MIGRACOES_RH = {"20261109000000_rh_sem_checklist"}
 GRUPOS_ESTRUTURA_BACKUP = {"colunas", "constraints", "indices", "triggers", "funcoes", "sequencias", "enums", "privilegios"}
 
 
@@ -103,7 +104,7 @@ def conferir_migracoes(aplicadas, pasta):
 
 def exigir_migracoes_da_publicacao(pendentes):
     # Somente as migrações revisadas; executar a publicação ainda exige pedido explícito.
-    if set(pendentes) - MIGRACOES_CLIENTE - MIGRACOES_ESTABILIZACAO - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros", "20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto", "20261102210000_recrutamento_entrevistas", "20261102220000_entrevistas_piloto_whatsapp", "20261102221000_piloto_destino_obrigatorio", "20261103143000_agenda_externa_transicao", "20261104120000_campanha_equipe_servicos", "20261104121000_solicitacoes_horario", "20261104121500_solicitacao_horario_periodo", "20261104123000_reunioes_avisos", "20261104130000_planos_vitrine", "20261104131000_avaliacao_mensal_elegibilidade", "20261104132000_cobranca_automatica_tentativas", "20261104133000_webhook_pagamento_entrada", "20261104134000_webhook_pagamento_sequencia", "20261104135000_emissao_pix_mensal", "20261104140000_optout_contato_antes_cadastro", "20261104141000_webhook_pagamento_ordem", "20261103230000_folha_lote_pix_preparacao", "20261103233000_link_intencao_pagamento"}:
+    if set(pendentes) - MIGRACOES_CLIENTE - MIGRACOES_ESTABILIZACAO - MIGRACOES_RH - {"20261102030000_central_agentes", "20261102040000_estudio_templates_roteiros", "20261102180000_recrutamento_formularios", "20261102190000_recrutamento_revisao", "20261102200000_recrutamento_contexto", "20261102210000_recrutamento_entrevistas", "20261102220000_entrevistas_piloto_whatsapp", "20261102221000_piloto_destino_obrigatorio", "20261103143000_agenda_externa_transicao", "20261104120000_campanha_equipe_servicos", "20261104121000_solicitacoes_horario", "20261104121500_solicitacao_horario_periodo", "20261104123000_reunioes_avisos", "20261104130000_planos_vitrine", "20261104131000_avaliacao_mensal_elegibilidade", "20261104132000_cobranca_automatica_tentativas", "20261104133000_webhook_pagamento_entrada", "20261104134000_webhook_pagamento_sequencia", "20261104135000_emissao_pix_mensal", "20261104140000_optout_contato_antes_cadastro", "20261104141000_webhook_pagamento_ordem", "20261103230000_folha_lote_pix_preparacao", "20261103233000_link_intencao_pagamento"}:
         raise RuntimeError("Migração pendente fora do escopo aprovado desta publicação.")
 
 
