@@ -33,7 +33,11 @@ try {
   resultado = JSON.parse(remoto(comando.map(shell).join(" ")).toString());
   if (!resultado.concluido) throw Error("Ativação não comprovada");
   process.stdout.write("Atendimento ativado somente para dono/gerente; campanhas bloqueadas.\n");
-} catch {
+} catch (erro) {
+  try {
+    const remoto = JSON.parse(erro.stdout?.toString() || "null");
+    if (remoto?.concluido === false && typeof remoto.erro === "string") resultado.erro = remoto.erro;
+  } catch { /* Nunca imprime stderr remoto ou credenciais. */ }
   process.stderr.write(`Atendimento não ativado na etapa ${resultado.etapa}; detalhes privados omitidos.\n`);
   process.exitCode = 1;
 } finally {

@@ -15,13 +15,15 @@ from protecao_operacao import exigir_sem_recuperacao
 PREFLIGHT = r"""
 const {PrismaClient}=require('@prisma/client'); const p=new PrismaClient();
 (async()=>{try {
- if(!process.env.ANTHROPIC_API_KEY&&!process.env.ANTHROPIC_AUTH_TOKEN) throw Error('Credencial existente de IA ausente');
- if(process.env.WHATSAPP_PROVIDER!=='evolution') throw Error('Canal Evolution esperado');
+ const chaveIaExistente=!!(process.env.ANTHROPIC_API_KEY||process.env.ANTHROPIC_AUTH_TOKEN);
+ const canal=process.env.WHATSAPP_PROVIDER||'ausente';
  const equipe=await p.usuario.count({where:{ativo:true,papel:{in:['DONO','GERENTE']}}});
- if(!equipe) throw Error('Equipe autorizada ausente');
+ let whatsapp='desconectado';
+ if(canal==='evolution'&&process.env.EVOLUTION_URL&&process.env.EVOLUTION_API_KEY){try{
  const r=await fetch(process.env.EVOLUTION_URL.replace(/\/$/,'')+'/instance/connectionState/'+(process.env.EVOLUTION_INSTANCIA||'barberos'),{headers:{apikey:process.env.EVOLUTION_API_KEY},signal:AbortSignal.timeout(15000)});
- const b=await r.json(); if(!r.ok||b.instance?.state!=='open') throw Error('WhatsApp desconectado');
- console.log(JSON.stringify({equipe,whatsapp:'conectado',chaveIaExistente:true}));
+ const b=await r.json();if(r.ok&&b.instance?.state==='open') whatsapp='conectado';
+ }catch{whatsapp='indisponivel'}}
+ console.log(JSON.stringify({equipe,whatsapp,chaveIaExistente,canal}));
 }finally{await p.$disconnect()}})().catch(()=>process.exit(1));
 """
 
@@ -92,8 +94,17 @@ def ativar(base, projeto, commit):
     if memoria < 1500 * 1024:
         raise RuntimeError('Reserva de memória insuficiente.')
     preflight = json.loads(executar(['docker', 'exec', app['Id'], 'node', '-e', PREFLIGHT], prazo=40))
+    if not preflight.get('chaveIaExistente'):
+        raise RuntimeError('Credencial de IA existente ausente; configuração necessária.')
+    if preflight.get('whatsapp') != 'conectado':
+        raise RuntimeError('WhatsApp desconectado ou indisponível; conectar pelo painel.')
+    if not preflight.get('equipe'):
+        raise RuntimeError('Nenhum dono/gerente ativo cadastrado para testar.')
     # Uma chamada técnica curta, sem dados de cliente, à mesma IA já configurada.
-    prova_modelo = json.loads(executar(['docker', 'exec', app['Id'], 'node', '-e', MODELO], prazo=40))
+    try:
+        prova_modelo = json.loads(executar(['docker', 'exec', app['Id'], 'node', '-e', MODELO], prazo=40))
+    except Exception:
+        raise RuntimeError('Modelo existente não respondeu ao teste técnico; conferir autenticação e disponibilidade.') from None
     privado = base / '.env.atendimento'
     if privado.is_symlink():
         raise RuntimeError('Configuração privada inesperada.')
@@ -159,5 +170,7 @@ if __name__ == '__main__':
         with open(trava, 'a') as f:
             fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
             print(json.dumps(ativar(base, args.projeto, args.commit)))
-    except BaseException:
-        raise SystemExit('Atendimento não ativado; conferir pré-requisitos e registro privado.') from None
+    except BaseException as erro:
+        motivo = str(erro) if isinstance(erro, RuntimeError) else 'Conferência operacional não concluída.'
+        print(json.dumps({'concluido': False, 'erro': motivo}))
+        raise SystemExit(1) from None
