@@ -31,6 +31,7 @@
     "teste:antecipado": "tsx --env-file=.env scripts/teste-antecipado.ts",
     "teste:agenda:cliente": "tsx --env-file=.env scripts/teste-agendamento-app-direto.ts",
     "teste:anotacoes": "tsx --env-file=.env scripts/teste-anotacoes.ts",
+    "teste:avisos-etiquetas": "tsx scripts/teste-avisos-etiquetas.ts",
     "teste:jogos": "tsx --env-file=.env scripts/teste-jogos.ts",
     "teste:financeiro": "tsx --env-file=.env scripts/teste-financeiro.ts",
     "teste:historico": "tsx scripts/teste-conciliacao-historico.ts",

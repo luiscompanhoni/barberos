@@ -5,12 +5,19 @@
  * - indicacao: premia quem indicou quando o amigo faz o 1o atendimento.
  */
 import { configuracao } from "@/lib/agenda/carregar";
+import { travarClienteAgenda } from "@/lib/agenda/cliente-identidade";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 import { enviarAutomacao } from "@/lib/automacoes/enviar";
 import { db } from "@/lib/db";
+import { auditar } from "@/lib/auditoria";
+import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
+import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
+import { testeEquipeAtivo } from "@/lib/whatsapp/teste-equipe";
+import { travarPreferencia } from "@/lib/whatsapp/preferencia";
+import { ErroNegocio } from "@/lib/erros";
 import { descreverOpcao, opcoesDoDia } from "./espera";
 import { converterIndicacoes } from "./indicacao";
-import { escolherSugestoes, retornoDevido, ritmoDoCliente, TEXTOS } from "./regras";
+import { escolherSugestoes, noPeriodo, retornoDevido, ritmoDoCliente, TEXTOS } from "./regras";
 
 const MIN = 60_000;
 const DIA = 24 * 60 * MIN;
@@ -28,6 +35,8 @@ export function diaFalado(data: string, hoje: string) {
 }
 
 export async function processarEsperas(agora: number, opts: { clienteIds?: string[] } = {}) {
+  // Não consumir a chave do aviso nem marcar AVISADA enquanto o canal está bloqueado.
+  if (quarentenaRestauracao() || recursoPiloto() || testeEquipeAtivo() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return 0;
   const cfg = await configuracao();
   const hoje = dataLocal(agora, cfg.fuso);
   const hojeDb = new Date(`${hoje}T00:00:00Z`);
@@ -46,17 +55,39 @@ export async function processarEsperas(agora: number, opts: { clienteIds?: strin
   let avisados = 0;
   for (const e of esperas) {
     const data = e.data.toISOString().slice(0, 10);
-    // Ja marcou algo nesse dia (pelo aviso ou por conta propria): pronto.
+    // Só encerra o pedido se um mesmo atendimento satisfizer todos os serviços.
     const perto = await db.agendamento.findMany({
       where: { clienteId: e.clienteId, status: { in: ["MARCADO", "CONFIRMADO", "CHEGOU", "EM_ATENDIMENTO", "CONCLUIDO"] }, inicio: { gte: new Date(+e.data - DIA), lt: new Date(+e.data + 2 * DIA) } },
-      select: { inicio: true },
+      select: { id: true, adicionalDeId: true, servicoId: true, barbeiroId: true, inicio: true },
     });
-    if (perto.some((a) => dataLocal(a.inicio, cfg.fuso) === data)) {
-      await db.esperaHorario.update({ where: { id: e.id }, data: { status: "ATENDIDA" } });
+    const grupos = new Map<string, { servicos: Set<string>; inicioPrincipal: Date | null }>();
+    for (const a of perto) {
+      if (dataLocal(a.inicio, cfg.fuso) !== data || (e.barbeiroId && a.barbeiroId !== e.barbeiroId)) continue;
+      const grupoId = a.adicionalDeId ?? a.id;
+      if (!grupos.has(grupoId)) grupos.set(grupoId, { servicos: new Set(), inicioPrincipal: null });
+      const grupo = grupos.get(grupoId)!;
+      grupo.servicos.add(a.servicoId);
+      if (!a.adicionalDeId) grupo.inicioPrincipal = a.inicio;
+    }
+    if ([...grupos.values()].some(grupo => grupo.inicioPrincipal && noPeriodo(minutosLocal(grupo.inicioPrincipal, cfg.fuso), e.periodo) &&
+      [e.servicoId, ...e.servicosAdicionais].every(id => grupo.servicos.has(id)))) {
+      await db.$transaction(async tx => {
+        const r = await tx.esperaHorario.updateMany({ where: { id: e.id, status: "ATIVA" }, data: { status: "ATENDIDA" } });
+        if (r.count) await auditar(tx, null, "atender", "espera_horario", e.id, { clienteId: e.clienteId });
+      });
       continue;
     }
-    const chave = `${data}|${e.servicoId}|${e.barbeiroId ?? "*"}|${e.periodo}`;
-    if (!cache.has(chave)) cache.set(chave, await opcoesDoDia(data, e.servicoId, e.barbeiroId, e.periodo));
+    const chave = `${data}|${[e.servicoId, ...e.servicosAdicionais].sort().join(",")}|${e.barbeiroId ?? "*"}|${e.periodo}|${e.origem}`;
+    if (!cache.has(chave)) {
+      try {
+        cache.set(chave, await opcoesDoDia(data, e.servicoId, e.barbeiroId, e.periodo, e.servicosAdicionais,
+          e.origem === "SITE" ? { esperaId: e.id } : {}));
+      } catch (erro) {
+        // Cancelamento concorrente e fonte externa do bot não interrompem os demais pedidos.
+        if (erro instanceof ErroNegocio && ["confirmacao_equipe", "nao_encontrado"].includes(erro.codigo)) continue;
+        throw erro;
+      }
+    }
     const opcoes = cache.get(chave)!;
     if (!opcoes.length) continue;
     // Justo com a fila: com N horarios livres, avisa no maximo N pessoas a cada 20 min.
@@ -64,12 +95,27 @@ export async function processarEsperas(agora: number, opts: { clienteIds?: strin
       where: { status: "AVISADA", data: e.data, servicoId: e.servicoId, avisadaEm: { gt: new Date(agora - ESPERA_ENTRE_AVISOS_MS) } },
     });
     if (recentes >= opcoes.length) continue;
-    const servico = await db.servico.findUnique({ where: { id: e.servicoId }, select: { nome: true } });
-    const texto = TEXTOS.ESPERA({ nome: e.cliente.nome, servico: servico?.nome ?? "o serviço", dia: diaFalado(data, hoje), opcoes: escolherSugestoes(opcoes, 3).map(descreverOpcao) });
-    if (await enviarAutomacao({ tipo: "ESPERA_HORARIO", chave: e.id, clienteId: e.clienteId, telefone: e.cliente.telefone, texto })) {
-      await db.esperaHorario.update({ where: { id: e.id }, data: { status: "AVISADA", avisadaEm: new Date(agora) } });
-      avisados++;
-    }
+    const servicos = await db.servico.findMany({ where: { id: { in: [e.servicoId, ...e.servicosAdicionais] } }, select: { nome: true } });
+    const texto = TEXTOS.ESPERA({ nome: e.cliente.nome, servico: servicos.map(s => s.nome).join(" + ") || "os serviços", dia: diaFalado(data, hoje), opcoes: escolherSugestoes(opcoes, 3).map(descreverOpcao) });
+    const enviado = await db.$transaction(async tx => {
+      // Exclusão, recusa, troca de telefone e cancelamento só confirmam depois
+      // deste trecho: a identidade/consentimento relidos valem até o canal concluir.
+      try {
+        await travarClienteAgenda(tx, e.clienteId);
+      } catch (erro) {
+        if (erro instanceof ErroNegocio && erro.codigo === "nao_encontrado") return false;
+        throw erro;
+      }
+      await travarPreferencia(tx, e.cliente.telefone);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`espera:${e.clienteId}`}))`;
+      if (quarentenaRestauracao() || recursoPiloto() || testeEquipeAtivo() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return false;
+      if (!await tx.esperaHorario.count({ where: { id: e.id, status: "ATIVA", cliente: { aceitaMensagens: true, excluidoEm: null, telefone: e.cliente.telefone } } })) return false;
+      if (!await enviarAutomacao({ tipo: "ESPERA_HORARIO", chave: e.id, clienteId: e.clienteId, telefone: e.cliente.telefone, texto })) return false;
+      const r = await tx.esperaHorario.updateMany({ where: { id: e.id, status: "ATIVA" }, data: { status: "AVISADA", avisadaEm: new Date(agora) } });
+      if (r.count) await auditar(tx, null, "avisar", "espera_horario", e.id, { clienteId: e.clienteId });
+      return true;
+    }, { maxWait: 10_000, timeout: 120_000 });
+    if (enviado) avisados++;
   }
   return avisados;
 }

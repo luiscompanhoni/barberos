@@ -26,6 +26,33 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_avisos_etiquetas_aceita_somente_a_expansao_nominal_revisada(self):
+        nome = "20261110120000_avisos_etiquetas_servicos"
+        exigir_migracoes_da_publicacao([nome])
+        arquivo = Path(__file__).resolve().parents[2] / "prisma/migrations" / nome / "migration.sql"
+        sql = "\n".join(l for l in arquivo.read_text(encoding="utf8").splitlines() if not l.lstrip().startswith("--")).strip()
+        esperado = '''ALTER TABLE "servicos"
+  ADD COLUMN "etiquetas" JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN "etiquetasVersao" INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE "esperas_horario"
+  ADD COLUMN "servicosAdicionais" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+
+ALTER TABLE "servicos"
+  ADD CONSTRAINT "servicos_etiquetas_array" CHECK (
+    jsonb_typeof("etiquetas") = 'array' AND jsonb_array_length("etiquetas") <= 6
+  ),
+  ADD CONSTRAINT "servicos_etiquetas_versao_nao_negativa" CHECK ("etiquetasVersao" >= 0);
+
+ALTER TABLE "esperas_horario"
+  ADD CONSTRAINT "esperas_horario_adicionais_limite" CHECK (
+    cardinality("servicosAdicionais") <= 9
+  );'''
+        self.assertEqual(sql, esperado)
+        for outra in (nome + "_extra", "20261110120001_avisos_etiquetas_servicos"):
+            with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+                exigir_migracoes_da_publicacao([nome, outra])
+
     def test_anotacoes_aceita_somente_a_expansao_nominal_revisada(self):
         nome = "20261109220000_antecipado_emissao_segura"
         exigir_migracoes_da_publicacao([nome])

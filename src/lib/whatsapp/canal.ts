@@ -48,6 +48,7 @@ async function postarCloud(corpo: Record<string, unknown>): Promise<ResultadoEnv
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ messaging_product: "whatsapp", recipient_type: "individual", ...corpo }),
+    signal: AbortSignal.timeout(30_000),
   });
   const json = (await r.json().catch(() => ({}))) as { messages?: { id: string }[]; error?: { message?: string } };
   if (!r.ok) throw new Error(`WhatsApp ${r.status}: ${json.error?.message ?? "erro desconhecido"}`);

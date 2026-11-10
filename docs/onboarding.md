@@ -79,6 +79,7 @@ Instalação e configuração definitiva: [app-notificacoes.md](app-notificacoes
 | `npm run typecheck` | `tsc --noEmit` (no CI, depois de `npx prisma generate` e `npx next typegen`) | não |
 | `npm test` | testes unitários Vitest (`tests/**/*.test.ts`) | não |
 | `npm run teste:<área>` | fluxo completo contra o banco do `.env`, com gateways falsos (sem chamadas reais) | sim |
+| `npm run teste:avisos-etiquetas` | avisos com vários serviços, concorrência, cancelamento e etiquetas auditadas; aceita somente `127.0.0.1:55561/barberos_avisos_etiquetas_teste_20261110`, com envios bloqueados e pagamento simulado | sim |
 | `npm run teste:todos` | roda todos os `teste:*`; exige também `DATABASE_URL_HISTORICO` e `DATABASE_URL_AGENTES` para os bancos locais migrados de cada fluxo (`scripts/testes-integracao.sh`) | sim |
 | `npm run build` | build de produção | não |
 
@@ -86,6 +87,10 @@ Instalação e configuração definitiva: [app-notificacoes.md](app-notificacoes
 `automacoes`, `crescimento`, `login`, `jogos`, `financeiro`, `despesas`, `estorno`, `rh`, `permissoes`,
 `campanhas`, `backups` e `evolucao`. A última cria bancos locais separados para oito módulos, incluindo geração
 e envio simulado de notificações; exige permissão local de criar bancos e nunca usa o banco da barbearia.
+
+O fluxo `avisos-etiquetas` cria seus próprios registros fictícios; seu banco exclusivo deve estar vazio de
+fixtures anteriores e já migrado, sem seed. `teste:todos` exige `DATABASE_URL_AVISOS_ETIQUETAS` e não usa
+o banco genérico como fallback. A configuração do CI prepara esse destino separado, sem habilitar transportes.
 
 O CI (`.github/workflows/ci.yml`) roda em cada push na `main` e em cada PR: `npm ci`, tipos, lint, regras locais
 (`lint:rules`), testes unitários, migrações num banco limpo + checagem de schema, `db:seed`, `teste:todos` e build. Detalhes de qualidade

@@ -7,13 +7,15 @@ import { ArrowLeft, CalendarCheck, Check, Clock3, Gift, Scissors, UserRound, Wal
 import { api, reais } from "@/lib/cliente-api";
 import type { PremioCliente } from "@/lib/jogos/tipos";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
+import { EtiquetasServico } from "@/components/servicos/EtiquetasServico";
+import type { EtiquetaServico } from "@/lib/servicos/etiquetas";
 import { SemVaga } from "./SemVaga";
 import { PagarAntes } from "./PagarAntes";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 
 const FUSO = "America/Sao_Paulo";
 type Barbeiro = { id: string; nome: string; cor: string; fotoVersao: number };
-type Servico = { id: string; nome: string; duracaoMin: number; precoCentavos: number; barbeiros: Barbeiro[] };
+type Servico = { id: string; nome: string; duracaoMin: number; precoCentavos: number; barbeiros: Barbeiro[]; etiquetas?: EtiquetaServico[] };
 type Catalogo = { nomeBarbearia: string; janelaDias: number; servicos: Servico[]; pagarAntes: boolean; checkout: boolean };
 type Disp = { barbeiroId: string; nome: string; duracaoMin: number; precoCentavos: number; horarios: string[] };
 /** Horario escolhido: com "qualquer barbeiro", fica com o primeiro livre naquele horario. */
@@ -167,6 +169,7 @@ export function AgendarTela() {
                 <span className="min-w-0 flex-1">
                   <span className="block font-bold">{s.nome}</span>
                   <span className="mt-1 block text-xs text-zinc-500">{s.duracaoMin} min · {reais(s.precoCentavos)}</span>
+                  <EtiquetasServico etiquetas={s.etiquetas} />
                 </span>
                 <Check size={20} className={`shrink-0 text-ouro ${escolhidos.includes(s.id) ? "" : "invisible"}`} aria-hidden="true" />
               </button>
@@ -215,7 +218,8 @@ export function AgendarTela() {
           {resultadoDisp?.erro ? <div className="mt-3 space-y-3"><p role="alert" className="text-sm text-red-700">{resultadoDisp.erro}</p><button className="btn" onClick={() => { setRespostaDisp(null); setRecarregar(n => n + 1); }}>Tentar buscar horários novamente</button></div> : !disp ? (
             <p role="status" className="mt-3 text-sm text-zinc-500">Buscando horários…</p>
           ) : opcoes.length === 0 ? (
-            adicionais.length ? <p className="mt-3 text-sm">Não há horários para todos os serviços neste dia. Tente outra data ou altere os serviços.</p> : <SemVaga key={`${data}|${barbeiroId}`} data={data} servicoId={servico.id} barbeiroId={barbeiroId === QUALQUER ? null : barbeiroId} />
+            <SemVaga key={`${data}|${barbeiroId}|${escolhidos.join(",")}`} data={data} servicoId={servico.id} servicosAdicionais={adicionais} barbeiroId={barbeiroId === QUALQUER ? null : barbeiroId}
+              aoAtualizar={() => { setRespostaDisp(null); setRecarregar(n => n + 1); }} />
           ) : (
             <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-5">
               {opcoes.map((o) => (

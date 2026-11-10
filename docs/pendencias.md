@@ -14,6 +14,8 @@ rastreável e o primeiro grupo de clientes pronto para entrar. Jogos, IA e finan
 
 ### A0. Abertos desta semana
 
+- [ ] Publicar somente após pedido os avisos de vaga por período e etiquetas editáveis de serviços, preparados em 10/11. Três ciclos locais concluídos, com correções de acessibilidade, reconsulta de vagas, origem das requisições, privacidade concorrente e período do atendimento. Fluxo em banco descartável, HTTP e navegador validados; backups sintéticos restaurados e falha de migração ensaiada. Antes da publicação, validar CI Linux, versão instalada, espaço e backup/restauração de produção; o publicador deve continuar recusando migrações fora da allowlist até sua revisão. Envios, IA paga, campanhas e pagamentos permanecem bloqueados. Contratos e recuperação em [arquitetura](architecture.md#avisos-de-vaga-e-etiquetas-de-serviços).
+
 - [ ] Homologar para futura publicação os [ajustes das 15 anotações de 09/11](ajustes-anotacoes-2026-11-09.md).
   [Quatro ciclos locais concluídos](revisao-anotacoes-4-ciclos-2026-11-09.md), oito achados corrigidos,
   check e cinco fluxos aprovados; backup sintético restaurado e migração/rollback validados.

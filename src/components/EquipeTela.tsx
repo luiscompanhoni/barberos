@@ -1,14 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Trash2 } from "lucide-react";
+import { Camera, Tags, Trash2 } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { useAcesso } from "@/components/AcessoContexto";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { formatarTelefone } from "@/lib/telefone";
 import type { ServicoApi } from "@/components/agenda/EncaixeModal";
+import { EditorEtiquetasServico } from "@/components/servicos/EditorEtiquetasServico";
+import { EtiquetasServico } from "@/components/servicos/EtiquetasServico";
 
 type BarbeiroApi = { id: string; nome: string; cor: string; ativo: boolean; fotoVersao: number; usuario: { telefone: string } };
+type ServicoEquipe = ServicoApi & { etiquetas?: unknown };
 const LADO_FOTO = 320;
 
 /** Recorte central quadrado, redimensionado no navegador e exportado em webp (jpeg se nao houver webp). */
@@ -39,9 +42,12 @@ const CORES = ["#378ADD", "#1D9E75", "#D85A30", "#7F77DD", "#D4537E", "#BA7517",
 /** Painel do dono: cadastro de barbeiros e servicos (quem faz o que). */
 export function EquipeTela() {
   // Desativar corta o login: só o dono (o servidor confere).
-  const souDono = useAcesso().papel === "DONO";
+  const acesso = useAcesso();
+  const souDono = acesso.papel === "DONO";
+  const souGestao = ["DONO", "GERENTE"].includes(acesso.papel);
   const [barbeiros, setBarbeiros] = useState<BarbeiroApi[]>([]);
-  const [servicos, setServicos] = useState<ServicoApi[]>([]);
+  const [servicos, setServicos] = useState<ServicoEquipe[]>([]);
+  const [editorEtiquetas, setEditorEtiquetas] = useState<ServicoEquipe | null>(null);
   const [erro, setErro] = useState("");
   const [nb, setNb] = useState({ nome: "", telefone: "" });
   const [ns, setNs] = useState({ nome: "", duracaoMin: "30", preco: "" });
@@ -51,7 +57,7 @@ export function EquipeTela() {
 
   const carregar = useCallback(() => {
     api<BarbeiroApi[]>("/api/barbeiros").then(setBarbeiros).catch((e) => setErro(e.message));
-    api<ServicoApi[]>("/api/servicos").then(setServicos).catch((e) => setErro(e.message));
+    api<ServicoEquipe[]>("/api/servicos").then(setServicos).catch((e) => setErro(e.message));
   }, []);
   useEffect(carregar, [carregar]);
 
@@ -168,7 +174,9 @@ export function EquipeTela() {
             <tbody className="divide-y divide-zinc-100">
               {servicos.map((s) => (
                 <tr key={s.id} className={s.ativo ? "" : "text-zinc-400"}>
-                  <td className="py-2 pr-2 font-medium">{s.nome}</td>
+                  <td className="py-2 pr-2 font-medium">{s.nome}<EtiquetasServico etiquetas={s.etiquetas} />
+                    {souGestao && <button type="button" className="mt-2 flex min-h-11 items-center gap-1 text-xs text-zinc-600 underline" aria-label={`Editar etiquetas de ${s.nome}`} onClick={() => setEditorEtiquetas(s)}><Tags size={14} aria-hidden="true" /> Etiquetas</button>}
+                  </td>
                   <td className="py-2 pr-2">{s.duracaoMin} min</td>
                   <td className="py-2 pr-2">{reais(s.precoCentavos)}</td>
                   {ativos.map((b) => (
@@ -196,6 +204,7 @@ export function EquipeTela() {
           <button className="btn-primario">Adicionar serviço</button>
         </form>
       </section>
+      {editorEtiquetas && <EditorEtiquetasServico key={editorEtiquetas.id} id={editorEtiquetas.id} nome={editorEtiquetas.nome} aoFechar={() => setEditorEtiquetas(null)} aoSalvar={() => { setEditorEtiquetas(null); carregar(); }} />}
     </div>
   );
 }

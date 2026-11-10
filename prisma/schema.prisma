@@ -386,6 +386,9 @@ model Servico {
   precoCentavos         Int
   ordem                 Int               @default(0)
   ativo                 Boolean           @default(true)
+  /// Etiquetas visuais editadas pela gestão; objetos com texto, cor e formato.
+  etiquetas             Json              @default("[]")
+  etiquetasVersao       Int               @default(0)
   barbeiros             BarbeiroServico[]
   agendamentos          Agendamento[]
   planos                PlanoServico[]
@@ -1138,6 +1141,8 @@ model EsperaHorario {
   cliente    Cliente           @relation(fields: [clienteId], references: [id], onDelete: Cascade)
   data       DateTime          @db.Date
   servicoId  String
+  /// Serviços que também precisam caber na mesma vaga; vazio preserva esperas antigas.
+  servicosAdicionais String[] @default([])
   /// Vazio = qualquer barbeiro.
   barbeiroId String?
   periodo    PeriodoDia        @default(QUALQUER)

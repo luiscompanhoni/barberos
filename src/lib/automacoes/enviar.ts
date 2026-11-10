@@ -21,9 +21,13 @@ export async function enviarAutomacao(e: Envio) {
   try {
     const r = await notificarCliente(e.telefone, e.texto);
     const erro = r && typeof r === "object" && "erro" in r ? (r.erro as string | null) : null;
-    if (erro) await db.automacaoEnviada.update({ where: { id }, data: { ok: false, erro } });
+    if (erro || (r && typeof r === "object" && "ok" in r && r.ok === false)) {
+      await db.automacaoEnviada.update({ where: { id }, data: { ok: false, erro: erro ?? "Canal não confirmou o envio." } });
+      return false;
+    }
   } catch (err) {
     await db.automacaoEnviada.update({ where: { id }, data: { ok: false, erro: (err as Error).message.slice(0, 300) } });
+    return false;
   }
   return true;
 }

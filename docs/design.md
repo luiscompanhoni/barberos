@@ -164,6 +164,8 @@ O que está implementado:
 - **Área do cliente:** coluna única centralizada `max-w-2xl` (`src/app/c/(area)/layout.tsx`), navegação em
   `NavCliente`.
 - **Seleção dos serviços:** no agendamento, `aria-pressed` controla o contorno dourado, o fundo destacado e o símbolo de confirmação. A regra fica no tema Black, após a superfície dos cartões, para que o destaque não seja sobrescrito; o segundo toque desmarca o serviço. O espaço do símbolo permanece reservado para evitar mudança de altura com nomes longos. O resumo é uma região de status persistente, com atualização educada e atômica, inclusive quando não há serviços selecionados.
+- **Aviso de vaga:** sem horários para o conjunto escolhido, o botão “Me avise se abrir horário” abre a preferência por manhã, tarde, noite ou qualquer horário. Os limites são 12h e 18h, no fuso da barbearia. O pedido salvo fica identificado e pode ser cancelado; não reserva atendimento nem promete envio enquanto o transporte estiver bloqueado.
+- **Etiquetas dos serviços:** cada linha em Equipe tem o botão “Etiquetas”. Dono e gerente podem criar, editar e remover até seis etiquetas de 40 caracteres, escolher cor hexadecimal e formato cápsula, arredondado ou retangular, com prévia. A mesma etiqueta aparece no catálogo do cliente; texto preto ou branco é calculado pelo contraste. A etiqueta não substitui a marca de seleção dourada. Conflito de edição exige recarregar explicitamente, preservando a escolha de outro editor.
 - **Tempo real:** recepção, comandas e conversas atualizam por SSE.
 - Revisão em aparelho: a tela inicial com jogada pendente foi testada em iPhone e Android emulados no Chromium;
   teste em aparelho real está pendente ([pendencias.md](pendencias.md)).

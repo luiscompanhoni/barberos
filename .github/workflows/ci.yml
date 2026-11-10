@@ -33,7 +33,7 @@ jobs:
           POSTGRES_USER: barberos
           POSTGRES_PASSWORD: barberos
           POSTGRES_DB: barberos
-        ports: ["5432:5432", "55439:5432", "15439:5432", "55549:5432"]
+        ports: ["5432:5432", "55439:5432", "15439:5432", "55549:5432", "55561:5432"]
         options: >-
           --health-cmd "pg_isready -U barberos"
           --health-interval 5s
@@ -239,9 +239,16 @@ jobs:
         run: |
           docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_recrutamento_entrevistas_teste
           npx prisma migrate deploy
+      - name: Preparar banco separado dos avisos e etiquetas
+        env:
+          DATABASE_URL: postgresql://barberos:barberos@127.0.0.1:55561/barberos_avisos_etiquetas_teste_20261110
+        run: |
+          docker exec ${{ job.services.postgres.id }} createdb -U barberos barberos_avisos_etiquetas_teste_20261110
+          npx prisma migrate deploy
       - name: Testes de fluxo (destinos exclusivos por área)
         env:
           DATABASE_URL_ANOTACOES: postgresql://anotacoes:fixture_anotacoes_ci@127.0.0.1:55549/barberos_anotacoes_teste_20261109
+          DATABASE_URL_AVISOS_ETIQUETAS: postgresql://barberos:barberos@127.0.0.1:55561/barberos_avisos_etiquetas_teste_20261110
           DATABASE_URL_RH: postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_regr_rh_20261108
           DATABASE_URL_COMANDAS: postgresql://auditoria_teste:fixture_ci_descartavel_20261108@127.0.0.1:55439/barberos_ci_local_regr_comandas_20261108
           DATABASE_URL_HISTORICO: postgresql://barberos:barberos@localhost:5432/barberos_historico_teste

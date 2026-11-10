@@ -125,6 +125,34 @@ webhooks / rotinas ─────────┘
   bloqueado preventivamente** enquanto a concorrência e a revisão de estornos não forem resolvidas; a
   apuração não cancela bônus já sorteado nem altera a folha automaticamente.
 
+### Avisos de vaga e etiquetas de serviços
+
+`crescimento/espera.ts` reutiliza `EsperaHorario`, agora com `servicosAdicionais` (vazio nos registros antigos).
+A preferência guarda um conjunto de até dez serviços, profissional e período; a ordem dos cliques não cria outro pedido.
+Travas por cliente serializam inscrição, limite de três pedidos e cancelamento. A rota do app injeta a identidade
+autenticada, valida a origem e limita o corpo JSON; criação/cancelamento são auditados na mesma transação.
+A vaga precisa acomodar a duração conjunta. Se ela surgir durante o pedido de aviso, a interface permite
+reconsultar os horários sem trocar a data. O texto das etiquetas também integra o nome acessível do serviço.
+A rotina considera atendimento apenas quando um mesmo grupo contém todos os serviços e o profissional pedido,
+e o início do atendimento principal satisfaz o período escolhido no fuso da barbearia.
+
+A consulta interna de espera SITE exige um pedido persistido ativo e parâmetros idênticos; ela apenas consulta
+a agenda local, mantendo antecedência, cadeira, bloqueios e compatibilidade. Não autoriza reserva nem altera a
+fonte de agenda do bot. Quarentena, piloto, teste de equipe ou bloqueio geral interrompem a rotina antes do claim.
+Falha do canal não significa aviso entregue; resultado ambíguo não é reenviado automaticamente.
+Antes do claim e da entrega, a rotina trava ciclo do cliente, preferência de mensagens e espera, nessa ordem,
+e relê telefone, exclusão e consentimento. Mudanças concorrentes confirmam antes dessa releitura ou aguardam
+a conclusão da entrega iniciada; um cliente já excluído é ignorado sem interromper os demais pedidos.
+
+`servicos/etiquetas.ts` valida os objetos visuais; `etiquetas-servico.ts` persiste JSON e versão com comparação
+condicional e auditoria transacional. A rota `/api/servicos/[id]/etiquetas` exige gestão e origem válida para gravar.
+O catálogo do app projeta somente etiquetas válidas. A migração `20261110120000_avisos_etiquetas_servicos`
+apenas adiciona colunas com defaults, sem reclassificar ou apagar dados anteriores. Após iniciar a migração,
+o runbook exige recuperação manual, com escritores parados e bloqueios mantidos; não há retorno automático do app.
+Uma versão anterior só pode ser usada após comprovar compatibilidade de leitura e escrita na cópia isolada,
+conservando as colunas novas. Removê-las perderia etiquetas e preferências. Antes de qualquer publicação,
+validar novamente backup/restauração de produção e revisão instalada; o ensaio local usa somente dados fictícios.
+
 ## Integrações
 
 - **WhatsApp** (`WHATSAPP_PROVIDER`): `simulador` (nada sai), `cloud` (oficial da Meta; webhook assinado) ou
