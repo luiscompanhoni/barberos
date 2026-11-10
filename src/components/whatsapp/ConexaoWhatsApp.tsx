@@ -5,6 +5,7 @@ import { CheckCircle2, Loader2, LogOut, QrCode, ShieldCheck, Smartphone, Triangl
 import { api } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
 import { type Cadastro, ConectarOficial } from "./ConectarOficial";
+import { ModelosMensagem } from "./ModelosMensagem";
 
 type Estado = "conectado" | "conectando" | "desconectado" | "sem_instancia" | "fora_do_ar";
 type Oficial = { numero: string | null; conectadoEm: string; sincronizacaoErro: string | null; desconectadoEm: string | null; motivoDesconexao: string | null };
@@ -143,6 +144,7 @@ export function ConexaoWhatsApp() {
           {info.oficial.sincronizacaoErro && <p className="text-amber-700">Cópia do histórico: {info.oficial.sincronizacaoErro}</p>}
         </section>
       )}
+      {(info.modo === "cloud" || (info.oficial && !info.oficial.desconectadoEm)) && <ModelosMensagem />}
       {info.cadastro && (!info.oficial || info.oficial.desconectadoEm) && <ConectarOficial cadastro={info.cadastro} onConectado={carregar} />}
 
       {info.modo === "evolution" && (

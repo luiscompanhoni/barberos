@@ -81,7 +81,7 @@ class RecuperacaoTest(unittest.TestCase):
             simular("conferir_capacidade", return_value={"estimativaConservadora": True, "volumePostgres": "pg-ficticio"})
             simular("exigir_banco_isolavel")
             parar = simular("parar_escritores", return_value=[{"id": "caddy", "servico": "caddy"}])
-            simular("retomar_auxiliares")
+            retomar = simular("retomar_auxiliares")
             agenda = simular("exigir_agenda_equipe", return_value=True)
             pix = simular("exigir_contrato_pix_imagem", return_value=True)
             simular("conferir_central_desligada", return_value={"habilitada": True, "execucaoAtiva": False, "metaTokenConfigurado": False})
@@ -125,6 +125,7 @@ class RecuperacaoTest(unittest.TestCase):
             else:
                 resultado = deploy.publicar(base, "barberos", commit, antigo["Image"])
                 self.assertTrue(resultado["concluido"])
+                retomar.assert_any_call(parar.return_value, {"evolution", "atendimento"})
             registro = json.loads((codigo.parent / "operacao.json").read_text())
             if simular_concorrencia_backup:
                 self.assertEqual(concorrencia["daemonIniciado"], 0 if falha else 1)

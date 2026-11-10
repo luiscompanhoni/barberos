@@ -8,7 +8,7 @@ import { ErroNegocio } from "@/lib/erros";
  * continua no app WhatsApp Business do celular). Toda chamada aqui e servidor -> Meta.
  */
 
-const graph = (caminho: string) => `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION ?? "v23.0"}/${caminho}`;
+export const graph = (caminho: string) => `https://graph.facebook.com/${process.env.WHATSAPP_API_VERSION ?? "v23.0"}/${caminho}`;
 
 function chave() {
   const s = process.env.SESSION_SECRET;
@@ -30,19 +30,19 @@ export function decifrarToken(cifrado: string) {
   return Buffer.concat([d.update(dados), d.final()]).toString("utf8");
 }
 
-/** Token e numero da API oficial: o .env tem prioridade; senao, o conectado pelo painel. */
-export async function credenciaisOficial(): Promise<{ token: string; phoneId: string } | null> {
+/** Token, numero e conta (WABA) da API oficial: o .env tem prioridade; senao, o conectado pelo painel. */
+export async function credenciaisOficial(): Promise<{ token: string; phoneId: string; wabaId: string | null } | null> {
   const token = process.env.WHATSAPP_TOKEN;
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  if (token && phoneId) return { token, phoneId };
+  if (token && phoneId) return { token, phoneId, wabaId: process.env.WHATSAPP_WABA_ID || null };
   const c = await db.whatsAppOficial.findUnique({ where: { id: 1 } });
   if (!c || c.desconectadoEm) return null;
-  return { token: decifrarToken(c.tokenCifrado), phoneId: c.phoneNumberId };
+  return { token: decifrarToken(c.tokenCifrado), phoneId: c.phoneNumberId, wabaId: c.wabaId };
 }
 
-async function meta<T>(url: string, opts: { token?: string; corpo?: Record<string, unknown> } = {}): Promise<T> {
+export async function meta<T>(url: string, opts: { token?: string; corpo?: Record<string, unknown>; metodo?: "DELETE" } = {}): Promise<T> {
   const r = await fetch(url, {
-    method: opts.corpo ? "POST" : "GET",
+    method: opts.metodo ?? (opts.corpo ? "POST" : "GET"),
     headers: { ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}), ...(opts.corpo ? { "Content-Type": "application/json" } : {}) },
     body: opts.corpo ? JSON.stringify(opts.corpo) : undefined,
   });

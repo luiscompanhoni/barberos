@@ -188,7 +188,8 @@ def publicar(base, projeto, commit, imagem_esperada):
         # O daemon compartilha .backup.lock com o one-shot e só inicia após sua restauração.
         etapa("ativacao_backup_programado")
         executar([*compose, "up", "-d", "--no-build", "--no-deps", "backup"], prazo=180)
-        retomar_auxiliares(servicos_parados, {"evolution"})
+        # Transcrição local (compose próprio) também é parada no isolamento; volta com a Evolution.
+        retomar_auxiliares(servicos_parados, {"evolution", "atendimento"})
         estado.update(concluido=True, imagemNova=novo["Image"], composeAtual=[str(p) for p in arquivos], workerAtivo=True)
         etapa("concluido")
         ativa = base / "versao-ativa.json"
