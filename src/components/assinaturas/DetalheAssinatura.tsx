@@ -22,6 +22,8 @@ type Detalhe = {
   canceladaEm: string | null;
   motivoCancelamento: string | null;
   proximoVencimento: string | null;
+  ultimoPagamentoManualEm: string | null;
+  registroManual: boolean;
   cliente: { nome: string; telefone: string; cpf: string | null };
   planoId: string;
   plano: { nome: string };
@@ -87,7 +89,8 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
         <dl className="grid grid-cols-[130px_1fr] gap-y-1">
           <dt className="text-zinc-500">Celular</dt><dd>{formatarTelefone(d.cliente.telefone)}</dd>
           <dt className="text-zinc-500">CPF</dt><dd>{d.cliente.cpf ?? "—"}</dd>
-          <dt className="text-zinc-500">Assinante desde</dt><dd>{dataBr(d.ativadaEm)}</dd>
+          {d.ultimoPagamentoManualEm ? <><dt className="text-zinc-500">Último pagamento registrado</dt><dd>{dataBr(d.ultimoPagamentoManualEm)} · pela equipe</dd></> :
+            <><dt className="text-zinc-500">Assinante desde</dt><dd>{dataBr(d.ativadaEm)}</dd></>}
           {d.status !== "CANCELADA" && (<><dt className="text-zinc-500">Próx. vencimento</dt><dd>{dataBr(d.proximoVencimento)}</dd></>)}
           {d.status !== "CANCELADA" && d.pausadaEm && d.pausadaAte && (<><dt className="text-zinc-500">Pausada</dt><dd>até {dataBr(d.pausadaAte)} (volta sozinha)</dd></>)}
           {d.status !== "CANCELADA" && d.encerraEm && (<><dt className="text-zinc-500">Cancelamento</dt><dd>pedido pelo cliente; encerra em {dataBr(d.encerraEm)} · {d.motivoCancelamento}</dd></>)}
@@ -97,7 +100,7 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
         </dl>
         {d.operacaoInicial && <p role="status" className="rounded-lg bg-amber-50 p-3 text-amber-900">Operação inicial em conferência. Não envie outro pagamento até confirmar o resultado ou o cancelamento no provedor.</p>}
 
-        <div>
+        {(!d.registroManual || d.cobrancas.length > 0) && <div>
           <p className="mb-1 font-medium">Cobranças</p>
           <ul className="divide-y divide-zinc-100 rounded-lg border border-zinc-200">
             {d.cobrancas.map((c) => (
@@ -114,7 +117,7 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
               </li>
             ))}
           </ul>
-        </div>
+        </div>}
 
         {d.retencoes.length > 0 && (
           <div>
@@ -140,12 +143,12 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
         {d.status !== "CANCELADA" && (
           <div className="flex flex-wrap gap-2">
             {temAberta && !d.operacaoInicial && <button className="btn-primario" disabled={cobrando} onClick={() => acao("cobrar", "Cobrança encaminhada ao canal do WhatsApp.")}>{cobrando ? "Enviando…" : "Cobrar no WhatsApp"}</button>}
-            <button className="btn" onClick={() => acao("sincronizar", "Status atualizado com o meio de pagamento.")}>Atualizar status</button>
+            {!d.registroManual && <button className="btn" onClick={() => acao("sincronizar", "Status atualizado com o meio de pagamento.")}>Atualizar status</button>}
             {p.podeCancelar && !cancelando && d.status !== "PENDENTE" && <button className="btn-perigo" onClick={() => setCancelando(true)}>Cancelar assinatura</button>}
           </div>
         )}
         {d.status === "PENDENTE" && <CancelarOperacaoInicial key={d.id} endpoint={`/api/assinaturas/${d.id}`} equipe continuar={<ContinuarPagamentoInicial equipe forma={d.formaPagamento} emConferencia={!!d.operacaoInicial} link={d.cobrancas.find(c => ["PENDENTE", "ATRASADA"].includes(c.status) && c.link)?.link ?? null} />} onAlterado={async () => { await carregar(); p.onAlterado(); }} />}
-        {d.status === "ATIVA" && !d.pausadaEm && !d.encerraEm && <TrocarPlano endpoint={`/api/assinaturas/${d.id}`} equipe podeAplicar={p.podeCancelar} planoAtualId={d.planoId}
+        {d.status === "ATIVA" && !d.registroManual && !d.pausadaEm && !d.encerraEm && <TrocarPlano endpoint={`/api/assinaturas/${d.id}`} equipe podeAplicar={p.podeCancelar} planoAtualId={d.planoId}
           valorAtual={d.precoCentavos} renovacao={d.proximoVencimento} pedido={d.alteracaoPlano} planos={d.planosDisponiveis} onAlterado={async () => { await carregar(); p.onAlterado(); }} />}
         {temAberta && <p className="mt-2 text-xs text-zinc-500">Uma tentativa por fatura. Se o resultado for incerto, confira a conversa antes de tentar novamente.</p>}
         {cancelando && (

@@ -208,6 +208,9 @@ export async function falarComGerente(p: Pedido) {
 export async function cancelarPeloCliente(p: Pedido) {
   const c = await contexto(p.assinaturaId, p.motivo);
   const a = c.a;
+  if (!a.gatewayId && a.ultimoPagamentoManualEm) {
+    throw new ErroNegocio("A recepção precisa conferir o cancelamento no canal original do pagamento.", 409, "cancelamento_origem");
+  }
   if (a.encerraEm) throw new ErroNegocio(`Seu plano já está cancelado e vale até ${dataBr(ultimoDia(iso(a.encerraEm)!))}.`, 409, "ja_cancelada");
   const cashbarber = ehCashbarber(a.gatewayId);
   const motivo = textoMotivo(p);

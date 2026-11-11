@@ -37,11 +37,11 @@ export const GET = rota(async (req: Request) => {
       },
     }),
     db.assinatura.groupBy({ by: ["status"], _count: true }),
-    db.assinatura.aggregate({ where: { status: { in: ["ATIVA", "ATRASADA"] } }, _sum: { precoCentavos: true } }),
-    db.assinatura.count({ where: { ativadaEm: { gte: inicioMes } } }),
-    db.assinatura.count({ where: { canceladaEm: { gte: inicioMes }, ativadaEm: { not: null } } }),
+    db.assinatura.aggregate({ where: { status: { in: ["ATIVA", "ATRASADA"] }, ultimoPagamentoManualEm: null }, _sum: { precoCentavos: true } }),
+    db.assinatura.count({ where: { ativadaEm: { gte: inicioMes }, ultimoPagamentoManualEm: null } }),
+    db.assinatura.count({ where: { canceladaEm: { gte: inicioMes }, ativadaEm: { not: null }, ultimoPagamentoManualEm: null } }),
     db.assinatura.findMany({
-      where: { canceladaEm: { gte: new Date(Date.now() - 90 * 86_400_000) }, ativadaEm: { not: null } },
+      where: { canceladaEm: { gte: new Date(Date.now() - 90 * 86_400_000) }, ativadaEm: { not: null }, ultimoPagamentoManualEm: null },
       select: { motivoCancelamento: true },
     }),
   ]);

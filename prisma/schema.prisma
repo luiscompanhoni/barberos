@@ -754,6 +754,8 @@ model Assinatura {
   /// Inicio do ciclo pago atual (conta os usos por ciclo).
   cicloInicio         DateTime?            @db.Timestamptz(3)
   proximoVencimento   DateTime?            @db.Date
+  /// Data declarada pela equipe para um ciclo pago fora do BarberOS.
+  ultimoPagamentoManualEm DateTime?       @db.Date
   criadaEm            DateTime             @default(now()) @db.Timestamptz(3)
   ativadaEm           DateTime?            @db.Timestamptz(3)
   canceladaEm         DateTime?            @db.Timestamptz(3)

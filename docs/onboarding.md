@@ -81,6 +81,7 @@ Instalação e configuração definitiva: [app-notificacoes.md](app-notificacoes
 | `npm run teste:<área>` | fluxo completo contra o banco do `.env`, com gateways falsos (sem chamadas reais) | sim |
 | `npm run teste:avisos-etiquetas` | avisos com vários serviços, concorrência, cancelamento e etiquetas auditadas; aceita somente `127.0.0.1:55561/barberos_avisos_etiquetas_teste_20261110`, com envios bloqueados e pagamento simulado | sim |
 | `npm run teste:todos` | roda todos os `teste:*`; exige também `DATABASE_URL_HISTORICO` e `DATABASE_URL_AGENTES` para os bancos locais migrados de cada fluxo (`scripts/testes-integracao.sh`) | sim |
+| `npm run teste:assinaturas:registro-manual` | usa PostgreSQL descartável `127.0.0.1:55561/barberos_registro_manual_20261111`, já migrado. No dispatcher, indique `DATABASE_URL_REGISTRO_MANUAL` | sim |
 | `npm run build` | build de produção | não |
 
 Áreas de `teste:<área>`: `assinaturas`, `pagarme`, `checkout`, `antecipado`, `cancelamento`, `comandas`,

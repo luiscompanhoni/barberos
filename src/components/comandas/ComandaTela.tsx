@@ -9,15 +9,16 @@ import { api, centavosParaTexto, ErroApi, paraCentavos, reais } from "@/lib/clie
 import { armazenamentoAdicional, encerrarSolicitacaoAdicional, solicitacaoAdicional } from "./solicitacao-adicional";
 import { Catalogo } from "./Catalogo";
 import { Recebimento } from "./Recebimento";
-import { nomeDaComanda, type Comanda, type Forma, type ModoMaquininha } from "./tipos";
+import { nomeDaComanda, type Comanda, type ModoMaquininha } from "./tipos";
 import { useAoVivo } from "./useAoVivo";
 import { PremiosComanda } from "@/components/jogos/PremiosComanda";
 
-type Resposta = { comanda: Comanda; maquininha?: ModoMaquininha; resultado?: { troco: number; alertas: string[]; cashbackCentavos?: number } | null };
+type Resposta = { comanda: Comanda; maquininha?: ModoMaquininha; posDoBarbeiro?: boolean; resultado?: { troco: number; alertas: string[]; cashbackCentavos?: number } | null };
 
 export function ComandaTela({ id, papel }: { id: string; papel: string }) {
   const [c, setC] = useState<Comanda | null>(null);
   const [maquininha, setMaquininha] = useState<ModoMaquininha>("manual");
+  const [posDoBarbeiro, setPosDoBarbeiro] = useState(false);
   const [erro, setErro] = useState("");
   const [ocupado, setOcupado] = useState(false);
   const [fechamento, setFechamento] = useState<{ troco: number; alertas: string[]; cashbackCentavos?: number } | null>(null);
@@ -28,9 +29,14 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
   const gerente = papel === "DONO" || papel === "GERENTE" || papel === "RECEPCAO";
   const pode = useAcesso().permissoes;
 
+  const aplicarResposta = useCallback((r: Resposta) => {
+    setC(r.comanda);
+    setMaquininha(r.maquininha ?? "manual");
+    setPosDoBarbeiro(r.posDoBarbeiro === true);
+  }, []);
   const carregar = useCallback(() => {
-    api<Resposta>(`/api/comandas/${id}`).then((r) => { setC(r.comanda); if (r.maquininha) setMaquininha(r.maquininha); }).catch((e) => setErro(e.message));
-  }, [id]);
+    api<Resposta>(`/api/comandas/${id}`).then(aplicarResposta).catch((e) => setErro(e.message));
+  }, [id, aplicarResposta]);
   useEffect(carregar, [carregar]);
   useAoVivo("comanda", carregar);
 
@@ -49,7 +55,7 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
       aoFalhar?.(e);
       setErro((e as Error).message);
       // Um timeout de envio pode ter criado uma cobrança pendente. Releia antes de liberar nova ação.
-      await api<Resposta>(`/api/comandas/${id}`).then((r) => setC(r.comanda)).catch(() => {});
+      await api<Resposta>(`/api/comandas/${id}`).then(aplicarResposta).catch(() => {});
       return false;
     } finally {
       acaoEmVoo.current = false;
@@ -214,12 +220,16 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
                 comanda={c}
                 maquininha={maquininha}
                 gerente={gerente}
+                posDoBarbeiro={posDoBarbeiro}
                 aprovaEstorno={pode.estorno}
                 ocupado={ocupado}
-                onPagar={(p: { forma: Forma; valorCentavos: number; naMaquininha: boolean; serial?: string }) => executar(`/api/comandas/${id}/pagamentos`, p, "POST")}
+                onPagar={(p, aoFalhar) => executar(`/api/comandas/${id}/pagamentos`, p, "POST", aoFalhar)}
                 onAcaoPagamento={(pid, acao) => executar(`/api/comandas/pagamentos/${pid}`, { acao })}
                 onEstorno={carregar}
               />
+              {papel === "BARBEIRO" && maquininha === "stone" && aberta && r.falta > 0 && !posDoBarbeiro && (
+                <p className="text-xs text-zinc-500">Para cobrar esta comanda, procure a recepção.</p>
+              )}
               {aberta && gerente && r.aguardando === 0 && r.falta - emLinks > 0 && (
                 <button className="btn w-full" disabled={ocupado} onClick={() => setCobrarLink(true)}>
                   <Link2 size={15} /> Cobrar por link (Pix ou cartão à distância)

@@ -7,6 +7,7 @@ import { formatarTelefone } from "@/lib/telefone";
 import { DetalheAssinatura } from "./DetalheAssinatura";
 import { NovaAssinatura } from "./NovaAssinatura";
 import { RetencaoPainel } from "./RetencaoPainel";
+import { AtivarPlanoManual } from "./AtivarPlanoManual";
 
 type Status = "PENDENTE" | "ATIVA" | "ATRASADA" | "CANCELADA";
 export type ItemAssinatura = {
@@ -46,6 +47,7 @@ export function AssinaturasTela({ podeCancelar, buscaInicial = "" }: { podeCance
   const [busca, setBusca] = useState(buscaInicial);
   const [aberta, setAberta] = useState<string | null>(null);
   const [nova, setNova] = useState(false);
+  const [registroManual, setRegistroManual] = useState(false);
   const [erro, setErro] = useState("");
   const [versao, setVersao] = useState(0);
 
@@ -65,14 +67,15 @@ export function AssinaturasTela({ podeCancelar, buscaInicial = "" }: { podeCance
     <div className="mx-auto max-w-6xl space-y-4">
       <div className="crm-page-header flex flex-wrap items-center gap-2">
         <h1 className="titulo-marca text-3xl">Assinaturas</h1>
-        <button className="btn-primario ml-auto" onClick={() => setNova(true)}>+ Vender plano</button>
+        <button className="btn ml-auto" onClick={() => setRegistroManual(true)}>Registrar plano já pago</button>
+        <button className="btn-primario" onClick={() => setNova(true)}>+ Vender plano</button>
       </div>
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
       {r && (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Card rotulo="Assinantes ativos" valor={String(r.ativas + r.atrasadas)} numero={r.ativas + r.atrasadas} detalhe={`${r.atrasadas} com pagamento atrasado`} ruim={r.atrasadas > 0} />
-          <Card rotulo="Receita recorrente (mês)" valor={reais(r.receitaMensalCentavos)} numero={r.receitaMensalCentavos} formatar={reais} detalhe="soma das mensalidades ativas" />
+          <Card rotulo="Receita recorrente (mês)" valor={reais(r.receitaMensalCentavos)} numero={r.receitaMensalCentavos} formatar={reais} detalhe="soma das mensalidades recorrentes" />
           <Card rotulo="Vendas × cancelamentos no mês" valor={`${r.vendidasNoMes} × ${r.canceladasNoMes}`}
             detalhe={saldo >= 0 ? `saldo +${saldo}` : `saldo ${saldo}: mais saídas que entradas`} ruim={saldo < 0} />
           <Card rotulo="Aguardando 1º pagamento" valor={String(r.pendentes)} numero={r.pendentes} detalhe="link enviado, ainda não pago" />
@@ -141,6 +144,12 @@ export function AssinaturasTela({ podeCancelar, buscaInicial = "" }: { podeCance
 
       {aberta && <DetalheAssinatura id={aberta} podeCancelar={podeCancelar} onFechar={() => setAberta(null)} onAlterado={() => { carregar(); setVersao((v) => v + 1); }} />}
       {nova && <NovaAssinatura onFechar={() => setNova(false)} onCriada={carregar} />}
+      {registroManual && <AtivarPlanoManual onFechar={() => setRegistroManual(false)} onRegistrada={(id) => {
+        setRegistroManual(false);
+        setAberta(id);
+        carregar();
+        setVersao(v => v + 1);
+      }} />}
     </div>
   );
 }

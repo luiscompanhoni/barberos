@@ -37,7 +37,7 @@ export function DetalheModal(p: {
   podeEditar: boolean;
   papel?: string;
   onFechar: () => void;
-  onAlterado: (msg: string) => void;
+  onAlterado: (msg: string, salvo?: Pick<AgendamentoApi, "id" | "status">) => void;
 }) {
   const { ag } = p;
   const [erro, setErro] = useState("");
@@ -56,8 +56,10 @@ export function DetalheModal(p: {
     setErro("");
     setOcupado(true);
     try {
-      await api(`/api/agendamentos/${ag.id}`, { method: "PATCH", body: { status: s } });
-      p.onAlterado(`${ag.cliente.nome}: ${ROTULO_STATUS[s].toLowerCase()}.`);
+      const salvo = await api<Pick<AgendamentoApi, "id" | "status">>(`/api/agendamentos/${ag.id}`, {
+        method: "PATCH", body: { status: s, statusAnterior: ag.status },
+      });
+      p.onAlterado(`${ag.cliente.nome}: ${ROTULO_STATUS[salvo.status].toLowerCase()}.`, salvo);
     } catch (e) {
       setErro((e as Error).message);
       setOcupado(false);
@@ -157,7 +159,7 @@ export function DetalheModal(p: {
           )}
         </div>
       )}
-      {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
+      {erro && <p role="alert" className="mt-3 text-sm text-red-600">{erro}</p>}
     </Modal>
   );
 }

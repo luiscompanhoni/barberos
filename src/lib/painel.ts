@@ -86,9 +86,9 @@ export async function resumoDoMes() {
     db.cliente.count({ where: { criadoEm: { gte: new Date(inicioMes) } } }),
     db.agendamento.count({ where: { status: "FALTOU", inicio: { gte: new Date(inicioMes), lt: new Date(fimHoje) } } }),
     db.assinatura.count({ where: { status: { in: ["ATIVA", "ATRASADA"] } } }),
-    db.assinatura.aggregate({ where: { status: { in: ["ATIVA", "ATRASADA"] } }, _sum: { precoCentavos: true } }),
-    db.assinatura.count({ where: { ativadaEm: { gte: new Date(inicioMes) } } }),
-    db.assinatura.count({ where: { canceladaEm: { gte: new Date(inicioMes) }, ativadaEm: { not: null } } }),
+    db.assinatura.aggregate({ where: { status: { in: ["ATIVA", "ATRASADA"] }, ultimoPagamentoManualEm: null }, _sum: { precoCentavos: true } }),
+    db.assinatura.count({ where: { ativadaEm: { gte: new Date(inicioMes) }, ultimoPagamentoManualEm: null } }),
+    db.assinatura.count({ where: { canceladaEm: { gte: new Date(inicioMes) }, ativadaEm: { not: null }, ultimoPagamentoManualEm: null } }),
   ]);
   return {
     atual, anterior, clientesNovos: novos, faltas,

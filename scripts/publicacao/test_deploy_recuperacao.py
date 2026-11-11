@@ -31,7 +31,7 @@ class RecuperacaoTest(unittest.TestCase):
             executar.assert_not_called()
             self.assertFalse((codigo.parent / "operacao.json").exists())
 
-    def executar_cenario(self, falha, backup_sem_imagem=False, com_migracao=False, simular_concorrencia_backup=False):
+    def executar_cenario(self, falha, backup_sem_imagem=False, com_migracao=False, simular_concorrencia_backup=False, legado_sem_bloqueio=False):
         with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
             base = Path(d)
             commit = "a" * 40
@@ -43,7 +43,10 @@ class RecuperacaoTest(unittest.TestCase):
             antigo = {"Id": "app", "Image": "sha256:" + "b" * 64,
                       "Config": {"Env": ["DATABASE_URL=sentinela-db", "MAQUININHA=manual"], "Labels": {"com.docker.compose.project.config_files": str(base / "deploy/docker-compose.yml")}},
                       "State": {"Status": "running", "Health": {"Status": "healthy"}}, "NetworkSettings": {"Networks": {"barberos_default": {}}}}
-            novo = {**antigo, "Image": "sha256:" + "c" * 64, "Config": {"Env": ["MAQUININHA=" + ("stone" if falha == "stone" else "manual")]}}
+            if not legado_sem_bloqueio:
+                antigo["Config"]["Env"].append("PAGAMENTOS_COBRANCAS_REAIS_BLOQUEADAS=true")
+            novo = {**antigo, "Image": "sha256:" + "c" * 64, "Config": {"Env": ["MAQUININHA=" + ("stone" if falha == "stone" else "manual"),
+                    "PAGAMENTOS_COBRANCAS_REAIS_BLOQUEADAS=true"]}}
             recuperado = {**antigo, "Config": {**antigo["Config"], "Env": [k + "=" + v for k, v in deploy.ambiente_rollback().items()]}}
             chamadas = []
             lock_backup = base / ".backup-fixture.lock"
@@ -136,7 +139,14 @@ class RecuperacaoTest(unittest.TestCase):
             if falha == "backup":
                 self.assertFalse(ensaio.called)
                 self.assertFalse(any("migrate" in a for a in chamadas))
-                self.assertTrue(registro["rollback"])
+                if legado_sem_bloqueio:
+                    self.assertTrue(registro["rollbackBloqueadoPorCobrancas"])
+                    self.assertTrue(registro["recuperacaoManualObrigatoria"])
+                    self.assertFalse((codigo.parent / "rollback.json").exists())
+                    self.assertTrue((base / deploy.MARCADOR).exists())
+                    retomar.assert_not_called()
+                else:
+                    self.assertTrue(registro["rollback"])
                 self.assertEqual(registro["etapaFalha"], "backup_e_restauracao")
             elif falha == "agenda_pre_migracao":
                 self.assertTrue(ensaio.called)
@@ -174,11 +184,15 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertEqual(agenda.call_count, 4)
                 pix.assert_called_once_with(novo["Image"])
                 self.assertEqual(registro["controlesCliente"], {"agendaEquipeBanco": True, "stoneManualContainer": True,
-                                "modoMaquininhaContainer": "manual", "lotePixContratoBloqueadoNaImagem": True})
+                                "modoMaquininhaContainer": "manual", "lotePixContratoBloqueadoNaImagem": True,
+                                "cobrancasReaisBloqueadasContainer": True})
                 self.assertEqual(resultado["controlesCliente"], registro["controlesCliente"])
 
     def test_falha_backup_bloqueia_migracao_e_troca(self):
         self.executar_cenario("backup")
+
+    def test_falha_backup_nao_reabre_app_anterior_sem_bloqueio_de_cobranca(self):
+        self.executar_cenario("backup", legado_sem_bloqueio=True)
 
     def test_falha_https_retorna_imagem_sem_restaurar_banco(self):
         self.executar_cenario("https")

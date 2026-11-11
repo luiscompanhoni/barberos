@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { cancelamentoSemRecebimento } from "@/lib/assinaturas/operacao-inicial";
 import type { EstadoCheckout } from "@/lib/pagamentos/checkout-regras";
 import { gateway, gatewayPorId } from "@/lib/pagamentos/gateway";
+import { cobrancasReaisBloqueadas } from "@/lib/pagamentos/bloqueio-cobranca";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
 import { configuracao } from "./carregar";
 import { dataLocal } from "./tempo";
@@ -29,7 +30,8 @@ export function motivoParaNaoPagar(ag: { status: string; assinaturaId: string | 
 
 /** Pagamento antecipado ja disponivel no meio de pagamento configurado? */
 export async function antecipadoDisponivel() {
-  return !!(await gateway()).criarCobrancaAvulsa;
+  const g = await gateway();
+  return !cobrancasReaisBloqueadas(g.nome) && !!g.criarCobrancaAvulsa;
 }
 
 /** Pagina do checkout do BarberOS para pagar o horario (area do cliente). */

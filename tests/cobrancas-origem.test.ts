@@ -46,7 +46,7 @@ describe.each(rotas)("origem e limite: $nome", rota => {
   it("aceita a origem exata e preserva a resposta da rota", async () => {
     const r = await rota.executar(request(rota));
     expect(r.status).toBe(rota.status);
-    if (rota.nome.includes("POS")) expect(m.sessao).toHaveBeenCalledWith(["DONO", "GERENTE", "RECEPCAO"]);
+    if (rota.nome.includes("POS")) expect(m.sessao).toHaveBeenCalledWith(["DONO", "GERENTE", "RECEPCAO", "BARBEIRO"]);
     if (rota.nome === "decidir estorno") expect(m.permissao).toHaveBeenCalledWith("estorno");
   });
   it.each(origensRecusadas)("rejeita origem indevida antes de consultar ou executar domínio (%j)", async headers => {

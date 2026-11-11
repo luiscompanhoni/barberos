@@ -12,6 +12,7 @@ import { dataLocal } from "@/lib/agenda/tempo";
 import type { EstadoCheckout } from "@/lib/pagamentos/checkout-regras";
 import { pixVencido } from "@/lib/pagamentos/checkout-regras";
 import { gateway, gatewayPorId } from "@/lib/pagamentos/gateway";
+import { exigirEmissaoDeCobranca, exigirEmissaoDeCobrancaPorId } from "@/lib/pagamentos/bloqueio-cobranca";
 import { ErroPagarme, PREFIXO_PIX } from "@/lib/pagamentos/pagarme";
 import { cobrancaEmAberto, sincronizarAssinatura, sincronizarCobranca } from "./cobrancas";
 import { valorComRetencao } from "./retencao-regras";
@@ -40,6 +41,7 @@ export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
     }
     const existente = await tx.cobranca.findFirst({ where: { assinaturaId, vencimento: data, status: { not: "CANCELADA" } } });
     if (existente) return { existente };
+    exigirEmissaoDeCobrancaPorId(a.gatewayId);
     const credito = await creditoDoCicloParaPix(tx, a, vencimento);
     const emissao = await tx.emissaoPixMensal.create({ data: { assinaturaId, vencimento: data } });
     return { a, emissaoId: emissao.id, credito };
@@ -125,6 +127,7 @@ export async function ativarComCartao(tokenPublico: string, cartaoToken: string)
   }
   if (inicial.gatewayId) throw new ErroNegocio("Cancele a operação inicial e aguarde a confirmação antes de escolher outro pagamento.", 409, "assinatura_operacao_revisao");
   const g = await gateway();
+  exigirEmissaoDeCobranca(g.nome);
   const cfg = await configuracao();
   const a = await reservarPagamentoInicial(inicial.id, "CARTAO");
   let gatewayId: string;
@@ -162,6 +165,7 @@ export async function trocarCartao(tokenPublico: string, cartaoToken: string) {
   const a = await assinaturaPorToken(tokenPublico);
   if (!a.gatewayId || a.formaPagamento !== "CARTAO") throw new ErroNegocio("Essa assinatura não é no cartão.");
   const g = await gatewayPorId(a.gatewayId);
+  exigirEmissaoDeCobranca(g.nome);
   if (!g.atualizarCartao) throw new ErroNegocio("Troca de cartão indisponível neste meio de pagamento.");
   try {
     await g.atualizarCartao(a.gatewayId, cartaoToken);
@@ -189,7 +193,9 @@ export async function pagarPlanoComPix(tokenPublico: string) {
     throw new ErroNegocio("Essa assinatura já tem uma forma de pagamento. Fale com a barbearia.", 409, "forma");
   }
   const g = await gateway();
+  exigirEmissaoDeCobranca(g.nome);
   if (g.pix !== "avulso" || !a.gatewayClienteId) throw new ErroNegocio("Pix indisponível para esse plano agora.", 409, "indisponivel");
+  if (a.gatewayId) exigirEmissaoDeCobrancaPorId(a.gatewayId);
   const cfg = await configuracao();
   await reservarPagamentoInicial(a.id, "PIX");
   try {

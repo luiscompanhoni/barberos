@@ -286,13 +286,16 @@ export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, 
   }
 }
 
-export async function alterarStatus(id: string, status: StatusAgendamento, ator: Sessao) {
+export async function alterarStatus(id: string, status: StatusAgendamento, ator: Sessao, statusAnterior?: StatusAgendamento) {
   const cfg = await configuracao();
   const atual = await db.agendamento.findUnique({ where: { id } });
   if (!atual) throw naoEncontrado("Agendamento");
   exigirGestaoBarbeiro(ator, atual.barbeiroId);
   if (atual.adicionalDeId && atual.origem === "SITE") throw new ErroNegocio("Este serviço pertence a um agendamento em grupo. Altere o atendimento principal.", 422, "alteracao_multiplos");
   if (atual.status === status) return atual;
+  if (statusAnterior && atual.status !== statusAnterior) {
+    throw new ErroNegocio("A situação do atendimento mudou. Feche o detalhe, atualize a agenda e confira o estado atual.", 409, "status_alterado");
+  }
   // Criado depois de ja ter comecado (lancamento retroativo) e concluido em outro dia: mesma regra do "realizado".
   // Os marcados com antecedencia continuam com baixa normal (pendencia "sem baixa" dos ultimos dias).
   if (status === "CONCLUIDO" && +atual.criadoEm > +atual.inicio) {

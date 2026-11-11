@@ -27,6 +27,10 @@ Rollback sem migração reaplica todo `CONTROLES_PUBLICACAO`, mesmo se `.env` an
 
 ## Recuperar após migração ou restaurar dados
 
+Para a publicação do registro manual de assinatura, a única expansão é a coluna opcional `ultimoPagamentoManualEm`. A migração não preenche contratos, cadastros ou recebimentos históricos. O publicador exige `PAGAMENTOS_COBRANCAS_REAIS_BLOQUEADAS=true` na imagem em execução antes de abrir o ingresso. A proteção cobre novas emissões do BarberOS. Consultas e conciliação continuam disponíveis.
+
+Se a imagem anterior não tinha esse bloqueio ativo, uma falha após isolar escritores mantém o ingresso fechado mesmo antes de iniciar a migração. Depois que o registro manual estiver em uso, a imagem antiga também não aplica a expiração dos novos ciclos. Qualquer retorno exige reconciliação e uma imagem que suporte os dois controles.
+
 1. Preservar operação, marcador, imagens/configuração e banco pós-falha. Não editar `_prisma_migrations`, checksums ou usar `migrate resolve` sem diagnóstico específico.
 2. Isolar ingresso e todos os escritores: app, cron/jobs externos, Evolution/webhooks, worker e backup. Rever conexões, redes e portas. Efeitos em voo podem ter concluído no fornecedor depois da parada.
 3. Restaurar **dump + `.manifesto.json` + `.studio.tar.gz`** para banco e volume novos. `backup.sh restaurar` recusa destino existente e não troca produção. Cópias antigas sem manifesto não passam no novo verificador; somente inspeção isolada por plano próprio, sem prova retroativa inventada.

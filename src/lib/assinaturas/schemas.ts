@@ -1,5 +1,16 @@
 import { z } from "zod";
+import { zId } from "@/lib/validacao";
 import { MOTIVOS } from "./retencao-regras";
+import { formasPagamentoRegistrado } from "./registro-manual-regras";
+
+export const schemaRegistroManual = z.object({
+  clienteId: zId,
+  planoId: zId,
+  forma: z.enum(formasPagamentoRegistrado),
+  pagoEm: z.iso.date().refine(data => data.slice(0, 4) >= "0100", "Informe uma data válida para o pagamento."),
+  proximoVencimento: z.iso.date().optional(),
+  precoPlanoCentavos: z.number().int().positive(),
+}).strict();
 
 /** Cadastro/edicao de plano (painel do dono). */
 export const schemaPlano = z.object({

@@ -26,6 +26,15 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_registro_manual_aceita_somente_a_coluna_opcional_revisada(self):
+        nome = "20261111120000_assinatura_pagamento_manual"
+        exigir_migracoes_da_publicacao([nome])
+        arquivo = Path(__file__).resolve().parents[2] / "prisma/migrations" / nome / "migration.sql"
+        self.assertEqual(arquivo.read_text(encoding="utf8").strip(),
+                         'ALTER TABLE "assinaturas" ADD COLUMN "ultimoPagamentoManualEm" DATE;')
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao([nome, nome + "_extra"])
+
     def test_avisos_etiquetas_aceita_somente_a_expansao_nominal_revisada(self):
         nome = "20261110120000_avisos_etiquetas_servicos"
         exigir_migracoes_da_publicacao([nome])
@@ -221,6 +230,8 @@ ALTER TABLE "esperas_horario"
         def app(env):
             return {"Config": {"Env": [k + "=" + v for k, v in env.items()]}}
         self.assertFalse(conferir_central_desligada(app(seguro))["execucaoAtiva"])
+        with self.assertRaisesRegex(RuntimeError, "PAGAMENTOS_COBRANCAS_REAIS_BLOQUEADAS"):
+            conferir_central_desligada(app({**seguro, "PAGAMENTOS_COBRANCAS_REAIS_BLOQUEADAS": "false"}))
         for chave, valor in (("AGENTES_HABILITADOS", "false"), ("AGENTES_EXECUCAO_ATIVA", "true"), ("META_ADS_TOKEN", "fixture"), ("RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO", "true"), ("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "false"), ("WHATSAPP_ATENDIMENTO_APOS_PILOTO", "true"), ("WHATSAPP_ATENDIMENTO_IA_PAGA", "true"), ("WHATSAPP_ENVIOS_BLOQUEADOS", "false"), ("PUSH_PROVIDER", "webpush"), ("COBRANCA_LEGADA_WHATSAPP_ATIVA", "true"), ("COBRANCA_AUTOMATICA_WHATSAPP_ATIVA", "true"), ("PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA", "true")):
             with self.assertRaises(RuntimeError):
                 conferir_central_desligada(app({**seguro, chave: valor}))

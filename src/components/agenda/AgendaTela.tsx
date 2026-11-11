@@ -54,7 +54,7 @@ export function AgendaTela(p: {
   const dataConsulta = modo === "semana" ? inicioSemana(data) : data;
   // Na semana sem barbeiro escolhido, usa o primeiro.
   const filtro = p.barbeiroFixo ?? (modo === "semana" ? (barbeiroSel ?? todosBarbeiros.find((b) => b.ativo)?.id) : barbeiroSel);
-  const { agenda, erro, aoVivo, recarregar } = useAgenda(dataConsulta, dias, modo === "semana" && !filtro ? "__nenhum__" : filtro);
+  const { agenda, erro, aoVivo, recarregar, setAgenda } = useAgenda(dataConsulta, dias, modo === "semana" && !filtro ? "__nenhum__" : filtro);
 
   useEffect(() => {
     api<ServicoApi[]>("/api/servicos").then(setServicos).catch(() => {});
@@ -182,7 +182,17 @@ export function AgendaTela(p: {
           podeEditar={podeEditar(aberto.barbeiroId)}
           papel={p.papel}
           onFechar={() => setAberto(null)}
-          onAlterado={(msg) => { setAberto(null); setAviso({ texto: msg }); recarregar(); }}
+          onAlterado={(msg, salvo) => {
+            if (salvo) setAgenda(atual => atual && {
+              ...atual,
+              agendamentos: salvo.status === "CANCELADO"
+                ? atual.agendamentos.filter(a => a.id !== salvo.id)
+                : atual.agendamentos.map(a => a.id === salvo.id ? { ...a, status: salvo.status } : a),
+            });
+            setAberto(null);
+            setAviso({ texto: msg });
+            recarregar();
+          }}
         />
       )}
 

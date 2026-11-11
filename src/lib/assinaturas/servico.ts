@@ -10,6 +10,7 @@ import { configuracao, servicoDoBarbeiro } from "@/lib/agenda/carregar";
 import { travarClienteAgenda, type TitularAgenda } from "@/lib/agenda/cliente-identidade";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { gateway, gatewayPorId, provedorPorId } from "@/lib/pagamentos/gateway";
+import { exigirEmissaoDeCobranca } from "@/lib/pagamentos/bloqueio-cobranca";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
 import { cobrancaEmAberto, linkAbsoluto, novoTokenPublico, sincronizarAssinatura } from "./cobrancas";
 import { gerarPixDoMes } from "./cartao-pix";
@@ -17,6 +18,7 @@ import { assinaturaValida, cpfValido } from "./regras";
 import { estaPausada } from "./retencao-regras";
 import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, cancelarOperacaoInicial } from "./operacao-inicial";
+import { fimDoCicloManual } from "./registro-manual-regras";
 
 /** Assinaturas que ocupam vaga: ativas, atrasadas e pendentes recentes (link ainda valendo). */
 const PENDENTE_SEGURA_VAGA_MS = 3 * 86_400_000;
@@ -29,6 +31,7 @@ function exigirVenda(plano: Pick<Plano, "ativo" | "visivel" | "compravel" | "ven
 
 /** Verificação inicial, antes de cadastrar um novo cliente; a transação revalida sob trava. */
 export async function verificarNovaAdesao(planoId: string, origem: OrigemAgendamento) {
+  exigirEmissaoDeCobranca();
   const plano = await db.plano.findUnique({ where: { id: planoId } });
   exigirVenda(plano, origem);
 }
@@ -53,23 +56,27 @@ export async function situacaoDoCliente(clienteId: string, c: typeof db | Prisma
     include: { plano: { include: { servicos: { include: { servico: true } }, barbeiros: true } } },
   });
   if (!a) return null;
+  const agora = Date.now();
+  const hoje = dataLocal(agora, cfg.fuso);
   const aberta = await cobrancaEmAberto(a.id, c);
   const pausada = estaPausada({
-    pausadaEm: a.pausadaEm, pausadaAte: a.pausadaAte?.toISOString().slice(0, 10) ?? null, hoje: dataLocal(Date.now(), cfg.fuso),
+    pausadaEm: a.pausadaEm, pausadaAte: a.pausadaAte?.toISOString().slice(0, 10) ?? null, hoje,
   });
   const vencida = await c.cobranca.findFirst({
     where: { assinaturaId: a.id, status: { in: ["ATRASADA", "ESTORNADA"] }, vinculosExternos: { none: {} } },
     orderBy: { vencimento: "asc" },
   });
+  const fimManual = fimDoCicloManual(a);
+  const manualForaDaVigencia = fimManual !== null && (!a.cicloInicio || a.cicloInicio.getTime() > agora || fimManual < hoje);
   return {
-    assinatura: a,
+    assinatura: a.status === "ATIVA" && manualForaDaVigencia ? { ...a, status: "ATRASADA" as const } : a,
     pausada,
     // Pausado: nao usa o plano ate a pausa acabar.
-    valida: !pausada && assinaturaValida({
+    valida: !manualForaDaVigencia && !pausada && assinaturaValida({
       status: a.status,
       vencimentoMaisAntigoEmAberto: vencida?.vencimento.getTime() ?? null,
       toleranciaDias: cfg.toleranciaAtrasoDias,
-      agora: Date.now(),
+      agora,
     }),
     cobrancaEmAberto: aberta ? { ...aberta, link: linkAbsoluto(aberta.link) } : null,
   };
@@ -127,6 +134,7 @@ export async function assinar(p: {
   }
 
   const g = await gateway();
+  exigirEmissaoDeCobranca(g.nome);
   const { assinatura, clienteConfirmado, cpf, email } = await db.$transaction(async (tx) => {
     // Exclusão e revogação de sessão ganham ou perdem antes de qualquer adesão.
     try { await travarClienteAgenda(tx, cliente.id, p.titular); }

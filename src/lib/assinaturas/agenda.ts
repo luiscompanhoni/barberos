@@ -8,6 +8,7 @@ import { ErroNegocio } from "@/lib/erros";
 import { diaSemana, dataLocal } from "@/lib/agenda/tempo";
 import { avaliarUso, precoComDesconto, type PlanoRegras } from "./regras";
 import { situacaoDoCliente } from "./servico";
+import { fimDoCicloManual } from "./registro-manual-regras";
 
 type Cliente = typeof db | Prisma.TransactionClient;
 
@@ -39,6 +40,10 @@ export async function precificar(p: {
   if (sit.assinatura.encerraEm && p.inicio >= sit.assinatura.encerraEm.getTime()) return { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
 
   const a = sit.assinatura;
+  const fimManual = fimDoCicloManual(a);
+  if (fimManual !== null && (!a.cicloInicio || p.inicio < a.cicloInicio.getTime() || dataLocal(p.inicio, p.fuso) > fimManual)) {
+    return { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
+  }
   const regras: PlanoRegras = {
     nome: a.plano.nome,
     intervaloMinDias: a.plano.intervaloMinDias,

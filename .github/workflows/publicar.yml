@@ -11,6 +11,10 @@ on:
         description: Chave pública RSA SPKI base64 do destinatário do relatório
         required: true
         type: string
+      revisao_esperada:
+        description: SHA completo da revisão autorizada para esta publicação
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -27,6 +31,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Conferir a revisão autorizada
+        env:
+          REVISAO_ESPERADA: ${{ inputs.revisao_esperada }}
+        run: |
+          if [ -n "$REVISAO_ESPERADA" ] && [ "$GITHUB_SHA" != "$REVISAO_ESPERADA" ]; then
+            echo "A main mudou desde a aprovação. Nenhum deploy executado."
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}

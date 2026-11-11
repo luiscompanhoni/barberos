@@ -17,6 +17,7 @@ import {
   erroNovoLink, motivoLinkFechado, situacaoLink, textoEnvioLink,
 } from "@/lib/pagamentos/checkout-regras";
 import { gateway } from "@/lib/pagamentos/gateway";
+import { exigirEmissaoDeCobranca } from "@/lib/pagamentos/bloqueio-cobranca";
 import { normalizarTelefone } from "@/lib/telefone";
 import { notificarCliente } from "@/lib/whatsapp/conversas";
 
@@ -49,6 +50,7 @@ export async function criarLink(s: Sessao, p: {
   clienteId?: string | null; nome?: string | null; telefone?: string | null; comandaId?: string | null;
   descricao: string; valorCentavos: number; validadeDias: number; parcelasMax: number; enviar?: boolean;
 }) {
+  exigirEmissaoDeCobranca();
   const l = await db.$transaction(async (tx) => {
     let clienteId = p.clienteId ?? null;
     let faltaComanda: number | null = null;

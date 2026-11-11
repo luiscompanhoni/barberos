@@ -23,6 +23,7 @@
     "db:produtos": "tsx --env-file=.env prisma/produtos-exemplo.ts",
     "teste:todos": "bash scripts/testes-integracao.sh",
     "teste:assinaturas": "tsx --env-file=.env scripts/teste-assinaturas.ts",
+    "teste:assinaturas:registro-manual": "tsx scripts/teste-assinatura-registro-manual.ts",
     "teste:pagarme": "tsx --env-file=.env scripts/teste-pagarme.ts",
     "teste:comandas": "tsx --env-file=.env scripts/teste-comandas.ts",
     "teste:automacoes": "tsx --env-file=.env scripts/teste-automacoes.ts",

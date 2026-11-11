@@ -33,4 +33,5 @@ export const schemaPagamento = z.object({
   naMaquininha: z.boolean().default(true),
   // Qual maquininha (numero de serie); sem informar, usa a primeira configurada.
   serial: z.string().trim().max(40).optional(),
+  solicitacaoId: z.uuid().optional(),
 });

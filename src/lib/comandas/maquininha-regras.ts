@@ -32,6 +32,7 @@ export function conferirValoresPOS(pedido: PedidoPOS, valor: number) {
   const estornado = charges.reduce((s, c) => s + (c.canceled_amount ?? 0), 0);
   if (recebido > valor || estornado > valor) throw new ErroNegocio("Valor recebido/estornado acima da cobrança. Confira a conciliação.", 409, "maquininha_divergente");
   // Ausência do paid_amount não comprova zero. Uma charge em andamento também impede liberar a reserva.
-  const cancelavel = charges.every(c => ["canceled", "failed"].includes(c.status) && c.paid_amount === 0 && !(c.canceled_amount ?? 0));
+  const cancelavel = Array.isArray(pedido.charges)
+    && charges.every(c => ["canceled", "failed"].includes(c.status) && c.paid_amount === 0 && !(c.canceled_amount ?? 0));
   return { pago: liquidado === valor, cancelavel, recebido, estornado, charge: pagas[0] };
 }

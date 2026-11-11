@@ -10,18 +10,30 @@ const intervalo = (de: number, ate: number) => ({ gte: new Date(de), lt: new Dat
 
 export async function indicadoresDeAssinaturas(p: Periodo) {
   const dias = (p.ate - p.de) / 86_400_000;
-  const [ativas, atrasadas, novas, canceladas, ativasNoInicio, recebido, usos, porPlanoRaw, planos] = await Promise.all([
-    db.assinatura.findMany({ where: { status: { in: ["ATIVA", "ATRASADA"] } }, select: { precoCentavos: true, planoId: true } }),
+  const [ativas, atrasadas, novas, canceladas, ativasNoInicio, recebido, usos, planos] = await Promise.all([
+    db.assinatura.findMany({ where: { status: { in: ["ATIVA", "ATRASADA"] } }, select: { precoCentavos: true, planoId: true, ultimoPagamentoManualEm: true } }),
     db.assinatura.count({ where: { status: "ATRASADA" } }),
-    db.assinatura.count({ where: { ativadaEm: intervalo(p.de, p.ate) } }),
-    db.assinatura.findMany({ where: { canceladaEm: intervalo(p.de, p.ate), ativadaEm: { not: null } }, select: { motivoCancelamento: true } }),
-    db.assinatura.count({ where: { ativadaEm: { lt: new Date(p.de) }, OR: [{ canceladaEm: null }, { canceladaEm: { gte: new Date(p.de) } }] } }),
+    db.assinatura.count({ where: { ativadaEm: intervalo(p.de, p.ate), ultimoPagamentoManualEm: null } }),
+    db.assinatura.findMany({ where: { canceladaEm: intervalo(p.de, p.ate), ativadaEm: { not: null }, ultimoPagamentoManualEm: null }, select: { motivoCancelamento: true } }),
+    db.assinatura.count({ where: { ativadaEm: { lt: new Date(p.de) }, ultimoPagamentoManualEm: null, OR: [{ canceladaEm: null }, { canceladaEm: { gte: new Date(p.de) } }] } }),
     recebimentosMensalidades(intervalo(p.de, p.ate)),
     db.agendamento.findMany({ where: { status: "CONCLUIDO", assinaturaId: { not: null }, inicio: intervalo(p.de, p.ate) }, select: { assinaturaId: true, servico: { select: { precoCentavos: true } } } }),
-    db.assinatura.groupBy({ by: ["planoId"], where: { status: { in: ["ATIVA", "ATRASADA"] } }, _count: true, _sum: { precoCentavos: true } }),
     db.plano.findMany({ select: { id: true, nome: true } }),
   ]);
-  const mrr = ativas.reduce((s, a) => s + a.precoCentavos, 0);
+  // O preço de catálogo em um registro manual não comprova mensalidade recorrente.
+  let mrr = 0;
+  let recorrentes = 0;
+  const porPlano = new Map<string, { ativas: number; mrrCentavos: number }>();
+  for (const a of ativas) {
+    const total = porPlano.get(a.planoId) ?? { ativas: 0, mrrCentavos: 0 };
+    total.ativas++;
+    if (a.ultimoPagamentoManualEm === null) {
+      recorrentes++;
+      mrr += a.precoCentavos;
+      total.mrrCentavos += a.precoCentavos;
+    }
+    porPlano.set(a.planoId, total);
+  }
   const churn = churnMensal(canceladas.length, ativasNoInicio, dias);
   const motivos: Record<string, number> = {};
   for (const c of canceladas) {
@@ -36,11 +48,11 @@ export async function indicadoresDeAssinaturas(p: Periodo) {
     ativas: ativas.length,
     atrasadas,
     mrrCentavos: mrr,
-    ticketMensalCentavos: ativas.length ? Math.round(mrr / ativas.length) : null,
+    ticketMensalCentavos: recorrentes ? Math.round(mrr / recorrentes) : null,
     novas,
     canceladas: canceladas.length,
     churnMensal: churn,
-    ltvCentavos: ativas.length ? ltv(mrr / ativas.length, churn) : null,
+    ltvCentavos: recorrentes ? ltv(mrr / recorrentes, churn) : null,
     motivos: Object.entries(motivos).sort((a, b) => b[1] - a[1]).map(([motivo, qtd]) => ({ motivo, qtd })),
     recebidoCentavos: receitaPeriodo,
     recebimentoCompleto: recebido.completo, recebimentosPendentes: recebido.pendentes.length,
@@ -50,7 +62,7 @@ export async function indicadoresDeAssinaturas(p: Periodo) {
     valorPorUsoCentavos: usos.length ? Math.round(receitaPeriodo / usos.length) : null,
     tabelaPorUsoCentavos: usos.length ? Math.round(valorDeTabela / usos.length) : null,
     assinantesSemUso: Math.max(0, ativas.length - assinantesQueUsaram),
-    porPlano: porPlanoRaw.map((x) => ({ nome: planos.find((pl) => pl.id === x.planoId)?.nome ?? "?", ativas: x._count, mrrCentavos: x._sum.precoCentavos ?? 0 })).sort((a, b) => b.mrrCentavos - a.mrrCentavos),
+    porPlano: [...porPlano].map(([id, total]) => ({ nome: planos.find(p => p.id === id)?.nome ?? "?", ...total })).sort((a, b) => b.mrrCentavos - a.mrrCentavos),
   };
 }
 

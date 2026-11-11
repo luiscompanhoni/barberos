@@ -4,6 +4,8 @@
 process.env.MAQUININHA = "stone";
 process.env.STONE_POS_SERIAL = "SERIAL123";
 process.env.PAGARME_SECRET_KEY = "sk_test_falsa";
+process.env.STONE_POS_SERVICE_REFERER_NAME = "parceiro-ficticio";
+process.env.STONE_POS_SPLIT_JSON = '[{"amount":100,"recipient_id":"rp_ficticio","type":"percentage","options":{"liable":true,"charge_processing_fee":true,"charge_remainder_fee":true}}]';
 
 import type { Sessao } from "@/lib/auth/sessao";
 import { randomUUID } from "node:crypto";
@@ -19,14 +21,19 @@ import { instanteLocal } from "@/lib/agenda/tempo";
 import { abrirComanda, adicionarProduto, alterarItem, cancelarComanda, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
 
 const destino = new URL(process.env.DATABASE_URL ?? "http://invalido");
+const bancoDedicado = destino.port === "55439" && destino.username === "auditoria_teste"
+  && /^\/barberos_ci_local_regr_comandas_\d{8}$/.test(destino.pathname);
+const bancoDaRevisao = destino.port === "55561" && destino.username === "avisos_teste"
+  && destino.pathname === "/barberos_stone_revisao_20261111";
 if (!["postgres:", "postgresql:"].includes(destino.protocol) || destino.hostname !== "127.0.0.1"
-  || destino.port !== "55439" || destino.username !== "auditoria_teste"
-  || !/^\/barberos_ci_local_regr_comandas_\d{8}$/.test(destino.pathname)) {
-  throw new Error("Comandas restrito ao banco local descartável barberos_ci_local_regr_comandas_<8 dígitos>, usuário auditoria_teste, porta 55439.");
+  || (!bancoDedicado && !bancoDaRevisao)) {
+  throw new Error("Comandas restrito aos bancos descartáveis locais autorizados para a revisão.");
 }
 
 const ok = (c: boolean, msg: string) => { if (!c) throw new Error(`FALHOU ${msg}`); console.log(`OK  ${msg}`); };
 const falha = async (fn: () => Promise<unknown>) => { try { await fn(); return null; } catch (e) { return e as Error; } };
+const pos = (forma: "CREDITO" | "DEBITO" | "PIX", valorCentavos: number) =>
+  ({ forma, valorCentavos, naMaquininha: true, solicitacaoId: randomUUID() });
 
 // ---- Pagar.me falsa (so as rotas do Connect)
 type Pedido = { id: string; code: string; status: string; amount: number; currency: string; metadata: Record<string, string>;
@@ -122,17 +129,22 @@ async function main() {
   ok(d.resumo.total === 5000 + 3 * 1200 + 3 * 4500, `total ${d.resumo.total} = serviço + 3 cervejas + 3 pomadas`);
 
   // ---- pagamentos: parte em dinheiro, parte na maquininha
-  const e2 = await falha(() => registrarPagamento(s, id, { forma: "CREDITO", valorCentavos: d.resumo.total + 100, naMaquininha: true }));
+  const e2 = await falha(() => registrarPagamento(s, id, pos("CREDITO", d.resumo.total + 100)));
   ok(!!e2 && /maior/.test(e2.message), "cartão acima do que falta é recusado");
   await registrarPagamento(s, id, { forma: "DINHEIRO", valorCentavos: 5000, naMaquininha: false });
 
   recusarProximo = true;
-  const e3 = await falha(() => registrarPagamento(s, id, { forma: "DEBITO", valorCentavos: 1000, naMaquininha: true }));
+  const e3 = await falha(() => registrarPagamento(s, id, pos("DEBITO", 1000)));
   d = await detalheComanda(id);
   ok(!!e3 && /maquininha/.test(e3.message) && d.pagamentos.some((p) => p.forma === "DEBITO" && p.status === "CANCELADO"), "maquininha recusou o pedido: pagamento desfeito com aviso");
 
   const falta = d.resumo.falta;
-  const pg = await registrarPagamento(s, id, { forma: "CREDITO", valorCentavos: falta, naMaquininha: true });
+  const sessaoBarbeiro: Sessao = { ...s, papel: "BARBEIRO", usuarioId: barbeiro.usuarioId, barbeiroId: barbeiro.id, nome: barbeiro.nome };
+  const outroBarbeiro = await db.barbeiro.findFirstOrThrow({ where: { id: { not: barbeiro.id }, ativo: true } });
+  const comandaAlheia = await falha(() => registrarPagamento({ ...sessaoBarbeiro, usuarioId: outroBarbeiro.usuarioId, barbeiroId: outroBarbeiro.id }, id, pos("DEBITO", falta)));
+  ok(comandaAlheia instanceof ErroNegocio && comandaAlheia.status === 403, "barbeiro de outra agenda não envia pedido POS");
+  const pg = await registrarPagamento(sessaoBarbeiro, id, pos("CREDITO", falta));
+  ok(pg.registradoPorId === barbeiro.usuarioId, "comanda com serviço próprio e produtos sem profissional permite POS no app do barbeiro");
   const pedido = pedidos.get(pg.gatewayPedidoId!)!;
   const poi = pedido.corpo.poi_payment_settings as { devices_serial_number: string[]; payment_setup: { type: string } };
   ok(pg.status === "AGUARDANDO" && poi.devices_serial_number[0] === "SERIAL123" && poi.payment_setup.type === "credit" && pedido.corpo.closed === false,
@@ -163,7 +175,7 @@ async function main() {
   // ---- cancelar pagamento aguardando tira da maquininha
   const outra = await abrirComanda(s, { clienteId: cliente.id });
   await adicionarProduto(s, outra.id, cerveja.id, 1);
-  const pg2 = await registrarPagamento(s, outra.id, { forma: "PIX", valorCentavos: 1200, naMaquininha: true });
+  const pg2 = await registrarPagamento(s, outra.id, pos("PIX", 1200));
   await cancelarPagamento(s, pg2.id);
   ok(fechados.some((f) => f.id === pg2.gatewayPedidoId && f.status === "canceled"), "desistiu: pedido cancelado na maquininha");
   await cancelarComanda(s, outra.id, "teste");
@@ -171,7 +183,7 @@ async function main() {
   // ---- devolução externa: concilia pagamento E ledger financeiro uma única vez.
   const devolucao = await abrirComanda(s, { clienteId: cliente.id });
   await adicionarProduto(s, devolucao.id, cerveja.id, 1);
-  const pg3 = await registrarPagamento(s, devolucao.id, { forma: "CREDITO", valorCentavos: 1200, naMaquininha: true });
+  const pg3 = await registrarPagamento(s, devolucao.id, pos("CREDITO", 1200));
   const pedido3 = pedidos.get(pg3.gatewayPedidoId!)!;
   pedido3.charges = [{ id: "ch_devolucao", code: "NSU3", status: "paid", amount: 1200, paid_amount: 1200,
     currency: "BRL", metadata: { schemeName: "Visa" } }];
@@ -197,26 +209,39 @@ async function main() {
 
   // ---- intenção de link incerta continua reservando, mesmo após expiração.
   const concorrencia = await abrirComanda(s, { clienteId: cliente.id });
-  await adicionarProduto(s, concorrencia.id, cerveja.id, 1);
+  await adicionarProduto(s, concorrencia.id, cerveja.id, 2);
   const linkIncerto = await db.linkPagamento.create({ data: {
     token: `teste-pos-${concorrencia.id}`, descricao: "Teste link incerto", nome: "Teste", telefone: TEL,
     comandaId: concorrencia.id, valorCentavos: 1200, expiraEm: new Date(Date.now() - 60_000), tentativaChave: `teste-pos-${concorrencia.id}`,
   } });
   const pedidoAntes = seq;
-  const erroLink = await falha(() => registrarPagamento(s, concorrencia.id, { forma: "DEBITO", valorCentavos: 1200, naMaquininha: true }));
+  const erroLink = await falha(() => registrarPagamento(s, concorrencia.id, pos("DEBITO", 1200)));
   ok(erroLink instanceof ErroNegocio && erroLink.codigo === "link_pendente" && seq === pedidoAntes,
     "link vencido com resultado incerto bloqueia POS sem enviar outro pedido");
   await db.linkPagamento.update({ where: { id: linkIncerto.id }, data: { status: "CANCELADO" } });
-  const enviar = () => registrarPagamento(s, concorrencia.id, { forma: "DEBITO", valorCentavos: 1200, naMaquininha: true });
+  const metade = pos("DEBITO", 1200);
+  const enviar = () => registrarPagamento(s, concorrencia.id, metade);
   const [primeiro, repetido] = await Promise.all([enviar(), enviar()]);
   ok(primeiro.id === repetido.id && seq === pedidoAntes + 1,
     "duas solicitações concorrentes criam uma intenção e um pedido POS");
-  await cancelarPagamento(s, primeiro.id); await cancelarComanda(s, concorrencia.id, "teste");
+  const pedidoParcial = pedidos.get(`or_${seq}`)!;
+  pedidoParcial.charges = [{ id: "ch_parcial", code: "NSUP", status: "paid", amount: 1200, paid_amount: 1200, currency: "BRL", metadata: {} }];
+  await sincronizarPedido(pedidoParcial.id);
+  const retomado = await enviar();
+  ok(retomado.id === primeiro.id && retomado.status === "PAGO" && seq === pedidoAntes + 1
+    && (await detalheComanda(concorrencia.id)).resumo.falta === 1200,
+  "repetição depois do pagamento parcial confirma o registro existente e preserva o saldo restante");
+  const restante = await registrarPagamento(s, concorrencia.id, pos("DEBITO", 1200));
+  ok(restante.id !== primeiro.id && seq === pedidoAntes + 2, "nova solicitação pode receber o saldo restante");
+  await cancelarPagamento(s, restante.id);
+  pedidoParcial.charges[0] = { ...pedidoParcial.charges[0], status: "canceled", canceled_amount: 1200 } as typeof pedidoParcial.charges[number];
+  await sincronizarPedido(pedidoParcial.id);
+  await cancelarComanda(s, concorrencia.id, "teste");
 
   // ---- POST aceito sem resposta: não duplica; recupera somente pelo retorno autoritativo.
   const incerta = await abrirComanda(s, { clienteId: cliente.id }); await adicionarProduto(s, incerta.id, cerveja.id, 1);
   perderResposta = true;
-  const dadosIncerta = { forma: "PIX" as const, valorCentavos: 1200, naMaquininha: true };
+  const dadosIncerta = pos("PIX", 1200);
   const erroIncerto = await falha(() => registrarPagamento(s, incerta.id, dadosIncerta));
   ok(erroIncerto instanceof ErroNegocio && erroIncerto.codigo === "maquininha_incerta", "POST sem resposta é tratado como incerto");
   const atual = await db.pagamentoComanda.findFirstOrThrow({ where: { comandaId: incerta.id } });

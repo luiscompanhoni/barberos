@@ -163,15 +163,28 @@ validar novamente backup/restauração de produção e revisão instalada; o ens
   nem webhooks e exigiria PCI DSS. Cartão: tokenizado no navegador, cobrança mensal pela Pagar.me, recusado → link
   para trocar o cartão. Boleto: assinatura na Pagar.me, boleto em `/c/pagar/<código>`. Pix: a Pagar.me não faz Pix
   recorrente; o BarberOS gera o Pix 3 dias antes e manda no WhatsApp (QR + copia e cola, atualiza sozinho).
-- **Stone Connect 2.0** (maquininha S920 ou Q92, via API da Pagar.me): `MAQUININHA` = `manual` (padrão em produção:
+- **Stone Connect 2.0** (via API da Pagar.me): `MAQUININHA` = `manual` (padrão em produção:
   digita na maquininha e registra a forma), `simulada` (padrão no computador: botão simula a aprovação) ou `stone`
   (pedido vai direto para a maquininha; o webhook confirma com NSU e bandeira; botão "Conferir" consulta na hora;
   estorno pela API ou na maquininha/portal da Stone).
+  O barbeiro pode iniciar e conferir débito ou crédito na maquininha padrão para comanda de atendimento próprio,
+  no modo `stone`. Comandas compartilhadas são cobradas no balcão. A ativação depende de confirmar o modelo do
+  terminal, credenciar a Black no Pedido Direto e homologar o identificador de integração e a regra de split com
+  a Stone. A sandbox da Pagar.me valida a API, sem encaminhar pedidos ao equipamento.
+  A solicitação identificada não é reenviada mesmo após o pagamento. Quando a resposta do provedor é incerta,
+  a comanda preserva o valor reservado até obter confirmação.
 - **Celcash** (cel_payments, antiga Galax Pay): assinaturas e cobranças criadas por ela (Pix/boleto gerados pela
   Celcash, cartão no link dela). A rotina consulta o status pela API porque a conta só tem uma URL de webhook.
   Extrato do saldo para a conciliação via API v2 com token só de leitura (`src/lib/conciliacao/celcash.ts`).
 - **Stone (extrato bancário)**: sem API aberta; o dono sobe o CSV do extrato (`src/lib/conciliacao/stone.ts`).
 - **Asaas**: alternativa de cobrança (`PAGAMENTOS_PROVIDER="asaas"`).
+- **Plano pago fora do BarberOS:** em Assinaturas, o balcão registra a data e a forma de um pagamento existente.
+  A transação grava o período, o responsável e a origem manual. A mensalidade de catálogo é referência do plano.
+  O registro não cria fatura, comprovante de recebimento ou recorrência. Se o próximo vencimento original for
+  informado, ele prevalece. A cobertura termina após o vencimento local. Uma assinatura em andamento de outra
+  origem precisa ser conciliada antes de qualquer ativação. A migration só acrescenta uma coluna opcional.
+  Após começar a registrar ciclos manuais, uma reversão para código anterior exige preservar a regra de
+  expiração desses registros antes de reabrir a agenda do cliente.
 - **Recepção de eventos de assinatura**: `assinaturas/eventos.ts` reserva uma tentativa durável antes da consulta canônica, com token de finalização, lease de dois minutos e limite de cinco tentativas. Conclusão exige sincronização local comprovada. Eventos antigos permanecem `LEGADO`, deduplicados sem homologação retroativa. Falha tipada de reconciliação exclusiva de assinatura pode retornar à fila; pedidos, cancelamento externo e falhas ambíguas permanecem em revisão. Retomada reconsulta assinatura/cobrança e pode concluir a conversão idempotente da agenda, sem nova cobrança, transferência ou repetição do aviso de ativação. Registros que atingem o limite exigem conferência humana; não apagar o evento para liberar nova ação.
 
 ## Decisões
@@ -331,6 +344,11 @@ depois para a produção.
 - **Maquininha `stone`:** peça ao comercial a ativação do Connect 2.0 na mesma conta Pagar.me; `MAQUININHA="stone"`,
   `STONE_POS_SERIAL` (etiqueta de trás; várias separadas por vírgula), `STONE_POS_NOMES` (opcional),
   `PAGARME_SECRET_KEY` e `EMAIL_BALCAO` (pedidos de cliente sem cadastro). Webhook é o mesmo da Pagar.me.
+  Antes de habilitar, configure `STONE_POS_SERVICE_REFERER_NAME` com o identificador homologado no Partner Hub e
+  `STONE_POS_SPLIT_JSON` com as regras de divisão na autorização. O fluxo atual aceita percentuais com recebedores
+  distintos, total de 100% e as responsabilidades homologadas de taxa e chargeback em cada regra. A requisição
+  é recusada antes de reservar saldo se essa configuração faltar. [Pedido direto](https://connect-stone.stone.com.br/reference/criar-pedido)
+  · [Split na autorização](https://connect-stone.stone.com.br/reference/split-no-pedido).
 - **Celcash:** variáveis `CELCASH_*` em `deploy/env.producao.exemplo`; webhook
   `<PAINEL_URL>/api/pagamentos/celcash/webhook?token=<CELCASH_WEBHOOK_TOKEN>` (`CELCASH_WEBHOOK_HASH` = confirmHash).
 - **Asaas:** chave em Integrações → Chave de API; `PAGAMENTOS_PROVIDER="asaas"`, `ASAAS_API_KEY`, `ASAAS_AMBIENTE`

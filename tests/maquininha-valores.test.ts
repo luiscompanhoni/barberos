@@ -36,6 +36,7 @@ describe("valores POS", () => {
       .toMatchObject({ pago: false, recebido: 1000, estornado: 0 });
   });
   it("só permite liberar reserva quando todas as cobranças terminaram com recebimento explicitamente zero", () => {
+    expect(conferirValoresPOS({ ...pedido, charges: undefined }, 1000).cancelavel).toBe(false);
     expect(conferirValoresPOS({ ...pedido, charges: [] }, 1000).cancelavel).toBe(true);
     expect(conferirValoresPOS({ ...pedido, charges: [{ ...paga, status: "failed", paid_amount: 0 }] }, 1000).cancelavel).toBe(true);
     for (const ch of [
@@ -48,6 +49,10 @@ describe("valores POS", () => {
 
 it("envia crédito/débito/Pix direto ao POS com Idempotency-key estável por pagamento", async () => {
   vi.stubEnv("PAGARME_SECRET_KEY", "sk_test_falsa");
+  vi.stubEnv("STONE_POS_SERVICE_REFERER_NAME", "parceiro-ficticio");
+  const split = [{ amount: 100, recipient_id: "rp_teste", type: "percentage",
+    options: { liable: true, charge_processing_fee: true, charge_remainder_fee: true } }];
+  vi.stubEnv("STONE_POS_SPLIT_JSON", JSON.stringify(split));
   const chamadas: RequestInit[] = [];
   _usarFetch((async (_url, init) => { chamadas.push(init!); return new Response(JSON.stringify({ id: "or_teste", status: "pending" })); }) as typeof fetch);
   for (const tipo of ["credit", "debit", "pix"] as const) {
@@ -57,8 +62,11 @@ it("envia crédito/débito/Pix direto ao POS com Idempotency-key estável por pa
   expect(chamadas).toHaveLength(3);
   for (const [i, init] of chamadas.entries()) {
     expect(new Headers(init.headers).get("Idempotency-key")).toBe("pos-pg1");
+    expect(new Headers(init.headers).get("ServiceRefererName")).toBe("parceiro-ficticio");
+    expect(init.signal).toBeInstanceOf(AbortSignal);
     const body = JSON.parse(String(init.body));
     expect(body.poi_payment_settings.devices_serial_number).toEqual(["SERIAL1"]);
     expect(body.poi_payment_settings.payment_setup.type).toBe(["credit", "debit", "pix"][i]);
+    expect(body.poi_payment_settings.payment_setup.split).toEqual(split);
   }
 });

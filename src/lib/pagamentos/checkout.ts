@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
 import type { ModoCartao } from "./checkout-regras";
 import { provedorPagamento, type Provedor } from "./gateway";
+import { cobrancasReaisBloqueadas } from "./bloqueio-cobranca";
 
 /** Token gerado no navegador pela Pagar.me (o numero do cartao nunca chega aqui). */
 export const zCartaoToken = z.string().max(512).regex(/^token_[A-Za-z0-9]+$/, "Cartão inválido.");
@@ -18,6 +19,7 @@ export function chavePublicaPagarme() {
 
 /** Como o checkout recebe cartao no provedor atual. */
 export function modoCartaoCheckout(p: Provedor = provedorPagamento()): ModoCartao {
+  if (cobrancasReaisBloqueadas(p)) return "indisponivel";
   if (p === "pagarme") return chavePublicaPagarme() ? "token" : "indisponivel";
   if (p === "simulado") return process.env.NODE_ENV === "production" ? "indisponivel" : "teste";
   return "hospedado";

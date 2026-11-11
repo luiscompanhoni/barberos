@@ -15,6 +15,8 @@ import type { FormaPagamento } from "@prisma/client";
 import type { CobrancaAvulsa, CobrancaGateway, Gateway } from "./gateway";
 import { ehHomologacao } from "@/lib/ambiente";
 import { centavosValidos, instanteRecebimento } from "./recebimento";
+import { configuracaoStonePOS } from "./pagarme-pos-config";
+import { exigirEmissaoDeCobranca } from "./bloqueio-cobranca";
 
 const BASE = "https://api.pagar.me/core/v5";
 export const PREFIXO_PIX = "pixrec_";
@@ -36,7 +38,8 @@ export class ErroPagarme extends Error {
   constructor(public status: number, mensagem: string) { super(mensagem); }
 }
 
-async function chamar<T>(metodo: string, caminho: string, corpo?: unknown, idempotencia?: string): Promise<T> {
+async function chamar<T>(metodo: string, caminho: string, corpo?: unknown, idempotencia?: string, opcoes?: { serviceRefererName?: string; timeoutMs: number }): Promise<T> {
+  if (metodo === "POST" || (metodo === "PATCH" && caminho.endsWith("/card"))) exigirEmissaoDeCobranca("pagarme");
   if (ehHomologacao()) throw new ErroPagarme(503, "Homologação não acessa a API real de pagamentos.");
   const r = await fetchImpl(`${BASE}${caminho}`, {
     method: metodo,
@@ -45,8 +48,10 @@ async function chamar<T>(metodo: string, caminho: string, corpo?: unknown, idemp
       "Content-Type": "application/json",
       Accept: "application/json",
       ...(idempotencia ? { "Idempotency-key": idempotencia } : {}),
+      ...(opcoes?.serviceRefererName ? { ServiceRefererName: opcoes.serviceRefererName } : {}),
     },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
+    signal: opcoes ? AbortSignal.timeout(opcoes.timeoutMs) : undefined,
   });
   const json = (await r.json().catch(() => ({}))) as T & { message?: string; errors?: Record<string, string[]> };
   if (!r.ok) {
@@ -185,6 +190,7 @@ export const pagarme: Gateway = {
   },
 
   async criarAssinatura(a) {
+    exigirEmissaoDeCobranca("pagarme");
     if (a.forma === "PIX") return `${PREFIXO_PIX}${a.referencia}`; // Pix mensal e gerado pelo BarberOS
     if (a.forma === "CARTAO" && !a.cartaoToken) throw new Error("Cartão não informado.");
     const r = await chamar<{ id: string }>("POST", "/subscriptions", {
@@ -247,6 +253,7 @@ export const pagarme: Gateway = {
   },
 
   async atualizarCartao(id, token) {
+    exigirEmissaoDeCobranca("pagarme");
     await chamar("PATCH", `/subscriptions/${encodeURIComponent(id)}/card`, { card_token: token, card: { billing_address: enderecoCobranca() } });
   },
 
@@ -410,6 +417,7 @@ export type PedidoPOS = {
 };
 
 export type TipoPOS = "credit" | "debit" | "pix";
+const timeoutPOS = { timeoutMs: 15_000 };
 
 /** Cria o pedido "direto" (ja com a forma escolhida) na maquininha. */
 export async function criarPedidoMaquininha(p: {
@@ -420,7 +428,9 @@ export async function criarPedidoMaquininha(p: {
   serial: string;
   cliente: { nome: string; email: string };
   metadata?: Record<string, string>;
-}) {
+}, configuracao?: ReturnType<typeof configuracaoStonePOS>) {
+  exigirEmissaoDeCobranca("stone");
+  const stone = configuracao ?? configuracaoStonePOS();
   return chamar<PedidoPOS>("POST", "/orders", {
     code: p.referencia.slice(0, 52),
     customer: { name: p.cliente.nome.slice(0, 64), email: p.cliente.email },
@@ -431,17 +441,17 @@ export async function criarPedidoMaquininha(p: {
       print_order_receipt: false,
       devices_serial_number: [p.serial],
       display_name: p.descricao.slice(0, 30),
-      payment_setup: { type: p.tipo, ...(p.tipo === "credit" ? { installments: 1, installment_type: "merchant" } : {}) },
+      payment_setup: { type: p.tipo, split: stone.split, ...(p.tipo === "credit" ? { installments: 1, installment_type: "merchant" } : {}) },
     },
     metadata: p.metadata ?? {},
-  }, `pos-${p.metadata?.pagamento_id ?? p.referencia}`);
+  }, `pos-${p.metadata?.pagamento_id ?? p.referencia}`, { ...timeoutPOS, serviceRefererName: stone.serviceRefererName });
 }
 
 export async function buscarPedido(id: string) {
-  return chamar<PedidoPOS>("GET", `/orders/${encodeURIComponent(id)}`);
+  return chamar<PedidoPOS>("GET", `/orders/${encodeURIComponent(id)}`, undefined, undefined, timeoutPOS);
 }
 
 /** Tira o pedido da fila da maquininha (limite de 30 abertos). Pago -> "paid"; desistiu -> "canceled". */
 export async function fecharPedido(id: string, status: "paid" | "canceled" | "failed") {
-  await chamar("PATCH", `/orders/${encodeURIComponent(id)}/closed`, { status });
+  await chamar("PATCH", `/orders/${encodeURIComponent(id)}/closed`, { status }, undefined, timeoutPOS);
 }

@@ -23,6 +23,26 @@ Pagamentos históricos Celcash sem contrato local não aparecem como assinaturas
 
 Guarde nos campos apenas o identificador do contrato e o código da conferência interna, como `REV-2026-001`. Não copie PAN, CVV, senha, OTP, tokens, CPF, extratos ou links de pagamento. O formulário não oferece um campo livre para anexar conversas ou documentos. A referência de evidência aceita códigos curtos e recusa URLs, números longos e padrões usuais de credenciais.
 
+## Conferência da base CashBarber
+
+Exporte a lista completa de clientes e a lista de contratos na mesma data de corte, incluindo todas as situações, e anote a data e os totais do painel. Para cada contrato, guarde o identificador de origem, titular, plano e preço contratados, situação, datas do ciclo, último pagamento confirmado, próximo vencimento e eventual fim de acesso. Se o CSV de assinantes só trouxer nome, plano, situação e data de criação, consulte o detalhe do contrato ou um relatório complementar. Compare o pagamento e os estornos com o extrato do gateway ou comprovante identificado. A data de cadastro, a data do recebimento e o vencimento são campos distintos.
+
+Em um banco restaurado para conferência, execute `npx tsx scripts/relatorio-migracao.ts --clientes=Clientes.csv --assinantes=Assinantes.csv --saida=<pasta-privada>`. O comando só lê o banco. A lista de clientes precisa de `Nome` e `Telefone`. A de assinantes precisa de `Cliente`, `Plano` e `Status`, com `CPF` ou `Telefone` para conferir o titular, `ID da assinatura` ou `ID do contrato` para rastrear a origem, além de `Próximo vencimento` e `Último pagamento`. Datas aceitas em `DD/MM/AAAA` ou `AAAA-MM-DD`. Campos ausentes ou divergentes ficam em revisão. Os CSVs de conferência identificam cada registro pela posição no arquivo e pelos IDs disponíveis. O console mostra totais, motivos e o SHA-256 de cada arquivo. Mantenha fontes e resultados em pasta privada fora do Git.
+
+Use as listas de pendências e os registros locais sem correspondência para conferir os dois sentidos. A soma dos registros sem divergências e dos registros com pendência deve bater com o total de cada exportação. Os totais por situação da origem contam linhas, inclusive possíveis duplicatas. Para fechar a quantidade de inadimplentes, concilie cada ciclo vencido, confirme o status do pagamento e remova duplicidades por contrato. A situação atual também precisa de uma extração da data de corte. Homônimos, telefones compartilhados e estados de origem desconhecidos ficam para conferência. O script aponta diferenças de cadastro, plano, status e datas disponíveis. Preço contratado, eventual fim de acesso, validade de comprovantes e destino da cobrança continuam sujeitos à verificação do contrato e do provedor antes da virada.
+
+## Pagamentos por ciclo na Celcoin
+
+Para uma conferência somente por arquivos, exporte os clientes do CashBarber e os relatórios de contratos e transações da Celcoin. Use o mesmo dia de corte para as fontes. Nas transações, filtre por vencimento e inclua todos os estados. O relatório de assinaturas do CashBarber pode acompanhar a conferência, mas as linhas do Relatório 19 sem ID e sem documento ou telefone ficam como totais declarados.
+
+```sh
+npx tsx scripts/conferir-cashbarber-celcoin.ts --clientes=Clientes.csv --assinaturas-cashbarber=Relatorio19.csv --contratos=ContratosCelcoin.csv --transacoes=TransacoesCelcoin.csv --data-corte=AAAA-MM-DD --saida=conferencia-privada.json
+```
+
+O comando lê os arquivos e salva a conferência com os hashes, as referências de origem e as pendências por linha. Ele não acessa a rede nem altera o banco. O vínculo de titular exige nome completo coincidente e CPF ou celular válido, sem conflito entre os identificadores. As transações são agrupadas pelo ID exato do contrato e vencimento. Captura, compensação e Pix pago confirmam o pagamento do ciclo se o valor e o titular corresponderem. Pagamento registrado por fora exige comprovante. Estorno, duplicidade, situação desconhecida e conflito de identidade ficam em revisão. A data do status é usada para o corte, não como data de crédito na conta.
+
+Um ciclo vencido no relatório não autoriza suspender o cliente. Antes de migrar, confira vínculos do mesmo titular, pendências de ciclos anteriores, plano e próximo vencimento. Trate ausência de uma cobrança no recorte como falta de evidência. Preserve os arquivos e o relatório privado fora do Git.
+
 ## Cadência preparada
 
 `proximoPassoMigracao` calcula o próximo passo sem despacho ou rotina habilitada. Para utilizá-la operacionalmente, fornecer histórico comprovado dos contatos desta migração e a última comunicação global do cliente; o cadastro antigo, isoladamente, não comprova permissão de marketing.

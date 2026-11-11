@@ -38,7 +38,7 @@ export async function solicitarAlteracaoPlano(p: { assinaturaId: string; planoId
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${p.assinaturaId}`}, 0))`;
     const a = await tx.assinatura.findUnique({ where: { id: p.assinaturaId } });
     if (!a) throw naoEncontrado("Assinatura");
-    if (a.status !== "ATIVA" || a.pausadaEm || a.encerraEm || a.operacaoInicial || !a.proximoVencimento || dia(a.proximoVencimento) <= hoje) {
+    if (a.status !== "ATIVA" || (!a.gatewayId && a.ultimoPagamentoManualEm) || a.pausadaEm || a.encerraEm || a.operacaoInicial || !a.proximoVencimento || dia(a.proximoVencimento) <= hoje) {
       throw new ErroNegocio("A assinatura precisa estar ativa, sem pendências e com a próxima renovação definida para solicitar a troca.", 409, "troca_indisponivel");
     }
     if (a.planoId === p.planoId) throw new ErroNegocio("Esse já é o plano atual.", 409);

@@ -8,6 +8,7 @@ import { cancelamentoSemRecebimento } from "@/lib/assinaturas/operacao-inicial";
 import { linkAbsoluto } from "@/lib/assinaturas/cobrancas";
 import { pixVencido, validadePixSeg } from "@/lib/pagamentos/checkout-regras";
 import { gateway } from "@/lib/pagamentos/gateway";
+import { exigirEmissaoDeCobranca } from "@/lib/pagamentos/bloqueio-cobranca";
 import { caminhoCheckoutHorario, marcarPago, respostaAntecipado, sincronizarAntecipado, aoCancelarHorario } from "./antecipado";
 import { grupoParaAntecipar } from "./antecipado-grupo";
 import { travarBarbeiro } from "./agendamentos";
@@ -20,6 +21,7 @@ type Entrada = { clienteId: string; agendamentoId: string; forma: FormaPagamento
 
 export async function emitirAntecipado(p: Entrada) {
   const g = await gateway();
+  exigirEmissaoDeCobranca(g.nome);
   if (!g.criarCobrancaAvulsa) throw new ErroNegocio("O pagamento antecipado ainda não está disponível. Pague no balcão.", 409, "indisponivel");
   if (p.forma === "BOLETO") throw new ErroNegocio("Para pagar antes, use Pix ou cartão.", 422);
   const referencia = await db.agendamento.findFirst({ where: { id: p.agendamentoId, clienteId: p.clienteId, adicionalDeId: null }, select: { barbeiroId: true, antecipado: { select: { id: true } } } });

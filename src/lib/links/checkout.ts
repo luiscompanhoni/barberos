@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { motivoLinkFechado, parcelasValidas, validadePixSeg } from "@/lib/pagamentos/checkout-regras";
 import { gateway, gatewayPorId } from "@/lib/pagamentos/gateway";
+import { exigirEmissaoDeCobranca } from "@/lib/pagamentos/bloqueio-cobranca";
 import { estadoCheckoutLink } from "./estado";
 import { marcarLinkPago, sincronizarLink } from "./sincronizacao";
 import { encerramentoPendente, INCLUIR_CLIENTE, limparTentativa, travarLink } from "./transacao";
@@ -43,6 +44,7 @@ export async function pagarLink(token: string, p: { forma: Exclude<FormaPagament
     if (atual.status === "PENDENTE" && (atual.gatewayId || atual.tentativaChave)) return { existente: true as const, link: atual };
     const fechado = motivoLinkFechado(atual);
     if (fechado) throw new ErroNegocio(fechado, 409, atual.status === "PAGO" ? "ja_pago" : "fechado");
+    exigirEmissaoDeCobranca(g.nome);
     if (atual.comandaId) {
       const c = await tx.comanda.findUniqueOrThrow({ where: { id: atual.comandaId }, include: { itens: true, pagamentos: true } });
       if (c.status !== "ABERTA" || c.pagamentos.some((pg) => pg.status === "AGUARDANDO") || resumoComanda(c.itens, c.pagamentos, c.descontoCentavos).falta < atual.valorCentavos) {

@@ -34,6 +34,7 @@ export const GET = rota(async () => {
       precoCentavos: sit.assinatura.precoCentavos,
       formaPagamento: sit.assinatura.formaPagamento,
       proximoVencimento: sit.assinatura.proximoVencimento,
+      registroManual: !!sit.assinatura.ultimoPagamentoManualEm && !sit.assinatura.gatewayId,
       alteracaoPlano: await alteracaoAtual(sit.assinatura.id),
       operacaoEmConferencia: !!sit.assinatura.operacaoInicial,
       linkPendente: sit.assinatura.status === "PENDENTE" && sit.assinatura.tokenPublico ? `/c/assinar/${sit.assinatura.tokenPublico}` : null,

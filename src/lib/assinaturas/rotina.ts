@@ -22,13 +22,15 @@ import { encerrarCancelados, reativarPausas } from "./retencao-rotina";
 import { processarCobrancasAutomaticas } from "./cobranca-automatica-rotina";
 import { recuperarWebhooksPagamento } from "@/lib/pagamentos/webhook-entrada";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
+import { cobrancasReaisBloqueadas } from "@/lib/pagamentos/bloqueio-cobranca";
+import { marcarCiclosManuaisVencidos } from "./registro-manual";
 
 const DIAS_ANTES_PIX = 3;
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export async function gerarPixDoProximoMes() {
   // A publicação pode suspender novas emissões sem interromper sincronização ou webhooks.
-  if (process.env.PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA === "false") return 0;
+  if (process.env.PAGAMENTOS_EMISSAO_AUTOMATICA_PIX_ATIVA === "false" || cobrancasReaisBloqueadas("pagarme")) return 0;
   const cfg = await configuracao();
   const limite = somarDias(dataLocal(Date.now(), cfg.fuso), DIAS_ANTES_PIX);
   const assinaturas = await db.assinatura.findMany({
@@ -105,6 +107,7 @@ export async function sincronizarCelcash() {
 
 export async function rodarRotinaDePagamentos() {
   if (quarentenaRestauracao()) return { pix: 0, vencidas: 0, celcash: 0, reativadas: 0, encerradas: 0 };
+  await marcarCiclosManuaisVencidos().catch(e => console.error("[rotina] vencimento de ciclos manuais:", e instanceof Error ? e.name : "falha"));
   await recuperarWebhooksPagamento().catch(() => console.error("[rotina] recuperação de webhooks falhou"));
   // A fila de cobrança não roda sem flag e data inicial explícitas; o erro não interrompe outras rotinas.
   await processarCobrancasAutomaticas().catch((e) => console.error("[rotina] cobrança automática:", e instanceof Error ? e.message : "falha"));

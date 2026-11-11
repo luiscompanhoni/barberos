@@ -3,19 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import { Banknote, CreditCard, LoaderCircle, QrCode, X } from "lucide-react";
 import { BotaoEstorno, SeloEstorno } from "@/components/estornos/BotaoEstorno";
-import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
+import { api, centavosParaTexto, ErroApi, paraCentavos, reais } from "@/lib/cliente-api";
 import { FORMAS, ROTULO_FORMA, type Comanda, type EstornoComanda, type Forma, type ModoMaquininha, type Pagamento } from "./tipos";
 
 const ICONE: Record<Forma, typeof CreditCard> = { PIX: QrCode, CREDITO: CreditCard, DEBITO: CreditCard, DINHEIRO: Banknote };
 
 /** Pagamentos lancados + formulario para receber (divide em quantas formas precisar). */
-export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupado, onPagar, onAcaoPagamento, onEstorno }: {
+export function Recebimento({ comanda, maquininha, gerente, posDoBarbeiro, aprovaEstorno, ocupado, onPagar, onAcaoPagamento, onEstorno }: {
   comanda: Comanda;
   maquininha: ModoMaquininha;
   gerente: boolean;
+  posDoBarbeiro: boolean;
   aprovaEstorno: boolean;
   ocupado: boolean;
-  onPagar: (p: { forma: Forma; valorCentavos: number; naMaquininha: boolean; serial?: string }) => Promise<boolean>;
+  onPagar: (p: { forma: Forma; valorCentavos: number; naMaquininha: boolean; serial?: string; solicitacaoId?: string }, aoFalhar?: (e: unknown) => void) => Promise<boolean>;
   onAcaoPagamento: (id: string, acao: "cancelar" | "conferir" | "simular") => void;
   onEstorno?: () => void;
 }) {
@@ -28,6 +29,7 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
   const [carregandoMaquinas, setCarregandoMaquinas] = useState(maquininha === "stone");
   const [erroLocal, setErroLocal] = useState("");
   const emVoo = useRef(false);
+  const tentativa = useRef<{ chave: string; id: string } | null>(null);
   useEffect(() => {
     if (maquininha !== "stone" || !gerente) return;
     let ativo = true;
@@ -46,11 +48,13 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
     try { localStorage.setItem("barberos:maquininha", v); } catch {}
   };
   const aberta = comanda.status === "ABERTA";
-  const bloqueado = ocupado || r.aguardando > 0 || !gerente;
+  const podeEnviar = gerente || posDoBarbeiro;
+  const formas = gerente ? FORMAS : FORMAS.filter((f) => f.valor === "DEBITO" || f.valor === "CREDITO");
+  const bloqueado = ocupado || r.aguardando > 0 || !podeEnviar;
   const integrada = maquininha !== "manual" && forma !== "DINHEIRO";
   const reservadoEmLinks = (comanda.linksPagamento ?? []).reduce((total, l) => total + l.valorCentavos, 0);
   const disponivel = Math.max(0, r.falta - reservadoEmLinks);
-  const maquinaPronta = maquininha !== "stone" || (!carregandoMaquinas && maquinas.some((m) => m.serial === serial));
+  const maquinaPronta = posDoBarbeiro || maquininha !== "stone" || (!carregandoMaquinas && maquinas.some((m) => m.serial === serial));
   // Estornados continuam na lista (com o selo), para ficar visivel na comanda.
   const vivos = comanda.pagamentos.filter((p) => p.status !== "CANCELADO" || !!p.estornadoEm);
   const estornosDe = (p: Pagamento) => (comanda.estornos ?? []).filter((e) =>
@@ -58,6 +62,7 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
 
   async function pagar(escolhida: Forma) {
     if (emVoo.current || bloqueado || reservadoEmLinks > 0) return;
+    if (!gerente && (!posDoBarbeiro || maquininha !== "stone" || !formas.some(f => f.valor === escolhida))) return;
     setErroLocal("");
     const v = valor.trim() ? paraCentavos(valor) : disponivel;
     const enviarMaquina = maquininha !== "manual" && escolhida !== "DINHEIRO" && !jaPassei;
@@ -66,7 +71,18 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
     if (enviarMaquina && !maquinaPronta) return setErroLocal("Escolha uma maquininha disponível antes de cobrar.");
     emVoo.current = true;
     try {
-      if (await onPagar({ forma: escolhida, valorCentavos: v, naMaquininha: enviarMaquina, ...(enviarMaquina && serial ? { serial } : {}) })) setValor("");
+      const terminal = gerente && enviarMaquina ? serial || undefined : undefined;
+      const chave = JSON.stringify([comanda.id, escolhida, v, terminal]);
+      const enviarStone = enviarMaquina && maquininha === "stone";
+      if (enviarStone && tentativa.current?.chave !== chave) tentativa.current = { chave, id: crypto.randomUUID() };
+      const solicitacaoId = enviarStone ? tentativa.current?.id : undefined;
+      const encerra = () => { if (solicitacaoId && tentativa.current?.id === solicitacaoId) tentativa.current = null; };
+      if (await onPagar({ forma: escolhida, valorCentavos: v, naMaquininha: enviarMaquina, serial: terminal, solicitacaoId }, e => {
+        if (e instanceof ErroApi && e.codigo === "maquininha") encerra();
+      })) {
+        encerra();
+        setValor("");
+      }
     } finally {
       emVoo.current = false;
     }
@@ -77,7 +93,9 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
       {vivos.length > 0 && (
         <ul className="space-y-2">
           {vivos.map((p) => (
-            <LinhaPagamento key={p.id} p={p} aberta={aberta && gerente} maquininha={maquininha} ocupado={ocupado || !gerente} onAcao={onAcaoPagamento}
+            <LinhaPagamento key={p.id} p={p} aberta={aberta && gerente} maquininha={maquininha} ocupado={ocupado} onAcao={onAcaoPagamento}
+              podeConferir={gerente || (posDoBarbeiro && (p.forma === "DEBITO" || p.forma === "CREDITO") && (!p.gatewayPedidoId || p.gatewayPedidoId.startsWith("or_")))}
+              podeSimular={gerente}
               // Desfazer lancamento errado (sem dinheiro): so quem aprova estornos. Devolver dinheiro e estorno.
               podeDesfazer={aprovaEstorno && p.status === "PAGO" && !p.antecipadoId && !p.linkPagamentoId && !p.estornadoCentavos && (!p.gatewayPedidoId || p.gatewayPedidoId.startsWith("sim_"))}
               estornos={estornosDe(p)} podeEstornar={gerente} onEstorno={onEstorno} />
@@ -85,27 +103,28 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
         </ul>
       )}
 
-      {aberta && gerente && disponivel > 0 && reservadoEmLinks === 0 && (
-        <form onSubmit={(e) => { e.preventDefault(); if (!integrada || jaPassei) void pagar(forma); }} className="space-y-3 rounded-xl border border-zinc-200 p-3">
+      {aberta && podeEnviar && disponivel > 0 && reservadoEmLinks === 0 && (
+        <form onSubmit={(e) => { e.preventDefault(); if (gerente && (!integrada || jaPassei)) void pagar(forma); }} className="space-y-3 rounded-xl border border-zinc-200 p-3">
           <label className="block text-xs font-semibold text-zinc-600">
             Valor a cobrar (R$)
             <input className="campo mt-1" inputMode="decimal" disabled={bloqueado} placeholder={centavosParaTexto(disponivel)} value={valor} onChange={(e) => setValor(e.target.value)} aria-label="Valor a cobrar" />
           </label>
-          {maquininha === "stone" && !jaPassei && maquinas.length > 1 && (
+          {gerente && maquininha === "stone" && !jaPassei && maquinas.length > 1 && (
             <select className="campo py-1.5 text-sm" disabled={bloqueado} value={serial} onChange={(e) => escolherMaquina(e.target.value)} aria-label="Maquininha">
               {maquinas.map((m) => <option key={m.serial} value={m.serial}>{m.nome}</option>)}
             </select>
           )}
           <p className="text-xs text-zinc-600">
-            {maquininha === "manual" ? "Integração da maquininha desativada: registre somente valores já recebidos."
+            {posDoBarbeiro ? "Escolha débito ou crédito para enviar o valor à maquininha da barbearia."
+              : maquininha === "manual" ? "Integração da maquininha desativada: registre somente valores já recebidos."
               : jaPassei ? "Registro manual de um pagamento já recebido."
               : maquininha === "simulada" ? "Simulação: escolha débito, crédito ou Pix para enviar ao simulador."
               : carregandoMaquinas ? "Carregando maquininhas…"
               : maquinaPronta ? `Escolha débito, crédito ou Pix para cobrar na ${maquinas.find((m) => m.serial === serial)?.nome}.`
               : "Nenhuma maquininha disponível. Confira a configuração antes de cobrar."}
           </p>
-          <div className="grid grid-cols-4 gap-1.5">
-            {FORMAS.map((f) => {
+          <div className={`grid gap-1.5 ${gerente ? "grid-cols-4" : "grid-cols-2"}`}>
+            {formas.map((f) => {
               const Icone = ICONE[f.valor];
               return (
                 <button type="button" key={f.valor} disabled={bloqueado || (f.valor !== "DINHEIRO" && maquininha !== "manual" && !jaPassei && !maquinaPronta)}
@@ -117,17 +136,17 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
               );
             })}
           </div>
-          {(!integrada || jaPassei) && (
+          {gerente && (!integrada || jaPassei) && (
             <button className="btn-primario w-full" disabled={bloqueado}>Registrar pagamento recebido</button>
           )}
-          {integrada && (
+          {gerente && integrada && (
             <label className="flex items-center gap-2 text-xs text-zinc-500">
               <input type="checkbox" disabled={bloqueado} checked={jaPassei} onChange={(e) => setJaPassei(e.target.checked)} className="accent-[#d3ab45]" />
               Já passei na maquininha (só registrar)
             </label>
           )}
           <p className="text-[11px] text-zinc-500">Em branco = saldo disponível ({reais(disponivel)}). Para dividir, informe o valor antes de escolher a forma.</p>
-          {r.aguardando > 0 && <p className="text-xs text-ouro">Confira ou cancele a cobrança pendente antes de receber o restante.</p>}
+          {r.aguardando > 0 && <p className="text-xs text-ouro">{gerente ? "Confira ou cancele a cobrança pendente antes de receber o restante." : "Confira a cobrança pendente antes de receber o restante."}</p>}
           {erroLocal && <p role="alert" className="text-xs text-red-700">{erroLocal}</p>}
         </form>
       )}
@@ -136,8 +155,9 @@ export function Recebimento({ comanda, maquininha, gerente, aprovaEstorno, ocupa
   );
 }
 
-function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao, estornos, podeEstornar, onEstorno }: {
+function LinhaPagamento({ p, aberta, maquininha, podeConferir, podeSimular, podeDesfazer, ocupado, onAcao, estornos, podeEstornar, onEstorno }: {
   p: Pagamento; aberta: boolean; maquininha: ModoMaquininha; podeDesfazer: boolean; ocupado: boolean;
+  podeConferir: boolean; podeSimular: boolean;
   onAcao: (id: string, acao: "cancelar" | "conferir" | "simular") => void;
   estornos: EstornoComanda[]; podeEstornar: boolean; onEstorno?: () => void;
 }) {
@@ -165,8 +185,8 @@ function LinhaPagamento({ p, aberta, maquininha, podeDesfazer, ocupado, onAcao, 
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
           <span className="flex items-center gap-1.5 text-ouro"><LoaderCircle size={13} className="animate-spin" /> {p.gatewayPedidoId ? "Aguardando confirmação do pagamento na maquininha…" : "Envio sem confirmação. Confira a cobrança antes de tentar novamente."}</span>
           <span className="ml-auto flex gap-1.5">
-            {maquininha === "simulada" && <button disabled={ocupado} className="btn py-1 text-xs" onClick={() => onAcao(p.id, "simular")}>Simular aprovação</button>}
-            {maquininha === "stone" && <button disabled={ocupado} className="btn py-1 text-xs" onClick={() => onAcao(p.id, "conferir")}>Conferir</button>}
+            {maquininha === "simulada" && podeSimular && <button disabled={ocupado} className="btn py-1 text-xs" onClick={() => onAcao(p.id, "simular")}>Simular aprovação</button>}
+            {maquininha === "stone" && podeConferir && <button disabled={ocupado} className="btn py-1 text-xs" onClick={() => onAcao(p.id, "conferir")}>Conferir</button>}
           </span>
         </div>
       )}

@@ -144,7 +144,8 @@ O que está implementado:
   com as opções de agendar ou bloquear; gravar exige confirmação. O botão **+ Atendimento** oferece os campos
   equivalentes para teclado e celular. O modo de arrasto no celular é explícito, para preservar a rolagem normal.
   **Mostrar encaixes** destaca as janelas do serviço escolhido e informa a capacidade, sem somar alternativas
-  que ocupam o mesmo intervalo. O ajuste da duração fica no detalhe da reserva.
+  que ocupam o mesmo intervalo. O ajuste da duração fica no detalhe da reserva. Ao concluir o atendimento,
+  o cartão fica verde, recebe um ícone de confirmação e anuncia a situação também nos horários curtos.
 - **Reuniões:** a apresentação ocupa a tela, aceita teclado e pode ser impressa como slides. A opção para a equipe
   recebe do servidor uma versão sem dados reservados. O editor mantém conteúdo e ações separados dos números
   preservados na geração. Valores ausentes aparecem como pendentes, nunca como zero presumido.

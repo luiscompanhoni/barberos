@@ -221,14 +221,14 @@ export async function lancarPagamento(
   tx: Tx,
   s: Sessao,
   comandaId: string,
-  p: { forma: FormaRecebimento; valorCentavos: number; status: "AGUARDANDO" | "PAGO" },
+  p: { forma: FormaRecebimento; valorCentavos: number; status: "AGUARDANDO" | "PAGO"; id?: string },
 ) {
   const c = await travar(tx, comandaId);
   const r = resumoComanda(c.itens, c.pagamentos, c.descontoCentavos);
   const erro = erroNoPagamento(p.forma, p.valorCentavos, r.falta);
   if (erro) throw new ErroNegocio(erro);
   const pg = await tx.pagamentoComanda.create({
-    data: { comandaId, forma: p.forma, valorCentavos: p.valorCentavos, status: p.status, registradoPorId: s.usuarioId, pagoEm: p.status === "PAGO" ? new Date() : null },
+    data: { id: p.id, comandaId, forma: p.forma, valorCentavos: p.valorCentavos, status: p.status, registradoPorId: s.usuarioId, pagoEm: p.status === "PAGO" ? new Date() : null },
   });
   await auditar(tx, s.usuarioId, "pagamento", "comanda", comandaId, { forma: p.forma, valorCentavos: p.valorCentavos, status: p.status });
   return { comanda: c, pagamento: pg };

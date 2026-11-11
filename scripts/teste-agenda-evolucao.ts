@@ -2,9 +2,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
-import { alterarAgendamento, criarAgendamento } from "@/lib/agenda/agendamentos";
+import { alterarAgendamento, alterarStatus, criarAgendamento } from "@/lib/agenda/agendamentos";
 import { fecharAgenda, salvarExcecao, salvarExpediente } from "@/lib/agenda/expediente";
-import { horariosDisponiveis } from "@/lib/agenda/consultas";
+import { agendaDoPeriodo, horariosDisponiveis } from "@/lib/agenda/consultas";
 import { configuracao } from "@/lib/agenda/carregar";
 import { salvarConfiguracaoOperacional } from "@/lib/agenda/configuracao-operacional";
 import { dataLocal, diaSemana, instanteLocal, somarDias } from "@/lib/agenda/tempo";
@@ -54,7 +54,20 @@ async function main() {
     fecharAgenda(barbeiros[0], { inicio: hora(780), fim: hora(810), motivo: "Teste concorrente", confirmar: true }, dono),
   ]);
   assert.equal(bloqueioCorrida.filter(r => r.status === "fulfilled").length, 1); ok("bloquear e agendar concorrentes não produzem sobreposição");
-  await db.agendamento.update({ where: { id: ag.id }, data: { status: "CONCLUIDO" } });
+  const recepcionista = await db.usuario.create({ data: { nome: tag, telefone: `${tag}-recepcao`, papel: "RECEPCAO" } });
+  usuarios.push(recepcionista.id);
+  const recepcao: Sessao = { ...dono, usuarioId: recepcionista.id, papel: "RECEPCAO" };
+  await alterarStatus(ag.id, "CHEGOU", recepcao, "MARCADO");
+  await alterarStatus(ag.id, "EM_ATENDIMENTO", recepcao, "CHEGOU");
+  await assert.rejects(alterarStatus(ag.id, "CONCLUIDO", recepcao, "CHEGOU"), { status: 409, codigo: "status_alterado" });
+  assert.equal((await agendaDoPeriodo(data, 1, barbeiros[0])).agendamentos.find(a => a.id === ag.id)?.status, "EM_ATENDIMENTO");
+  assert.equal((await alterarStatus(ag.id, "CONCLUIDO", recepcao, "EM_ATENDIMENTO")).status, "CONCLUIDO");
+  assert.equal((await agendaDoPeriodo(data, 1, barbeiros[0])).agendamentos.find(a => a.id === ag.id)?.status, "CONCLUIDO");
+  // Repetir uma solicitação cujo primeiro retorno se perdeu preserva o resultado.
+  assert.equal((await alterarStatus(ag.id, "CONCLUIDO", recepcao, "EM_ATENDIMENTO")).status, "CONCLUIDO");
+  const baixas = await db.auditoria.findMany({ where: { entidadeId: ag.id, acao: "status", usuarioId: recepcao.usuarioId } });
+  assert.equal(baixas.filter(b => JSON.stringify(b.dados).includes("CONCLUIDO")).length, 1);
+  ok("recepção conclui com estado persistido, recusa leitura antiga e registra a baixa uma vez");
   await assert.rejects(alterarAgendamento(ag.id, { fim: hora(570) }, dono), /concluído/); ok("atendimento concluído não é redimensionado");
   const audit = await db.auditoria.findFirst({ where: { entidadeId: ag.id, acao: "alterar" } });
   assert(audit?.dados); ok("ajuste tem histórico auditável");

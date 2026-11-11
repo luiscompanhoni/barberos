@@ -27,11 +27,15 @@ def memoria_disponivel_kib():
 def conferir_controles_cliente(app, banco, imagem_com_contrato_verificado):
     if app["Image"] != imagem_com_contrato_verificado:
         raise RuntimeError("O aplicativo ativo não usa a imagem cujo contrato Pix foi conferido.")
-    modo = ambiente_container(app).get("MAQUININHA")
+    env = ambiente_container(app)
+    modo = env.get("MAQUININHA")
     if modo != "manual":
         raise RuntimeError("O container em execução não confirmou MAQUININHA manual.")
+    if env.get("PAGAMENTOS_COBRANCAS_REAIS_BLOQUEADAS") != "true":
+        raise RuntimeError("O container em execução não confirmou o bloqueio de cobranças reais.")
     return {"agendaEquipeBanco": exigir_agenda_equipe(banco), "stoneManualContainer": True,
-            "modoMaquininhaContainer": modo, "lotePixContratoBloqueadoNaImagem": True}
+            "modoMaquininhaContainer": modo, "lotePixContratoBloqueadoNaImagem": True,
+            "cobrancasReaisBloqueadasContainer": True}
 
 
 def publicar(base, projeto, commit, imagem_esperada):
@@ -109,6 +113,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         estado["backupAnteriorPreservado"] = True
     etapa("preservar")
     env_app = ambiente_container(app)
+    retorno_com_bloqueio = env_app.get("PAGAMENTOS_COBRANCAS_REAIS_BLOQUEADAS") == "true"
     env_backup = ambiente_container(backup_anterior)
     volume = projeto + "_estudio_media"
     estado["capacidade"] = conferir_capacidade(base, banco, app, volume)
@@ -201,7 +206,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         os.replace(temp, ativa)
         (base / MARCADOR).unlink()
         return {"concluido": True, "revisao": commit, "backupRestaurado": True, "leituraAnteriorConferida": True,
-                "rollbackAutomaticoPermitido": not migracao_iniciada,
+                "rollbackAutomaticoPermitido": not migracao_iniciada and retorno_com_bloqueio,
                 "workerAtivo": True, "controlesCliente": estado["controlesCliente"]}
     except BaseException as erro:
         estado["concluido"] = False
@@ -218,7 +223,7 @@ def publicar(base, projeto, commit, imagem_esperada):
                 estado["escritoresParadosNaFalha"] = False
             registrar_quarentena(base, {"revisao": commit, "etapa": "falha", "migrouOuIniciouMigracao": migracao_iniciada,
                                        "escritoresParados": estado["escritoresParadosNaFalha"]})
-        if isolamento_iniciado and not migracao_iniciada and estado.get("escritoresParadosNaFalha"):
+        if isolamento_iniciado and not migracao_iniciada and estado.get("escritoresParadosNaFalha") and retorno_com_bloqueio:
             etapa("recuperar_imagem_anterior")
             try:
                 rollback = pasta / "rollback.json"
@@ -246,6 +251,10 @@ def publicar(base, projeto, commit, imagem_esperada):
                 except BaseException:
                     estado["escritoresParadosNaFalha"] = False
         elif migracao_iniciada:
+            estado["recuperacaoManualObrigatoria"] = True
+        elif isolamento_iniciado and not retorno_com_bloqueio:
+            # Uma imagem legada pode ignorar a flag, mesmo se ela for adicionada ao override.
+            estado["rollbackBloqueadoPorCobrancas"] = True
             estado["recuperacaoManualObrigatoria"] = True
         etapa("falhou")
         raise RuntimeError("Publicação interrompida; consultar registro privado da etapa e recuperação.") from None

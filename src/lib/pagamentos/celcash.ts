@@ -8,6 +8,7 @@
 import type { FormaPagamento } from "@prisma/client";
 import type { CobrancaAvulsa, CobrancaGateway, Gateway } from "./gateway";
 import { centavosValidos, instanteRecebimento } from "./recebimento";
+import { exigirEmissaoDeCobranca } from "./bloqueio-cobranca";
 
 const ESCOPOS = "customers.read customers.write subscriptions.read subscriptions.write charges.read charges.write transactions.read transactions.write";
 export const PREFIXO = { assinatura: "celsub_", transacao: "celtx_", cliente: "celcli_", avulsa: "celchg_" } as const;
@@ -39,6 +40,7 @@ async function token() {
 }
 
 async function chamar<T>(metodo: string, caminho: string, corpo?: unknown): Promise<T> {
+  if (metodo === "POST") exigirEmissaoDeCobranca("celcash");
   const { base } = config();
   const r = await fetch(`${base}${caminho}`, {
     method: metodo,
@@ -147,6 +149,7 @@ export const celcash: Gateway = {
   exigeEmail: true,
 
   async criarCliente(c) {
+    exigirEmissaoDeCobranca("celcash");
     const corpo = {
       myId: c.referencia, name: c.nome, document: c.cpf, emails: c.email ? [c.email] : [],
       phones: [Number(c.telefone.replace(/^55/, ""))],

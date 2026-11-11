@@ -4,7 +4,7 @@ import type { PedidoPOS } from "@/lib/pagamentos/pagarme";
 import { dataLocal } from "@/lib/agenda/tempo";
 
 type Pago = {
-  id: string; comandaId: string; forma: "CREDITO"; valorCentavos: number;
+  id: string; comandaId: string; forma: "CREDITO" | "DEBITO"; valorCentavos: number;
   status: "AGUARDANDO" | "PAGO" | "CANCELADO"; gatewayPedidoId: string | null;
   registradoPorId: string; estornadoCentavos: number; antecipadoId: null; linkPagamentoId: null;
   comanda: { numero: number; status: string }; pagoEm?: Date; estornadoEm?: Date;
@@ -13,6 +13,7 @@ type Estorno = { id: string; status: string; valorCentavos: number };
 const m = vi.hoisted(() => ({
   pagamentos: new Map<string, Pago>(), enviar: vi.fn(), buscar: vi.fn(), fechar: vi.fn(),
   auditar: vi.fn(), avisar: vi.fn(), lancar: vi.fn(), link: vi.fn(), antesAtualizar: vi.fn(), estornos: [] as Estorno[],
+  travarAgenda: vi.fn(), comanda: vi.fn(),
 }));
 vi.mock("@/lib/pagamentos/pagarme", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/pagamentos/pagarme")>(),
@@ -21,6 +22,7 @@ vi.mock("@/lib/pagamentos/pagarme", async (importOriginal) => ({
 vi.mock("@/lib/auditoria", () => ({ auditar: m.auditar }));
 vi.mock("@/lib/auth/permissoes", () => ({ pode: async () => true }));
 vi.mock("@/lib/comandas/servico", () => ({ avisarComanda: m.avisar, ehGerente: () => true, lancarPagamento: m.lancar }));
+vi.mock("@/lib/comandas/agenda-comanda", () => ({ travarAgendaComanda: m.travarAgenda }));
 vi.mock("@/lib/db", () => {
   const pagamentos = {
     findUnique: async ({ where }: { where: { id?: string; gatewayPedidoId?: string } }) => where.id
@@ -49,14 +51,16 @@ vi.mock("@/lib/db", () => {
     update: async ({ where, data }: { where: { id: string }; data: Partial<Estorno> }) => Object.assign(m.estornos.find((e) => e.id === where.id)!, data),
     updateMany: async () => { const es = m.estornos.filter((e) => ["PENDENTE", "APROVADO", "FALHOU"].includes(e.status)); es.forEach((e) => e.status = "RECUSADO"); return { count: es.length }; },
   };
-  const tx = { pagamentoComanda: pagamentos, pedidoEstorno: estornos, linkPagamento: { findFirst: m.link }, $queryRaw: async () => [] };
+  const tx = { pagamentoComanda: pagamentos, pedidoEstorno: estornos, linkPagamento: { findFirst: m.link }, comanda: { findFirst: m.comanda }, $queryRaw: async () => [] };
   return { db: { ...tx, $transaction: async (fn: (t: typeof tx) => unknown) => fn(tx) } };
 });
 import { cancelarPagamento, registrarPagamento, simularAprovacao, sincronizarPedido } from "@/lib/comandas/maquininha";
 import { ErroPagarme } from "@/lib/pagamentos/pagarme";
 
 const sessao: Sessao = { usuarioId: "recepcao", nome: "Recepção", papel: "RECEPCAO", barbeiroId: null, clienteId: null };
-const entrada = { forma: "CREDITO" as const, valorCentavos: 1000, naMaquininha: true };
+const barbeiro: Sessao = { ...sessao, usuarioId: "u-barbeiro", papel: "BARBEIRO", barbeiroId: "b1" };
+const entrada = { forma: "CREDITO" as const, valorCentavos: 1000, naMaquininha: true, solicitacaoId: "15d825a4-1f5f-478b-8feb-3ac0f7a11c44" };
+const idEntrada = `pos_${entrada.solicitacaoId.replaceAll("-", "")}`;
 const criarPago = (extra: Partial<Pago> = {}): Pago => ({
   id: "pg1", comandaId: "cmd1", forma: "CREDITO", valorCentavos: 1000, status: "AGUARDANDO", gatewayPedidoId: "or_1",
   registradoPorId: "recepcao", estornadoCentavos: 0, antecipadoId: null, linkPagamentoId: null, comanda: { numero: 42, status: "ABERTA" }, ...extra,
@@ -72,52 +76,104 @@ beforeEach(() => {
   vi.clearAllMocks(); m.pagamentos.clear(); m.estornos.length = 0;
   vi.stubEnv("MAQUININHA", "stone"); vi.stubEnv("AMBIENTE", "local");
   vi.stubEnv("STONE_POS_SERIAL", "SERIAL1"); vi.stubEnv("PAGARME_SECRET_KEY", "sk_test_falsa");
+  vi.stubEnv("STONE_POS_SERVICE_REFERER_NAME", "parceiro-ficticio");
+  vi.stubEnv("STONE_POS_SPLIT_JSON", '[{"amount":100,"recipient_id":"rp_ficticio","type":"percentage","options":{"liable":true,"charge_processing_fee":true,"charge_remainder_fee":true}}]');
   m.link.mockResolvedValue(null); m.fechar.mockResolvedValue(undefined);
-  m.enviar.mockResolvedValue(pedido()); m.buscar.mockResolvedValue(pedido());
-  m.lancar.mockImplementation(async () => {
-    const pg = criarPago({ gatewayPedidoId: null }); m.pagamentos.set(pg.id, pg);
+  m.comanda.mockResolvedValue(null);
+  m.enviar.mockImplementation(async (p: { referencia: string; valorCentavos: number; metadata: Record<string, string> }) =>
+    pedido({ code: p.referencia, amount: p.valorCentavos, metadata: p.metadata }));
+  m.buscar.mockResolvedValue(pedido());
+  m.lancar.mockImplementation(async (_tx, s: Sessao, comandaId: string, p: { id?: string; forma: Pago["forma"]; valorCentavos: number }) => {
+    const pg = criarPago({ id: p.id ?? "pg1", comandaId, gatewayPedidoId: null, forma: p.forma, valorCentavos: p.valorCentavos, registradoPorId: s.usuarioId }); m.pagamentos.set(pg.id, pg);
     return { pagamento: { ...pg }, comanda: { numero: 42, cliente: { nome: "Cliente" } } };
   });
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 
 describe("POS: envio e intenção persistente", () => {
-  it.each(["BARBEIRO", "LIDER", "CLIENTE"] as const)("%s não registra nem cancela pagamento por chamada direta", async (papel) => {
+  it.each(["BARBEIRO", "LIDER", "CLIENTE"] as const)("%s sem vínculo permitido não registra nem cancela por chamada direta", async (papel) => {
     const s = { ...sessao, papel };
     await expect(registrarPagamento(s, "cmd1", entrada)).rejects.toMatchObject({ status: 403 });
     await expect(cancelarPagamento(s, "pg1")).rejects.toMatchObject({ status: 403 });
     expect(m.lancar).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled();
   });
+  it("envia o débito da comanda própria ao terminal padrão e bloqueia a repetição", async () => {
+    m.comanda.mockResolvedValue({ id: "cmd1" });
+    const debito = { ...entrada, forma: "DEBITO" as const };
+    const pg = await registrarPagamento(barbeiro, "cmd1", debito);
+    const repetido = await registrarPagamento(barbeiro, "cmd1", debito);
+    expect(repetido.id).toBe(pg.id);
+    expect(pg.status).toBe("AGUARDANDO");
+    expect(m.travarAgenda).toHaveBeenCalledWith(expect.anything(), "cmd1");
+    expect(m.enviar).toHaveBeenCalledOnce();
+    expect(m.enviar).toHaveBeenCalledWith(expect.objectContaining({ tipo: "debit", serial: "SERIAL1" }), expect.anything());
+    await expect(cancelarPagamento(barbeiro, pg.id)).rejects.toMatchObject({ status: 403 });
+  });
+  it("nega pagamento da comanda fora do escopo antes de lançar intenção", async () => {
+    await expect(registrarPagamento(barbeiro, "cmd-alheia", entrada)).rejects.toMatchObject({ status: 403 });
+    expect(m.lancar).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled();
+  });
+  it.each([{ naMaquininha: false }, { forma: "DINHEIRO" as const }, { forma: "PIX" as const }, { serial: "SERIAL1" }])("não deixa o barbeiro escolher outras formas de registrar: %j", async (extra) => {
+    await expect(registrarPagamento(barbeiro, "cmd1", { ...entrada, ...extra })).rejects.toMatchObject({ status: 403 });
+    expect(m.comanda).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled();
+  });
+  it.each(["manual", "simulada"])("o barbeiro não envia cobrança quando o modo é %s", async (modo) => {
+    vi.stubEnv("MAQUININHA", modo);
+    await expect(registrarPagamento(barbeiro, "cmd1", entrada)).rejects.toMatchObject({ status: 403 });
+    expect(m.lancar).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled();
+  });
   it("selecionar forma cria uma intenção e envia um único pedido com serial e metadados", async () => {
     const pg = await registrarPagamento(sessao, "cmd1", entrada);
     expect(pg.gatewayPedidoId).toBe("or_1"); expect(pg.status).toBe("AGUARDANDO");
-    expect(m.enviar).toHaveBeenCalledWith(expect.objectContaining({ tipo: "credit", serial: "SERIAL1", referencia: "cmd-42-pg1", metadata: { pagamento_id: "pg1", comanda_id: "cmd1" } }));
+    expect(m.enviar).toHaveBeenCalledWith(expect.objectContaining({ tipo: "credit", serial: "SERIAL1", referencia: `cmd-42-${idEntrada}`, metadata: { pagamento_id: idEntrada, comanda_id: "cmd1" } }), expect.anything());
   });
   it("repetição da mesma cobrança pendente não envia outro pedido", async () => {
     await registrarPagamento(sessao, "cmd1", entrada); await registrarPagamento(sessao, "cmd1", entrada);
     expect(m.enviar).toHaveBeenCalledTimes(1); expect(m.lancar).toHaveBeenCalledTimes(1);
   });
+  it("repete a mesma ação depois de paga e recusa a chave com outros dados", async () => {
+    await registrarPagamento(sessao, "cmd1", entrada);
+    m.pagamentos.get(idEntrada)!.status = "PAGO";
+    expect(await registrarPagamento(sessao, "cmd1", entrada)).toMatchObject({ id: idEntrada, status: "PAGO" });
+    await expect(registrarPagamento(sessao, "cmd1", { ...entrada, valorCentavos: 500 })).rejects.toMatchObject({ codigo: "solicitacao_pos" });
+    await expect(registrarPagamento(sessao, "outra", entrada)).rejects.toMatchObject({ codigo: "solicitacao_pos" });
+    expect(m.enviar).toHaveBeenCalledOnce();
+  });
   it("falha de rede preserva pendência, bloqueia cancelamento e não repete POST", async () => {
     m.enviar.mockRejectedValueOnce(new TypeError("connection reset"));
     await expect(registrarPagamento(sessao, "cmd1", entrada)).rejects.toMatchObject({ codigo: "maquininha_incerta" });
-    expect(m.pagamentos.get("pg1")?.status).toBe("AGUARDANDO");
-    await expect(cancelarPagamento(sessao, "pg1")).rejects.toMatchObject({ codigo: "maquininha_incerta" });
+    expect(m.pagamentos.get(idEntrada)?.status).toBe("AGUARDANDO");
+    await expect(cancelarPagamento(sessao, idEntrada)).rejects.toMatchObject({ codigo: "maquininha_incerta" });
     await registrarPagamento(sessao, "cmd1", entrada); expect(m.enviar).toHaveBeenCalledTimes(1);
   });
   it.each([409, 500, 502])("retorno %s preserva resultado desconhecido", async (status) => {
     m.enviar.mockRejectedValueOnce(new ErroPagarme(status, "incerto"));
     await expect(registrarPagamento(sessao, "cmd1", entrada)).rejects.toMatchObject({ codigo: "maquininha_incerta" });
-    expect(m.pagamentos.get("pg1")?.status).toBe("AGUARDANDO");
+    expect(m.pagamentos.get(idEntrada)?.status).toBe("AGUARDANDO");
   });
   it("rejeição HTTP explícita sem pedido não deixa reserva presa", async () => {
     m.enviar.mockRejectedValueOnce(new ErroPagarme(422, "Device not found"));
     await expect(registrarPagamento(sessao, "cmd1", entrada)).rejects.toMatchObject({ codigo: "maquininha" });
-    expect(m.pagamentos.get("pg1")?.status).toBe("CANCELADO");
+    expect(m.pagamentos.get(idEntrada)?.status).toBe("CANCELADO");
   });
   it("serial inválido e credencial ausente falham antes de criar pagamento", async () => {
     await expect(registrarPagamento(sessao, "cmd1", { ...entrada, serial: "outra" })).rejects.toMatchObject({ codigo: "maquininha" });
     vi.stubEnv("PAGARME_SECRET_KEY", "");
     await expect(registrarPagamento(sessao, "cmd1", entrada)).rejects.toMatchObject({ codigo: "config" });
+    expect(m.lancar).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled();
+  });
+  it("bloqueia modo manual e integração incompleta antes de lançar cobrança", async () => {
+    vi.stubEnv("MAQUININHA", "manual");
+    await expect(registrarPagamento(sessao, "cmd1", entrada)).rejects.toMatchObject({ codigo: "maquininha_desativada" });
+    vi.stubEnv("MAQUININHA", "stone");
+    await expect(registrarPagamento(sessao, "cmd1", { ...entrada, solicitacaoId: undefined })).rejects.toMatchObject({ codigo: "solicitacao_pos" });
+    vi.stubEnv("STONE_POS_SPLIT_JSON", "[]");
+    await expect(registrarPagamento(sessao, "cmd1", entrada)).rejects.toMatchObject({ codigo: "config" });
+    expect(m.lancar).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled();
+  });
+  it("a trava de cobranças reais prevalece antes de reservar o pagamento Stone", async () => {
+    vi.stubEnv("PAGAMENTOS_COBRANCAS_REAIS_BLOQUEADAS", "true");
+    await expect(registrarPagamento(sessao, "cmd1", entrada)).rejects.toMatchObject({ codigo: "cobrancas_reais_bloqueadas" });
     expect(m.lancar).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled();
   });
   it("impede substituir cobrança pendente por dinheiro ou outra quantia", async () => {
@@ -188,6 +244,12 @@ describe("POS: retorno autoritativo e cancelamento", () => {
     m.pagamentos.set("pg1", criarPago({ gatewayPedidoId: null }));
     m.buscar.mockResolvedValue(pedido({ code: "outra", charges: [charge()] }));
     expect(await sincronizarPedido("or_1")).toBe(false); expect(m.pagamentos.get("pg1")?.gatewayPedidoId).toBeNull();
+  });
+  it("avisa se outro pedido com a mesma intenção aparecer na recuperação", async () => {
+    m.buscar.mockResolvedValue(pedido({ id: "or_duplicado", charges: [charge()] }));
+    await expect(sincronizarPedido("or_duplicado")).rejects.toMatchObject({ codigo: "maquininha_divergente" });
+    expect(m.pagamentos.get("pg1")).toMatchObject({ gatewayPedidoId: "or_1", status: "AGUARDANDO" });
+    expect(m.fechar).not.toHaveBeenCalled();
   });
   it("pagamento aprovado durante cancelamento não é sobrescrito", async () => {
     m.buscar.mockResolvedValueOnce(pedido()).mockResolvedValueOnce(pedido({ charges: [charge()] }));

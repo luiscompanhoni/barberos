@@ -5,6 +5,7 @@
 import type { FormaPagamento } from "@prisma/client";
 import type { CobrancaGateway, Gateway } from "./gateway";
 import { centavosValidos, instanteRecebimento } from "./recebimento";
+import { exigirEmissaoDeCobranca } from "./bloqueio-cobranca";
 
 function config() {
   const chave = process.env.ASAAS_API_KEY;
@@ -14,6 +15,7 @@ function config() {
 }
 
 async function chamar<T>(metodo: string, caminho: string, corpo?: unknown): Promise<T> {
+  if (metodo === "POST") exigirEmissaoDeCobranca("asaas");
   const { chave, base } = config();
   const r = await fetch(`${base}${caminho}`, {
     method: metodo,

@@ -13,6 +13,11 @@ import { BALCAO, type Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
 import { buscarPedido, criarPedidoMaquininha, ErroPagarme, fecharPedido, type TipoPOS } from "@/lib/pagamentos/pagarme";
+import { exigirEmissaoDeCobranca } from "@/lib/pagamentos/bloqueio-cobranca";
+import { configuracaoStonePOS } from "@/lib/pagamentos/pagarme-pos-config";
+import { z } from "zod";
+import { travarAgendaComanda } from "./agenda-comanda";
+import { comandaPosDoBarbeiro, formaCartaoPresencial } from "./maquininha-acesso";
 import { conferirValoresPOS, referenciaPOS, ultimoInstantePOS } from "./maquininha-regras";
 import { conciliarEstornoPOS } from "./maquininha-estornos";
 import { avisarComanda, ehGerente, lancarPagamento } from "./servico";
@@ -51,26 +56,49 @@ function serialDaMaquininha(escolhido?: string) {
 export async function registrarPagamento(
   s: Sessao,
   comandaId: string,
-  p: { forma: FormaRecebimento; valorCentavos: number; naMaquininha: boolean; serial?: string },
+  p: { forma: FormaRecebimento; valorCentavos: number; naMaquininha: boolean; serial?: string; solicitacaoId?: string },
 ) {
-  if (!BALCAO.includes(s.papel)) throw proibido();
   const modo = modoMaquininha();
-  const integrada = p.naMaquininha && p.forma !== "DINHEIRO" && modo !== "manual";
+  const balcao = BALCAO.includes(s.papel);
+  if (!balcao && (s.papel !== "BARBEIRO" || !s.barbeiroId || modo !== "stone"
+    || !p.naMaquininha || !formaCartaoPresencial(p.forma) || p.serial !== undefined)) throw proibido();
+  if (p.naMaquininha && (modo === "manual" || p.forma === "DINHEIRO")) {
+    throw new ErroNegocio("A cobrança solicitada exige uma maquininha integrada. Confira o modo de recebimento.", 409, "maquininha_desativada");
+  }
+  const integrada = p.naMaquininha;
   // Erros locais conhecidos não deixam uma intenção que nunca foi enviada.
-  const serial = integrada && modo === "stone" ? serialDaMaquininha(p.serial) : undefined;
-  if (integrada && modo === "stone" && !process.env.PAGARME_SECRET_KEY) throw new ErroNegocio("Integração da maquininha não configurada.", 503, "config");
+  const real = integrada && modo === "stone";
+  if (real) exigirEmissaoDeCobranca("stone");
+  const serial = real ? serialDaMaquininha(p.serial) : undefined;
+  if (real && !process.env.PAGARME_SECRET_KEY?.trim()) throw new ErroNegocio("Integração da maquininha não configurada.", 503, "config");
+  const stone = real ? configuracaoStonePOS() : undefined;
+  const chave = real ? z.uuid().safeParse(p.solicitacaoId) : null;
+  if (chave && !chave.success) throw new ErroNegocio("Atualize a tela para iniciar uma solicitação identificada.", 409, "solicitacao_pos");
+  const id = chave?.success ? `pos_${chave.data.replaceAll("-", "").toLowerCase()}` : undefined;
   const { comanda, pagamento, existente } = await db.$transaction(async (tx) => {
+    if (!balcao) await travarAgendaComanda(tx, comandaId);
     await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${comandaId} FOR UPDATE`;
+    if (!balcao && !await comandaPosDoBarbeiro(s, comandaId, tx)) throw proibido();
+    if (id) {
+      const anterior = await tx.pagamentoComanda.findUnique({ where: { id } });
+      if (anterior) {
+        if (anterior.comandaId !== comandaId || anterior.registradoPorId !== s.usuarioId
+          || anterior.forma !== p.forma || anterior.valorCentavos !== p.valorCentavos) {
+          throw new ErroNegocio("A solicitação já foi usada com outros dados. Confira o pagamento antes de prosseguir.", 409, "solicitacao_pos");
+        }
+        return { pagamento: anterior, comanda: null, existente: true };
+      }
+    }
     const pendente = await tx.pagamentoComanda.findFirst({ where: { comandaId, status: "AGUARDANDO" } });
     if (pendente) {
-      if (integrada && pendente.forma === p.forma && pendente.valorCentavos === p.valorCentavos) {
+      if (integrada && !id && pendente.forma === p.forma && pendente.valorCentavos === p.valorCentavos) {
         return { pagamento: pendente, comanda: null, existente: true };
       }
       throw new ErroNegocio("Há uma cobrança aguardando confirmação. Confira ou cancele antes de cobrar novamente.", 409, "pagamento_pendente");
     }
     const link = await tx.linkPagamento.findFirst({ where: { comandaId, status: "PENDENTE", OR: [{ expiraEm: { gt: new Date() } }, { gatewayId: { not: null } }, { tentativaChave: { not: null } }] }, select: { id: true } });
     if (link) throw new ErroNegocio("Há um link de pagamento ativo. Confira ou cancele o link antes de cobrar na comanda.", 409, "link_pendente");
-    return { ...(await lancarPagamento(tx, s, comandaId, { forma: p.forma, valorCentavos: p.valorCentavos, status: integrada ? "AGUARDANDO" : "PAGO" })), existente: false };
+    return { ...(await lancarPagamento(tx, s, comandaId, { id, forma: p.forma, valorCentavos: p.valorCentavos, status: integrada ? "AGUARDANDO" : "PAGO" })), existente: false };
   });
   if (existente) return pagamento;
   if (!integrada) {
@@ -87,16 +115,20 @@ export async function registrarPagamento(
   // Timeout não comprova falha: preservar a intenção impede nova cobrança por engano.
   try {
     const nome = comanda!.cliente?.nome || comanda!.nomeAvulso || "Cliente";
+    const referencia = referenciaPOS(comanda!.numero, pagamento.id);
     const pedido = await criarPedidoMaquininha({
-      referencia: referenciaPOS(comanda!.numero, pagamento.id),
+      referencia,
       valorCentavos: p.valorCentavos,
       descricao: `Comanda #${comanda!.numero}`,
       tipo: TIPO[p.forma]!,
       serial: serial!,
       cliente: { nome, email: process.env.EMAIL_BALCAO || "balcao@barberos.app" },
       metadata: { comanda_id: comandaId, pagamento_id: pagamento.id },
-    });
+    }, stone);
     if (!pedido.id?.startsWith("or_")) throw new Error("Pedido sem identificação no retorno.");
+    if ((pedido.code && pedido.code !== referencia) || (pedido.amount !== undefined && pedido.amount !== p.valorCentavos)
+      || (pedido.currency && pedido.currency !== "BRL") || (pedido.metadata?.pagamento_id && pedido.metadata.pagamento_id !== pagamento.id)
+      || (pedido.metadata?.comanda_id && pedido.metadata.comanda_id !== comandaId)) throw new Error("Pedido divergente no retorno da criação.");
     await db.pagamentoComanda.updateMany({ where: { id: pagamento.id, gatewayPedidoId: null }, data: { gatewayPedidoId: pedido.id } });
     const r = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: pagamento.id } });
     if (r.gatewayPedidoId !== pedido.id) throw new Error("Pedido divergente do vínculo recuperado.");
@@ -162,12 +194,17 @@ export async function sincronizarPedido(pedidoId: string) {
     const id = pedido.metadata?.pagamento_id;
     if (!id || !pedido.metadata?.comanda_id) return false;
     const candidato = await db.pagamentoComanda.findUnique({ where: { id }, include: { comanda: { select: { numero: true } } } });
-    if (!candidato || candidato.comandaId !== pedido.metadata.comanda_id || candidato.gatewayPedidoId
-      || candidato.status !== "AGUARDANDO" || pedido.code !== referenciaPOS(candidato.comanda.numero, id)) return false;
+    if (!candidato || candidato.comandaId !== pedido.metadata.comanda_id || pedido.code !== referenciaPOS(candidato.comanda.numero, id)) return false;
+    if (candidato.gatewayPedidoId && candidato.gatewayPedidoId !== pedidoId) {
+      throw new ErroNegocio("Outro pedido já está vinculado a esta cobrança. Confira os dois pedidos com a gerência.", 409, "maquininha_divergente");
+    }
+    if (!candidato.gatewayPedidoId && candidato.status !== "AGUARDANDO") return false;
     conferirValoresPOS(pedido, candidato.valorCentavos);
     const r = await db.pagamentoComanda.updateMany({ where: { id, gatewayPedidoId: null, status: "AGUARDANDO" }, data: { gatewayPedidoId: pedidoId } });
-    if (!r.count) return true;
-    pg = candidato;
+    pg = r.count ? candidato : await db.pagamentoComanda.findUniqueOrThrow({ where: { id } });
+    if (!r.count && pg.gatewayPedidoId !== pedidoId) {
+      throw new ErroNegocio("O vínculo da maquininha mudou durante a conferência.", 409, "maquininha_divergente");
+    }
   }
   const { pago, cancelavel, recebido, estornado, charge } = conferirValoresPOS(pedido, pg.valorCentavos);
   const recebidoEm = ultimoInstantePOS((pedido.charges ?? []).filter(c => (c.paid_amount ?? 0) > 0).map(c => c.paid_at));
@@ -178,7 +215,7 @@ export async function sincronizarPedido(pedidoId: string) {
   } else if (pago) {
     if (await marcarPago(pg.id, { nsu: charge?.code ?? null, bandeira: charge?.metadata?.schemeName ?? charge?.metadata?.scheme_name ?? null, pagoEm: recebidoEm }, true)) avisarComanda(pg.comandaId);
     // Sempre fechar: pedido aberto continua ocupando a fila da maquininha (limite de 30).
-    await fecharPedido(pedidoId, "paid").catch((e) => console.error("[maquininha] fechar pedido", pedidoId, e));
+    await fecharPedido(pedidoId, "paid").catch((e) => console.error("[maquininha] fechar pedido", e instanceof ErroPagarme ? e.status : "transporte"));
   } else if (cancelavel && pg.status === "AGUARDANDO" && (pedido.status === "canceled" || pedido.status === "failed")) {
     await db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM comandas WHERE id = ${pg!.comandaId} FOR UPDATE`;
@@ -219,8 +256,9 @@ export async function cancelarPagamento(s: Sessao, pagamentoId: string) {
     await sincronizarPedido(pg.gatewayPedidoId);
     const antes = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: pagamentoId } });
     if (antes.status === "PAGO") throw new ErroNegocio("Pagamento aprovado na maquininha: para devolver, use “Pedir estorno”.", 409, "usar_estorno");
-    await fecharPedido(pg.gatewayPedidoId, "canceled").catch((e) => {
-      throw new ErroNegocio(`A maquininha não confirmou o cancelamento: ${(e as Error).message}`, 502, "maquininha");
+    if (antes.status === "CANCELADO") return;
+    await fecharPedido(pg.gatewayPedidoId, "canceled").catch(() => {
+      throw new ErroNegocio("A maquininha não confirmou o cancelamento. Confira antes de cobrar novamente.", 502, "maquininha_incerta");
     });
     await sincronizarPedido(pg.gatewayPedidoId);
     const depois = await db.pagamentoComanda.findUniqueOrThrow({ where: { id: pagamentoId } });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Check } from "lucide-react";
 import { subtrair } from "@/lib/agenda/disponibilidade";
 import { dataLocal, instanteLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
@@ -26,7 +27,6 @@ type Previa = { agId: string; coluna: string; inicioMin: number; durMin: number 
 const ESTILO_STATUS: Partial<Record<Status, string>> = {
   CHEGOU: "ring-2 ring-amber-400",
   EM_ATENDIMENTO: "ring-2 ring-emerald-500",
-  CONCLUIDO: "opacity-55",
   FALTOU: "opacity-50 line-through",
 };
 
@@ -252,33 +252,58 @@ function Cartao(p: {
   onPointerDown?: (e: React.PointerEvent, modo: "mover" | "esticar") => void;
 }) {
   const { ag } = p;
+  const concluido = ag.status === "CONCLUIDO";
+  const mostraSituacao = p.alturaPx > 56;
+  const botaoNativo = concluido && !p.fantasma;
+  const Elemento = botaoNativo ? "button" : "div";
+  const cursor = concluido ? "cursor-pointer" : "cursor-grab active:cursor-grabbing";
   return (
-    <div
-      className={`${styles.atendimento} absolute inset-x-1 z-10 overflow-hidden rounded-md border-l-4 px-2 py-1 text-xs leading-tight shadow-sm touch-none ${
-        p.fantasma ? "opacity-80 ring-2 ring-zinc-900" : "cursor-grab active:cursor-grabbing"
-      } ${ESTILO_STATUS[ag.status] ?? ""}`}
-      style={{ top: p.topo + 1, height: Math.max(p.alturaPx - 2, 18), borderLeftColor: p.cor, background: `${p.cor}1f` }}
+    <Elemento
+      type={botaoNativo ? "button" : undefined}
+      className={`${styles.atendimento} absolute inset-x-1 z-10 overflow-hidden rounded-md border-l-4 px-2 text-xs leading-tight shadow-sm ${
+        botaoNativo ? "flex touch-pan-y flex-col items-stretch justify-start text-left" : "touch-none"
+      } ${
+        concluido && p.alturaPx < 28 ? "py-0" : "py-1"
+      } ${p.fantasma ? "opacity-80 ring-2 ring-zinc-900" : cursor} ${concluido ? styles.concluido : ESTILO_STATUS[ag.status] ?? ""}`}
+      style={{
+        top: p.topo + 1,
+        height: Math.max(p.alturaPx - 2, 18),
+        borderLeftColor: concluido ? undefined : p.cor,
+        backgroundColor: concluido ? undefined : `${p.cor}1f`,
+      }}
       data-previa={p.fantasma || undefined}
-      onPointerDown={(e) => p.onPointerDown?.(e, "mover")}
-      onClick={(e) => e.stopPropagation()}
-      role={p.fantasma ? undefined : "button"} tabIndex={p.fantasma ? undefined : 0}
-      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); p.onAbrir?.(); } }}
+      onPointerDown={(e) => {
+        if (botaoNativo) e.stopPropagation();
+        else p.onPointerDown?.(e, "mover");
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (botaoNativo) p.onAbrir?.();
+      }}
+      aria-haspopup={p.fantasma ? undefined : "dialog"}
+      role={p.fantasma || botaoNativo ? undefined : "button"}
+      tabIndex={p.fantasma || botaoNativo ? undefined : 0}
+      onKeyDown={botaoNativo || p.fantasma ? undefined : e => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); p.onAbrir?.(); }
+      }}
       title={`${ag.cliente.nome} · ${ag.servico.nome} · ${ROTULO_STATUS[ag.status]}`}
     >
-      <div className="flex items-center gap-1 font-semibold text-zinc-900">
+      <span className="flex items-center gap-1 font-semibold text-zinc-900">
+        {concluido && <Check aria-hidden="true" size={13} strokeWidth={3} className={`${styles.marcaConcluido} shrink-0`} />}
         <span className="truncate">{ag.cliente.nome}</span>
+        {concluido && !mostraSituacao && <span className="sr-only">{ROTULO_STATUS[ag.status]}</span>}
         {ag.assinante && <span className="rounded bg-violet-100 px-1 text-[10px] text-violet-800">Assinante</span>}
         {ag.semPreferencia && <span title="Sem preferência de barbeiro: pode trocar" className="rounded bg-sky-100 px-1 text-[10px] text-sky-800">S/P</span>}
-      </div>
-      <div className="truncate text-zinc-700">{p.horario} · {ag.servico.nome}{ag.adicionais?.length ? ` + ${ag.adicionais.join(" + ")}` : ""}</div>
-      {p.alturaPx > 56 && (
-        <div className="truncate text-[11px] text-zinc-500">
-          {ROTULO_STATUS[ag.status]} · {ROTULO_ORIGEM[ag.origem] ?? ag.origem}
-        </div>
+      </span>
+      <span className="block truncate text-zinc-700">{p.horario} · {ag.servico.nome}{ag.adicionais?.length ? ` + ${ag.adicionais.join(" + ")}` : ""}</span>
+      {mostraSituacao && (
+        <span className="block truncate text-[11px] text-zinc-500">
+          <span className={concluido ? styles.marcaConcluido : undefined}>{ROTULO_STATUS[ag.status]}</span> · {ROTULO_ORIGEM[ag.origem] ?? ag.origem}
+        </span>
       )}
-      {p.onPointerDown && (
+      {p.onPointerDown && !concluido && (
         <div className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize" onPointerDown={(e) => p.onPointerDown?.(e, "esticar")} />
       )}
-    </div>
+    </Elemento>
   );
 }
