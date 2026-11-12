@@ -345,7 +345,8 @@ depois para a produção.
   `STONE_POS_SERIAL` (etiqueta de trás; várias separadas por vírgula), `STONE_POS_NOMES` (opcional),
   `PAGARME_SECRET_KEY` e `EMAIL_BALCAO` (pedidos de cliente sem cadastro). Webhook é o mesmo da Pagar.me.
   Antes de habilitar, configure `STONE_POS_SERVICE_REFERER_NAME` com o identificador homologado no Partner Hub e
-  `STONE_POS_SPLIT_JSON` com as regras de divisão na autorização. O fluxo atual aceita percentuais com recebedores
+  `STONE_POS_SPLIT_JSON` com as regras de divisão na autorização, ou `"nenhum"` se a conta não usa Connect Split
+  (o pedido vai sem divisão; vazio continua bloqueando). Com split, o fluxo aceita percentuais com recebedores
   distintos, total de 100% e as responsabilidades homologadas de taxa e chargeback em cada regra. A requisição
   é recusada antes de reservar saldo se essa configuração faltar. [Pedido direto](https://connect-stone.stone.com.br/reference/criar-pedido)
   · [Split na autorização](https://connect-stone.stone.com.br/reference/split-no-pedido).

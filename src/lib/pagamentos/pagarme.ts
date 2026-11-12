@@ -441,7 +441,7 @@ export async function criarPedidoMaquininha(p: {
       print_order_receipt: false,
       devices_serial_number: [p.serial],
       display_name: p.descricao.slice(0, 30),
-      payment_setup: { type: p.tipo, split: stone.split, ...(p.tipo === "credit" ? { installments: 1, installment_type: "merchant" } : {}) },
+      payment_setup: { type: p.tipo, ...(stone.split ? { split: stone.split } : {}), ...(p.tipo === "credit" ? { installments: 1, installment_type: "merchant" } : {}) },
     },
     metadata: p.metadata ?? {},
   }, `pos-${p.metadata?.pagamento_id ?? p.referencia}`, { ...timeoutPOS, serviceRefererName: stone.serviceRefererName });
