@@ -74,7 +74,11 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
  * Aviso iniciado pela barbearia (remarcacao, cancelamento...). Dentro da janela
  * de 24h vai como texto; fora dela o WhatsApp exige um template aprovado.
  */
-export async function notificarCliente(telefone: string, texto: string) {
+/**
+ * Aviso do sistema. Fora da janela de 24 h vai pelo modelo `Olá {{1}}! {{2}}`: campanhas podem usar o modelo
+ * de marketing (`WHATSAPP_TEMPLATE_CAMPANHA`), pois a Meta não aceita divulgação no modelo de utilidade.
+ */
+export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string } = {}) {
   const conversa = await obterConversa(telefone);
   const cliente = conversa.clienteId
     ? await db.cliente.findUnique({ where: { id: conversa.clienteId }, select: { nome: true, aceitaMensagens: true } })
@@ -94,7 +98,7 @@ export async function notificarCliente(telefone: string, texto: string) {
     return enviarNaConversa(conversa.id, texto, "SISTEMA");
   }
 
-  const template = process.env.WHATSAPP_TEMPLATE_AVISO;
+  const template = opcoes.template || process.env.WHATSAPP_TEMPLATE_AVISO;
   let erro: string | null = null;
   let wamid: string | null = null;
   if (!template) {

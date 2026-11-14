@@ -35,6 +35,8 @@ export async function proxy(req: NextRequest) {
     const url = new URL("/entrar", base);
     // Mantem a query (ex.: /c/planos?plano=... vindo da vitrine) para voltar ao mesmo lugar.
     url.searchParams.set("voltar", path + busca);
+    // Área do cliente abre no acesso por código: quem veio do CashBarber ainda não tem senha.
+    if (path === "/c" || path.startsWith("/c/")) url.searchParams.set("confirmar", "1");
     return NextResponse.redirect(url);
   }
   return NextResponse.next();

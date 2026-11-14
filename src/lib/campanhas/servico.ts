@@ -186,7 +186,7 @@ export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?
       total++;
       try {
         const link = e.token ? `${urlSite()}/c/r/${e.token}` : `${urlSite()}/c/agendar`;
-        const r = await notificarCliente(destino.telefone, montarMensagem(c.mensagem, { nome: destino.nome, barbearia: cfg.nomeBarbearia, link }));
+        const r = await notificarCliente(destino.telefone, montarMensagem(c.mensagem, { nome: destino.nome, barbearia: cfg.nomeBarbearia, link }), { template: process.env.WHATSAPP_TEMPLATE_CAMPANHA?.trim() });
         await db.campanhaEnvio.update({
           where: { id: e.id },
           data: { mensagemId: r.mensagemId, ...(r.erro ? { status: "FALHOU" as const, erro: r.erro.slice(0, 300) } : {}) },
