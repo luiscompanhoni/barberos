@@ -36,8 +36,10 @@ def escolher(imagens, em_uso, commit_atual):
 
     imagens: [{"repo", "tag", "id", "criada" (texto ISO, ordenável), "bytes"}]
     em_uso: ids de imagem usados por qualquer container (rodando ou parado).
-    Mantém: tudo em uso, tudo do commit no ar, as tags das MANTER_ANTERIORES publicações mais
-    recentes além dele e a cópia `antes-` mais recente de cada repositório (retorno da última troca).
+    Mantém: tudo em uso e, para o commit no ar e as MANTER_ANTERIORES publicações mais recentes além
+    dele, a tag da versão e a cópia `antes-<commit>`. A cópia é escolhida pelo commit, não pela data
+    de build: `antes-<no ar>` aponta para a imagem que estava no ar antes da última troca, que pode ter
+    sido construída antes de outras (ex.: depois de um retorno).
     """
     nossas = [i for i in imagens if i["repo"] in REPOSITORIOS and commit_da_tag(i["tag"])]
     publicadas = {}
@@ -47,19 +49,13 @@ def escolher(imagens, em_uso, commit_atual):
             publicadas[c] = max(publicadas.get(c, ""), i["criada"])
     recentes = [c for c, _ in sorted(publicadas.items(), key=lambda x: x[1], reverse=True) if c != commit_atual]
     manter_commits = {commit_atual, *recentes[:MANTER_ANTERIORES]}
-    ultima_copia = {}
-    for i in nossas:
-        if i["tag"].startswith("antes-") and i["criada"] > ultima_copia.get(i["repo"], ("", None))[0]:
-            ultima_copia[i["repo"]] = (i["criada"], i["tag"])
     manter, remover = [], []
     for i in nossas:
         motivo = None
         if i["id"] in em_uso:
             motivo = "em uso"
-        elif commit_da_tag(i["tag"]) in manter_commits and not i["tag"].startswith("antes-"):
-            motivo = "versão no ar ou recente"
-        elif i["tag"].startswith("antes-") and ultima_copia.get(i["repo"], (None, None))[1] == i["tag"]:
-            motivo = "cópia de retorno mais recente"
+        elif commit_da_tag(i["tag"]) in manter_commits:
+            motivo = "cópia de retorno" if i["tag"].startswith("antes-") else "versão no ar ou recente"
         (manter if motivo else remover).append({**i, "motivo": motivo})
     ids_mantidos = {i["id"] for i in manter}
     # Uma tag removida que divide o id com uma mantida só desmarca o nome: não libera espaço, mas é inofensiva.

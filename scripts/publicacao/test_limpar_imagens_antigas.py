@@ -37,6 +37,18 @@ class EscolhaTest(unittest.TestCase):
         self.assertEqual(p["manterCommits"], sorted([A, B, C]))
         self.assertEqual(sai, {("barberos-app", D), ("barberos-video-worker", D), ("barberos-app", E), ("barberos-app", "antes-" + D)})
 
+    def test_copia_de_retorno_do_commit_no_ar_fica_mesmo_com_build_mais_antigo(self):
+        # Depois de um retorno: antes-C aponta para imagem de build antigo; antes-D, para build novo.
+        imagens = [i for i in IMAGENS if not i["tag"].startswith("antes-")] + [
+            img("barberos-app", "antes-" + C, "8", "2026-11-01T10:00:00Z"),
+            img("barberos-app", "antes-" + D, "1", "2026-11-14T10:00:00Z"),
+        ]
+        p = limpeza.escolher(imagens, {"sha256:" + "4" * 64}, C)
+        sai = {(i["repo"], i["tag"]) for i in p["remover"]}
+        self.assertNotIn(("barberos-app", "antes-" + C), sai)
+        self.assertIn(("barberos-app", "antes-" + D), sai)
+        self.assertFalse(next(i for i in p["remover"] if i["tag"] == E)["liberaEspaco"])
+
     def test_nunca_toca_outros_servicos_nem_tags_fora_do_padrao(self):
         _, sai = self.plano()
         self.assertNotIn(("barberos-atendimento", E), sai)
