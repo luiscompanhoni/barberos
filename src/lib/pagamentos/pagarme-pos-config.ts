@@ -14,17 +14,20 @@ const splitStone = z.array(z.object({
   regras.reduce((total, regra) => total + regra.amount, 0) === 100
   && new Set(regras.map(regra => regra.recipient_id)).size === regras.length);
 
-/** As regras homologadas vêm da configuração do servidor e nunca do operador. */
+/** As regras homologadas vêm da configuração do servidor e nunca do operador. `split` indefinido = sem divisão. */
 export function configuracaoStonePOS() {
   const serviceRefererName = process.env.STONE_POS_SERVICE_REFERER_NAME?.trim();
   if (!serviceRefererName || !/^[\x21-\x7E]+$/.test(serviceRefererName)) {
     throw new ErroNegocio("Identificador da integração Stone não configurado (STONE_POS_SERVICE_REFERER_NAME).", 503, "config");
   }
+  const bruto = process.env.STONE_POS_SPLIT_JSON?.trim() ?? "";
+  // Conta sem Connect Split: a decisão precisa ser explícita; vazio continua bloqueando.
+  if (bruto.toLowerCase() === "nenhum") return { serviceRefererName, split: undefined };
   let regras: unknown;
-  try { regras = JSON.parse(process.env.STONE_POS_SPLIT_JSON ?? ""); } catch { /* configuração inválida */ }
+  try { regras = JSON.parse(bruto); } catch { /* configuração inválida */ }
   const split = splitStone.safeParse(regras);
   if (!split.success) {
-    throw new ErroNegocio("Regras de split Stone ausentes ou inválidas (STONE_POS_SPLIT_JSON).", 503, "config");
+    throw new ErroNegocio("Regras de split Stone ausentes ou inválidas (STONE_POS_SPLIT_JSON). Use \"nenhum\" se a conta não usa split.", 503, "config");
   }
   return { serviceRefererName, split: split.data };
 }

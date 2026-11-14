@@ -70,3 +70,22 @@ it("envia crédito/débito/Pix direto ao POS com Idempotency-key estável por pa
     expect(body.poi_payment_settings.payment_setup.split).toEqual(split);
   }
 });
+
+it("conta sem split: \"nenhum\" envia o pedido sem divisão; vazio continua bloqueando", async () => {
+  vi.stubEnv("PAGARME_SECRET_KEY", "sk_test_falsa");
+  vi.stubEnv("STONE_POS_SERVICE_REFERER_NAME", "parceiro-ficticio");
+  const chamadas: RequestInit[] = [];
+  _usarFetch((async (_url, init) => { chamadas.push(init!); return new Response(JSON.stringify({ id: "or_teste", status: "pending" })); }) as typeof fetch);
+  const pedido = { referencia: "cmd-43-pg2", valorCentavos: 1000, descricao: "Comanda #43", serial: "SERIAL1", tipo: "credit" as const,
+    cliente: { nome: "Teste", email: "teste@example.test" }, metadata: { pagamento_id: "pg2" } };
+  vi.stubEnv("STONE_POS_SPLIT_JSON", " Nenhum ");
+  await criarPedidoMaquininha(pedido);
+  const setup = JSON.parse(String(chamadas[0].body)).poi_payment_settings.payment_setup;
+  expect(setup).not.toHaveProperty("split");
+  expect(setup).toMatchObject({ type: "credit", installments: 1, installment_type: "merchant" });
+  for (const valor of ["", "[]", "nada"]) {
+    vi.stubEnv("STONE_POS_SPLIT_JSON", valor);
+    await expect(criarPedidoMaquininha(pedido)).rejects.toMatchObject({ codigo: "config" });
+  }
+  expect(chamadas).toHaveLength(1);
+});
