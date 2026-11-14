@@ -1,0 +1,58 @@
+name: Limpar imagens antigas da VPS
+
+on:
+  workflow_dispatch:
+    inputs:
+      imagem_anterior:
+        description: ID sha256 da imagem app saudável confirmada no inventário
+        required: true
+        type: string
+      remover:
+        description: Remover de fato (desmarcado = só listar o que sairia)
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publicacao-producao
+  cancel-in-progress: false
+
+jobs:
+  limpar:
+    if: github.ref == 'refs/heads/main'
+    environment: "produção"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Testar a regra de escolha e o acesso seguro
+        run: |
+          python3 -B -m unittest discover -s scripts/publicacao -p 'test_limpar_imagens_antigas.py'
+          node --test scripts/publicacao/limpar-imagens-vps.test.mjs
+      - name: Listar ou remover imagens sem uso (mantém a versão no ar e as 2 anteriores)
+        env:
+          VPS_HOST: ${{ vars.VPS_HOST }}
+          VPS_USER: ${{ vars.VPS_USER }}
+          VPS_PORT: ${{ vars.VPS_PORT }}
+          VPS_DIR: ${{ vars.VPS_DIR }}
+          VPS_PROJECT: ${{ vars.VPS_PROJECT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_IMAGEM_ANTERIOR: ${{ inputs.imagem_anterior }}
+          REMOVER_IMAGENS: ${{ inputs.remover }}
+        run: node scripts/publicacao/limpar-imagens-vps.mjs "$RUNNER_TEMP/imagens.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: limpeza-imagens
+          path: ${{ runner.temp }}/imagens.json
+          retention-days: 3
+          if-no-files-found: error
