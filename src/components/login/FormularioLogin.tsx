@@ -31,7 +31,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
   const busca = useSearchParams();
   const voltar = busca.get("voltar") ?? destinoPadrao;
   const contaExcluida = area === "cliente" && busca.get("excluida") === "1";
-  const [modo, setModo] = useState<Modo>(area === "cliente" && busca.get("confirmar") === "1" ? "codigo-tel" : "senha");
+  const [modo, setModo] = useState<Modo>(area === "cliente" && codigoDisponivel && busca.get("confirmar") === "1" ? "codigo-tel" : "senha");
   const [identificador, setIdentificador] = useState("");
   const [senha, setSenha] = useState("");
   const [nome, setNome] = useState("");

@@ -27,10 +27,22 @@ function caixas(valor: string) {
   const elemento = CaixasCodigo({ valor, onChange: mudar }) as ReactElement<{ children: ReactElement<InputHTMLAttributes<HTMLInputElement>>[] }>;
   return { mudar, inputs: elemento.props.children.map(e => e.props) };
 }
-function renderLogin() {
+function renderLogin(codigoDisponivel = true) {
   m.cursor = 0;
-  return renderToStaticMarkup(createElement(FormularioLogin, { area: "cliente", titulo: "Black teste", subtitulo: "Cliente", destinoPadrao: "/c", codigoDisponivel: true }));
+  return renderToStaticMarkup(createElement(FormularioLogin, { area: "cliente", titulo: "Black teste", subtitulo: "Cliente", destinoPadrao: "/c", codigoDisponivel }));
 }
+describe("modo inicial vindo da área do cliente (confirmar=1)", () => {
+  it("abre em receber código quando o envio do código está ligado", () => {
+    m.busca = new URLSearchParams({ confirmar: "1", voltar: "/c/agendar" });
+    const html = renderLogin(true);
+    expect(html).toContain("Receber código"); expect(html).not.toContain('id="senha"');
+  });
+  it("mantém a senha quando o código não pode ser enviado", () => {
+    m.busca = new URLSearchParams({ confirmar: "1", voltar: "/c/agendar" });
+    const html = renderLogin(false);
+    expect(html).toContain('id="senha"'); expect(html).not.toContain("Receber código");
+  });
+});
 describe("código de acesso no celular", () => {
   it.each(["", "12", "654321"])("aceita autofill de seis dígitos sobre '%s'", atual => {
     const c = caixas(atual);
