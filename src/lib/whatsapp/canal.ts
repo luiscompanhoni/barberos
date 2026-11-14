@@ -8,6 +8,7 @@
 
 import { reservarEnvioPiloto } from "./piloto";
 import { telefonePiloto } from "./piloto-regras";
+import { textoParametroTemplate } from "./template-parametro";
 import { ehHomologacao } from "@/lib/ambiente";
 import { enviarTextoEvolution } from "./evolution";
 import { credenciaisOficial } from "./oficial";
@@ -99,7 +100,7 @@ async function entregarTemplate(para: string, t: TemplateWhatsApp): Promise<Resu
   if (p === "simulador") return { wamid: null };
   if (p === "evolution") throw new Error("Modelos de mensagem só existem na API oficial.");
   const components: Record<string, unknown>[] = [
-    { type: "body", parameters: t.parametros.map((text) => ({ type: "text", text })) },
+    { type: "body", parameters: t.parametros.map((text) => ({ type: "text", text: textoParametroTemplate(text) })) },
   ];
   if (t.botaoCodigo) {
     components.push({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: t.botaoCodigo }] });

@@ -31,7 +31,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
   const busca = useSearchParams();
   const voltar = busca.get("voltar") ?? destinoPadrao;
   const contaExcluida = area === "cliente" && busca.get("excluida") === "1";
-  const [modo, setModo] = useState<Modo>(area === "cliente" && busca.get("confirmar") === "1" ? "codigo-tel" : "senha");
+  const [modo, setModo] = useState<Modo>(area === "cliente" && codigoDisponivel && busca.get("confirmar") === "1" ? "codigo-tel" : "senha");
   const [identificador, setIdentificador] = useState("");
   const [senha, setSenha] = useState("");
   const [nome, setNome] = useState("");
@@ -219,7 +219,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
             <p className="text-sm leading-6 text-zinc-500">
               {area === "equipe" && !codigoDisponivel
                 ? "Enviamos um código de acesso. Enquanto o WhatsApp oficial não está ligado, peça o código ao dono (ele aparece no servidor)."
-                : "Enviamos um código no seu WhatsApp para entrar na conta."}
+                : "Digite seu celular. Vamos mandar um código no seu WhatsApp para você entrar, sem senha."}
             </p>
             {campoCelular("Celular")}
             <button className="btn-primario w-full py-3" disabled={enviando}>{enviando ? "Enviando..." : <>Receber código <ArrowRight size={16} /></>}</button>
