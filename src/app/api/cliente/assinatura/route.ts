@@ -11,6 +11,7 @@ import { motivoPorTexto, ultimoDia } from "@/lib/assinaturas/retencao-regras";
 import { alteracaoAtual, cancelarAlteracaoPlano, solicitarAlteracaoPlano } from "@/lib/assinaturas/alteracao-plano";
 import { cancelarOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
 import { corpoAssinatura } from "@/lib/assinaturas/http";
+import { cobrancasReaisBloqueadas } from "@/lib/pagamentos/bloqueio-cobranca";
 
 /** Planos disponiveis e a assinatura atual do cliente. */
 export const GET = rota(async () => {
@@ -26,6 +27,7 @@ export const GET = rota(async () => {
     db.listaEsperaPlano.findMany({ where: { clienteId: s.clienteId }, select: { planoId: true } }),
   ]);
   return NextResponse.json({
+    cobrancasBloqueadas: cobrancasReaisBloqueadas(),
     atual: sit && {
       id: sit.assinatura.id,
       status: sit.assinatura.status,

@@ -23,9 +23,6 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-/** Link para assinar: passa pelo login por codigo e ja abre o plano escolhido. */
-const linkAssinar = (planoId?: string) => (planoId ? `/c/planos?plano=${planoId}` : "/c/planos");
-
 /** Pagina publica de venda das assinaturas. */
 export default async function Assine() {
   const v = await dadosDaVitrine();
@@ -87,10 +84,12 @@ export default async function Assine() {
         <div className="relative mx-auto w-full max-w-6xl px-5 pb-20 lg:px-8">
           <div className="entrar-suave max-w-3xl">
             {indicador && (
-              <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-ouro/50 bg-ouro/10 px-4 py-2 text-sm">
-                <Gift size={16} className="text-ouro" />
-                Você foi indicado por <b>{indicador.nome.split(" ")[0]}</b>
-                {v.indicacao.premioIndicadoCentavos > 0 && <> · ganha <b className="text-ouro">{reais(v.indicacao.premioIndicadoCentavos)}</b> no primeiro corte</>}
+              <p className="mb-6 inline-flex max-w-full items-start gap-2 rounded-2xl border border-ouro/50 bg-ouro/10 px-4 py-2 text-sm leading-5 sm:rounded-full">
+                <Gift size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-ouro" />
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  Você foi indicado por <b>{indicador.nome.trim().split(/\s+/)[0]}</b>
+                  {v.indicacao.premioIndicadoCentavos > 0 && <> · ganha <b className="text-ouro">{reais(v.indicacao.premioIndicadoCentavos)}</b> no primeiro corte</>}
+                </span>
               </p>
             )}
             {v.cidade && <p className="eyebrow">{v.cidade}</p>}
@@ -175,7 +174,7 @@ export default async function Assine() {
                       <p className="mt-6 text-xs font-semibold text-ouro">Últimas {p.vagasRestantes} vagas</p>
                     )}
                     {!p.compravel ? v.whatsapp ? <a href={`https://wa.me/${v.whatsapp}?text=${encodeURIComponent(`Olá! Quero consultar as condições do plano ${p.nome}.`)}`} target="_blank" rel="noreferrer" className="btn mt-6 w-full py-3">Consultar condições</a> : <p className="mt-6 text-sm">Consulte as condições deste plano com a recepção.</p>
-                      : <Link href={linkAssinar(p.id)} className={`${emDestaque && !esgotado ? "btn-primario" : "btn"} mt-6 w-full py-3`}>{esgotado ? "Esgotado · entrar na lista de espera" : "Assinar plano"}</Link>}
+                      : <Link href={`/c/planos?plano=${encodeURIComponent(p.id)}`} className={`${emDestaque && !esgotado ? "btn-primario" : "btn"} mt-6 w-full py-3`}>{esgotado ? "Esgotado · entrar na lista de espera" : "Assinar plano"}</Link>}
                   </article>
                 );
               })}

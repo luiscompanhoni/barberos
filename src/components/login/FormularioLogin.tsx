@@ -63,6 +63,12 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
       : !cliente && r.definirSenha ? "/conta"
       : destinoDoPerfil(r.papel ?? "CLIENTE", voltar);
     if (r.base && new URL(r.base).origin !== window.location.origin) { window.location.assign(new URL(destino, r.base).href); return; }
+    if (destino.startsWith("/c/planos?plano=")) {
+      // A primeira visita ao checkout sem sessão foi redirecionada para cá.
+      // A nova navegação lê o cookie que a API de login acabou de gravar.
+      window.location.replace(destino);
+      return;
+    }
     router.replace(destino);
     router.refresh();
   }
