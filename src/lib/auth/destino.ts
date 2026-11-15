@@ -17,6 +17,7 @@ export function destinoDoPerfil(papel: string, voltar: string) {
   const destino = destinoAposLogin(voltar, padrao);
   const path = destino.split(/[?#]/)[0];
   const privado = path === "/c" || path.startsWith("/c/");
-  if (path === "/" || path === "/entrar" || path === "/c/entrar" || path.startsWith("/api/") || privado !== cliente) return padrao;
+  if (path === "/" || path === "/entrar" || path === "/c/entrar" || path.startsWith("/api/") || privado !== cliente) return cliente ? "/c/jogos/roleta" : padrao;
+  if (cliente && path === "/c") return "/c/jogos/roleta";
   return destino;
 }

@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
 import { db } from "@/lib/db";
 import { configuracao } from "@/lib/agenda/carregar";
 import { vagasRestantes } from "@/lib/assinaturas/servico";
@@ -47,7 +45,7 @@ export async function dadosDaVitrine() {
     assinantes: assinantes >= 20 ? assinantes : null,
     whatsapp: process.env.WHATSAPP_NUMERO_PUBLICO?.replace(/\D/g, "") || null,
     indicacao: { ativa: cfg.indicacaoAtiva, premioIndicadoCentavos: cfg.premioIndicadoCentavos },
-    fotoCapa: existsSync(path.join(process.cwd(), "public", "capa.jpg")) ? "/capa.jpg" : null,
+    fotoCapa: "/brand/black/fachada.webp",
     planos: await Promise.all(
       planos.map(async (p) => ({
         id: p.id,

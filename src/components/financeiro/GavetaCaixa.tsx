@@ -45,8 +45,7 @@ export function GavetaCaixa() {
     <>
       <button ref={botaoRef} onClick={abrir} aria-label="Abrir painel de caixa e comandas" aria-haspopup="dialog" aria-expanded={montada} title="Caixa e comandas"
         className="fixed right-4 bottom-24 z-30 flex h-12 items-center gap-2 rounded-full border border-ouro bg-ouro px-4 text-xs font-bold text-fundo uppercase shadow-[0_8px_24px_rgba(0,0,0,0.45)] transition hover:bg-ouro-claro lg:right-6 lg:bottom-6">
-        <Wallet size={18} />
-        <span>Caixa e comandas</span>
+        <span className="text-sm font-black tracking-wide normal-case">Caixa</span>
       </button>
 
       {montada && (

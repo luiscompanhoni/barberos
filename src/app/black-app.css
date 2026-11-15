@@ -15,6 +15,35 @@
 }
 .black-app input:is([type="checkbox"], [type="radio"]) { accent-color: var(--color-ouro); }
 .black-app ::selection { background: rgb(255 211 78 / 28%); }
+html .black-app.black-sereno.black-login-scene {
+  min-height: 100dvh;
+  background: linear-gradient(0deg, rgb(9 10 11 / 82%), rgb(9 10 11 / 32%)),
+    url("/brand/black/fachada.webp") center 54% / cover no-repeat #10100f;
+}
+.black-login-panel {
+  padding: clamp(24px, 5vw, 38px);
+  border: 1px solid rgb(249 203 48 / 22%);
+  border-radius: 24px;
+  background: rgb(12 13 14 / 70%);
+  box-shadow: 0 24px 70px rgb(0 0 0 / 35%);
+  backdrop-filter: blur(8px);
+}
+.black-login .campo-linha {
+  min-height: 48px;
+  border: 2px solid transparent;
+  border-bottom-color: var(--text-secondary);
+  border-radius: 12px;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.black-login :is(.campo-linha, .black-login-digito):focus {
+  border-color: var(--color-ouro);
+  background: rgb(255 255 255 / 4%);
+  outline: none;
+  box-shadow: none;
+}
+@media (forced-colors: active) {
+  .black-login :is(.campo-linha, .black-login-digito):focus { border-color: Highlight; }
+}
 
 /* Ouro sereno: escopo exclusivo dos aplicativos Black, sem atingir a gestão. */
 html .black-app.black-sereno {
@@ -58,6 +87,28 @@ html .black-app .black-agendar-servico[aria-pressed="true"] {
 .black-sereno .btn-primario { background: var(--brand-metal); color: #18170d; border-color: transparent; }
 .black-sereno .black-nav-item[aria-current="page"] { color: var(--color-ouro); background: var(--surface-active); box-shadow: none; }
 .black-sereno .black-client-nav { background: rgb(16 16 15 / 94%); border-color: var(--border-subtle); }
+.black-vitrine-shell > .crm-page { flex: 1; min-width: 0; }
+.black-vitrine { --color-fundo: #10100f; }
+.black-vitrine > header { border-color: var(--border-subtle); }
+.faixa-ambiente ~ .black-vitrine-shell .black-vitrine > header { position: relative; top: auto; }
+.black-vitrine .btn-primario { border-radius: 999px; }
+.black-vitrine .btn-primario:not(:disabled):hover { background: var(--color-ouro-claro); }
+.black-vitrine .crm-vitrine-veil {
+  pointer-events: none;
+  background: linear-gradient(90deg, rgb(16 16 15 / 91%), rgb(16 16 15 / 20%) 84%),
+    linear-gradient(0deg, var(--surface-app), transparent 76%);
+}
+.black-vitrine .crm-vitrine-planos {
+  background: linear-gradient(0deg, #10100f, rgb(16 16 15 / 78%)),
+    url("/brand/black/fachada.webp") center 56% / cover no-repeat #10100f;
+  border-color: var(--border-subtle);
+}
+.black-vitrine .crm-plan-card { background: #1b1a16; }
+@media (max-width: 640px) {
+  .black-vitrine .crm-vitrine-veil {
+    background: linear-gradient(0deg, var(--surface-app), rgb(16 16 15 / 78%) 38%, rgb(16 16 15 / 20%));
+  }
+}
 .black-welcome { position: relative; isolation: isolate; overflow: hidden; min-height: 280px; margin-bottom: 24px; border: 1px solid var(--border-subtle); border-radius: 24px; background: #111411; }
 .black-welcome-photo { z-index: -3; object-fit: cover; object-position: center 55%; }
 .black-welcome::before { content: ""; position: absolute; z-index: -2; inset: 0; background: linear-gradient(90deg, rgb(5 8 7 / 76%), rgb(5 8 7 / 25%)), linear-gradient(0deg, #10100ff2, transparent 85%); }

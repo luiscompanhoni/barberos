@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Smartphone, UserRound } f
 import { api, ErroApi } from "@/lib/cliente-api";
 import { destinoAposLogin, destinoDoPerfil } from "@/lib/auth/destino";
 import { Marca } from "@/components/Marca";
+import { ConviteInstalacao } from "@/components/notificacoes/ConviteInstalacao";
 import { AcessosSociais } from "./AcessosSociais";
 import { CadastroSocial } from "./CadastroSocial";
 import { CodigoCadastro } from "./CodigoCadastro";
@@ -24,7 +25,7 @@ type Props = {
   provedoresSociais?: { id: "google" | "facebook" | "apple"; disponivel: boolean }[];
 };
 type Modo = "senha" | "cadastro" | "codigo-tel" | "codigo";
-type RespostaLogin = { papel?: string; base?: string; definirSenha?: boolean; precisaNome?: boolean; completarCadastro?: boolean };
+type RespostaLogin = { papel?: string; base?: string; definirSenha?: boolean; trocaSenhaObrigatoria?: boolean };
 
 function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, provedoresSociais = [] }: Props) {
   const router = useRouter();
@@ -54,10 +55,13 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
     router.replace(destino === destinoPadrao ? "/c/entrar" : `/c/entrar?voltar=${encodeURIComponent(destino)}`);
   }
 
-  /** Depois de entrar: cria a senha (quem entrou por codigo ou com senha temporaria) ou segue. */
+  /** Senha temporária exige troca; cliente que usa código pode criar senha no perfil depois. */
   function seguir(r: RespostaLogin) {
     const cliente = (r.papel ?? "CLIENTE") === "CLIENTE";
-    const destino = cliente && busca.get("social") === "pendente" ? "/c/perfil?social=pendente" : r.completarCadastro ? "/c/perfil?foto=1" : r.definirSenha ? (cliente ? "/c/perfil#senha" : "/conta") : destinoDoPerfil(r.papel ?? "CLIENTE", voltar);
+    const destino = cliente && busca.get("social") === "pendente" ? "/c/perfil?social=pendente"
+      : cliente && r.trocaSenhaObrigatoria ? "/c/perfil#senha"
+      : !cliente && r.definirSenha ? "/conta"
+      : destinoDoPerfil(r.papel ?? "CLIENTE", voltar);
     if (r.base && new URL(r.base).origin !== window.location.origin) { window.location.assign(new URL(destino, r.base).href); return; }
     router.replace(destino);
     router.refresh();
@@ -133,38 +137,38 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
     <div>
       <label className="rotulo" htmlFor="senha">Senha</label>
       <div className="relative">
-        <KeyRound className="absolute top-3 left-0 text-zinc-500" size={18} />
-        <input id="senha" type={verSenha ? "text" : "password"} className="campo-linha pr-9 pl-7 text-lg"
+        <KeyRound className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-zinc-500" size={18} aria-hidden />
+        <input id="senha" type={verSenha ? "text" : "password"} className="campo-linha pr-11 pl-10 text-lg"
           autoComplete={modo === "cadastro" ? "new-password" : "current-password"} placeholder={modo === "cadastro" ? "mínimo 8 caracteres" : ""}
           value={senha} onChange={(e) => { setSenha(e.target.value); setErro(""); }} />
-        <button type="button" className="absolute top-2.5 right-0 p-1 text-zinc-500" aria-label={verSenha ? "Esconder senha" : "Mostrar senha"} onClick={() => setVerSenha(!verSenha)}>
+        <button type="button" className="absolute inset-y-1 right-1 grid w-10 place-items-center rounded-lg text-zinc-500" aria-label={verSenha ? "Esconder senha" : "Mostrar senha"} onClick={() => setVerSenha(!verSenha)}>
           {verSenha ? <EyeOff size={17} /> : <Eye size={17} />}
         </button>
       </div>
     </div>
   );
-  const campoCelular = (rotulo: string, autoFoco = true) => (
+  const campoCelular = (rotulo: string) => (
     <div>
       <label className="rotulo" htmlFor="tel">{rotulo}</label>
       <div className="relative">
-        {area === "equipe" && modo === "senha" ? <UserRound className="absolute top-3 left-0 text-zinc-500" size={18} /> : <Smartphone className="absolute top-3 left-0 text-zinc-500" size={18} />}
-        <input id="tel" className="campo-linha pl-7 text-lg" inputMode={modo === "senha" ? "text" : "tel"} autoFocus={autoFoco}
-          autoComplete="username" placeholder={modo === "senha" ? "(11) 99999-8888 ou usuário" : "(11) 99999-8888"}
+        {area === "equipe" && modo === "senha" ? <UserRound className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-zinc-500" size={18} aria-hidden /> : <Smartphone className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-zinc-500" size={18} aria-hidden />}
+        <input id="tel" className="campo-linha pr-3 pl-10 text-lg" inputMode={modo === "senha" ? "text" : "tel"}
+          autoComplete={modo === "senha" ? "username" : "tel"} placeholder={modo === "senha" ? "(11) 99999-8888 ou usuário" : "(11) 99999-8888"}
           value={identificador} onChange={(e) => { setIdentificador(e.target.value); setCodigo(""); setErro(""); }} />
       </div>
     </div>
   );
 
-  if (recuperando) return <main className="black-app black-login flex flex-1 items-center justify-center px-5 py-12"><div className="w-full max-w-md">
+  if (recuperando) return <main className="black-app black-sereno black-login black-login-scene flex flex-1 items-center justify-center px-5 py-12"><div className="black-login-panel w-full max-w-md">
     <RecuperarSenhaCliente voltar={() => setRecuperando(false)} concluir={() => seguir({})} />
   </div></main>;
-  if (socialCadastro) return <main className="black-app black-login flex flex-1 items-center justify-center px-5 py-12"><div className="w-full max-w-md">
+  if (socialCadastro) return <main className="black-app black-sereno black-login black-login-scene flex flex-1 items-center justify-center px-5 py-12"><div className="black-login-panel w-full max-w-md">
     <CadastroSocial codigoDisponivel={codigoDisponivel} entrarComSenha={() => setSocialCadastro(false)} voltarAoLogin={voltarDoSocial} />
   </div></main>;
 
   return (
-    <main className="black-app black-login flex flex-1 items-center justify-center px-5 py-16">
-      <div className="entrar-suave w-full max-w-md">
+    <main className="black-app black-sereno black-login black-login-scene flex flex-1 items-center justify-center px-5 py-16">
+      <div className="black-login-panel entrar-suave w-full max-w-md">
         <Marca nome={titulo} tamanho="lg" />
         <div className="mt-12">
           <p className="eyebrow">{subtitulo}</p>
@@ -174,6 +178,8 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
             <span className="text-ouro">{frase[1]}</span>
           </h1>
         </div>
+
+        {modo === "senha" && <ConviteInstalacao />}
 
         {modo === "senha" && (
           <form onSubmit={entrar} className="mt-10 space-y-6">
@@ -198,7 +204,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
               <label className="rotulo" htmlFor="nome">Seu nome</label>
               <input id="nome" className="campo-linha text-lg" autoFocus autoComplete="name" value={nome} onChange={(e) => { setNome(e.target.value); setErro(""); }} />
             </div>
-            {campoCelular("Celular", false)}
+            {campoCelular("Celular")}
             <CamposCadastroCompleto identidade={false} valor={dadosCadastro} mudar={(k, v) => setDadosCadastro((f) => ({ ...f, [k]: v }))} />
             <p className="text-xs text-zinc-500">A foto é opcional e pode ser adicionada após criar a conta.</p>
             {campoSenha}

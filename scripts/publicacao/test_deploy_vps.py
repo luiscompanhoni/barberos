@@ -26,6 +26,12 @@ def tar_gz(arquivos):
 
 
 class DeployTest(unittest.TestCase):
+    def test_previa_lembrete_aceita_apenas_a_migracao_nominal(self):
+        nome = "20261115010000_lembrete_agendamento"
+        exigir_migracoes_da_publicacao([nome])
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao([nome, "20261111180000_reativacao_clientes"])
+
     def test_registro_manual_aceita_somente_a_coluna_opcional_revisada(self):
         nome = "20261111120000_assinatura_pagamento_manual"
         exigir_migracoes_da_publicacao([nome])

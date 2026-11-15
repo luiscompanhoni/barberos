@@ -36,5 +36,6 @@ export async function abrirSessao(u: UsuarioLogin) {
     precisaNome: u.papel === "CLIENTE" && !u.nome.trim(),
     // Entrou por codigo e ainda nao tem senha, ou recebeu senha temporaria do dono.
     definirSenha: !u.senhaHash || u.trocarSenha,
+    trocaSenhaObrigatoria: u.trocarSenha,
   };
 }

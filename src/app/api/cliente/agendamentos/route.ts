@@ -10,6 +10,7 @@ import { ErroNegocio, rota } from "@/lib/erros";
 import { premiosParaReservar } from "@/lib/jogos/premios";
 import { zId, zInstante } from "@/lib/validacao";
 import { corpoPedido } from "@/lib/agenda/pedidos-regras";
+import { cancelarLembreteAgendamento } from "@/lib/agenda/abandono";
 
 export const GET = rota(async () => {
   const s = await exigirCliente();
@@ -45,5 +46,9 @@ export const POST = rota(async (req: Request) => {
   }
   const ag = await agendarPeloCliente({ ...dados, premioId, clienteId: s.clienteId, usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0,
     telefone: cliente.telefone, nome: cliente.nome, origem: "SITE", canalApp: true });
+  if (process.env.LEMBRETE_ABANDONO_PREVIA === "true") {
+    // A reserva já foi feita; falha ao limpar a prévia não desfaz o horário.
+    await cancelarLembreteAgendamento(s.clienteId, new Date(), s.usuarioId).catch(() => {});
+  }
   return NextResponse.json(ag, { status: 201 });
 });

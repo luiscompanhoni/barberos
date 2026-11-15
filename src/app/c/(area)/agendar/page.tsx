@@ -4,7 +4,7 @@ import { AgendarTela } from "@/components/cliente/AgendarTela";
 export default function Agendar() {
   return (
     <Suspense>
-      <AgendarTela />
+      <AgendarTela lembreteDisponivel={process.env.LEMBRETE_ABANDONO_PREVIA === "true"} />
     </Suspense>
   );
 }

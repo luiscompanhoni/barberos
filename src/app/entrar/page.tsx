@@ -4,7 +4,7 @@ import { modoCodigoNaTela } from "@/lib/auth/otp";
 import { provedoresDisponiveis } from "@/lib/auth/social-provedores";
 
 export const dynamic = "force-dynamic";
-export const metadata = { manifest: "/manifest-equipe.webmanifest" };
+export const metadata = { manifest: "/manifest-cliente.webmanifest" };
 
 export default async function EntrarEquipe() {
   const cfg = await configuracao();

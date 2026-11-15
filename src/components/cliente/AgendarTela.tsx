@@ -11,6 +11,7 @@ import { EtiquetasServico } from "@/components/servicos/EtiquetasServico";
 import type { EtiquetaServico } from "@/lib/servicos/etiquetas";
 import { SemVaga } from "./SemVaga";
 import { PagarAntes } from "./PagarAntes";
+import { LembreteInterrupcao } from "./LembreteInterrupcao";
 import { dataLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 
 const FUSO = "America/Sao_Paulo";
@@ -32,7 +33,7 @@ const diaCurto = (d: string) => {
 };
 
 /** Agendamento em 4 passos: servico -> barbeiro -> dia e hora -> confirmar. Tambem remarca. */
-export function AgendarTela() {
+export function AgendarTela({ lembreteDisponivel = false }: { lembreteDisponivel?: boolean }) {
   const q = useSearchParams();
   const remarcarId = q.get("remarcar");
   // "Agendar para resgatar": o premio do jogo fica reservado nesse horario.
@@ -266,6 +267,7 @@ export function AgendarTela() {
           </button>
         )}
       </div>
+      {lembreteDisponivel && !remarcarId && servicoId && <LembreteInterrupcao chaveAtividade={`${passo}|${escolhidos.join(",")}|${barbeiroId}|${data}|${escolha?.inicio ?? ""}`} />}
       {passo === 1 && escolhidos.length > 0 && !barbeirosCompativeis.length && <p className="mt-3 text-sm text-red-700">Nenhum profissional realiza todos esses serviços. Ajuste a seleção.</p>}
       {passo === 1 && escolhidos.length > 10 && <p className="mt-3 text-sm text-red-700">Selecione até 10 serviços.</p>}
       {passo < 4 && <Link href="/c" className="mt-6 block text-center text-sm text-zinc-500 hover:text-zinc-900">Voltar para meus horários</Link>}

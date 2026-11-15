@@ -34,7 +34,7 @@ export function CaixasCodigo({ valor, onChange }: { valor: string; onChange: (v:
           refs.current[pos]?.focus();
         }
       }}
-      className="h-14 min-w-0 rounded-xl border border-zinc-300 bg-white text-center text-xl font-bold text-zinc-900 outline-none focus:border-ouro focus:ring-2 focus:ring-ouro/25"
+      className="black-login-digito h-14 min-w-0 rounded-xl border-2 border-zinc-300 bg-white text-center text-xl font-bold text-zinc-900"
     />)}
   </div>;
 }

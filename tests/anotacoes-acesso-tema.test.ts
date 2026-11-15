@@ -8,13 +8,15 @@ import { schemaPlano } from "@/lib/assinaturas/schemas";
 
 afterEach(() => vi.unstubAllEnvs());
 describe("acesso único pelo perfil registrado", () => {
-  it.each([["CLIENTE", "/painel", "/c"], ["BARBEIRO", "/c", "/minha-agenda"], ["DONO", "/c/agendar", "/painel"], ["RECEPCAO", "/entrar", "/recepcao"], ["LIDER", "//externo.invalid", "/minha-agenda"]])("%s ignora retorno de outra área", (papel, voltar, esperado) => {
+  it.each([["CLIENTE", "/painel", "/c/jogos/roleta"], ["BARBEIRO", "/c", "/minha-agenda"], ["DONO", "/c/agendar", "/painel"], ["RECEPCAO", "/entrar", "/recepcao"], ["LIDER", "//externo.invalid", "/minha-agenda"]])("%s ignora retorno de outra área", (papel, voltar, esperado) => {
     expect(destinoDoPerfil(papel, voltar)).toBe(esperado);
   });
   it("mantém retorno de trabalho e impede login recursivo ou chamada API pelo redirecionamento", () => {
     expect(destinoDoPerfil("DONO", "/estudio?projeto=1")).toBe("/estudio?projeto=1");
     expect(destinoDoPerfil("DONO", "/api/auth/sair")).toBe("/painel");
-    expect(destinoDoPerfil("CLIENTE", "/c/entrar?voltar=/c")).toBe("/c");
+    expect(destinoDoPerfil("CLIENTE", "/c/entrar?voltar=/c")).toBe("/c/jogos/roleta");
+    expect(destinoDoPerfil("CLIENTE", "/c")).toBe("/c/jogos/roleta");
+    expect(destinoDoPerfil("CLIENTE", "/c/agendar")).toBe("/c/agendar");
   });
   it("compartilha sessão apenas com o subdomínio HTTPS configurado", () => {
     vi.stubEnv("SITE_URL", "https://appblackbarber.com"); vi.stubEnv("PAINEL_URL", "https://painel.appblackbarber.com");

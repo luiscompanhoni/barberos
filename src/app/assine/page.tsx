@@ -6,6 +6,7 @@ import {
   MessageCircle, MousePointerClick, Scissors, ShieldCheck, Smartphone, type LucideIcon,
 } from "lucide-react";
 import { Marca } from "@/components/Marca";
+import { ConviteInstalacao } from "@/components/notificacoes/ConviteInstalacao";
 import { itensDoPlano, planoEmDestaque, porDia } from "@/lib/assinaturas/itens";
 import { reais } from "@/lib/cliente-api";
 import { COOKIE_INDICACAO, donoDoCodigo } from "@/lib/crescimento/indicacao";
@@ -59,7 +60,7 @@ export default async function Assine() {
   ];
 
   return (
-    <div className="crm-vitrine min-h-screen overflow-x-hidden bg-fundo">
+    <div className="black-vitrine crm-vitrine min-h-screen overflow-x-hidden bg-fundo">
       {/* Topo fixo translucido */}
       <header className="fixed inset-x-0 top-0 z-40 border-b border-zinc-200/60 bg-fundo/90 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 lg:px-8">
@@ -77,8 +78,8 @@ export default async function Assine() {
       {/* Capa */}
       <section className="relative flex min-h-[88svh] items-end pt-28">
         {v.fotoCapa ? (
-          // eslint-disable-next-line @next/next/no-img-element -- foto colocada pela barbearia em public/capa.jpg
-          <img src={v.fotoCapa} alt={`Interior da ${v.nomeBarbearia}`} className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
+          // eslint-disable-next-line @next/next/no-img-element -- foto local da barbearia
+          <img src={v.fotoCapa} alt={`Fachada da ${v.nomeBarbearia}`} fetchPriority="high" className="absolute inset-0 h-full w-full object-cover object-[center_55%]" />
         ) : (
           <div className="crm-vitrine-fallback absolute inset-0" />
         )}
@@ -108,6 +109,7 @@ export default async function Assine() {
                 Como funciona <ArrowRight size={15} />
               </a>
             </div>
+            <ConviteInstalacao />
             {v.assinantes && (
               <p className="mt-8 flex items-center gap-3 text-sm text-zinc-500">
                 <Crown size={16} className="text-ouro" />

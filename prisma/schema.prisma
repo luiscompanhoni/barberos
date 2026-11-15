@@ -520,6 +520,7 @@ model Cliente {
   esperas            EsperaHorario[]
   indicacoesFeitas   Indicacao[]           @relation("indicador")
   indicadoPor        Indicacao?            @relation("indicado")
+  lembreteAgendamento LembreteAgendamento?
   beneficios         Beneficio[]
   antecipados        PagamentoAntecipado[]
   fichasJogo         FichaJogo[]
@@ -1099,6 +1100,19 @@ enum TipoAutomacao {
   RETORNO
   ESPERA_HORARIO
   INDICACAO
+}
+
+/// Consentimento específico para uma ajuda se o cliente interromper o agendamento.
+model LembreteAgendamento {
+  clienteId    String    @id
+  cliente      Cliente   @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  consentiuEm  DateTime  @db.Timestamptz(3)
+  ultimaAcaoEm DateTime  @db.Timestamptz(3)
+  canceladoEm  DateTime? @db.Timestamptz(3)
+  atualizadoEm DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([ultimaAcaoEm])
+  @@map("lembretes_agendamento")
 }
 
 /// Uma linha por mensagem automatica enviada: garante que nada sai duas vezes.
