@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ArrowLeft, CalendarClock, MessageCircle, PauseCircle, Percent } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
+import { CancelarOperacaoInicial } from "@/components/assinaturas/CancelarOperacaoInicial";
+import { ContinuarPagamentoInicial } from "@/components/assinaturas/ContinuarPagamentoInicial";
 
 type Motivo = { codigo: string; rotulo: string };
 type Oferta =
@@ -12,7 +14,11 @@ type Oferta =
   | { tipo: "GERENTE" }
   | { tipo: "NENHUMA" };
 type Previa = { oferta: Oferta; cancelamento: { imediato: boolean; ultimoDia: string | null; cashbarber: boolean }; mensalidadeCentavos: number };
-type Plano = { nome: string; status: string; valeAte: string | null; pausada: boolean } | null;
+type Plano = {
+  id: string; nome: string; status: string; valeAte: string | null; pausada: boolean;
+  formaPagamento: string; operacaoEmConferencia: boolean; linkPendente: string | null;
+  cobrancaEmAberto: { link: string | null } | null;
+} | null;
 type Etapa = "motivo" | "oferta" | "confirmar" | "feito";
 
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
@@ -87,8 +93,36 @@ export function CancelarPlano() {
       <div className="entrar-suave space-y-4">
         {voltar}
         <p className="cartao text-sm text-zinc-600">
-          {plano?.valeAte ? `Seu plano já está cancelado e vale até ${dataBr(plano.valeAte)}.` : "Você não tem plano para cancelar."}
+          {plano?.valeAte ? `Seu plano já está cancelado e vale até ${dataBr(plano.valeAte)}.` : resultado || "Você não tem plano para cancelar."}
         </p>
+      </div>
+    );
+  }
+
+  if (plano.status === "PENDENTE") {
+    return (
+      <div className="entrar-suave space-y-6">
+        {voltar}
+        <div>
+          <p className="eyebrow">Pagamento da assinatura</p>
+          <h1 className="titulo-marca mt-3 text-3xl">{plano.nome}</h1>
+        </div>
+        <section className="cartao space-y-4">
+          <p className="text-sm text-zinc-600">Este plano ainda não foi pago. Você pode continuar o pagamento existente ou cancelar essa operação para escolher novamente.</p>
+          <CancelarOperacaoInicial
+            key={plano.id}
+            endpoint="/api/cliente/assinatura"
+            assinaturaId={plano.id}
+            emConferencia={plano.operacaoEmConferencia}
+            continuar={<ContinuarPagamentoInicial forma={plano.formaPagamento} emConferencia={plano.operacaoEmConferencia} link={plano.cobrancaEmAberto?.link ?? plano.linkPendente} />}
+            onAlterado={async () => {
+              const r = await api<{ atual: (Omit<NonNullable<Plano>, "nome"> & { plano: { nome: string } }) | null }>("/api/cliente/assinatura");
+              const atual = r.atual && { ...r.atual, nome: r.atual.plano.nome };
+              if (!atual) setResultado("Operação cancelada. Agora você pode escolher o plano e a forma de pagamento novamente.");
+              setPlano(atual);
+            }}
+          />
+        </section>
       </div>
     );
   }

@@ -21,6 +21,9 @@ export function ClienteDetalhe({ id, aoVoltar, aoSalvar }: { id: string; aoVolta
   if (!dados) return <p role="status">Carregando cadastro…</p>;
   const c = dados.cliente;
   if (editar) return <section className="cartao space-y-4"><h2 className="text-xl font-semibold">Editar {c.nome}</h2><EditorCliente cliente={c} aoCancelar={() => setEditar(false)} aoSalvar={() => { setDados(null); setEditar(false); setRevisao(v => v + 1); aoSalvar(); }} /></section>;
+  const vigentes = dados.assinaturas.filter(a => a.status !== "CANCELADA");
+  const abrirDireto = vigentes.length === 1 ? vigentes[0] : dados.assinaturas.length === 1 ? dados.assinaturas[0] : null;
+  const destinoAssinaturas = new URLSearchParams({ clienteId: c.id, ...(abrirDireto ? { assinatura: abrirDireto.id } : {}) });
   return <div className="space-y-5">
     <div className="flex flex-wrap items-center justify-between gap-3"><button className="btn" onClick={aoVoltar}>← Todos os clientes</button><button className="btn-primario" onClick={() => setEditar(true)}>Editar cadastro</button></div>
     <section className="cartao space-y-4">
@@ -30,7 +33,7 @@ export function ClienteDetalhe({ id, aoVoltar, aoSalvar }: { id: string; aoVolta
       </dl>
     </section>
     <div className="grid gap-4 sm:grid-cols-2"><div className="cartao"><span className="text-sm text-zinc-500">Atendimentos concluídos</span><p className="numero-kpi">{dados.atendimentos}</p></div><div className="cartao"><span className="text-sm text-zinc-500">Faltas registradas</span><p className="numero-kpi">{dados.faltas}</p></div></div>
-    <section className="cartao space-y-3"><div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">Planos e assinaturas</h3><Link className="underline" href={`/assinaturas?cliente=${encodeURIComponent(c.nome)}`}>Gerenciar assinaturas</Link></div>
+    <section className="cartao space-y-3"><div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">Planos e assinaturas</h3><Link className="underline" href={`/assinaturas?${destinoAssinaturas}`}>Gerenciar assinaturas</Link></div>
       {dados.assinaturas.length ? dados.assinaturas.map(a => <p key={a.id} className="flex flex-wrap justify-between gap-2 border-t border-zinc-200 pt-3"><span>{a.plano.nome}</span><span className="text-sm text-zinc-500">{a.status.replaceAll("_", " ")}</span></p>) : <p className="text-sm text-zinc-500">Nenhuma assinatura registrada.</p>}
     </section>
     <section className="cartao space-y-3"><h3 className="font-semibold">Histórico e próximos horários</h3><p className="text-xs text-zinc-500">Até 20 horários registrados no BarberOS.</p>

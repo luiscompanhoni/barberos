@@ -13,7 +13,7 @@ process.env.COBRANCA_ENDERECO ||= "50, Rua Teste, Centro"; process.env.COBRANCA_
 import type { Sessao } from "@/lib/auth/sessao";
 import { checkoutDoHorario, pagarAntecipado, sincronizarAntecipado } from "@/lib/agenda/antecipado";
 import { ativarComCartao, checkoutDaAssinatura, pagarPlanoComPix } from "@/lib/assinaturas/cartao-pix";
-import { cancelarOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
+import { cancelarOperacaoInicial, manterOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
 import { processarEventoGateway, sincronizarAssinatura } from "@/lib/assinaturas/cobrancas";
 import { rodarRotinaDePagamentos } from "@/lib/assinaturas/rotina";
 import { assinar, cancelar } from "@/lib/assinaturas/servico";
@@ -328,24 +328,30 @@ async function main() {
   const pixPlano = await db.cobranca.findFirstOrThrow({ where: { assinaturaId: ap.id } });
   const inicioTroca = chamadas.length;
   const contratosCartao = () => chamadas.slice(inicioTroca).filter(c => c.metodo === "POST" && c.caminho === "/subscriptions").length;
+  await db.assinatura.update({ where: { id: ap.id }, data: { operacaoInicial: "CANCELAMENTO_REVISAO" } });
+  const mantida = await manterOperacaoInicial(ap.id, dono.id);
+  const reaberta = await checkoutDaAssinatura(ap.tokenPublico!);
+  ok(mantida.mantida && reaberta.status === "PENDENTE" && reaberta.forma === "PIX" && !!reaberta.pix?.copiaECola && !chamadas.slice(inicioTroca).some(c => c.metodo === "DELETE"),
+    "manter pagamento reabre o Pix válido sem gerar ou cancelar cobrança");
   const trocaDireta = await falha(() => ativarComCartao(ap.tokenPublico!, "token_bom"));
   ok(trocaDireta?.codigo === "assinatura_operacao_revisao" && contratosCartao() === 0, "Pix aberto impede cartão sem criar outro contrato");
-  const aguarda = await cancelarOperacaoInicial(ap.id, dono.id);
-  const emConferencia = await checkoutDaAssinatura(ap.tokenPublico!);
-  ok(aguarda.emConferencia && !aguarda.cancelada && emConferencia.processando === true && !emConferencia.pix && !emConferencia.link,
-    "Pix ainda pendente exige conferência e oculta o pagamento anterior");
-  const outra = await falha(() => assinar({ clienteId: cliPlano.id, planoId: plano.id, forma: "CARTAO", origem: "SITE" }));
-  ok(outra?.codigo === "assinatura_operacao_revisao" && contratosCartao() === 0, "durante a conferência não há outra adesão ou débito no cartão");
-
-  // Simula o gateway encerrando a cobrança sem recebimento. A aplicação só pode reler essa prova.
   const chargePix = charges.get(pixPlano.gatewayId)!;
+  const emRevisao = await cancelarOperacaoInicial(ap.id, dono.id);
+  ok(!emRevisao.cancelada && emRevisao.emConferencia && (await checkoutDaAssinatura(ap.tokenPublico!)).pix === null,
+    "Pix aberto continua em conferência sem expor o código de pagamento");
+  ok((await falha(() => assinar({ clienteId: cliPlano.id, planoId: plano.id, forma: "CARTAO", origem: "SITE" }))) !== null,
+    "nova adesão fica bloqueada durante a conferência");
+  // Simula o provedor informando que a cobrança foi encerrada sem recebimento.
   chargePix.status = "canceled";
+  await sincronizarAssinatura(ap.id);
+  ok((await db.cobranca.findUniqueOrThrow({ where: { id: pixPlano.id } })).status === "CANCELADA",
+    "atualizar status consulta o Pix inicial conhecido no provedor");
   const encerrada = await cancelarOperacaoInicial(ap.id, dono.id);
   ok(encerrada.cancelada && !encerrada.emConferencia && (await checkoutDaAssinatura(ap.tokenPublico!)).status === "CANCELADO" &&
     (await db.cobranca.findUniqueOrThrow({ where: { id: pixPlano.id } })).status === "CANCELADA",
-    "encerramento confirmado no gateway libera a troca e cancela o Pix local");
-  ok(chargePix.paid_amount === 0 && chargePix.canceled_amount === 0 && !chamadas.slice(inicioTroca).some(c => c.metodo === "DELETE"),
-    "conferência do primeiro Pix não provoca baixa nem estorno");
+    "confirmação de encerramento sem recebimento libera uma nova adesão");
+  ok(chargePix.paid_amount === 0 && (chargePix.canceled_amount ?? 0) === 0 && !chamadas.slice(inicioTroca).some(c => c.metodo === "DELETE"),
+    "cancelamento local não chama a rota de estorno");
   const nova = await assinar({ clienteId: cliPlano.id, planoId: plano.id, forma: "CARTAO", origem: "SITE" });
   const r8 = await ativarComCartao(nova.assinatura.tokenPublico!, "token_bom");
   await sincronizarAssinatura(nova.assinatura.id);

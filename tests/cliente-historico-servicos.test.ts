@@ -1,9 +1,9 @@
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ cliente: vi.fn(), agendamentos: vi.fn(), dados: null as unknown }));
+const m = vi.hoisted(() => ({ cliente: vi.fn(), assinaturas: vi.fn(), agendamentos: vi.fn(), dados: null as unknown }));
 vi.mock("@/lib/db", () => ({ db: {
-  cliente: { findFirst: m.cliente }, assinatura: { findMany: async () => [] },
+  cliente: { findFirst: m.cliente }, assinatura: { findMany: m.assinaturas },
   agendamento: { findMany: m.agendamentos, count: async () => 0 },
 } }));
 vi.mock("@/lib/auditoria", () => ({ auditar: vi.fn() }));
@@ -16,6 +16,7 @@ import { ClienteDetalhe } from "@/components/clientes/ClienteDetalhe";
 
 beforeEach(() => {
   vi.clearAllMocks(); m.dados = null;
+  m.assinaturas.mockResolvedValue([]);
   m.cliente.mockResolvedValue({ id: "c-teste", nome: "Cliente de teste", telefone: "5511999990000", email: null,
     cpf: null, endereco: null, dataNascimento: null, observacoes: null, usuarioId: null,
     criadoEm: new Date("2026-01-01T12:00:00Z"), fotoVersao: 0, perfilCompletoEm: null });
@@ -38,5 +39,30 @@ describe("histórico de serviços agrupados no CRM", () => {
       select: expect.objectContaining({ adicionais: { select: { servico: { select: { nome: true } } }, orderBy: { inicio: "asc" } } }),
     }));
     if (!nomes.length) expect(html).not.toContain("Corte +");
+  });
+
+  it("abre diretamente a assinatura vigente ao gerenciar o plano do cliente", async () => {
+    m.assinaturas.mockResolvedValue([
+      { id: "assinatura-cancelada", status: "CANCELADA", plano: { nome: "Plano antigo" }, proximoVencimento: null },
+      { id: "assinatura-atual", status: "PENDENTE", plano: { nome: "Plano de Corte" }, proximoVencimento: new Date("2026-12-01T12:00:00Z") },
+    ]);
+    m.agendamentos.mockResolvedValue([]);
+    m.dados = JSON.parse(JSON.stringify(await detalharCliente("c-teste")));
+
+    const html = renderToStaticMarkup(createElement(ClienteDetalhe, { id: "c-teste", aoVoltar: vi.fn(), aoSalvar: vi.fn() }));
+
+    expect(html).toContain("/assinaturas?clienteId=c-teste&amp;assinatura=assinatura-atual");
+  });
+
+  it("deixa a equipe escolher quando há dois vínculos vigentes no mesmo cadastro", async () => {
+    m.assinaturas.mockResolvedValue([
+      { id: "pendente", status: "PENDENTE", plano: { nome: "Plano novo" } },
+      { id: "ativo", status: "ATIVA", plano: { nome: "Plano atual" } },
+    ]);
+    m.agendamentos.mockResolvedValue([]);
+    m.dados = JSON.parse(JSON.stringify(await detalharCliente("c-teste")));
+    const html = renderToStaticMarkup(createElement(ClienteDetalhe, { id: "c-teste", aoVoltar: vi.fn(), aoSalvar: vi.fn() }));
+    expect(html).toContain('href="/assinaturas?clienteId=c-teste"');
+    expect(html).not.toContain("assinatura=");
   });
 });

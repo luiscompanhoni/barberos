@@ -48,6 +48,11 @@ describe("pedido de upgrade e downgrade", () => {
     await expect(cancelarAlteracaoPlano("a", "u")).rejects.toMatchObject({ status: 409 });
     expect(m.atualizar).not.toHaveBeenCalled();
   });
+  it("não cancela o pedido novo quando a tela exibe um pedido anterior", async () => {
+    m.pedido.mockResolvedValue(pedido());
+    await expect(cancelarAlteracaoPlano("a", "u", "pedido-antigo")).rejects.toMatchObject({ codigo: "troca_desatualizada" });
+    expect(m.atualizar).not.toHaveBeenCalled();
+  });
   it("permite à recepção solicitar Business visível com venda restrita", async () => {
     m.plano.mockResolvedValue({ ...plano(), vendaSomenteEquipe: true });
     await solicitarAlteracaoPlano({ assinaturaId: "a", planoId: "novo", origem: "RECEPCAO", usuarioId: "u" });
@@ -63,6 +68,27 @@ describe("aplicação da troca pela recepção", () => {
     m.plano.mockResolvedValue({ ...plano(), vendaSomenteEquipe: true });
     await expect(aplicarAlteracaoPlano("a", "u")).rejects.toMatchObject({ status: 409 });
     expect(m.aplicar).not.toHaveBeenCalled();
+  });
+  it("rejeita pedido do site quando o plano é retirado da vitrine antes da renovação", async () => {
+    vi.mocked(Date.now).mockReturnValue(+new Date("2030-02-01T12:00:00Z"));
+    m.pedido.mockResolvedValue({ ...pedido(), origem: "SITE" });
+    m.plano.mockResolvedValue({ ...plano(), visivel: false });
+    await expect(aplicarAlteracaoPlano("a", "u")).rejects.toMatchObject({ status: 409 });
+    expect(m.aplicar).not.toHaveBeenCalled();
+  });
+  it("não aplica outro pedido quando a equipe confirma a partir de uma tela antiga", async () => {
+    await expect(aplicarAlteracaoPlano("a", "u", "pedido-antigo")).rejects.toMatchObject({ codigo: "troca_desatualizada" });
+    expect(m.gateway).not.toHaveBeenCalled();
+    expect(m.aplicar).not.toHaveBeenCalled();
+  });
+  it("aplica downgrade na renovação no valor do pedido conferido", async () => {
+    vi.mocked(Date.now).mockReturnValue(+new Date("2030-02-01T12:00:00Z"));
+    const reduzido = { ...condicoes, precoCentavos: 8500 };
+    m.plano.mockResolvedValue({ ...plano(), ...reduzido });
+    m.pedido.mockResolvedValue({ ...pedido(), precoNovoCentavos: 8500, condicoes: reduzido });
+    await expect(aplicarAlteracaoPlano("a", "u", "p")).resolves.toEqual({ aplicada: true });
+    expect(m.aplicar).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ planoId: "novo", precoCentavos: 8500 }) }));
+    expect(m.gateway).not.toHaveBeenCalled();
   });
   it("não antecipa alteração dentro do ciclo pago", async () => {
     await expect(aplicarAlteracaoPlano("a", "u")).rejects.toMatchObject({ status: 409 });

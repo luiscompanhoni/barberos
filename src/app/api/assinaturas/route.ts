@@ -9,15 +9,15 @@ import { db } from "@/lib/db";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
-import { parametros } from "@/lib/validacao";
+import { parametros, zId } from "@/lib/validacao";
 import { corpoAssinatura } from "@/lib/assinaturas/http";
 
 /** Lista de assinaturas + numeros do mes (dono e recepcao). */
 export const GET = rota(async (req: Request) => {
   await exigirSessao(BALCAO);
-  const { status, busca } = parametros(
+  const { status, busca, clienteId } = parametros(
     req,
-    z.object({ status: z.enum(["PENDENTE", "ATIVA", "ATRASADA", "CANCELADA", "TODAS"]).default("TODAS"), busca: z.string().trim().max(60).optional() }),
+    z.object({ status: z.enum(["PENDENTE", "ATIVA", "ATRASADA", "CANCELADA", "TODAS"]).default("TODAS"), busca: z.string().trim().max(60).optional(), clienteId: zId.optional() }),
   );
   const cfg = await configuracao();
   const inicioMes = new Date(instanteLocal(`${dataLocal(Date.now(), cfg.fuso).slice(0, 8)}01`, 0, cfg.fuso));
@@ -26,7 +26,7 @@ export const GET = rota(async (req: Request) => {
     db.assinatura.findMany({
       where: {
         ...(status !== "TODAS" ? { status } : {}),
-        ...(busca ? { cliente: { OR: [{ nome: { contains: busca, mode: "insensitive" } }, { telefone: { contains: busca.replace(/\D/g, "") || busca } }] } } : {}),
+        ...(clienteId ? { clienteId } : busca ? { cliente: { OR: [{ nome: { contains: busca, mode: "insensitive" } }, { telefone: { contains: busca.replace(/\D/g, "") || busca } }] } } : {}),
       },
       orderBy: [{ status: "asc" }, { criadaEm: "desc" }],
       take: 200,

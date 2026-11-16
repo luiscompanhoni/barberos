@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ cliente: vi.fn(), sessao: vi.fn(), permissao: vi.fn(), buscar: vi.fn(), solicitar: vi.fn(), cancelar: vi.fn(), aplicar: vi.fn(), cancelarPedido: vi.fn(), assinar: vi.fn(), cancelarPlano: vi.fn(), situacao: vi.fn(), fila: vi.fn() }));
+const m = vi.hoisted(() => ({ cliente: vi.fn(), sessao: vi.fn(), permissao: vi.fn(), buscar: vi.fn(), solicitar: vi.fn(), cancelar: vi.fn(), manter: vi.fn(), aplicar: vi.fn(), cancelarPedido: vi.fn(), assinar: vi.fn(), cancelarPlano: vi.fn(), situacao: vi.fn(), fila: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { assinatura: { findFirst: m.buscar, findUnique: m.buscar } } }));
 vi.mock("@/lib/auth/sessao", () => ({ exigirCliente: m.cliente, exigirSessao: m.sessao, BALCAO: ["DONO", "GERENTE", "RECEPCAO"] }));
 vi.mock("@/lib/auth/permissoes", () => ({ exigirPermissao: m.permissao }));
 vi.mock("@/lib/assinaturas/alteracao-plano", () => ({ solicitarAlteracaoPlano: m.solicitar, cancelarAlteracaoPlano: m.cancelarPedido, aplicarAlteracaoPlano: m.aplicar, alteracaoAtual: vi.fn() }));
-vi.mock("@/lib/assinaturas/operacao-inicial", () => ({ cancelarOperacaoInicial: m.cancelar }));
+vi.mock("@/lib/assinaturas/operacao-inicial", () => ({ cancelarOperacaoInicial: m.cancelar, manterOperacaoInicial: m.manter }));
 vi.mock("@/lib/assinaturas/servico", () => ({ assinar: m.assinar, cancelar: vi.fn(), entrarNaListaDeEspera: m.fila, situacaoDoCliente: m.situacao, vagasRestantes: vi.fn() }));
 vi.mock("@/lib/assinaturas/retencao", () => ({ cancelarPeloCliente: m.cancelarPlano, registrarCancelamentoDaEquipe: vi.fn() }));
 vi.mock("@/lib/assinaturas/cobrancas", () => ({ cobrancaEmAberto: vi.fn(), cobrarPeloWhatsApp: vi.fn(), linkAbsoluto: vi.fn(), processarEventoGateway: vi.fn(), sincronizarAssinatura: vi.fn() }));
@@ -17,6 +17,7 @@ const ctx = { params: Promise.resolve({ id: "assinatura-equipe" }) };
 beforeEach(() => {
   vi.resetAllMocks(); m.cliente.mockResolvedValue({ clienteId: "cliente-dono", usuarioId: "u" }); m.sessao.mockResolvedValue({ usuarioId: "equipe", papel: "RECEPCAO" });
   m.buscar.mockResolvedValue({ id: "assinatura-do-cliente" }); m.cancelar.mockResolvedValue({ cancelada: false, emConferencia: true });
+  m.manter.mockResolvedValue({ mantida: true });
   m.cancelarPedido.mockResolvedValue({ cancelada: true });
   m.assinar.mockResolvedValue({ link: "/c/assinar/teste" });
   m.situacao.mockResolvedValue({ assinatura: { id: "assinatura-do-cliente" } });
@@ -53,16 +54,20 @@ describe("contrato de criação e encerramento pelo cliente", () => {
   });
 });
 describe("ações de assinatura autenticadas", () => {
-  it("busca a assinatura do cliente da sessão e nunca aceita um id escolhido no corpo", async () => {
-    expect((await PATCH(req({ acao: "solicitar_troca", planoId: "novo" }))).status).toBe(201);
+  it("confere a assinatura exibida contra a assinatura atual da sessão", async () => {
+    expect((await PATCH(req({ acao: "solicitar_troca", planoId: "novo", assinaturaId: "assinatura-do-cliente" }))).status).toBe(201);
     expect(m.buscar).toHaveBeenCalledWith(expect.objectContaining({ where: { clienteId: "cliente-dono", status: { not: "CANCELADA" } } }));
     expect(m.solicitar).toHaveBeenCalledWith({ assinaturaId: "assinatura-do-cliente", planoId: "novo", origem: "SITE", usuarioId: "u" });
-    expect((await PATCH(req({ acao: "cancelar_operacao", assinaturaId: "outra" }))).status).toBe(400);
+    expect((await PATCH(req({ acao: "cancelar_operacao", assinaturaId: "outra" }))).status).toBe(409);
     expect(m.cancelar).not.toHaveBeenCalled();
   });
   it("recusa origem externa antes de tocar na assinatura", async () => {
     expect((await PATCH(req({ acao: "cancelar_operacao" }, { "sec-fetch-site": "cross-site" }))).status).toBe(403);
     expect(m.buscar).not.toHaveBeenCalled(); expect(m.cancelar).not.toHaveBeenCalled();
+  });
+  it("cliente mantém somente a própria operação inicial", async () => {
+    expect((await PATCH(req({ acao: "manter_operacao", assinaturaId: "assinatura-do-cliente" }))).status).toBe(200);
+    expect(m.manter).toHaveBeenCalledWith("assinatura-do-cliente", "u");
   });
   it("recusa corpo acima do limite", async () => {
     expect((await PATCH(req({ acao: "cancelar_operacao" }, { "content-length": "40000" }))).status).toBe(413);
@@ -71,7 +76,7 @@ describe("ações de assinatura autenticadas", () => {
   it("cliente não aplica a troca nem cancela assinatura de outro cliente", async () => {
     expect((await PATCH(req({ acao: "aplicar_troca" }))).status).toBe(400);
     m.buscar.mockResolvedValue(null);
-    expect((await PATCH(req({ acao: "cancelar_operacao" }))).status).toBe(404);
+    expect((await PATCH(req({ acao: "cancelar_operacao", assinaturaId: "assinatura-do-cliente" }))).status).toBe(404);
     expect(m.aplicar).not.toHaveBeenCalled(); expect(m.cancelar).not.toHaveBeenCalled();
   });
   it.each(["aplicar_troca", "cancelar"])("recepção sem permissão não executa %s em plano pago", async acao => {
@@ -79,9 +84,9 @@ describe("ações de assinatura autenticadas", () => {
     expect((await POST(req({ acao, planoId: "novo", motivo: "Solicitado pelo cliente" }), ctx)).status).toBe(403);
     expect(m.solicitar).not.toHaveBeenCalled(); expect(m.aplicar).not.toHaveBeenCalled(); expect(m.cancelar).not.toHaveBeenCalled(); expect(m.cancelarPedido).not.toHaveBeenCalled();
   });
-  it.each(["solicitar_troca", "cancelar_troca", "cancelar_operacao"])("recepção pode %s sem ganhar permissão para encerrar plano pago", async acao => {
+  it.each(["solicitar_troca", "cancelar_troca", "cancelar_operacao", "manter_operacao"])("recepção pode %s sem ganhar permissão para encerrar plano pago", async acao => {
     m.permissao.mockRejectedValue(proibido());
-    expect((await POST(req({ acao, planoId: "novo" }), ctx)).status).toBe(acao === "solicitar_troca" ? 201 : 200);
+    expect((await POST(req({ acao, planoId: "novo", pedidoId: "pedido-exibido" }), ctx)).status).toBe(acao === "solicitar_troca" ? 201 : 200);
     expect(m.sessao).toHaveBeenCalledWith(["DONO", "GERENTE", "RECEPCAO"]);
     expect(m.permissao).not.toHaveBeenCalled(); expect(m.aplicar).not.toHaveBeenCalled();
   });
@@ -93,5 +98,12 @@ describe("ações de assinatura autenticadas", () => {
   it("equipe autorizada registra a origem e o responsável", async () => {
     expect((await POST(req({ acao: "solicitar_troca", planoId: "novo" }), ctx)).status).toBe(201);
     expect(m.solicitar).toHaveBeenCalledWith({ assinaturaId: "assinatura-equipe", planoId: "novo", origem: "RECEPCAO", usuarioId: "equipe" });
+  });
+  it("equipe autorizada aplica somente o pedido exibido", async () => {
+    m.aplicar.mockResolvedValue({ aplicada: true });
+    expect((await POST(req({ acao: "aplicar_troca" }), ctx)).status).toBe(409);
+    expect(m.aplicar).not.toHaveBeenCalled();
+    expect((await POST(req({ acao: "aplicar_troca", pedidoId: "pedido-exibido" }), ctx)).status).toBe(200);
+    expect(m.aplicar).toHaveBeenCalledWith("assinatura-equipe", "equipe", "pedido-exibido");
   });
 });

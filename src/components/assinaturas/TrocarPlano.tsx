@@ -7,7 +7,7 @@ export type AlteracaoPlano = { id: string; nome: string; precoCentavos: number; 
 type PlanoOpcao = { id: string; nome: string; precoCentavos: number };
 
 export function TrocarPlano(p: {
-  endpoint: string; equipe?: boolean; podeAplicar?: boolean; planoAtualId: string; valorAtual: number; renovacao: string | null;
+  endpoint: string; assinaturaId: string; equipe?: boolean; podeAplicar?: boolean; planoAtualId: string; valorAtual: number; renovacao: string | null;
   planos: PlanoOpcao[]; pedido: AlteracaoPlano; onAlterado: () => Promise<unknown> | void;
 }) {
   const [planoId, setPlanoId] = useState("");
@@ -20,10 +20,13 @@ export function TrocarPlano(p: {
   const data = (valor: string) => valor.slice(0, 10).split("-").reverse().join("/");
 
   async function enviar(acao: "solicitar_troca" | "cancelar_troca" | "aplicar_troca") {
-    if (trava.current) return;
+    if (trava.current || (acao !== "solicitar_troca" && !p.pedido)) return;
     trava.current = true; setOcupado(true); setMensagem(""); setErro(false);
     try {
-      await api(p.endpoint, { method: p.equipe ? "POST" : "PATCH", body: { acao, ...(acao === "solicitar_troca" ? { planoId } : {}) } });
+      await api(p.endpoint, { method: p.equipe ? "POST" : "PATCH", body: {
+        acao, ...(p.equipe ? {} : { assinaturaId: p.assinaturaId }),
+        ...(acao === "solicitar_troca" ? { planoId } : { pedidoId: p.pedido?.id }),
+      } });
       setMensagem(acao === "solicitar_troca" ? "Pedido registrado. A recepção confere a renovação antes de aplicar o novo plano." : acao === "cancelar_troca" ? "Pedido cancelado. Seu plano atual foi mantido." : "Novo plano aplicado após a conferência.");
       await p.onAlterado();
       setPlanoId("");

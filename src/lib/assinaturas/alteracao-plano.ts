@@ -17,6 +17,7 @@ function condicoes(p: PlanoCompleto): Prisma.InputJsonObject {
 }
 
 export const classificacaoTroca = (atual: number, novo: number) => novo > atual ? "UPGRADE" : novo < atual ? "DOWNGRADE" : "TROCA";
+const pedidoMudou = () => new ErroNegocio("O pedido de troca mudou. Atualize a tela para conferir o pedido atual.", 409, "troca_desatualizada");
 export function condicoesIguais(a: unknown, b: unknown): boolean {
   const canonica = (v: unknown): string => v === null || typeof v !== "object" ? JSON.stringify(v) : Array.isArray(v)
     ? `[${v.map(canonica).join(",")}]` : `{${Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => `${JSON.stringify(k)}:${canonica(x)}`).join(",")}}`;
@@ -61,10 +62,11 @@ export async function solicitarAlteracaoPlano(p: { assinaturaId: string; planoId
   });
 }
 
-export async function cancelarAlteracaoPlano(assinaturaId: string, usuarioId: string) {
+export async function cancelarAlteracaoPlano(assinaturaId: string, usuarioId: string, pedidoId?: string) {
   return db.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${assinaturaId}`}, 0))`;
     const pedido = await tx.alteracaoPlanoAssinatura.findFirst({ where: { assinaturaId, estado: { in: ESTADOS_ABERTOS } } });
+    if (pedidoId && pedido?.id !== pedidoId) throw pedidoMudou();
     if (!pedido) return { cancelada: false };
     if (pedido.estado !== "SOLICITADA") throw new ErroNegocio("A troca já está em conferência. Fale com a equipe antes de cancelar.", 409);
     await tx.alteracaoPlanoAssinatura.update({ where: { id: pedido.id }, data: { estado: "CANCELADA" } });
@@ -85,8 +87,9 @@ async function conferirRenovacaoExterna(gatewayId: string, valor: number, vencim
 }
 
 /** Recepção aplica após conferência, no início do novo período, preservando o histórico. */
-export async function aplicarAlteracaoPlano(assinaturaId: string, usuarioId: string) {
+export async function aplicarAlteracaoPlano(assinaturaId: string, usuarioId: string, pedidoId?: string) {
   const pedido = await db.alteracaoPlanoAssinatura.findFirst({ where: { assinaturaId, estado: { in: ESTADOS_ABERTOS } } });
+  if (pedidoId && pedido?.id !== pedidoId) throw pedidoMudou();
   if (!pedido) throw naoEncontrado("Pedido de alteração");
   const a = await db.assinatura.findUniqueOrThrow({ where: { id: assinaturaId } });
   const fuso = (await configuracao()).fuso;
@@ -111,7 +114,8 @@ export async function aplicarAlteracaoPlano(assinaturaId: string, usuarioId: str
     if (!ESTADOS_ABERTOS.includes(atual.estado) || corrente.clienteId !== a.clienteId || corrente.status !== "ATIVA" || corrente.planoId !== pedido.planoAnteriorId || corrente.precoCentavos !== pedido.precoAnteriorCentavos || corrente.gatewayId !== a.gatewayId || corrente.pausadaEm || corrente.encerraEm || corrente.operacaoInicial) throw new ErroNegocio("A assinatura mudou. Atualize e confira novamente.", 409);
     const cicloEsperado = local ? corrente.proximoVencimento : corrente.cicloInicio;
     if (!cicloEsperado || dia(cicloEsperado) !== dia(pedido.efetivaEm)) throw new ErroNegocio("O ciclo da assinatura mudou ou ainda não foi conciliado. Confira a renovação antes de aplicar este pedido.", 409, "troca_em_conferencia");
-    if (!novo || !novo.ativo || !novo.compravel || (novo.vendaSomenteEquipe && atual.origem !== "RECEPCAO" && atual.origem !== "PAINEL") || !novo.formasPagamento.includes(corrente.formaPagamento) || !condicoesIguais(condicoes(novo), pedido.condicoes)) throw new ErroNegocio("As condições do novo plano mudaram. Cancele este pedido e faça uma nova escolha.", 409);
+    const origemPublica = atual.origem === "SITE" || atual.origem === "BOT";
+    if (!novo || !novo.ativo || !novo.compravel || (origemPublica && !novo.visivel) || (novo.vendaSomenteEquipe && atual.origem !== "RECEPCAO" && atual.origem !== "PAINEL") || !novo.formasPagamento.includes(corrente.formaPagamento) || !condicoesIguais(condicoes(novo), pedido.condicoes)) throw new ErroNegocio("As condições do novo plano mudaram. Cancele este pedido e faça uma nova escolha.", 409);
     if (novo.vagas !== null && await tx.assinatura.count({ where: { planoId: novo.id, status: { in: ["ATIVA", "ATRASADA", "PENDENTE"] } } }) >= novo.vagas) throw new ErroNegocio("O plano ficou sem vagas. A troca ainda não foi aplicada.", 409);
     if (await tx.agendamento.findFirst({ where: { assinaturaId, inicio: { gte: new Date(instanteLocal(dia(pedido.efetivaEm), 0, fuso)) }, status: { in: ["MARCADO", "CONFIRMADO"] } }, select: { id: true } })) throw new ErroNegocio("Existem horários futuros vinculados ao plano anterior. Confira esses horários antes de aplicar a troca.", 409);
     if (local && (await tx.cobranca.findFirst({ where: { assinaturaId, vencimento: { gte: pedido.efetivaEm }, status: { not: "CANCELADA" } }, select: { id: true } }) || await tx.emissaoPixMensal.findFirst({ where: { assinaturaId, vencimento: { gte: pedido.efetivaEm } }, select: { id: true } }))) throw new ErroNegocio("A renovação Pix já tem uma emissão. Confira a cobrança antes de alterar o valor.", 409);

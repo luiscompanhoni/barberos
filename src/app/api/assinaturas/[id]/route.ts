@@ -13,7 +13,7 @@ import { ErroNegocio, naoEncontrado, rota } from "@/lib/erros";
 import { provedorPagamento } from "@/lib/pagamentos/gateway";
 import { atrasarSimulada, gerarProximaSimulada, pagarSimulada } from "@/lib/pagamentos/simulado";
 import { alteracaoAtual, aplicarAlteracaoPlano, cancelarAlteracaoPlano, solicitarAlteracaoPlano } from "@/lib/assinaturas/alteracao-plano";
-import { cancelarOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
+import { cancelarOperacaoInicial, manterOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
 import { corpoAssinatura } from "@/lib/assinaturas/http";
 
 export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinaturas/[id]">) => {
@@ -52,9 +52,10 @@ export const POST = rota(async (req: Request, ctx: RouteContext<"/api/assinatura
   const b = await corpoAssinatura(
     req,
     z.object({
-      acao: z.enum(["cobrar", "sincronizar", "cancelar", "simular_pagamento", "simular_atraso", "simular_proximo_mes", "solicitar_troca", "cancelar_troca", "aplicar_troca", "cancelar_operacao"]),
+      acao: z.enum(["cobrar", "sincronizar", "cancelar", "simular_pagamento", "simular_atraso", "simular_proximo_mes", "solicitar_troca", "cancelar_troca", "aplicar_troca", "cancelar_operacao", "manter_operacao"]),
       motivo: z.string().trim().max(200).optional(),
       planoId: z.string().min(1).max(40).optional(),
+      pedidoId: z.string().min(1).max(40).optional(),
     }),
   );
   const a = await db.assinatura.findUnique({ where: { id } });
@@ -66,12 +67,16 @@ export const POST = rota(async (req: Request, ctx: RouteContext<"/api/assinatura
       await solicitarAlteracaoPlano({ assinaturaId: id, planoId: b.planoId, origem: "RECEPCAO", usuarioId: s.usuarioId });
       return NextResponse.json({ solicitada: true }, { status: 201 });
     case "cancelar_troca":
-      return NextResponse.json(await cancelarAlteracaoPlano(id, s.usuarioId));
+      if (!b.pedidoId) throw new ErroNegocio("Atualize a tela e selecione o pedido que deseja cancelar.", 409);
+      return NextResponse.json(await cancelarAlteracaoPlano(id, s.usuarioId, b.pedidoId));
     case "aplicar_troca":
       await exigirPermissao(s, "assinatura");
-      return NextResponse.json(await aplicarAlteracaoPlano(id, s.usuarioId));
+      if (!b.pedidoId) throw new ErroNegocio("Atualize a tela e selecione o pedido que deseja aplicar.", 409);
+      return NextResponse.json(await aplicarAlteracaoPlano(id, s.usuarioId, b.pedidoId));
     case "cancelar_operacao":
       return NextResponse.json(await cancelarOperacaoInicial(id, s.usuarioId));
+    case "manter_operacao":
+      return NextResponse.json(await manterOperacaoInicial(id, s.usuarioId));
     case "cobrar":
       return NextResponse.json(await cobrarPeloWhatsApp(id));
     case "sincronizar":

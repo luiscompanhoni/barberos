@@ -124,6 +124,10 @@ A atualização de equipe acrescenta **Reuniões** (`/reunioes`), **Meu dia** (`
   3) e depois suspende, com avisos no WhatsApp; o webhook confere o token e busca o status real no gateway.
   Cobrança nova pela Pagar.me; assinaturas antigas continuam na Celcash (estornos e retenção dela à mão;
   mensalidades históricas importadas por `scripts/importar-mensalidades-celcash.ts`). Asaas é alternativa.
+  A ficha do cliente abre o gerenciamento dos vínculos pelo cadastro. Ações de cancelamento de plano pago e aplicação de
+  upgrade ou downgrade respeitam a permissão de assinatura. A troca confirma o pedido exibido e as condições da renovação.
+  Pix inicial em conferência pode ser retomado se o provedor confirmar um único Pix válido. A liberação de nova adesão
+  exige confirmação de encerramento da cobrança anterior sem recebimento.
 - **Cancelamento com retenção**: oferta conforme o motivo — ficou caro: desconto (padrão 20% por 2 meses, no máximo
   um por ano); não estou usando/vou viajar: pausa de 30, 60 ou 90 dias (máximo do dono, padrão 60; uma a cada 6
   meses); insatisfeito/horários: conversa com o gerente (vai para Conversas); mudei de cidade/outro: cancela direto.

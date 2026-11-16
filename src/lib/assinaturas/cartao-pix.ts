@@ -218,10 +218,11 @@ export async function pagarPlanoComPix(tokenPublico: string) {
 
 /** Estado do checkout do plano (status da assinatura e o Pix do 1o mes). `conferir`: consulta o gateway. */
 export async function checkoutDaAssinatura(tokenPublico: string, conferir = true): Promise<EstadoCheckout> {
+  const emConferencia: EstadoCheckout = { status: "PENDENTE", forma: null, pix: null, link: null, processando: true, mensagem: "Operação em conferência. Aguarde a confirmação antes de escolher outra forma de pagamento." };
   const a = await assinaturaPorToken(tokenPublico);
   if (a.status === "CANCELADA") return { status: "CANCELADO", forma: null, pix: null, link: null };
   if (a.status !== "PENDENTE") return { status: "PAGO", forma: a.formaPagamento === "PIX" ? "PIX" : "CARTAO", pix: null, link: null };
-  if (a.operacaoInicial) return { status: "PENDENTE", forma: null, pix: null, link: null, processando: true, mensagem: "Operação em conferência. Aguarde a confirmação antes de escolher outra forma de pagamento." };
+  if (a.operacaoInicial) return emConferencia;
   if (!pixPendente(a)) {
     // Contrato enviado continua bloqueado até pagamento ou cancelamento comprovado.
     if (conferir && a.gatewayId && a.formaPagamento === "CARTAO") {
@@ -229,6 +230,7 @@ export async function checkoutDaAssinatura(tokenPublico: string, conferir = true
       const atual = await db.assinatura.findUniqueOrThrow({ where: { id: a.id } });
       if (atual.status === "CANCELADA") return { status: "CANCELADO", forma: null, pix: null, link: null };
       if (atual.status !== "PENDENTE") return { status: "PAGO", forma: "CARTAO", pix: null, link: null };
+      if (atual.operacaoInicial) return emConferencia;
     }
     const ultima = a.gatewayId ? await db.cobranca.findFirst({ where: { assinaturaId: a.id, vinculosExternos: { none: {} } }, orderBy: { criadaEm: "desc" } }) : null;
     const processando = a.formaPagamento === "CARTAO" && !!a.gatewayId;
@@ -244,6 +246,7 @@ export async function checkoutDaAssinatura(tokenPublico: string, conferir = true
     const atual = await db.assinatura.findUniqueOrThrow({ where: { id: a.id } });
     if (atual.status === "CANCELADA") return { status: "CANCELADO", forma: null, pix: null, link: null };
     if (atual.status !== "PENDENTE") return { status: "PAGO", forma: "PIX", pix: null, link: null };
+    if (atual.operacaoInicial) return emConferencia;
   }
   const c: Cobranca | undefined = abertas.find((x) => x.forma === "PIX" && x.pixCopiaECola && !pixVencido(x.expiraEm));
   return {

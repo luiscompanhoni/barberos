@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { api } from "@/lib/cliente-api";
 
-export function CancelarOperacaoInicial(p: { endpoint: string; equipe?: boolean; continuar?: React.ReactNode; onAlterado: () => Promise<unknown> | void }) {
+export function CancelarOperacaoInicial(p: { endpoint: string; assinaturaId: string; equipe?: boolean; emConferencia?: boolean; continuar?: React.ReactNode; onAlterado: () => Promise<unknown> | void }) {
   const [confirmando, setConfirmando] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [mensagem, setMensagem] = useState("");
@@ -11,21 +11,34 @@ export function CancelarOperacaoInicial(p: { endpoint: string; equipe?: boolean;
   const [manter, setManter] = useState(false);
   const [encerrada, setEncerrada] = useState(false);
   const trava = useRef(false);
+  async function manterPagamento() {
+    if (!p.emConferencia) return setManter(true);
+    if (trava.current) return;
+    trava.current = true; setOcupado(true); setMensagem(""); setErro(false);
+    try {
+      await api<{ mantida: boolean }>(p.endpoint, { method: p.equipe ? "POST" : "PATCH", body: { acao: "manter_operacao", ...(p.equipe ? {} : { assinaturaId: p.assinaturaId }) } });
+      setConfirmando(false); setManter(true); setMensagem("Pagamento mantido. Continue pela opção existente abaixo.");
+      await p.onAlterado();
+    } catch (e) { setErro(true); setMensagem((e as Error).message); }
+    finally { trava.current = false; setOcupado(false); }
+  }
   async function cancelar() {
     if (trava.current) return;
     trava.current = true; setOcupado(true); setMensagem(""); setErro(false);
     try {
-      const r = await api<{ cancelada: boolean }>(p.endpoint, { method: p.equipe ? "POST" : "PATCH", body: { acao: "cancelar_operacao" } });
+      const r = await api<{ cancelada: boolean }>(p.endpoint, { method: p.equipe ? "POST" : "PATCH", body: { acao: "cancelar_operacao", ...(p.equipe ? {} : { assinaturaId: p.assinaturaId }) } });
       setConfirmando(false); setEncerrada(r.cancelada); setManter(!r.cancelada);
-      setMensagem(r.cancelada ? "Operação cancelada. Agora é possível escolher o plano e outra forma de pagamento." : "Pedido em conferência. O pagamento anterior precisa ser encerrado no provedor antes de escolher outra forma; nenhum estorno foi executado.");
+      setMensagem(r.cancelada ? "Operação cancelada. Agora é possível escolher o plano e outra forma de pagamento." : p.equipe
+        ? "Confira a cobrança no provedor. Após confirmar o encerramento sem recebimento, use o botão de confirmação novamente."
+        : "A equipe precisa conferir a cobrança no provedor. Se quiser continuar com o Pix original, use Manter pagamento.");
       await p.onAlterado();
     } catch (e) { setErro(true); setMensagem((e as Error).message); }
     finally { trava.current = false; setOcupado(false); }
   }
   return <div className="space-y-2">
-    {!encerrada && (!confirmando ? <div className="flex flex-wrap gap-2"><button type="button" className="btn" onClick={() => setManter(true)}>Manter pagamento</button><button type="button" className="btn" onClick={() => { setConfirmando(true); setManter(false); }}>Cancelar operação ou trocar forma de pagamento</button></div> : <div className="rounded-xl bg-amber-50 p-3 text-sm space-y-2">
+    {!encerrada && (!confirmando ? <div className="flex flex-wrap gap-2"><button type="button" className="btn" disabled={ocupado} onClick={manterPagamento}>{ocupado ? "Conferindo…" : "Manter pagamento"}</button><button type="button" className="btn" disabled={ocupado} onClick={() => { setConfirmando(true); setManter(false); }}>Cancelar operação ou trocar forma de pagamento</button></div> : <div className="rounded-xl bg-amber-50 p-3 text-sm space-y-2">
       <p>Desistir deste primeiro pagamento? Outra forma será liberada quando o cancelamento for confirmado. Esta ação não devolve pagamentos já recebidos.</p>
-      <div className="flex flex-wrap gap-2"><button type="button" className="btn" disabled={ocupado} onClick={() => { setConfirmando(false); setManter(true); }}>Manter pagamento</button>
+      <div className="flex flex-wrap gap-2"><button type="button" className="btn" disabled={ocupado} onClick={manterPagamento}>Manter pagamento</button>
         <button type="button" className="btn-perigo" disabled={ocupado} onClick={cancelar}>{ocupado ? "Conferindo…" : "Confirmar cancelamento da operação"}</button></div>
     </div>)}
     {manter && !encerrada && p.continuar}

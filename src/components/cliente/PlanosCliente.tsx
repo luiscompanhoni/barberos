@@ -123,8 +123,8 @@ export function PlanosCliente({ planoId }: { planoId: string | null }) {
             </a>
           )}
           {!atual.operacaoEmConferencia && !atual.cobrancaEmAberto?.link && atual.status === "PENDENTE" && atual.linkPendente && <a className="btn-primario w-full py-3" href={atual.linkPendente}>Continuar pagamento da assinatura</a>}
-          {atual.status === "PENDENTE" && <CancelarOperacaoInicial key={atual.id} endpoint="/api/cliente/assinatura" continuar={<ContinuarPagamentoInicial forma={atual.formaPagamento} emConferencia={atual.operacaoEmConferencia} link={atual.cobrancaEmAberto?.link ?? atual.linkPendente} />} onAlterado={carregar} />}
-          {atual.status === "ATIVA" && !atual.registroManual && !atual.pausada && !atual.valeAte && <TrocarPlano endpoint="/api/cliente/assinatura" planoAtualId={atual.plano.id}
+          {atual.status === "PENDENTE" && <CancelarOperacaoInicial key={atual.id} endpoint="/api/cliente/assinatura" assinaturaId={atual.id} emConferencia={atual.operacaoEmConferencia} continuar={<ContinuarPagamentoInicial forma={atual.formaPagamento} emConferencia={atual.operacaoEmConferencia} link={atual.cobrancaEmAberto?.link ?? atual.linkPendente} />} onAlterado={carregar} />}
+          {atual.status === "ATIVA" && !atual.operacaoEmConferencia && !atual.registroManual && !atual.pausada && !atual.valeAte && <TrocarPlano key={atual.id} endpoint="/api/cliente/assinatura" assinaturaId={atual.id} planoAtualId={atual.plano.id}
             valorAtual={atual.precoCentavos} renovacao={atual.proximoVencimento} pedido={atual.alteracaoPlano}
             planos={d.planos.filter(p => p.compravel && p.formasPagamento.includes(atual.formaPagamento))} onAlterado={carregar} />}
           {atual.pausada && atual.pausadaAte && (

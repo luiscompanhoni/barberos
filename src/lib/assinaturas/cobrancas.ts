@@ -108,6 +108,8 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
       dados.proximoVencimento = new Date(`${proximo}T00:00:00Z`);
     }
     if (status === "ATIVA" && !assinatura.ativadaEm) dados.ativadaEm = new Date();
+    if (status === "ATIVA" && assinatura.status === "PENDENTE" && cob.status === "PAGA" &&
+      ["CANCELANDO", "CANCELAMENTO_REVISAO", "MANTENDO"].includes(assinatura.operacaoInicial ?? "")) dados.operacaoInicial = null;
     // Também preserva encerramentos de outros fluxos que ainda não usam a trava.
     const alterada = await tx.assinatura.updateMany({ where: { id: assinatura.id, status: { not: "CANCELADA" } }, data: dados });
     return { assinatura, salva, status: alterada.count ? status : "CANCELADA" as const };
@@ -169,6 +171,18 @@ export async function processarEventoGateway(eventoId: string, tipo: string, cob
 export async function sincronizarAssinatura(assinaturaId: string) {
   const a = await db.assinatura.findUniqueOrThrow({ where: { id: assinaturaId } });
   if (!a.gatewayId) return;
+  if (a.status === "PENDENTE" && a.gatewayId.startsWith("pixrec_")) {
+    const abertas = await db.cobranca.findMany({
+      where: { assinaturaId, status: { in: ["PENDENTE", "ATRASADA"] }, vinculosExternos: { none: {} } },
+      select: { gatewayId: true },
+    });
+    for (const { gatewayId } of abertas) {
+      const remota = await (await gatewayPorId(gatewayId)).buscarCobranca(gatewayId);
+      if (remota.id !== gatewayId) throw new Error("O provedor devolveu outra cobrança.");
+      await sincronizarCobranca(remota);
+    }
+    return;
+  }
   const g = await gatewayPorId(a.gatewayId);
   for (const c of await g.cobrancasDaAssinatura(a.gatewayId)) await sincronizarCobranca(c);
 }

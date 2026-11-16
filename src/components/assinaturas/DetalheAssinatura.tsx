@@ -147,8 +147,8 @@ export function DetalheAssinatura(p: { id: string; podeCancelar: boolean; onFech
             {p.podeCancelar && !cancelando && d.status !== "PENDENTE" && <button className="btn-perigo" onClick={() => setCancelando(true)}>Cancelar assinatura</button>}
           </div>
         )}
-        {d.status === "PENDENTE" && <CancelarOperacaoInicial key={d.id} endpoint={`/api/assinaturas/${d.id}`} equipe continuar={<ContinuarPagamentoInicial equipe forma={d.formaPagamento} emConferencia={!!d.operacaoInicial} link={d.cobrancas.find(c => ["PENDENTE", "ATRASADA"].includes(c.status) && c.link)?.link ?? null} />} onAlterado={async () => { await carregar(); p.onAlterado(); }} />}
-        {d.status === "ATIVA" && !d.registroManual && !d.pausadaEm && !d.encerraEm && <TrocarPlano endpoint={`/api/assinaturas/${d.id}`} equipe podeAplicar={p.podeCancelar} planoAtualId={d.planoId}
+        {d.status === "PENDENTE" && <CancelarOperacaoInicial key={d.id} endpoint={`/api/assinaturas/${d.id}`} assinaturaId={d.id} equipe emConferencia={!!d.operacaoInicial} continuar={<ContinuarPagamentoInicial equipe forma={d.formaPagamento} emConferencia={!!d.operacaoInicial} link={d.cobrancas.find(c => ["PENDENTE", "ATRASADA"].includes(c.status) && c.link)?.link ?? null} />} onAlterado={async () => { await carregar(); p.onAlterado(); }} />}
+        {d.status === "ATIVA" && !d.operacaoInicial && !d.registroManual && !d.pausadaEm && !d.encerraEm && <TrocarPlano endpoint={`/api/assinaturas/${d.id}`} assinaturaId={d.id} equipe podeAplicar={p.podeCancelar} planoAtualId={d.planoId}
           valorAtual={d.precoCentavos} renovacao={d.proximoVencimento} pedido={d.alteracaoPlano} planos={d.planosDisponiveis} onAlterado={async () => { await carregar(); p.onAlterado(); }} />}
         {temAberta && <p className="mt-2 text-xs text-zinc-500">Uma tentativa por fatura. Se o resultado for incerto, confira a conversa antes de tentar novamente.</p>}
         {cancelando && (

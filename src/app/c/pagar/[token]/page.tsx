@@ -28,11 +28,13 @@ export default async function Pagar(props: PageProps<"/c/pagar/[token]">) {
     include: { assinatura: { include: { plano: { select: { nome: true } }, cliente: { select: { nome: true } } } } },
   });
   if (!c) notFound();
+  const a = c.assinatura;
+  const fechada = a.status === "CANCELADA" || c.status === "CANCELADA" || c.status === "ESTORNADA";
+  const emConferencia = a.status === "PENDENTE" && !!a.operacaoInicial;
   // Gateways com fatura propria (Asaas): manda para la.
-  if (c.link && /^https?:\/\//.test(c.link)) redirect(c.link);
+  if (!fechada && !emConferencia && c.link && /^https?:\/\//.test(c.link)) redirect(c.link);
   const cfg = await configuracao();
 
-  const a = c.assinatura;
   return (
     <main className="flex flex-1 items-center justify-center px-5 py-12">
       <section className="entrar-suave w-full max-w-md text-center">
@@ -57,8 +59,10 @@ export default async function Pagar(props: PageProps<"/c/pagar/[token]">) {
             <p className="mt-2 text-xs text-zinc-500">Mensalidade com vencimento em {dataBr(c.vencimento)}</p>
 
             <div className="mt-8 space-y-4">
-              {c.status === "CANCELADA" || c.status === "ESTORNADA" ? (
+              {fechada ? (
                 <p className="rounded-xl bg-zinc-100 p-4 text-sm text-zinc-600">Essa cobrança não está mais valendo. Chame a barbearia no WhatsApp.</p>
+              ) : emConferencia ? (
+                <p role="status" className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Pagamento em conferência. Volte à área de planos para acompanhar.</p>
               ) : c.forma === "PIX" && c.pixCopiaECola ? (
                 pixExpirado(c.expiraEm) ? (
                   <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Esse Pix expirou. Peça um novo para a barbearia no WhatsApp.</p>

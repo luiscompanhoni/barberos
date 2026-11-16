@@ -9,9 +9,10 @@ import { MOTIVOS_CANCELAMENTO } from "@/lib/assinaturas/schemas";
 import { cancelarPeloCliente } from "@/lib/assinaturas/retencao";
 import { motivoPorTexto, ultimoDia } from "@/lib/assinaturas/retencao-regras";
 import { alteracaoAtual, cancelarAlteracaoPlano, solicitarAlteracaoPlano } from "@/lib/assinaturas/alteracao-plano";
-import { cancelarOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
+import { cancelarOperacaoInicial, manterOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
 import { corpoAssinatura } from "@/lib/assinaturas/http";
 import { cobrancasReaisBloqueadas } from "@/lib/pagamentos/bloqueio-cobranca";
+import { zId } from "@/lib/validacao";
 
 /** Planos disponiveis e a assinatura atual do cliente. */
 export const GET = rota(async () => {
@@ -109,14 +110,17 @@ export const DELETE = rota(async (req: Request) => {
 export const PATCH = rota(async (req: Request) => {
   const s = await exigirCliente();
   const b = await corpoAssinatura(req, z.discriminatedUnion("acao", [
-    z.object({ acao: z.literal("solicitar_troca"), planoId: z.string().min(1).max(40) }).strict(),
-    z.object({ acao: z.literal("cancelar_troca") }).strict(),
-    z.object({ acao: z.literal("cancelar_operacao") }).strict(),
+    z.object({ acao: z.literal("solicitar_troca"), planoId: zId, assinaturaId: zId }).strict(),
+    z.object({ acao: z.literal("cancelar_troca"), pedidoId: zId, assinaturaId: zId }).strict(),
+    z.object({ acao: z.literal("cancelar_operacao"), assinaturaId: zId }).strict(),
+    z.object({ acao: z.literal("manter_operacao"), assinaturaId: zId }).strict(),
   ]));
   const a = await db.assinatura.findFirst({ where: { clienteId: s.clienteId, status: { not: "CANCELADA" } }, orderBy: { criadaEm: "desc" } });
   if (!a) throw new ErroNegocio("Você não tem assinatura em andamento.", 404);
+  if (a.id !== b.assinaturaId) throw new ErroNegocio("Sua assinatura mudou. Atualize a tela para conferir o plano atual.", 409);
   if (b.acao === "cancelar_operacao") return NextResponse.json(await cancelarOperacaoInicial(a.id, s.usuarioId));
-  if (b.acao === "cancelar_troca") return NextResponse.json(await cancelarAlteracaoPlano(a.id, s.usuarioId));
+  if (b.acao === "manter_operacao") return NextResponse.json(await manterOperacaoInicial(a.id, s.usuarioId));
+  if (b.acao === "cancelar_troca") return NextResponse.json(await cancelarAlteracaoPlano(a.id, s.usuarioId, b.pedidoId));
   await solicitarAlteracaoPlano({ assinaturaId: a.id, planoId: b.planoId, origem: "SITE", usuarioId: s.usuarioId });
   return NextResponse.json({ solicitada: true }, { status: 201 });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ContadorCrm } from "@/components/visual/ContadorCrm";
 import { api, reais } from "@/lib/cliente-api";
@@ -41,20 +42,24 @@ export const ROTULO: Record<Status, { texto: string; cor: string }> = {
 export const FORMA: Record<string, string> = { CARTAO: "Cartão", PIX: "Pix", BOLETO: "Boleto" };
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
-export function AssinaturasTela({ podeCancelar, buscaInicial = "" }: { podeCancelar: boolean; buscaInicial?: string }) {
+export function AssinaturasTela({ podeCancelar, clienteId, buscaInicial = "", assinaturaInicial }: {
+  podeCancelar: boolean; clienteId?: string; buscaInicial?: string; assinaturaInicial?: string;
+}) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [status, setStatus] = useState<Status | "TODAS">("TODAS");
   const [busca, setBusca] = useState(buscaInicial);
-  const [aberta, setAberta] = useState<string | null>(null);
+  const [aberta, setAberta] = useState<string | null>(assinaturaInicial || null);
   const [nova, setNova] = useState(false);
   const [registroManual, setRegistroManual] = useState(false);
   const [erro, setErro] = useState("");
   const [versao, setVersao] = useState(0);
 
   const carregar = useCallback(() => {
-    const q = new URLSearchParams({ status, ...(busca.trim().length >= 2 ? { busca: busca.trim() } : {}) });
+    const q = new URLSearchParams({ status });
+    if (clienteId) q.set("clienteId", clienteId);
+    else if (busca.trim().length >= 2) q.set("busca", busca.trim());
     api<Dados>(`/api/assinaturas?${q}`).then(setDados).catch((e) => setErro(e.message));
-  }, [status, busca]);
+  }, [status, busca, clienteId]);
   useEffect(() => {
     const t = setTimeout(carregar, 200);
     return () => clearTimeout(t);
@@ -72,7 +77,7 @@ export function AssinaturasTela({ podeCancelar, buscaInicial = "" }: { podeCance
       </div>
       {erro && <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
 
-      {r && (
+      {!clienteId && r && (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Card rotulo="Assinantes ativos" valor={String(r.ativas + r.atrasadas)} numero={r.ativas + r.atrasadas} detalhe={`${r.atrasadas} com pagamento atrasado`} ruim={r.atrasadas > 0} />
           <Card rotulo="Receita recorrente (mês)" valor={reais(r.receitaMensalCentavos)} numero={r.receitaMensalCentavos} formatar={reais} detalhe="soma das mensalidades recorrentes" />
@@ -82,9 +87,9 @@ export function AssinaturasTela({ podeCancelar, buscaInicial = "" }: { podeCance
         </section>
       )}
 
-      <RetencaoPainel podeEditar={podeCancelar} onAbrir={setAberta} versao={versao} />
+      {!clienteId && <RetencaoPainel podeEditar={podeCancelar} onAbrir={setAberta} versao={versao} />}
 
-      {r && r.motivos.length > 0 && (
+      {!clienteId && r && r.motivos.length > 0 && (
         <section className="cartao text-sm">
           <h2 className="mb-1 font-semibold">Por que cancelaram (90 dias)</h2>
           <div className="flex flex-wrap gap-2">
@@ -105,7 +110,9 @@ export function AssinaturasTela({ podeCancelar, buscaInicial = "" }: { podeCance
               {s === "TODAS" ? "Todas" : ROTULO[s].texto}
             </button>
           ))}
-          <input className="campo ml-auto max-w-60" aria-label="Buscar cliente nas assinaturas" placeholder="Buscar cliente" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          {clienteId
+            ? <Link className="btn ml-auto" href="/assinaturas">Ver todos os clientes</Link>
+            : <input className="campo ml-auto max-w-60" aria-label="Buscar cliente nas assinaturas" placeholder="Buscar cliente" maxLength={60} value={busca} onChange={(e) => setBusca(e.target.value)} />}
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -142,7 +149,7 @@ export function AssinaturasTela({ podeCancelar, buscaInicial = "" }: { podeCance
         </div>
       </section>
 
-      {aberta && <DetalheAssinatura id={aberta} podeCancelar={podeCancelar} onFechar={() => setAberta(null)} onAlterado={() => { carregar(); setVersao((v) => v + 1); }} />}
+      {aberta && <DetalheAssinatura key={aberta} id={aberta} podeCancelar={podeCancelar} onFechar={() => setAberta(null)} onAlterado={() => { carregar(); setVersao((v) => v + 1); }} />}
       {nova && <NovaAssinatura onFechar={() => setNova(false)} onCriada={carregar} />}
       {registroManual && <AtivarPlanoManual onFechar={() => setRegistroManual(false)} onRegistrada={(id) => {
         setRegistroManual(false);

@@ -1,8 +1,9 @@
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ assinatura: vi.fn(), atual: vi.fn(), ultima: vi.fn(), abertas: vi.fn(), sincronizar: vi.fn(), gateway: vi.fn(), atualizarCartao: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { assinatura: { findUnique: m.assinatura, findUniqueOrThrow: m.atual }, cobranca: { findFirst: m.ultima, findMany: m.abertas } } }));
+const m = vi.hoisted(() => ({ assinatura: vi.fn(), atual: vi.fn(), ultima: vi.fn(), abertas: vi.fn(), buscarPagamento: vi.fn(), sincronizar: vi.fn(), gateway: vi.fn(), atualizarCartao: vi.fn() }));
+vi.mock("@/lib/db", () => ({ db: { assinatura: { findUnique: m.assinatura, findUniqueOrThrow: m.atual }, cobranca: { findFirst: m.ultima, findMany: m.abertas, findUnique: m.buscarPagamento } } }));
+vi.mock("@/lib/agenda/carregar", () => ({ configuracao: async () => ({ nomeBarbearia: "Teste" }) }));
 vi.mock("@/lib/assinaturas/cobrancas", () => ({ sincronizarAssinatura: m.sincronizar, sincronizarCobranca: vi.fn(), cobrancaEmAberto: vi.fn() }));
 vi.mock("@/lib/pagamentos/gateway", () => ({ gateway: m.gateway, gatewayPorId: m.gateway }));
 vi.mock("next/link", () => ({ default: ({ href, children }: { href: string; children: ReactNode }) => createElement("a", { href }, children) }));
@@ -11,6 +12,7 @@ vi.mock("@/components/checkout/PixPainel", () => ({ PixPainel: () => createEleme
 import { checkoutDaAssinatura, trocarCartao } from "@/lib/assinaturas/cartao-pix";
 import { ErroPagarme } from "@/lib/pagamentos/pagarme";
 import { Checkout } from "@/components/checkout/Checkout";
+import Pagar from "@/app/c/pagar/[token]/page";
 import type { EstadoCheckout } from "@/lib/pagamentos/checkout-regras";
 
 const inicial = { id: "assinatura", status: "PENDENTE", gatewayId: "sub_recusada", formaPagamento: "CARTAO", operacaoInicial: null };
@@ -52,6 +54,25 @@ describe("checkout da primeira operação", () => {
     const html = tela(estado);
     expect(html).toContain("Pagamento cancelado"); expect(html).not.toContain("confirmado.");
     expect(html).toContain("Escolher plano e forma de pagamento");
+  });
+  it("revalida a conferência antes de expor o Pix após a consulta ao provedor", async () => {
+    const pix = { ...inicial, formaPagamento: "PIX", gatewayId: "pixrec_teste" };
+    m.assinatura.mockResolvedValue(pix);
+    m.atual.mockResolvedValue({ ...pix, operacaoInicial: "CANCELANDO" });
+    m.abertas.mockResolvedValue([{ forma: "PIX", pixCopiaECola: "pix-ficticio", expiraEm: null }]);
+    const estado = await checkoutDaAssinatura("token-ficticio");
+    expect(estado).toMatchObject({ processando: true, pix: null });
+    expect(tela(estado)).not.toContain("PAINEL_PIX");
+  });
+  it.each([null, "https://provedor.invalid/pix"])("link de mensalidade já compartilhado respeita a conferência (%s)", async link => {
+    m.buscarPagamento.mockResolvedValue({ link, status: "PENDENTE", forma: "PIX", valorCentavos: 10000,
+      vencimento: new Date("2030-02-01"), pixCopiaECola: "pix-ficticio", assinatura: {
+        status: "PENDENTE", operacaoInicial: "CANCELAMENTO_REVISAO", plano: { nome: "Plano de teste" },
+      } });
+    const html = renderToStaticMarkup(await Pagar({ params: Promise.resolve({ token: "teste" }), searchParams: Promise.resolve({}) }));
+    expect(html).toContain("Pagamento em conferência");
+    expect(html).not.toContain("pix-ficticio");
+    expect(html).not.toContain("provedor.invalid");
   });
   it("plano já pago não comprova troca de cartão", async () => {
     m.assinatura.mockResolvedValue({ ...inicial, status: "ATIVA" });
