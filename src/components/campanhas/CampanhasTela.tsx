@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { ChevronDown, ChevronRight, Megaphone, Plus } from "lucide-react";
 import { api } from "@/lib/cliente-api";
 import type { Capacidade } from "@/lib/campanhas/capacidade";
@@ -59,7 +60,12 @@ export function CampanhasTela() {
           <p className="eyebrow">Marketing</p>
           <h1 className="titulo-marca text-2xl">Campanhas</h1>
           <p className="text-sm text-zinc-500">Chame a base por grupos, no ritmo que a agenda aguenta.</p>
-          <div className="mt-2 flex flex-wrap gap-3 text-sm"><a className="text-ouro underline" href="/migracao-assinaturas">Migração de assinaturas</a><a className="text-ouro underline" href="/crescimento">Metas, margem e orçamento</a><a className="text-ouro underline" href="/calendario-conteudo">Calendário de conteúdo</a></div>
+          <div className="mt-2 flex flex-wrap gap-3 text-sm">
+            <Link className="text-ouro underline" href="/campanhas/rotas">Rotas de captação (protótipo)</Link>
+            <a className="text-ouro underline" href="/migracao-assinaturas">Migração de assinaturas</a>
+            <a className="text-ouro underline" href="/crescimento">Metas, margem e orçamento</a>
+            <a className="text-ouro underline" href="/calendario-conteudo">Calendário de conteúdo</a>
+          </div>
         </div>
         {!nova && <button className="btn-primario ml-auto" onClick={() => setNova(true)}><Plus size={16} /> Nova campanha</button>}
       </div>

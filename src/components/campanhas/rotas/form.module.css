@@ -1,0 +1,71 @@
+.editor { display: flex; flex-direction: column; height: 100%; }
+.introEtapa { display: flex; align-items: center; gap: 11px; padding: 15px 14px 12px; }
+.introEtapa > div { min-width: 0; }
+.introEtapa h3 { overflow-wrap: anywhere; font-size: 17px; font-weight: 750; letter-spacing: -.024em; }
+.introEtapa p { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.iconeEditor {
+  flex: 0 0 auto; display: grid; place-items: center; width: 40px; height: 40px;
+  color: var(--tom, #cbdad2); background: var(--fundoTom, #323f3a);
+  border: 1px solid #e4f8e91b; border-radius: 11px;
+}
+.form { display: grid; gap: 12px; min-width: 0; }
+.formEditor { padding: 0 14px 13px; gap: 10px; }
+.form label { display: grid; gap: 4px; color: #d7e2de; font-size: 11px; font-weight: 720; min-width: 0; }
+.form :is(input, select, textarea) {
+  box-sizing: border-box;
+  min-width: 0; width: 100%; min-height: 36px;
+  padding: 7px 8px; border-radius: 8px; border: 1px solid var(--bordaForte);
+  background-color: #151d20; color: var(--texto); font-size: 12px; line-height: 1.45; font-weight: 570;
+}
+.form :is(input, select, textarea):hover { border-color: #ccebd55c; }
+.form :is(input, select, textarea):focus-visible { outline-offset: 1px; }
+.form select { appearance: auto; }
+.form select option { color: var(--texto); background-color: #1a2325; }
+.form textarea { resize: vertical; min-height: 70px; }
+.form input::placeholder, .form textarea::placeholder { color: #97aaa2; }
+.form [aria-invalid="true"] { border-color: #ea939c; }
+.form input[type="file"] { padding: 4px; }
+.form input[type="file"]::file-selector-button {
+  border: 1px solid #c6f5663f; border-radius: 6px; padding: 4px 6px; font-family: inherit;
+  background: #c6f56619; color: #d8f9a1; margin-right: 5px; cursor: pointer;
+}
+.anexo { display: grid; gap: 7px; }
+.anexo label > span, .previa > span { display: flex; gap: 6px; align-items: center; }
+.previa {
+  display: grid; gap: 5px; min-width: 0; padding: 8px 9px; border-radius: 9px; border: 1px solid var(--borda);
+  border-left: 2px solid #83bd9b; background: #11232383;
+}
+.previa > span { color: #b5d9c4; font-size: 10px; font-weight: 760; }
+.previa p { color: #c8d6cf; font-size: 11px; line-height: 1.53; overflow-wrap: anywhere; white-space: pre-wrap; }
+.variaveis { display: flex; flex-wrap: wrap; gap: 5px; }
+.variaveis code { font-size: 10px; border-radius: 5px; padding: 1px 4px; background: #2a3936; color: #d7e9df; }
+.acoesEditor {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto;
+  padding: 10px 14px; border-top: 1px solid var(--borda); color: var(--muted); font-size: 10.5px;
+}
+.acoesEditor > div { display: flex; gap: 5px; }
+.acoesEditor button { width: 31px; height: 31px; }
+.acoesEditor .excluir:hover { color: #f3a0a5; border-color: #e7909768; }
+.vazio { padding: 14px; font-size: 12px; color: var(--muted); }
+.imagemCriativo { min-width: 0; }
+.imagemCriativo img { display: block; width: 100%; height: 90px; object-fit: contain; background: #0e1718; border-radius: 7px; }
+.imagemCriativo figcaption { font-size: 10px; margin-top: 3px; color: var(--muted); overflow-wrap: anywhere; }
+.dialogo {
+  position: fixed; inset: 0; margin: auto; padding: 0;
+  width: min(510px, calc(100% - 24px)); max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain;
+  color: var(--texto); background: #1d2528; border: 1px solid var(--bordaForte); border-radius: 20px;
+  box-shadow: 0 24px 80px #0009;
+}
+.dialogo::backdrop { background: #090e10bc; backdrop-filter: blur(4px); }
+.conteudoDialogo { padding: 18px; }
+.topoDialogo { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+.topoDialogo h2 { font-size: 20px; font-weight: 740; letter-spacing: -.035em; }
+.dialogo .form label { font-size: 12px; }
+.dialogo .form :is(input, select) { min-height: 40px; }
+.utmCampos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.utmCampos code { font-size: 10px; }
+.ajuda { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.erro { color: #f9acb2; font-size: 11px; }
+.acoesDialogo { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 5px; }
+.perigo { color: #ffd0d5; background: #622e35; border-color: #a66e76; }
+.perigo:not(:disabled):hover { color: #ffebed; background: #7c3943; }

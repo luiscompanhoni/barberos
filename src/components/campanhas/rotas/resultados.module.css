@@ -1,0 +1,75 @@
+.indicadores {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; padding-top: 14px;
+}
+.kpi { min-height: 85px; position: relative; padding: 13px 58px 13px 15px; }
+.kpi dt { color: var(--muted); font-size: 11px; font-weight: 650; }
+.kpi dd { margin-top: 2px; color: var(--texto); font-size: clamp(23px, 2.05vw, 31px); line-height: 1.15; letter-spacing: -.045em; font-weight: 560; font-variant-numeric: tabular-nums; }
+.kpiIcone {
+  display: grid; place-items: center; flex: 0 0 auto; width: 35px; height: 35px;
+  color: var(--tom, #bcd0c4); background: var(--fundoTom, #273532); border: 1px solid #f3fff015; border-radius: 10px;
+}
+.kpi dt > .kpiIcone { position: absolute; top: 13px; right: 15px; }
+.topoResultados {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 15px 17px; border-bottom: 1px solid var(--borda);
+}
+.topoResultados p { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; padding-top: 5px; }
+.relatorio { margin-top: 14px; }
+.tabela { overflow-x: auto; }
+.tabela table { border-collapse: collapse; width: 100%; min-width: 540px; font-variant-numeric: tabular-nums; }
+.tabela :is(th, td) { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--borda); }
+.tabela thead th { color: #c3d0c7; background: #141d20a1; font-size: 11px; font-weight: 750; }
+.tabela tbody th { min-width: 0; width: 36%; max-width: 340px; }
+.nomeRelatorio { display: flex; align-items: center; gap: 8px; text-align: start; }
+.nomeRelatorio > span:last-child { min-width: 0; }
+.nomeRelatorio strong, .nomeRelatorio small { display: block; overflow-wrap: anywhere; }
+.nomeRelatorio strong { font-size: 12.5px; font-weight: 750; }
+.nomeRelatorio small { color: var(--muted); font-size: 11px; font-weight: 550; }
+.taxa { display: grid; grid-template-columns: 50px minmax(30px, 110px); gap: 8px; align-items: center; white-space: nowrap; }
+.trilho { display: block; height: 5px; width: 100%; background: #a5c8ae30; border-radius: 99px; }
+.trilho > span { display: block; height: 100%; border-radius: inherit; background: #c6f566; }
+.nota { padding: 11px 16px; font-size: 11px; color: var(--muted); }
+.jornadas { display: grid; grid-template-columns: minmax(245px, 0.75fr) minmax(0, 2fr); gap: 14px; }
+.contatos { align-self: start; }
+.quantidade { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.filtros { padding: 12px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.listaContatos { padding: 0 10px 9px !important; display: grid; gap: 5px; max-height: 330px; overflow: auto; }
+.listaContatos button {
+  width: 100%; display: grid; grid-template-columns: 29px minmax(0, 1fr) 14px; align-items: center; gap: 8px;
+  padding: 6px 7px; min-height: 47px; border-radius: 9px; border: 1px solid transparent; text-align: start;
+  background: #111c1f61;
+}
+.listaContatos button:hover { background: #edf5ef0f; border-color: var(--borda); }
+.listaContatos button[aria-pressed="true"] { border-color: #c6f56644; background: #c6f56613; }
+.listaContatos .kpiIcone { width: 27px; height: 27px; border-radius: 8px; }
+.listaContatos strong, .listaContatos small { display: block; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+.listaContatos strong { font-size: 11.5px; font-weight: 750; }
+.listaContatos small { font-size: 10px; color: var(--muted); }
+.mais { margin: 0 10px 10px; min-height: 30px; }
+.detalhe { align-self: start; min-height: 360px; }
+.origemJornada { padding: 16px 17px 10px; display: flex; align-items: center; gap: 11px; }
+.origemJornada h3 { font-size: 19px; font-weight: 750; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.origemJornada p { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.origemJornada p svg { vertical-align: middle; margin: 0 2px; }
+.iconeOrigem {
+  display: grid; place-items: center; flex: 0 0 auto; width: 42px; height: 42px; border-radius: 11px;
+  background: #c6f5661f; border: 1px solid #c6f56644; color: var(--lima);
+}
+.utmJornada { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0 17px; }
+.utmJornada > div { min-width: 0; padding: 6px 8px; background: #111b1e75; border: 1px solid var(--borda); border-radius: 8px; }
+.utmJornada dt { color: var(--muted); font-size: 10px; }
+.utmJornada dd { font-size: 12px; overflow-wrap: anywhere; }
+.timeline { display: grid; gap: 15px; padding: 16px 17px 18px !important; }
+.timeline li { display: grid; grid-template-columns: 35px minmax(0, 1fr); gap: 9px; align-items: start; position: relative; }
+.timeline li:not(:last-child)::before { content: ""; width: 1px; position: absolute; top: 36px; bottom: -14px; left: 17px; background: var(--bordaForte); }
+.timeline strong { font-size: 12px; font-weight: 770; overflow-wrap: anywhere; }
+.timeline p { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; white-space: pre-wrap; }
+
+@media (max-width: 740px) {
+  .indicadores { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .kpi { min-height: 74px; padding: 10px 43px 10px 10px; }
+  .kpi dt > .kpiIcone { width: 28px; height: 28px; top: 10px; right: 10px; }
+  .kpi dt > .kpiIcone svg { width: 15px; }
+  .jornadas { grid-template-columns: minmax(0, 1fr); }
+  .listaContatos { max-height: 220px; }
+}

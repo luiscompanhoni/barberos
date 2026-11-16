@@ -174,6 +174,10 @@ O que está implementado:
 - **Offline:** página pública curta, sem dados da conta, com tentativa de reconexão. O service worker não armazena telas privadas nem respostas de API. Guia: [app-notificacoes.md](app-notificacoes.md).
 - Não documentado: guia de estados vazios/erro/carregamento por tela, auditoria formal de contraste ou de leitor de tela.
 
+## Rotas de captação
+
+O protótipo em Campanhas → Rotas de captação organiza uma sequência de etapas por origem. Dono e gerente podem editar as rotas, simular um contato fictício, consultar os eventos da jornada e exportar o desempenho simulado. Alterações e simulações ficam no navegador, por conta. A prévia do bot e as jornadas são exemplos. O protótipo não acessa clientes, campanhas de mídia, conversas ou vendas da operação.
+
 ## Central de agentes
 
 `/agentes` usa os componentes visuais existentes, com fluxo de seis etapas, fila de trabalhos, catálogo de 22 perfis,
