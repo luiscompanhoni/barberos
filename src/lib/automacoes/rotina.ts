@@ -9,6 +9,7 @@ import { apagarCandidaturasVencidas } from "@/lib/recrutamento/servico";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { processarCampanhas } from "@/lib/campanhas/servico";
+import { loteAutorizadoConfigurado } from "@/lib/campanhas/lote-autorizado";
 import { db } from "@/lib/db";
 import { processarConvitesAvaliacao } from "@/lib/avaliacoes/automacao";
 import { processarRecompras } from "@/lib/recompras/rotina";
@@ -27,7 +28,11 @@ const MAX_REATIVACAO_POR_RODADA = 15;
 /** `clienteIds` limita a rodada a esses clientes (usado nos testes). */
 export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
   const cont = { lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0 };
-  if (quarentenaRestauracao() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return cont;
+  if (quarentenaRestauracao()) return cont;
+  if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") {
+    if (loteAutorizadoConfigurado()) cont.campanha = await processarCampanhas(agora, opts);
+    return cont;
+  }
   const cfg = await configuracao();
   const so = opts.clienteIds ? { clienteId: { in: opts.clienteIds } } : {};
   const comercial = horarioComercial(agora, cfg.fuso);
@@ -171,10 +176,11 @@ export function agendarAutomacoes() {
   let rodando = false;
   const rodar = async () => {
     // Não consome fila nem marca checklist como enviado durante o bloqueio de mensagens.
-    if (rodando || quarentenaRestauracao() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return;
+    if (rodando || quarentenaRestauracao() || (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" && !loteAutorizadoConfigurado())) return;
     rodando = true;
     try {
       const r = await rodarAutomacoes();
+      if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return;
       // Checklist da equipe (lista da manha e resumo da noite).
       const ck = await (await import("@/lib/checklist/servico")).rodarChecklist().catch((e) => {
         console.error("[checklist] falhou:", e);

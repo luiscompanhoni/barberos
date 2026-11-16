@@ -12,6 +12,7 @@ export type Campanha = {
   id: string; nome: string; segmentos: string[]; mensagem: string; limiteDiario: number; taxaRespostaBps: number;
   status: "ATIVA" | "PAUSADA" | "ENCERRADA"; jogo: { id: string; nome: string } | null; criadoEm: string; criadoPor: string | null;
   fila: number; enviados: number; falhas: number; pulados: number; enviadosHoje: number; marcaram: number; pararam: number; elegiveis: number;
+  loteAutorizado: number | null;
 };
 export type JogosCampanha = { id: string; nome: string }[];
 
@@ -39,13 +40,15 @@ export function CampanhaDetalhe(p: {
   const ativa = p.campanha?.status === "ATIVA";
   const jogos = p.campanha?.jogo && !p.jogos.some(j => j.id === p.campanha?.jogo?.id) ? [p.campanha.jogo, ...p.jogos] : p.jogos;
   const novo = !p.campanha;
-  const podeEditar = !encerrada && fila === 0;
+  const loteAutorizado = p.campanha?.loteAutorizado;
+  const podeEditar = !encerrada && fila === 0 && !loteAutorizado;
   const podeAtivar = !p.enviosBloqueados && !novo && !encerrada;
   const alterado = form.nome !== inicial.nome || form.mensagem !== inicial.mensagem ||
     Number(form.limite) !== inicial.limiteDiario || Number(form.taxa.replace(",", ".")) * 100 !== inicial.taxaRespostaBps ||
     form.jogoId !== (p.campanha?.jogo?.id ?? "");
-  const qtd = Number(quantidade);
-  const loteValido = Number.isInteger(qtd) && qtd >= 1 && qtd <= Math.min(elegiveis, 500);
+  const qtd = loteAutorizado ?? Number(quantidade);
+  const loteValido = !!loteAutorizado || (Number.isInteger(qtd) && qtd >= 1 && qtd <= Math.min(elegiveis, 500));
+  const mostrarLote = !!loteAutorizado || (ativa && !p.enviosBloqueados);
 
   async function executar(acao: "editar" | "retomar" | "pausar" | "encerrar" | "lote") {
     if (trava.current) return;
@@ -84,8 +87,9 @@ export function CampanhaDetalhe(p: {
         {fila} na fila · {p.campanha.enviados} enviados · {p.campanha.marcaram} agendaram · {p.campanha.falhas} falhas
       </p>}
       <p className="text-xs text-zinc-500">O lote respeita consentimento, agendamentos, atendimento com a equipe e migração em andamento. O sistema também dá um intervalo de 48 horas entre campanhas para o mesmo cliente.</p>
-      {p.enviosBloqueados && <p role="status" className="cartao-destaque p-3">Envios de campanhas bloqueados nesta instalação. Você pode preparar e editar os rascunhos.</p>}
-      {!podeEditar && !encerrada && <p className="text-xs text-zinc-500">Há mensagens na fila. A edição fica disponível após o processamento do lote.</p>}
+      {loteAutorizado ? <p role="status" className="cartao-destaque p-3">Primeiro lote autorizado para os {loteAutorizado} contatos conferidos. A fila só será criada quando você confirmar.</p>
+        : p.enviosBloqueados && <p role="status" className="cartao-destaque p-3">Envios de campanhas bloqueados nesta instalação. Você pode preparar e editar os rascunhos.</p>}
+      {fila > 0 && !encerrada && <p className="text-xs text-zinc-500">Há mensagens na fila. A edição fica disponível após o processamento do lote.</p>}
       <form className="space-y-3" onSubmit={e => { e.preventDefault(); void executar("editar"); }}>
         <fieldset disabled={!podeEditar || ocupado} className="space-y-3">
           <label className="rotulo">Nome<input className="campo" required minLength={2} maxLength={80} value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} /></label>
@@ -111,18 +115,18 @@ export function CampanhaDetalhe(p: {
       {!encerrada && <div className="space-y-3 border-t border-zinc-200 pt-3">
         <div className="flex flex-wrap gap-2">
           {ativa ? <button type="button" className="btn" disabled={ocupado} onClick={() => executar("pausar")}>Pausar campanha</button>
-            : <button type="button" className="btn-primario" disabled={!podeAtivar || alterado || ocupado}
+            : !loteAutorizado && <button type="button" className="btn-primario" disabled={!podeAtivar || alterado || ocupado}
               onClick={() => { if (!fila || confirm(`Retomar o envio de ${fila} contato(s) que já estão na fila?`)) void executar("retomar"); }}>
               {fila ? "Retomar fila" : "Ativar campanha"}
             </button>}
           {!novo && <button type="button" className="btn" disabled={ocupado}
             onClick={() => { if (confirm("Encerrar a campanha? Os contatos ainda na fila serão retirados.")) void executar("encerrar"); }}>Encerrar campanha</button>}
         </div>
-        {ativa && !p.enviosBloqueados && <div className="space-y-2">
-          <label className="rotulo">Tamanho do próximo lote<input className="campo" type="number" min={1} max={Math.min(elegiveis, 500)}
-            value={quantidade} onChange={e => { setQuantidade(e.target.value); setConfirmarLote(false); }} /></label>
+        {mostrarLote && <div className="space-y-2">
+          {!loteAutorizado && <label className="rotulo">Tamanho do próximo lote<input className="campo" type="number" min={1} max={Math.min(elegiveis, 500)}
+            value={quantidade} onChange={e => { setQuantidade(e.target.value); setConfirmarLote(false); }} /></label>}
           {confirmarLote ? <div className="space-y-2">
-            <p>Colocar até {qtd} contato(s) na fila de envio desta campanha?</p>
+            <p>{loteAutorizado ? `Colocar os ${qtd} contatos conferidos na fila desta campanha?` : `Colocar até ${qtd} contato(s) na fila de envio desta campanha?`}</p>
             <button type="button" className="btn-primario mr-2" disabled={ocupado || alterado || !loteValido} onClick={() => executar("lote")}>Confirmar envio do lote</button>
             <button type="button" className="btn" onClick={() => setConfirmarLote(false)}>Voltar</button>
           </div> : <button type="button" className="btn-primario" disabled={ocupado || alterado || !loteValido} onClick={() => setConfirmarLote(true)}>Preparar envio do lote</button>}

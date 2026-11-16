@@ -5,6 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, instanteLocal } from "@/lib/agenda/tempo";
+import { horarioComercial } from "@/lib/automacoes/regras";
 import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
@@ -16,6 +17,7 @@ import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { CHAVES_SEGMENTO, montarMensagem, segmentosDoCliente, SEGMENTOS, type Segmento } from "./regras";
 import { impedimentoCampanha } from "./contato";
+import { campanhaConferida, identificadorDoLote, loteAutorizadoConfirmado, loteAutorizadoDisponivel } from "./lote-autorizado";
 import { INTERVALO_CAMPANHAS_MS, migracaoDoCliente, reservarContatoCampanha } from "./reservar-contato";
 import { MODELOS_SEGMENTOS } from "./modelos-segmento";
 
@@ -140,28 +142,41 @@ export async function editarCampanha(s: Sessao, campanhaId: string, d: DadosCamp
 
 /** Libera o proximo lote: os `quantidade` primeiros elegiveis entram na fila da campanha. `clienteIds` limita (testes). */
 export async function liberarLote(s: Sessao, campanhaId: string, quantidade: number, agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
-  exigirCampanhaLiberada();
+  const autorizado = campanhasBloqueadas() ? await loteAutorizadoDisponivel() : null;
+  if (!autorizado || autorizado.campanhaId !== campanhaId) exigirCampanhaLiberada();
   const c = await db.campanha.findUnique({ where: { id: campanhaId } });
   if (!c) throw naoEncontrado("Campanha");
-  if (c.status !== "ATIVA") throw new ErroNegocio(c.status === "PAUSADA" ? "Retome a campanha antes de liberar outro lote." : "Campanha encerrada.", 409);
-  const escolhidos = (await elegiveis(c.segmentos, c.id, agora, opts.clienteIds)).slice(0, quantidade);
+  if (c.status !== "ATIVA" && !(autorizado && c.status === "PAUSADA")) throw new ErroNegocio(c.status === "PAUSADA" ? "Retome a campanha antes de liberar outro lote." : "Campanha encerrada.", 409);
+  if (autorizado && (!campanhaConferida(c, autorizado) || quantidade !== autorizado.clienteIds.length)) {
+    throw new ErroNegocio("Use a mensagem e a quantidade do lote conferido.", 409);
+  }
+  const escolhidos = (await elegiveis(c.segmentos, c.id, agora, autorizado?.clienteIds ?? opts.clienteIds)).slice(0, quantidade);
+  if (autorizado && escolhidos.length !== quantidade) {
+    throw new ErroNegocio("A elegibilidade do público aprovado mudou ou o lote já foi liberado. Confira a lista antes de enviar.", 409);
+  }
   if (!escolhidos.length) throw new ErroNegocio("Ninguém mais para chamar nesse segmento.", 409, "sem_elegiveis");
   return db.$transaction(async (tx) => {
     // Dois cliques ao mesmo tempo: um espera o outro (e o unique campanha+cliente nao deixa repetir).
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`campanha:${campanhaId}`}))`;
-    exigirCampanhaLiberada();
+    if (!autorizado) exigirCampanhaLiberada();
     const atual = await tx.campanha.findUnique({ where: { id: campanhaId } });
-    if (!atual || atual.status !== "ATIVA" || atual.segmentos.join(",") !== c.segmentos.join(",") || atual.mensagem !== c.mensagem ||
+    if (!atual || atual.status !== c.status || atual.segmentos.join(",") !== c.segmentos.join(",") || atual.mensagem !== c.mensagem ||
         atual.jogoId !== c.jogoId || atual.limiteDiario !== c.limiteDiario) {
       throw new ErroNegocio("A campanha mudou. Confira a versão atual antes de liberar o lote.", 409);
     }
     const lote = ((await tx.campanhaEnvio.aggregate({ where: { campanhaId }, _max: { lote: true } }))._max.lote ?? 0) + 1;
+    if (autorizado) {
+      if (lote !== 1) throw new ErroNegocio("O primeiro lote desta campanha já foi liberado.", 409);
+      await tx.campanha.update({ where: { id: campanhaId }, data: { status: "ATIVA" } });
+    }
     // Cada mensagem leva um link proprio (/c/r/<token>): e por ele que o funil sabe quem clicou.
     const r = await tx.campanhaEnvio.createMany({
       data: escolhidos.map((e) => ({ campanhaId, clienteId: e.id, lote, token: randomBytes(12).toString("base64url") })),
-      skipDuplicates: true,
+      skipDuplicates: !autorizado,
     });
-    await auditar(tx, s.usuarioId, "liberar_lote", "campanha", campanhaId, { campanha: c.nome, lote, quantidade: r.count });
+    await auditar(tx, s.usuarioId, "liberar_lote", "campanha", campanhaId, {
+      campanha: c.nome, lote, quantidade: r.count, ...(autorizado ? { autorizacao: identificadorDoLote(autorizado) } : {}),
+    });
     return { lote, quantidade: r.count };
   });
 }
@@ -186,7 +201,7 @@ export async function listarCampanhas(agora = Date.now()) {
   const cfg = await configuracao();
   const inicioHoje = new Date(instanteLocal(dataLocal(agora, cfg.fuso), 0, cfg.fuso));
   const comJogo = { jogo: { select: { id: true, nome: true } } } as const;
-  const [recentes, modelos, porStatus, hoje, marcaram, pararam] = await Promise.all([
+  const [recentes, modelos, porStatus, hoje, marcaram, pararam, autorizado] = await Promise.all([
     db.campanha.findMany({ orderBy: { criadoEm: "desc" }, take: 50, include: comJogo }),
     db.campanha.findMany({ where: { id: { in: MODELOS_SEGMENTOS.map(m => m.id) } }, include: comJogo }),
     db.campanhaEnvio.groupBy({ by: ["campanhaId", "status"], _count: { _all: true } }),
@@ -199,6 +214,7 @@ export async function listarCampanhas(agora = Date.now()) {
     db.$queryRaw<{ campanhaId: string; n: number }[]>`
       SELECT e."campanhaId", COUNT(*)::int AS n FROM campanha_envios e JOIN clientes c ON c.id = e."clienteId"
       WHERE e.status = 'ENVIADO' AND c."aceitaMensagens" = false GROUP BY 1`,
+    loteAutorizadoDisponivel(),
   ]);
   const cs = [...new Map([...recentes, ...modelos].map(c => [c.id, c])).values()];
   const b = await base(agora);
@@ -218,6 +234,7 @@ export async function listarCampanhas(agora = Date.now()) {
       fila: conta("FILA"), enviados, falhas: conta("FALHOU"), pulados: conta("PULADO"),
       enviadosHoje: hoje.find((x) => x.campanhaId === c.id)?._count._all ?? 0,
       marcaram: n(marcaram, c.id), pararam: n(pararam, c.id),
+      loteAutorizado: autorizado && c.status !== "ENCERRADA" && !ja.size && campanhaConferida(c, autorizado) ? autorizado.clienteIds.length : null,
       // Quem ainda da para chamar num proximo lote.
       elegiveis: b.filter((x) => podeReceber(x) && !ja.has(x.id) && x.segmentos.some((s) => c.segmentos.includes(s))).length,
     };
@@ -226,17 +243,22 @@ export async function listarCampanhas(agora = Date.now()) {
 
 /** Rotina (horario comercial): manda a fila das campanhas ativas, respeitando o limite diario de cada uma. */
 export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
-  if (campanhasBloqueadas()) return 0;
+  const autorizado = campanhasBloqueadas() ? await loteAutorizadoDisponivel() : null;
+  if (campanhasBloqueadas() && !autorizado) return 0;
+  if (autorizado && !await loteAutorizadoConfirmado(autorizado)) return 0;
   const cfg = await configuracao();
+  if (autorizado && !horarioComercial(agora, cfg.fuso)) return 0;
   const inicioHoje = new Date(instanteLocal(dataLocal(agora, cfg.fuso), 0, cfg.fuso));
+  const clientes = autorizado ? autorizado.clienteIds.filter(id => !opts.clienteIds || opts.clienteIds.includes(id)) : opts.clienteIds;
   let total = 0;
-  for (const c of await db.campanha.findMany({ where: { status: "ATIVA" }, orderBy: { criadoEm: "asc" } })) {
+  for (const c of await db.campanha.findMany({ where: { status: "ATIVA", id: autorizado?.campanhaId }, orderBy: { criadoEm: "asc" } })) {
     if (total >= MAX_POR_RODADA) break;
+    if (autorizado && !campanhaConferida(c, autorizado)) continue;
     const hoje = await db.campanhaEnvio.count({ where: { campanhaId: c.id, enviadoEm: { gte: inicioHoje }, status: { in: ["ENVIADO", "FALHOU"] } } });
     const vez = Math.min(c.limiteDiario - hoje, MAX_POR_RODADA - total);
     if (vez <= 0) continue;
     const fila = await db.campanhaEnvio.findMany({
-      where: { campanhaId: c.id, status: "FILA", cliente: { enviosCampanha: { none: { status: "ENVIADO", enviadoEm: { gte: new Date(agora - INTERVALO_CAMPANHAS_MS) } } } }, ...(opts.clienteIds ? { clienteId: { in: opts.clienteIds } } : {}) },
+      where: { campanhaId: c.id, status: "FILA", lote: autorizado ? 1 : undefined, cliente: { enviosCampanha: { none: { status: "ENVIADO", enviadoEm: { gte: new Date(agora - INTERVALO_CAMPANHAS_MS) } } } }, ...(clientes ? { clienteId: { in: clientes } } : {}) },
       orderBy: [{ lote: "asc" }, { liberadoEm: "asc" }], take: vez,
       include: { cliente: { select: { nome: true, telefone: true, aceitaMensagens: true, excluidoEm: true, conversa: { select: { estado: true, recusaAutomaticas: true } } } } },
     });
@@ -246,7 +268,9 @@ export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?
       total++;
       try {
         const link = e.token ? `${urlSite()}/c/r/${e.token}` : `${urlSite()}/c/agendar`;
-        const r = await notificarCliente(destino.telefone, montarMensagem(destino.mensagem, { nome: destino.nome, barbearia: cfg.nomeBarbearia, link }), { template: process.env.WHATSAPP_TEMPLATE_CAMPANHA?.trim() });
+        const r = await notificarCliente(destino.telefone, montarMensagem(destino.mensagem, { nome: destino.nome, barbearia: cfg.nomeBarbearia, link }), {
+          template: process.env.WHATSAPP_TEMPLATE_CAMPANHA?.trim(), envioAutorizadoId: autorizado ? e.id : undefined,
+        });
         await db.campanhaEnvio.update({
           where: { id: e.id },
           data: { mensagemId: r.mensagemId, ...(r.erro ? { status: "FALHOU" as const, erro: r.erro.slice(0, 300) } : {}) },

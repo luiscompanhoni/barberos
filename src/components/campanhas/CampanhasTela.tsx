@@ -83,7 +83,7 @@ export function CampanhasTela() {
               {preparando ? "Preparando…" : `Preparar ${MODELOS_SEGMENTOS.length} rascunhos`}
             </button>}
           </div>
-          {d.enviosBloqueados && <p role="status" className="text-xs text-zinc-500">Envios de campanhas bloqueados. Os rascunhos podem ser revisados e editados.</p>}
+          {d.enviosBloqueados && <p role="status" className="text-xs text-zinc-500">Envios gerais de campanhas bloqueados.{d.campanhas.some(c => c.loteAutorizado) ? " Abra a campanha autorizada para conferir o lote." : " Os rascunhos podem ser revisados e editados."}</p>}
           <p className="text-xs text-zinc-500">{num(d.clientes)} clientes, {num(d.aceitamMensagens)} aceitam mensagens. Um cliente pode estar em mais de um grupo.</p>
           <div className="crm-collection grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {d.segmentos.map((s) => {

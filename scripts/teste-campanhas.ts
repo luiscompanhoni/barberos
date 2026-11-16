@@ -4,12 +4,15 @@
 process.env.WHATSAPP_PROVIDER = "simulador";
 
 import type { Sessao } from "@/lib/auth/sessao";
+import { rodarAutomacoes } from "@/lib/automacoes/rotina";
 import { capacidadeDaAgenda } from "@/lib/campanhas/capacidade";
 import { funilCampanha } from "@/lib/campanhas/funil";
 import { landingDaCampanha, marcarAppAberto, registrarClique } from "@/lib/campanhas/link";
+import { revisaoDaCampanha } from "@/lib/campanhas/lote-autorizado";
 import { criarCampanha, liberarLote, listarCampanhas, mudarStatus, processarCampanhas } from "@/lib/campanhas/servico";
 import { db } from "@/lib/db";
 import { jogarPelaCampanha } from "@/lib/jogos/motor";
+import { configurarPiloto, estadoPiloto } from "@/lib/whatsapp/piloto";
 import { registrarStatus } from "@/lib/whatsapp/status";
 
 const ok = (c: boolean, msg: string) => { console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); if (!c) process.exitCode = 1; };
@@ -181,6 +184,45 @@ async function main() {
     const [h3, h7, h14] = cap.horizontes;
     ok(h3.dias === 3 && h7.dias === 7 && h14.dias === 14 && h3.vagas <= h7.vagas && h7.vagas <= h14.vagas, "capacidade: 3 ≤ 7 ≤ 14 dias");
     ok(h7.porBarbeiro.reduce((t, b) => t + b.vagas, 0) === h7.vagas, "capacidade: total = soma dos barbeiros");
+
+    // Com os envios gerais bloqueados, a confirmação do dono aprova só os clientes da lista.
+    const horaLote = depois + 4 * D;
+    const outra = await criarCampanha(s, { ...base, nome: `${TAG} outra campanha`, segmentos: ["ate30"] });
+    await liberarLote(s, outra.id, 1, horaLote, { clienteIds: [d.id] });
+    const restrita = await criarCampanha(s, { ...base, limiteDiario: 2, nome: `${TAG} lista conferida`, segmentos: ["ate30", "d31a60"] });
+    await mudarStatus(s, restrita.id, "pausar");
+    process.env.AMBIENTE = "homologacao";
+    process.env.WHATSAPP_ENVIOS_BLOQUEADOS = "true";
+    process.env.WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO = "true";
+    process.env.WHATSAPP_LOTE_CAMPANHA_AUTORIZADO = JSON.stringify({
+      campanhaId: restrita.id, clienteIds: [a.id, b.id], revisao: revisaoDaCampanha(restrita),
+    });
+    const verificaLote = async (n: number) => (await db.campanhaEnvio.count({ where: { campanhaId: restrita.id } })) === n;
+    ok((await listarCampanhas(horaLote)).find(x => x.id === restrita.id)?.loteAutorizado === 2, "só o lote conferido aparece disponível no painel");
+    ok(Object.values(await rodarAutomacoes(horaLote)).every(n => n === 0) && await verificaLote(0), "ativar a autorização não cria fila nem executa as outras rotinas");
+    await db.campanha.update({ where: { id: restrita.id }, data: { status: "ATIVA" } });
+    const filaAnterior = await db.campanhaEnvio.create({ data: { campanhaId: restrita.id, clienteId: a.id, lote: 1, token: "lote-teste-anterior" } });
+    ok((await rodarAutomacoes(horaLote)).campanha === 0, "fila anterior da própria campanha aguarda a confirmação do lote");
+    await db.campanhaEnvio.delete({ where: { id: filaAnterior.id } });
+    await mudarStatus(s, restrita.id, "pausar");
+    ok((await falha(() => liberarLote(s, outra.id, 1, horaLote)))?.codigo === "campanhas_bloqueadas", "outra campanha continua bloqueada");
+    ok(!!await falha(() => liberarLote(s, restrita.id, 1, horaLote)), "painel precisa confirmar a quantidade conferida");
+    await db.cliente.update({ where: { id: a.id }, data: { aceitaMensagens: false } });
+    ok(!!await falha(() => liberarLote(s, restrita.id, 2, horaLote)) && await verificaLote(0), "perda de elegibilidade não substitui o cliente aprovado");
+    await db.cliente.update({ where: { id: a.id }, data: { aceitaMensagens: true } });
+    const piloto = await configurarPiloto(s.usuarioId, (await estadoPiloto())?.versao ?? 0, TELS[4]);
+    try {
+      ok((await falha(() => liberarLote(s, restrita.id, 2, horaLote)))?.codigo === "campanhas_bloqueadas", "piloto em andamento bloqueia a autorização");
+    } finally {
+      await configurarPiloto(s.usuarioId, piloto?.versao ?? 0, null);
+    }
+    const resultados = await Promise.allSettled([liberarLote(s, restrita.id, 2, horaLote), liberarLote(s, restrita.id, 2, horaLote)]);
+    ok(resultados.filter(r => r.status === "fulfilled").length === 1 &&
+      (await naFila(restrita.id)).join() === [a.id, b.id].sort().join(), "dois cliques criam um lote com os nomes aprovados");
+    ok((await rodarAutomacoes(horaLote - 5 * 3_600_000)).campanha === 0, "lote autorizado espera o horário comercial");
+    ok((await rodarAutomacoes(horaLote)).campanha === 2 &&
+      await db.campanhaEnvio.count({ where: { campanhaId: restrita.id, status: "ENVIADO", mensagemId: { not: null } } }) === 2 &&
+      await db.campanhaEnvio.count({ where: { campanhaId: outra.id, status: "FILA" } }) === 1, "simulador processa só o lote autorizado e preserva a outra fila");
   } finally {
     await limpar();
   }

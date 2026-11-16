@@ -6,6 +6,12 @@
  *   tela /simulador (para testar sem conta na Meta). Na homologacao e sempre ele.
  */
 
+import type { Conversa } from "@prisma/client";
+import { configuracao } from "@/lib/agenda/carregar";
+import { campanhaConferida, loteAutorizadoConfirmado, loteAutorizadoDisponivel } from "@/lib/campanhas/lote-autorizado";
+import { montarMensagem } from "@/lib/campanhas/regras";
+import { db } from "@/lib/db";
+import { urlSite } from "@/lib/dominios";
 import { reservarEnvioPiloto } from "./piloto";
 import { telefonePiloto } from "./piloto-regras";
 import { textoParametroTemplate } from "./template-parametro";
@@ -13,6 +19,7 @@ import { ehHomologacao } from "@/lib/ambiente";
 import { enviarTextoEvolution } from "./evolution";
 import { credenciaisOficial } from "./oficial";
 import { envioTesteEquipe, testeEquipeAtivo } from "./teste-equipe";
+import { telefoneCanonico } from "./webhook";
 
 export type ResultadoEnvio = { wamid: string | null };
 
@@ -73,6 +80,26 @@ async function entregarTexto(para: string, texto: string, digitandoMs = 0): Prom
   if (p === "evolution") return enviarTextoEvolution(para, texto, digitandoMs);
   if (digitandoMs > 0) await new Promise((r) => setTimeout(r, digitandoMs));
   return postarCloud({ to: para, type: "text", text: { preview_url: false, body: texto.slice(0, 4096) } });
+}
+
+/** O desbloqueio vale somente para um envio já reservado da lista conferida. */
+export async function enviarTextoLoteAutorizado(envioId: string, conversa: Conversa, texto: string) {
+  const autorizado = await loteAutorizadoDisponivel();
+  const envio = autorizado && await db.campanhaEnvio.findUnique({
+    where: { id: envioId }, include: { campanha: true, cliente: { select: { telefone: true, nome: true, aceitaMensagens: true, excluidoEm: true } } },
+  });
+  if (!autorizado || !envio || envio.lote !== 1 || envio.status !== "ENVIADO" || envio.mensagemId || !envio.token ||
+      envio.campanha.status !== "ATIVA" || !campanhaConferida(envio.campanha, autorizado) || !autorizado.clienteIds.includes(envio.clienteId) ||
+      conversa.clienteId !== envio.clienteId || conversa.telefone !== envio.cliente.telefone ||
+      conversa.recusaAutomaticas || conversa.estado === "HUMANO" || !envio.cliente.aceitaMensagens || envio.cliente.excluidoEm) {
+    throw new Error("O envio não corresponde ao lote aprovado.");
+  }
+  if (!await loteAutorizadoConfirmado(autorizado)) throw new Error("O lote aguarda confirmação no painel.");
+  const cfg = await configuracao();
+  const esperado = montarMensagem(envio.campanha.mensagem, { nome: envio.cliente.nome, barbearia: cfg.nomeBarbearia, link: `${urlSite()}/c/r/${envio.token}` });
+  if (texto !== esperado) throw new Error("O texto do envio mudou desde a aprovação do lote.");
+  const destino = conversa.waId && telefoneCanonico(conversa.waId) === telefoneCanonico(conversa.telefone) ? conversa.waId : conversa.telefone;
+  return entregarTexto(destino, texto);
 }
 
 export async function enviarTemplate(para: string, t: TemplateWhatsApp): Promise<ResultadoEnvio> {

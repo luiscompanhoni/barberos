@@ -44,6 +44,20 @@ describe("campanhas dos cards", () => {
     expect(html).not.toContain("Confirmar envio do lote");
   });
 
+  it("permite preparar somente o lote conferido mesmo com a campanha pausada", () => {
+    const modelo = MODELOS_SEGMENTOS[0];
+    const html = renderToStaticMarkup(createElement(CampanhaDetalhe, {
+      modelo, segmentos: [{ chave: modelo.chave, rotulo: modelo.rotulo, total: 120, podemReceber: 110 }],
+      campanha: { ...modelo, segmentos: [modelo.chave], status: "PAUSADA", jogo: null, criadoEm: "", criadoPor: null,
+        fila: 0, enviados: 0, falhas: 0, pulados: 0, enviadosHoje: 0, marcaram: 0, pararam: 0, elegiveis: 110, loteAutorizado: 10 },
+      jogos: [], enviosBloqueados: true, onAlterar: async () => {}, onFechar: () => {},
+    }));
+    expect(html).toContain("10 contatos conferidos");
+    expect(html).toMatch(/<button[^>]*class="btn-primario"[^>]*>Preparar envio do lote<\/button>/);
+    expect(html).not.toContain("Tamanho do próximo lote");
+    expect(html).not.toContain("Ativar campanha");
+  });
+
   it("prepara pela gestão sem chamar criação ativa ou liberação de lote", async () => {
     const resposta = await POST(req({ acao: "preparar_segmentos" }));
     expect(resposta.status).toBe(200);
