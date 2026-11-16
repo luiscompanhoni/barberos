@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { exigirSessao, GESTAO } from "@/lib/auth/sessao";
 import { MENSAGEM_PADRAO, MENSAGEM_PADRAO_ROLETA } from "@/lib/campanhas/regras";
-import { criarCampanha, listarCampanhas, resumoSegmentos } from "@/lib/campanhas/servico";
+import { campanhasBloqueadas, criarCampanha, listarCampanhas, prepararCampanhasPorSegmento, resumoSegmentos } from "@/lib/campanhas/servico";
+import { schemaCampanha } from "@/lib/campanhas/schemas";
 import { rota } from "@/lib/erros";
 import { listarJogos, noAr } from "@/lib/jogos/motor";
-import { corpo } from "@/lib/validacao";
+import { corpoCobrancaEquipe } from "@/lib/pagamentos/http-equipe";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,8 @@ export const GET = rota(async () => {
   await exigirSessao(GESTAO);
   const [segmentos, campanhas, jogos] = await Promise.all([resumoSegmentos(), listarCampanhas(), listarJogos()]);
   return NextResponse.json({
-    ...segmentos, campanhas, mensagemPadrao: MENSAGEM_PADRAO, mensagemPadraoRoleta: MENSAGEM_PADRAO_ROLETA,
+    ...segmentos, campanhas, enviosBloqueados: campanhasBloqueadas(),
+    mensagemPadrao: MENSAGEM_PADRAO, mensagemPadraoRoleta: MENSAGEM_PADRAO_ROLETA,
     // Jogos no ar que podem ir de presente no link.
     jogos: jogos.filter((j) => noAr(j)).map((j) => ({ id: j.id, nome: j.nome })),
   });
@@ -22,13 +24,7 @@ export const GET = rota(async () => {
 
 export const POST = rota(async (req: Request) => {
   const s = await exigirSessao(GESTAO);
-  const b = await corpo(req, z.object({
-    nome: z.string().trim().min(2).max(80),
-    segmentos: z.array(z.string().max(20)).min(1).max(10),
-    mensagem: z.string().trim().min(10).max(900),
-    limiteDiario: z.number().int().min(1).max(500),
-    taxaRespostaBps: z.number().int().min(100).max(10_000),
-    jogoId: z.string().max(40).nullable().default(null),
-  }));
+  const b = await corpoCobrancaEquipe(req, z.union([z.object({ acao: z.literal("preparar_segmentos") }).strict(), schemaCampanha]));
+  if ("acao" in b) return NextResponse.json(await prepararCampanhasPorSegmento(s));
   return NextResponse.json(await criarCampanha(s, b), { status: 201 });
 });

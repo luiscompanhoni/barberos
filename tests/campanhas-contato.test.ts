@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ campanhas: vi.fn(), fila: vi.fn(), count: vi.fn(), reservar: vi.fn(), salvar: vi.fn(), marcou: vi.fn(), enviar: vi.fn(), contato: vi.fn(), recente: vi.fn() }));
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+const m = vi.hoisted(() => ({ campanhas: vi.fn(), campanha: vi.fn(), fila: vi.fn(), count: vi.fn(), reservar: vi.fn(), salvar: vi.fn(), marcou: vi.fn(), enviar: vi.fn(), contato: vi.fn(), recente: vi.fn() }));
 vi.mock("@/lib/db", () => {
-  const tx = { $queryRaw: vi.fn(), cliente: { findUnique: m.contato }, campanha: { findMany: m.campanhas }, campanhaEnvio: { findMany: m.fila, findFirst: m.recente, count: m.count, updateMany: m.reservar, update: m.salvar }, agendamento: { count: m.marcou } };
+  const tx = { $queryRaw: vi.fn(), $executeRaw: vi.fn(), cliente: { findUnique: m.contato }, campanha: { findMany: m.campanhas, findUnique: m.campanha }, campanhaEnvio: { findMany: m.fila, findFirst: m.recente, count: m.count, updateMany: m.reservar, update: m.salvar }, agendamento: { count: m.marcou } };
   return { db: { ...tx, $transaction: (fn: (p: typeof tx) => unknown) => fn(tx) } };
 });
 vi.mock("@/lib/whatsapp/piloto-regras", () => ({ recursoPiloto: () => false }));
@@ -13,9 +13,11 @@ import { processarCampanhas } from "@/lib/campanhas/servico";
 const cliente = { nome: "Teste", telefone: "telefone-ficticio", aceitaMensagens: true, excluidoEm: null, conversa: { estado: "BOT", recusaAutomaticas: false } };
 beforeEach(() => {
   vi.clearAllMocks(); m.campanhas.mockResolvedValue([{ id: "c", limiteDiario: 5, mensagem: "Oi {nome}, {link}" }]);
+  m.campanha.mockResolvedValue({ status: "ATIVA", mensagem: "Oi {nome}, {link}" });
   m.count.mockResolvedValue(0); m.marcou.mockResolvedValue(0); m.reservar.mockResolvedValue({ count: 1 }); m.enviar.mockResolvedValue({ mensagemId: "m" });
   m.contato.mockResolvedValue(cliente); m.recente.mockResolvedValue(null);
 });
+afterEach(() => vi.unstubAllEnvs());
 describe("campanha reavalia o contato antes de despachar", () => {
   it.each([
     { ...cliente, aceitaMensagens: false },
@@ -50,5 +52,16 @@ describe("campanha reavalia o contato antes de despachar", () => {
     m.fila.mockResolvedValue([{ id: "e", clienteId: "proprio", token: "teste", cliente }]);
     m.reservar.mockResolvedValue({ count: 0 });
     expect(await processarCampanhas()).toBe(0); expect(m.enviar).not.toHaveBeenCalled();
+  });
+  it("não reserva contato se a campanha mudou para pausada após a leitura da fila", async () => {
+    m.fila.mockResolvedValue([{ id: "e", clienteId: "proprio", token: "teste" }]);
+    m.campanha.mockResolvedValue({ status: "PAUSADA", mensagem: "Oi {nome}, {link}" });
+    expect(await processarCampanhas()).toBe(0);
+    expect(m.reservar).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled();
+  });
+  it("bloqueio global impede tanto a leitura quanto o processamento da fila", async () => {
+    vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "true");
+    expect(await processarCampanhas()).toBe(0);
+    expect(m.campanhas).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled();
   });
 });

@@ -183,6 +183,8 @@ A atualização de equipe acrescenta **Reuniões** (`/reunioes`), **Meu dia** (`
     serviço que mais sai, com a duração de cada barbeiro e o intervalo).
   - Segmentos com tamanho: 0–30, 31–60, 61–90, 91–180, +180 dias, assinantes, ex-assinantes, perdidos (+90 dias),
     novos (1ª visita em 30 dias) e cadastrados que nunca vieram; mostra quantos podem receber agora.
+  - Cada card abre público, objetivo, texto editável, prévia e configuração de lote. A preparação dos 16 modelos é
+    idempotente e grava campanhas pausadas; a equipe ativa e confirma cada lote quando o envio estiver liberado.
   - Campanha = segmentos + mensagem (`{nome}`, `{barbearia}`, `{link}`; o "responda PARAR" entra sozinho) + limite
     por dia. O dono libera lotes; o tamanho sugerido vem da agenda livre em 7 dias e da taxa de quem costuma marcar
     (ex.: 40 vagas ÷ 20% = 200). Mais recentes primeiro; até 20 a cada 5 min, 8h–21h; quem marcou ou pediu PARAR

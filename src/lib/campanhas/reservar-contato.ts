@@ -8,15 +8,18 @@ export const migracaoDoCliente = {
 };
 
 /** Duas campanhas não reservam contato com a mesma pessoa na mesma janela. */
-export async function reservarContatoCampanha(id: string, clienteId: string, agora: number) {
+export async function reservarContatoCampanha(id: string, campanhaId: string, clienteId: string, agora: number) {
   return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`campanha:${campanhaId}`}))`;
+    const campanha = await tx.campanha.findUnique({ where: { id: campanhaId }, select: { status: true, mensagem: true } });
+    if (campanha?.status !== "ATIVA") return false;
     await tx.$queryRaw`SELECT 1 FROM clientes WHERE id = ${clienteId} FOR UPDATE`;
     const cliente = await tx.cliente.findUnique({ where: { id: clienteId }, select: { nome: true, telefone: true, aceitaMensagens: true, excluidoEm: true, conversa: { select: { estado: true, recusaAutomaticas: true } }, assinaturas: migracaoDoCliente } });
     if (!cliente) return false;
     const marcou = await tx.agendamento.count({ where: { clienteId, status: { in: ["MARCADO", "CONFIRMADO"] }, inicio: { gt: new Date(agora) } } });
     const pular = impedimentoCampanha(cliente, marcou > 0);
     if (!pular && await tx.campanhaEnvio.findFirst({ where: { clienteId, status: "ENVIADO", enviadoEm: { gte: new Date(agora - INTERVALO_CAMPANHAS_MS) } }, select: { id: true } })) return false;
-    const ok = await tx.campanhaEnvio.updateMany({ where: { id, clienteId, status: "FILA" }, data: pular ? { status: "PULADO", erro: pular } : { status: "ENVIADO", enviadoEm: new Date(agora) } });
-    return ok.count > 0 && !pular ? { nome: cliente.nome, telefone: cliente.telefone } : false;
+    const ok = await tx.campanhaEnvio.updateMany({ where: { id, campanhaId, clienteId, status: "FILA" }, data: pular ? { status: "PULADO", erro: pular } : { status: "ENVIADO", enviadoEm: new Date(agora) } });
+    return ok.count > 0 && !pular ? { nome: cliente.nome, telefone: cliente.telefone, mensagem: campanha.mensagem } : false;
   });
 }

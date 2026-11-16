@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 /** Segmentos, capacidade da agenda e campanhas em lotes (dono e gerente). */
 export default async function Campanhas() {
-  const s = (await sessaoAtual())!;
-  if (!GESTAO.includes(s.papel)) redirect("/");
+  const s = await sessaoAtual();
+  if (!s || !GESTAO.includes(s.papel)) redirect("/");
   return <CampanhasTela />;
 }

@@ -1,21 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Megaphone, Pause, Play, Plus, Send, Square } from "lucide-react";
+import { ChevronDown, ChevronRight, Megaphone, Plus } from "lucide-react";
 import { api } from "@/lib/cliente-api";
 import type { Capacidade } from "@/lib/campanhas/capacidade";
 import { loteSugerido, SEGMENTOS } from "@/lib/campanhas/regras";
+import { MODELOS_SEGMENTOS } from "@/lib/campanhas/modelos-segmento";
 import { CapacidadePainel } from "./CapacidadePainel";
 import { FunilCampanha } from "./FunilCampanha";
 import { ContadorCrm } from "@/components/visual/ContadorCrm";
+import { CampanhaDetalhe, type Campanha, type JogosCampanha, type SegmentoCampanha } from "./CampanhaDetalhe";
 
-type Seg = { chave: string; rotulo: string; total: number; podemReceber: number };
-type Campanha = {
-  id: string; nome: string; segmentos: string[]; mensagem: string; limiteDiario: number; taxaRespostaBps: number;
-  status: "ATIVA" | "PAUSADA" | "ENCERRADA"; jogo: { id: string; nome: string } | null; criadoEm: string; criadoPor: string | null;
-  fila: number; enviados: number; falhas: number; pulados: number; enviadosHoje: number; marcaram: number; pararam: number; elegiveis: number;
+type Dados = {
+  clientes: number; aceitamMensagens: number; segmentos: SegmentoCampanha[]; campanhas: Campanha[];
+  enviosBloqueados: boolean; mensagemPadrao: string; mensagemPadraoRoleta: string; jogos: JogosCampanha;
 };
-type Dados = { clientes: number; aceitamMensagens: number; segmentos: Seg[]; campanhas: Campanha[]; mensagemPadrao: string; mensagemPadraoRoleta: string; jogos: { id: string; nome: string }[] };
 
 const ROTULO = Object.fromEntries(SEGMENTOS.map((s) => [s.chave, s.rotulo]));
 const STATUS = { ATIVA: "Ativa", PAUSADA: "Pausada", ENCERRADA: "Encerrada" };
@@ -27,21 +26,29 @@ export function CampanhasTela() {
   const [cap, setCap] = useState<Capacidade | null>(null);
   const [nova, setNova] = useState(false);
   const [msg, setMsg] = useState<{ t: string; erro?: boolean } | null>(null);
+  const [detalheId, setDetalheId] = useState<string | null>(null);
+  const [preparando, setPreparando] = useState(false);
 
-  const carregar = useCallback(() => {
-    api<Dados>("/api/campanhas").then(setD).catch((e) => setMsg({ t: e.message, erro: true }));
-  }, []);
-  useEffect(carregar, [carregar]);
+  const carregar = useCallback(() => api<Dados>("/api/campanhas").then(setD), []);
+  useEffect(() => {
+    void carregar().catch(e => setMsg({ t: e.message, erro: true }));
+  }, [carregar]);
   // Vagas dos proximos 7 dias: base para sugerir o tamanho do lote.
   const vagas7 = cap?.horizontes.find((h) => h.dias === 7)?.vagas ?? null;
+  const modelo = MODELOS_SEGMENTOS.find(m => m.id === detalheId);
+  const campanha = d?.campanhas.find(c => c.id === detalheId);
+  const faltam = d && MODELOS_SEGMENTOS.some(m => !d.campanhas.some(c => c.id === m.id));
 
-  async function agir(id: string, body: object, ok: string) {
+  async function preparar() {
+    setPreparando(true); setMsg(null);
     try {
-      const r = await api<{ quantidade?: number; lote?: number }>(`/api/campanhas/${id}`, { method: "PATCH", body });
-      setMsg({ t: r.quantidade ? `Lote ${r.lote} liberado: ${num(r.quantidade)} cliente(s) na fila. A mensagem sai aos poucos, no horário comercial.` : ok });
-      carregar();
+      const { criadas } = await api<{ criadas: number }>("/api/campanhas", { method: "POST", body: { acao: "preparar_segmentos" } });
+      await carregar();
+      setMsg({ t: criadas ? `${num(criadas)} campanha(s) preparada(s) e pausada(s).` : "Os rascunhos dos segmentos já estão preparados." });
     } catch (e) {
       setMsg({ t: (e as Error).message, erro: true });
+    } finally {
+      setPreparando(false);
     }
   }
 
@@ -56,24 +63,41 @@ export function CampanhasTela() {
         </div>
         {!nova && <button className="btn-primario ml-auto" onClick={() => setNova(true)}><Plus size={16} /> Nova campanha</button>}
       </div>
-      {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
+      {msg && <p role={msg.erro ? "alert" : "status"} className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
 
-      {nova && d && <NovaCampanha dados={d} onFechar={(criou) => { setNova(false); if (criou) { setMsg({ t: "Campanha criada. Agora libere o primeiro lote." }); carregar(); } }} />}
+      {nova && d && <NovaCampanha dados={d} onFechar={(criou) => {
+        setNova(false);
+        if (criou) {
+          setMsg({ t: "Campanha criada. Abra o card para revisar a configuração." });
+          void carregar().catch(e => setMsg({ t: e.message, erro: true }));
+        }
+      }} />}
 
       <CapacidadePainel onCarregar={setCap} />
 
       {d && (
         <section className="space-y-2">
-          <h2 className="font-semibold">Segmentos da base</h2>
-          <p className="text-xs text-zinc-500">{num(d.clientes)} clientes, {num(d.aceitamMensagens)} aceitam mensagens. “Podem receber” = aceitam mensagens e não têm horário marcado. Um cliente pode estar em mais de um grupo.</p>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">Segmentos da base</h2>
+            {faltam && <button type="button" className="btn" disabled={preparando} onClick={() => void preparar()}>
+              {preparando ? "Preparando…" : `Preparar ${MODELOS_SEGMENTOS.length} rascunhos`}
+            </button>}
+          </div>
+          {d.enviosBloqueados && <p role="status" className="text-xs text-zinc-500">Envios de campanhas bloqueados. Os rascunhos podem ser revisados e editados.</p>}
+          <p className="text-xs text-zinc-500">{num(d.clientes)} clientes, {num(d.aceitamMensagens)} aceitam mensagens. Um cliente pode estar em mais de um grupo.</p>
           <div className="crm-collection grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            {d.segmentos.map((s) => (
-              <div key={s.chave} className="cartao crm-kpi p-3">
+            {d.segmentos.map((s) => {
+              const modelo = MODELOS_SEGMENTOS.find(m => m.chave === s.chave);
+              if (!modelo) return null;
+              const c = d.campanhas.find(c => c.id === modelo.id);
+              return <button type="button" key={s.chave} className="cartao cartao-clicavel crm-kpi p-3 text-left"
+                onClick={() => setDetalheId(modelo.id)} aria-label={`Abrir campanha: ${s.rotulo}`} aria-haspopup="dialog">
                 <p className="text-xs text-zinc-500">{s.rotulo}</p>
                 <p className="text-2xl font-normal"><ContadorCrm valor={s.total} formatar={num} /></p>
                 <p className="text-xs text-zinc-500">{num(s.podemReceber)} {s.podemReceber === 1 ? "pode" : "podem"} receber</p>
-              </div>
-            ))}
+                <span className="mt-1 inline-flex items-center gap-1 text-xs font-semibold">{c ? STATUS[c.status] : "Ver rascunho"} <ChevronRight size={13} aria-hidden="true" /></span>
+              </button>;
+            })}
           </div>
         </section>
       )}
@@ -82,27 +106,28 @@ export function CampanhasTela() {
         <section className="space-y-2">
           <h2 className="font-semibold">Campanhas</h2>
           {d.campanhas.length === 0 && <div className="cartao text-sm text-zinc-500">Nenhuma campanha ainda. A primeira costuma ser só para quem veio nos últimos 60 dias.</div>}
-          {d.campanhas.map((c) => <CartaoCampanha key={c.id} c={c} vagas7={vagas7} onAgir={agir} />)}
+          {d.campanhas.map((c) => <CartaoCampanha key={c.id} c={c} vagas7={vagas7} onAbrir={() => setDetalheId(c.id)} />)}
         </section>
       )}
+      {d && detalheId && (campanha || modelo) && <CampanhaDetalhe key={detalheId} campanha={campanha} modelo={modelo}
+        segmentos={d.segmentos} jogos={d.jogos} enviosBloqueados={d.enviosBloqueados} onAlterar={carregar}
+        onFechar={() => setDetalheId(null)} />}
     </div>
   );
 }
 
-function CartaoCampanha({ c, vagas7, onAgir }: { c: Campanha; vagas7: number | null; onAgir: (id: string, body: object, ok: string) => void }) {
+function CartaoCampanha({ c, vagas7, onAbrir }: { c: Campanha; vagas7: number | null; onAbrir: () => void }) {
   const sugestao = vagas7 === null ? null : loteSugerido({ vagas: vagas7, taxaRespostaBps: c.taxaRespostaBps, limiteDiario: c.limiteDiario, elegiveis: c.elegiveis, naFila: c.fila });
-  const [qtd, setQtd] = useState("");
   const [funil, setFunil] = useState(false);
-  const valor = qtd === "" ? sugestao ?? 0 : Number(qtd);
   const taxa = c.enviados ? Math.round((c.marcaram / c.enviados) * 100) : null;
   return (
     <div className="cartao space-y-3">
       <div className="flex flex-wrap items-start gap-2">
         <div className="min-w-0 flex-1">
-          <p className="font-semibold">
+          <button type="button" className="font-semibold underline" onClick={onAbrir} aria-haspopup="dialog" aria-label={`Gerenciar campanha ${c.nome}`}>
             <Megaphone size={15} className="mr-1 inline text-ouro" />{c.nome}
-            {c.jogo && <span className="ml-2 rounded-full bg-ouro/15 px-2 py-0.5 text-[11px] font-semibold text-ouro">{c.jogo.nome}</span>}
-          </p>
+          </button>
+          {c.jogo && <span className="ml-2 rounded-full bg-ouro/15 px-2 py-0.5 text-[11px] font-semibold text-ouro">{c.jogo.nome}</span>}
           <p className="text-xs text-zinc-500">{c.segmentos.map((s) => ROTULO[s] ?? s).join(" + ")} · até {c.limiteDiario}/dia{c.criadoPor ? ` · criada por ${c.criadoPor}` : ""}</p>
         </div>
         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${c.status === "ATIVA" ? "bg-emerald-50 text-emerald-800" : c.status === "PAUSADA" ? "bg-amber-50 text-amber-800" : "bg-zinc-100 text-zinc-500"}`}>{STATUS[c.status]}</span>
@@ -118,24 +143,6 @@ function CartaoCampanha({ c, vagas7, onAgir }: { c: Campanha; vagas7: number | n
           </div>
         ))}
       </div>
-      {c.status !== "ENCERRADA" && (
-        <div className="flex flex-wrap items-end gap-2">
-          {c.status === "ATIVA" && (
-            <>
-              <div>
-                <label className="rotulo">Próximo lote</label>
-                <input className="campo w-28" inputMode="numeric" value={qtd === "" ? String(sugestao ?? "") : qtd} onChange={(e) => setQtd(e.target.value.replace(/\D/g, ""))} />
-              </div>
-              <button className="btn-primario" disabled={!(valor > 0)} onClick={() => { onAgir(c.id, { acao: "lote", quantidade: Math.min(500, valor) }, ""); setQtd(""); }}>
-                <Send size={15} /> Liberar lote
-              </button>
-              <button className="btn" onClick={() => onAgir(c.id, { acao: "pausar" }, "Campanha pausada: a fila espera.")}><Pause size={15} /> Pausar</button>
-            </>
-          )}
-          {c.status === "PAUSADA" && <button className="btn-primario" onClick={() => onAgir(c.id, { acao: "retomar" }, "Campanha retomada.")}><Play size={15} /> Retomar</button>}
-          <button className="btn ml-auto" onClick={() => confirm(`Encerrar "${c.nome}"? Quem ainda está na fila não recebe.`) && onAgir(c.id, { acao: "encerrar" }, "Campanha encerrada.")}><Square size={14} /> Encerrar</button>
-        </div>
-      )}
       {(c.enviados > 0 || c.fila > 0) && (
         <div className="border-t border-zinc-200 pt-2">
           <button className="flex items-center gap-1 text-sm font-semibold" aria-expanded={funil} onClick={() => setFunil(!funil)}>
@@ -147,7 +154,7 @@ function CartaoCampanha({ c, vagas7, onAgir }: { c: Campanha; vagas7: number | n
       {c.status === "ATIVA" && (
         <p className="text-xs text-zinc-500">
           {num(c.elegiveis)} cliente(s) ainda podem ser chamados.
-          {sugestao !== null && vagas7 !== null && ` Sugestão pela agenda: ${num(vagas7)} vagas nos próximos 7 dias ÷ ${c.taxaRespostaBps / 100}% de quem costuma marcar${c.fila ? `, menos ${num(c.fila)} já na fila` : ""} (até ${c.limiteDiario}/dia).`}
+          {sugestao !== null && vagas7 !== null && ` Sugestão para o lote: ${num(sugestao)} contato(s), considerando ${num(vagas7)} vagas nos próximos 7 dias, a estimativa de agendamento e o limite diário.`}
         </p>
       )}
     </div>
