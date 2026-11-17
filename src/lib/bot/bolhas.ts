@@ -4,9 +4,16 @@
  */
 
 export const MAX_BOLHAS = 3;
+const frases = new Intl.Segmenter("pt-BR", { granularity: "sentence" });
 
 export function dividirEmBolhas(texto: string, max = MAX_BOLHAS): string[] {
-  const partes = texto.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  let partes = texto.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (partes.length === 1 && !partes[0].includes("\n")) {
+    const separadas = [...frases.segment(partes[0])].map(({ segment }) => segment.trim());
+    // Respeita um balão curto já escrito como unidade. Se o modelo juntou várias
+    // falas num parágrafo, usa a pontuação sem quebrar vocativos, valores ou horas.
+    if (separadas.length >= 3) partes = separadas;
+  }
   if (partes.length <= max) return partes;
   return [...partes.slice(0, max - 1), partes.slice(max - 1).join("\n\n")];
 }

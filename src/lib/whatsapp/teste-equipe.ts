@@ -5,12 +5,23 @@ import { telefoneCanonico } from "./webhook";
 /** Homologação no WhatsApp real: somente dono/gerente ativo, sem campanhas. */
 export const testeEquipeAtivo = () => process.env.WHATSAPP_ATENDIMENTO_TESTE_EQUIPE === "true" && process.env.BARBEROS_QUARENTENA_RESTAURACAO !== "true";
 
+export const testeIndividualConfigurado = () =>
+  process.env.WHATSAPP_ATENDIMENTO_TESTE_NUMERO !== undefined || process.env.WHATSAPP_ATENDIMENTO_TESTE_ATE !== undefined;
+
+export function destinoTesteIndividual(agora = Date.now()) {
+  if (!testeEquipeAtivo()) return null;
+  const telefone = telefonePiloto(process.env.WHATSAPP_ATENDIMENTO_TESTE_NUMERO ?? "");
+  const ate = Date.parse(process.env.WHATSAPP_ATENDIMENTO_TESTE_ATE ?? "");
+  return telefone && ate > agora && ate - agora <= 2 * 3_600_000 ? telefoneCanonico(telefone) : null;
+}
+
 export async function destinatarioTesteEquipe(para: string) {
   if (!testeEquipeAtivo()) return false;
   const validado = telefonePiloto(para);
   if (!validado) return false;
   // A entrada usa o nono dígito; o envio pode preservar o wa_id antigo sem ele.
   const telefone = telefoneCanonico(validado);
+  if (testeIndividualConfigurado() && telefone !== destinoTesteIndividual()) return false;
   return !!await db.usuario.findFirst({
     where: { telefone, ativo: true, papel: { in: ["DONO", "GERENTE"] } }, select: { id: true },
   });

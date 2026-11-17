@@ -33,6 +33,48 @@ const ctx = { conversaId: "c1", telefone: "5511999990000", nomePerfil: "Ana" };
 const base = { sistema: "sistema", contexto: "<contexto>agora</contexto>", ctx, nomeModelo: "claude-opus-5-5" };
 
 describe("executarTurno", () => {
+  it.each([["a segunda", "14:00", true], ["sim", "14:00", false], ["a segunda", "10:30", false]])(
+    "agendamento só usa a escolha escrita %s, horário %s", async (texto, horario, executar) => {
+      const oferta = { data: "2026-11-18", servico_id: "corte", barbeiro_id: "tainan", servicos_adicionais: ["barba"] };
+      const { modelo } = modeloRoteirizado([
+        resposta([{ type: "tool_use", id: "t1", name: "agendar", input: { ...oferta, horario } }], "tool_use"),
+        resposta([{ type: "text", text: "Certo." }], "end_turn"),
+      ]);
+      const executor = vi.fn().mockResolvedValue({ texto: "Agendado." });
+      await executarTurno({ ...base, ctx: { ...ctx, textoEntrada: texto },
+        historico: [
+          { role: "user", content: "Quais horários tem?" },
+          { role: "assistant", content: [{ type: "tool_use", id: "oferta", name: "consultar_horarios", input: oferta }] },
+          { role: "user", content: [{ type: "tool_result", tool_use_id: "oferta", content: JSON.stringify({
+            data: oferta.data, opcoes: ["10:30", "14:00"].map(h => ({ horario: h, barbeiro_id: oferta.barbeiro_id })),
+          }) }] },
+          { role: "assistant", content: "Corte e barba com o Tainan na quarta às 10:30 ou 14:00. Qual fica melhor?" },
+        ], texto, modelo, executor });
+      expect(executor).toHaveBeenCalledTimes(executar ? 1 : 0);
+    },
+  );
+
+  it.each([{ data: "2026-11-19" }, { barbeiro_id: "outro" }, { servico_id: "outro" }, { servicos_adicionais: [] }])(
+    "rejeita a segunda opção se a reserva mudar os dados consultados %j", async divergencia => {
+      const oferta = { data: "2026-11-18", servico_id: "corte", servicos_adicionais: ["barba"] };
+      const { modelo } = modeloRoteirizado([
+        resposta([{ type: "tool_use", id: "t1", name: "agendar", input: { ...oferta, horario: "14:00", barbeiro_id: "tainan", ...divergencia } }], "tool_use"),
+        resposta([{ type: "text", text: "Vou conferir as opções." }], "end_turn"),
+      ]);
+      const executor = vi.fn().mockResolvedValue({ texto: "Agendado." });
+      const texto = "a segunda";
+      await executarTurno({ ...base, ctx: { ...ctx, textoEntrada: texto }, texto, modelo, executor, historico: [
+        { role: "user", content: "Quais horários tem?" },
+        { role: "assistant", content: [{ type: "tool_use", id: "oferta", name: "consultar_horarios", input: oferta }] },
+        { role: "user", content: [{ type: "tool_result", tool_use_id: "oferta", content: JSON.stringify({
+          data: oferta.data, opcoes: ["10:30", "14:00"].map(h => ({ horario: h, barbeiro_id: "tainan" })),
+        }) }] },
+        { role: "assistant", content: "Corte e barba com o Tainan na quarta às 10:30 ou 14:00. Qual fica melhor?" },
+      ] });
+      expect(executor).not.toHaveBeenCalled();
+    },
+  );
+
   it("interrompe ferramentas se a equipe assumir enquanto o modelo responde", async () => {
     const { modelo } = modeloRoteirizado([resposta([{ type: "tool_use", id: "t1", name: "agendar", input: {} }], "tool_use")]);
     const podeContinuar = vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
@@ -199,5 +241,13 @@ describe("prompt", () => {
     expect(t).toContain("Agora: 2026-09-29 14:40");
     expect(t).toContain("Calendário:");
     expect(t).toContain("Cliente sem cadastro");
+  });
+  it("reconhece a abertura de reativação pela apresentação do Leonel", () => {
+    const t = contextoDaMensagem({
+      agora: Date.parse("2026-11-17T17:40:00Z"), fuso: "America/Sao_Paulo", inicioDeSessao: false,
+      janelaDias: 2, cliente: { nome: "Ygor" }, nomePerfil: null,
+      avisos: ["Fala, Ygor!", "Aqui é o Leonel da Black.\n\nSe não quiser receber mensagens, responda PARAR."],
+    });
+    expect(t).toContain("O cliente respondeu à abertura da reativação.");
   });
 });

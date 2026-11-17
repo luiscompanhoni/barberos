@@ -9,18 +9,19 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { enviarNaConversa, registrarEntrada } from "@/lib/whatsapp/conversas";
 import { provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
-import { pediuParar } from "@/lib/automacoes/regras";
+import { APRESENTACAO_REATIVACAO, pediuParar } from "@/lib/automacoes/regras";
 import { executarTurno, type Modelo } from "./agente";
 import { dividirEmBolhas, tempoDigitando } from "./bolhas";
 import { contextoDaMensagem, promptSistema } from "./prompt";
 import { historicoSemImagens, prepararMidia, type ImagemBot } from "./multimodal";
 import type { MidiaRecebida } from "@/lib/whatsapp/midia-tipos";
 import { atualizarPreferencia, travarPreferencia } from "@/lib/whatsapp/preferencia";
-import { destinatarioTesteEquipe, testeEquipeAtivo } from "@/lib/whatsapp/teste-equipe";
+import { destinatarioTesteEquipe, destinoTesteIndividual, testeEquipeAtivo, testeIndividualConfigurado } from "@/lib/whatsapp/teste-equipe";
 
 /** Sessao com o modelo reinicia depois desse tempo sem mensagens (ou se ficar longa demais). */
 const SESSAO_INATIVA_MS = 3 * 3_600_000;
 const SESSAO_MAX_MENSAGENS = 60;
+const FERRAMENTAS_TESTE_REATIVACAO = new Set(["minha_preferencia_de_atendimento", "listar_servicos", "meus_agendamentos", "chamar_atendente"]);
 
 // Entradas e turnos têm FIFO próprio: uma pausa nunca atrasa o registro de PARAR.
 const g = globalThis as unknown as { filaConversas?: Map<string, Promise<unknown>>; entradaBotAtual?: Map<string, AbortController> };
@@ -68,11 +69,12 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
   const inicioTurno = new Date();
   const texto = e.texto ?? "[mensagem que não e texto: áudio, foto, figurinha ou documento]";
   const testeEquipe = await destinatarioTesteEquipe(conversa.telefone);
+  const testeIndividual = testeEquipe && testeIndividualConfigurado();
   if (testeEquipeAtivo() && !testeEquipe) return;
   const estadoAtual = () => db.conversa.findUnique({ where: { id: conversa.id }, select: { estado: true, ultimaEntradaEm: true, recusaAutomaticas: true } });
   const estaComBot = async () => (await estadoAtual())?.estado === "BOT";
   const aindaComBot = async () => {
-    if (sinal.aborted) return false;
+    if (sinal.aborted || (testeIndividual && !destinoTesteIndividual())) return false;
     const atual = await estadoAtual();
     return !sinal.aborted && atual?.estado === "BOT" && atual.ultimaEntradaEm?.getTime() === conversa.ultimaEntradaEm?.getTime() && !(atual.recusaAutomaticas && !conversa.recusaAutomaticas);
   };
@@ -106,7 +108,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     }
   }
   const cfg = cfgEntrevista ?? await configuracao();
-  if (!cfg.botAtivo || conversa.estado === "HUMANO") return; // equipe responde pelo painel
+  if ((!cfg.botAtivo && !testeIndividual) || conversa.estado === "HUMANO") return;
   if (!testeEquipe && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true" && process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO !== "true") return;
 
   // "PARAR": desliga as mensagens automaticas na hora, sem passar pelo modelo.
@@ -159,13 +161,14 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
   const sessaoValida =
     conversa.sessao &&
     conversa.sessaoInicioEm &&
+    (!testeIndividual || +conversa.sessaoInicioEm >= Date.parse(process.env.WHATSAPP_ATENDIMENTO_TESTE_ATE ?? "") - 2 * 3_600_000) &&
     conversa.ultimaEntradaEm &&
     Array.isArray(conversa.sessao) &&
     conversa.sessao.length < SESSAO_MAX_MENSAGENS &&
     agora - (await ultimaAtividade(conversa.id)) < SESSAO_INATIVA_MS;
   const historico = sessaoValida ? (conversa.sessao as unknown as Anthropic.Beta.BetaMessageParam[]) : [];
   const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { id: true, nome: true } });
-  const sit = cliente ? await situacaoDoCliente(cliente.id) : null;
+  const sit = cliente && !testeIndividual ? await situacaoDoCliente(cliente.id) : null;
   const plano = sit
     ? `${sit.assinatura.plano.nome} (${sit.assinatura.status === "PENDENTE" ? "aguardando o primeiro pagamento" : sit.valida ? (sit.assinatura.status === "ATRASADA" ? "ativo, com mensalidade atrasada" : "ativo e em dia") : "suspenso por mensalidade atrasada"}${sit.assinatura.plano.descontoExtrasPct ? `; ${sit.assinatura.plano.descontoExtrasPct}% de desconto em avulsos e serviços fora do plano` : ""})`
     : null;
@@ -173,18 +176,20 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
   let resultado;
   try {
     resultado = await executarTurno({
-      sistema: promptSistema(cfg),
+      sistema: promptSistema(testeIndividual ? { ...cfg, agendaExternaAtiva: true } : cfg),
       historico,
       contexto: contextoDaMensagem({
         agora, fuso: cfg.fuso, inicioDeSessao: historico.length === 0,
-        janelaDias: cfg.janelaAgendamentoDias, cliente: cliente?.nome.trim() ? cliente : null, nomePerfil: conversa.nomePerfil, plano,
+        janelaDias: cfg.janelaAgendamentoDias, cliente: cliente?.nome.trim() ? cliente : null, nomePerfil: conversa.nomePerfil,
+        plano: testeIndividual ? undefined : plano,
         avisos: await avisosRecentes(conversa.id, agora),
       }),
       texto: registroSeguroEntrevista(textoCliente),
       imagem,
       somenteConsulta: !!e.midia && e.midia.tipo !== "audio" && !e.texto?.trim(),
+      ferramentasPermitidas: testeIndividual ? FERRAMENTAS_TESTE_REATIVACAO : undefined,
       podeContinuar: aindaComBot,
-      ctx: { conversaId: conversa.id, telefone: conversa.telefone, nomePerfil: conversa.nomePerfil },
+      ctx: { conversaId: conversa.id, telefone: conversa.telefone, nomePerfil: conversa.nomePerfil, textoEntrada: e.texto },
       modelo: opts.modelo,
     });
   } catch (err) {
@@ -229,7 +234,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     if (!equipeAgora && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") return false;
     const pilotoAgora = await estadoPiloto();
     if (!equipeAgora && (pilotoAgora || recursoPiloto()) && !atendimentoAposPiloto(pilotoAgora)) return false;
-    if (!(await configuracao()).botAtivo) return false;
+    if (!testeIndividual && !(await configuracao()).botAtivo) return false;
     if (resultado.passouParaHumano) {
       const equipe = await db.mensagem.findMany({ where: { conversaId: conversa.id, autor: "EQUIPE", criadoEm: { gte: inicioTurno } }, take: 1, select: { id: true } });
       if (equipe.length) return false;
@@ -274,7 +279,7 @@ async function avisosRecentes(conversaId: string, agora: number) {
     where: { conversaId, criadoEm: { gt: new Date(agora - 48 * 3_600_000) } },
     orderBy: { criadoEm: "desc" },
     take: 15,
-    select: { autor: true, texto: true },
+    select: { autor: true, texto: true, erro: true },
   });
   const avisos: string[] = [];
   let passouAtual = false;
@@ -284,7 +289,9 @@ async function avisosRecentes(conversaId: string, agora: number) {
       continue;
     }
     if (m.autor === "CLIENTE") break;
-    if (m.autor === "SISTEMA") avisos.push(registroSeguroEntrevista(m.texto));
+    if (!m.erro && (m.autor === "SISTEMA" || (m.autor === "BOT" && m.texto.startsWith(APRESENTACAO_REATIVACAO)))) {
+      avisos.push(registroSeguroEntrevista(m.texto));
+    }
   }
   return avisos.slice(0, 3).reverse();
 }

@@ -17,6 +17,7 @@ import { receberMensagem } from "@/lib/bot/processar";
 const entrada = { telefone: "5547999990000", waId: "5547999990000", texto: null, wamid: "m1", midia: { provedor: "evolution" as const, tipo: "figurinha" as const, id: "m1" } };
 const verificarEquipe = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/whatsapp/teste-equipe", () => ({
+  testeIndividualConfigurado: () => false,
   destinatarioTesteEquipe: verificarEquipe,
   testeEquipeAtivo: () => process.env.WHATSAPP_ATENDIMENTO_TESTE_EQUIPE === "true",
 }));

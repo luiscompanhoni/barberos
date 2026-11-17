@@ -10,7 +10,7 @@ vi.mock("@/lib/whatsapp/status", () => ({ registrarStatus: vi.fn(async () => {})
 vi.mock("@/lib/bot/agente", () => ({ executarTurno: m.modelo }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: m.cfg }));
 vi.mock("@/lib/whatsapp/piloto", () => ({ estadoPiloto: m.piloto }));
-vi.mock("@/lib/whatsapp/teste-equipe", () => ({ destinatarioTesteEquipe: m.equipe, testeEquipeAtivo: () => process.env.WHATSAPP_ATENDIMENTO_TESTE_EQUIPE === "true" }));
+vi.mock("@/lib/whatsapp/teste-equipe", async (original) => ({ ...await original<typeof import("@/lib/whatsapp/teste-equipe")>(), destinatarioTesteEquipe: m.equipe }));
 vi.mock("@/lib/eventos", () => ({ publicar: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: {
   entrevistaRecrutamento: { findUnique: vi.fn(async () => null) }, cliente: { findUnique: vi.fn(async () => null) },
@@ -52,6 +52,24 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe("cadência cancelável do atendimento", () => {
+  it("teste individual responde com bot geral e IA geral desligados, sem ferramentas de reserva ou cobrança", async () => {
+    vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_EQUIPE", "true");
+    vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_NUMERO", telefone);
+    vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_ATE", new Date(Date.now() + 60_000).toISOString());
+    vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "true");
+    vi.stubEnv("WHATSAPP_ATENDIMENTO_IA_PAGA", "false");
+    m.equipe.mockResolvedValue(true);
+    m.cfg.mockResolvedValue({ botAtivo: false, fuso: "America/Sao_Paulo", janelaAgendamentoDias: 30 });
+    m.provedor.mockReturnValue("simulador");
+    await receberMensagem(recebida());
+    const turno = m.modelo.mock.calls[0][0];
+    expect(turno.sistema).toContain("A agenda está em transição");
+    expect([...turno.ferramentasPermitidas].sort()).toEqual([
+      "chamar_atendente", "listar_servicos", "meus_agendamentos", "minha_preferencia_de_atendimento",
+    ]);
+    expect(m.enviar).toHaveBeenCalledOnce();
+  });
+
   it("aguarda 22,5 s para 30 palavras e envia sem delay pendente no provedor", async () => {
     const turno = receberMensagem(recebida());
     await vi.advanceTimersByTimeAsync(0);

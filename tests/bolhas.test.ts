@@ -10,6 +10,11 @@ describe("resposta do bot em bolhas", () => {
   it("lista sem linha em branco fica na mesma bolha", () => {
     expect(dividirEmBolhas("Tenho:\n• 10:30 com o Tainan\n• 14:00 com o Fauli")).toEqual(["Tenho:\n• 10:30 com o Tainan\n• 14:00 com o Fauli"]);
   });
+  it("divide um parágrafo longo em frases inteiras sem separar vocativo, valor ou horário", () => {
+    expect(dividirEmBolhas("Fala, Ygor! O corte custa R$ 65,00. Tenho às 18:00. Serve pra ti?")).toEqual([
+      "Fala, Ygor!", "O corte custa R$ 65,00.", "Tenho às 18:00.\n\nServe pra ti?",
+    ]);
+  });
   it("no máximo 3: o excesso vai junto na última", () => {
     expect(dividirEmBolhas("a\n\nb\n\nc\n\nd")).toEqual(["a", "b", "c\n\nd"]);
   });

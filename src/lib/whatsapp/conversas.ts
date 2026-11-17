@@ -50,14 +50,15 @@ export async function registrarEntrada(p: { telefone: string; waId?: string; nom
 }
 
 /** Envia texto livre numa conversa (dentro da janela de 24h) e registra. */
-export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean; envioAutorizadoId?: string } = {}) {
+export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean; envioAutorizadoId?: string; aberturaTeste?: boolean } = {}) {
   const conversa = await db.conversa.findUniqueOrThrow({ where: { id: conversaId } });
   let erro: string | null = null;
   let wamid: string | null = null;
   try {
-    if (autor === "SISTEMA") {
-      const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { aceitaMensagens: true } });
+    if (autor === "SISTEMA" || opts.aberturaTeste) {
+      const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { aceitaMensagens: true, excluidoEm: true } });
       if (conversa.recusaAutomaticas || cliente?.aceitaMensagens === false) throw new Error("O contato pediu para não receber mensagens automáticas.");
+      if (opts.aberturaTeste && (cliente?.excluidoEm || conversa.estado !== "BOT")) throw new Error("Contato indisponível para a abertura do teste.");
     }
     const origem = opts.entrevistaPiloto ? "ENTREVISTA_PILOTO" : autor === "EQUIPE" || (autor === "BOT" && opts.respostaAtendimento) ? "ATENDIMENTO" : "PADRAO";
     const resultado = opts.envioAutorizadoId && autor === "SISTEMA"

@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { dobrarLinha, escaparIcs, gerarIcs } from "@/lib/automacoes/calendario";
-import { horarioComercial, lembreteDevido, pediuParar, quandoFalar } from "@/lib/automacoes/regras";
+import { aberturaReativacao, avisoAoReservar, horarioComercial, lembreteDevido, pediuParar, quandoFalar, TEXTOS } from "@/lib/automacoes/regras";
+
+it("a abertura de reativação só cumprimenta e se apresenta em dois balões", () => {
+  expect(aberturaReativacao("Ygor Teste")).toEqual([
+    "Fala, Ygor!",
+    "Aqui é o Leonel da Black.\n\nSe não quiser receber mensagens, responda PARAR.",
+  ]);
+});
+
+it("o lembrete próximo só pede confirmação quando há presença para confirmar", () => {
+  const texto = { nome: "Ygor", hora: "18:00", servico: "Corte", barbeiro: "Fauli", endereco: null };
+  expect(TEXTOS.LEMBRETE_PROXIMO({ ...texto, confirmaPresenca: true })).toContain("*SIM*");
+  expect(TEXTOS.LEMBRETE_PROXIMO(texto)).not.toContain("*SIM*");
+  const agora = Date.UTC(2026, 10, 18, 15);
+  const ag = { status: "MARCADO", inicio: agora + 180 * 60_000, criadoEm: agora };
+  expect(avisoAoReservar(ag, agora, 90, true)).toContain("uma hora e meia");
+  expect(avisoAoReservar(ag, agora, 90, false)).toBe("");
+  expect(avisoAoReservar({ ...ag, inicio: agora + 95 * 60_000 }, agora, 90, true)).toBe("");
+});
 
 const H = 3_600_000;
 const FUSO = "America/Sao_Paulo";

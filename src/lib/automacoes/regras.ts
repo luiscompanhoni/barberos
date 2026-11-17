@@ -32,6 +32,13 @@ export function lembreteDevido(ag: AgLembrete, agora: number, cfg: CfgLembrete):
   return null;
 }
 
+export function avisoAoReservar(ag: AgLembrete, agora: number, minutos: number, podeAvisar: boolean) {
+  if (!podeAvisar || ag.status !== "MARCADO" || minutos < 15 ||
+    ag.inicio - minutos * MIN < Math.max(agora, ag.criadoEm + 30 * MIN)) return "";
+  const antecedencia = minutos === 90 ? "uma hora e meia" : `${minutos} minutos`;
+  return ` Lembrete de presença configurado para cerca de ${antecedencia} antes. Oriente a responder SIM ao lembrete.`;
+}
+
 /** Mensagens que nao sao de ultima hora so saem entre 8h e 21h. */
 export function horarioComercial(agora: number, fuso: string) {
   const h = Math.floor(minutosLocal(agora, fuso) / 60);
@@ -54,13 +61,21 @@ export function quandoFalar(inicio: number, agora: number, fuso: string) {
 
 const primeiro = (nome: string) => nome.trim().split(/\s+/)[0] || "tudo bem";
 
+export const APRESENTACAO_REATIVACAO = "Aqui é o Leonel da Black.";
+
+export function aberturaReativacao(nome: string) {
+  const apelido = nome.trim().split(/\s+/)[0];
+  return [apelido ? `Fala, ${apelido}!` : "Fala!", `${APRESENTACAO_REATIVACAO}\n\nSe não quiser receber mensagens, responda PARAR.`] as const;
+}
+
 export const TEXTOS = {
   LEMBRETE_VESPERA: (p: { nome: string; quando: string; servico: string; barbeiro: string; barbearia: string }) =>
     `Oi, ${primeiro(p.nome)}! Passando para lembrar: ${p.quando} você tem ${p.servico} com ${p.barbeiro} na ${p.barbearia}. ` +
     `Posso confirmar? Responda *SIM* para confirmar ou me diga se precisa remarcar.`,
-  LEMBRETE_PROXIMO: (p: { nome: string; hora: string; servico: string; barbeiro: string; endereco: string | null }) =>
+  LEMBRETE_PROXIMO: (p: { nome: string; hora: string; servico: string; barbeiro: string; endereco: string | null; confirmaPresenca?: boolean }) =>
     `Oi, ${primeiro(p.nome)}! Daqui a pouco, às ${p.hora}, é o seu ${p.servico} com ${p.barbeiro}.` +
-    `${p.endereco ? ` Endereço: ${p.endereco}.` : ""} Até já! 💈`,
+    `${p.endereco ? ` Endereço: ${p.endereco}.` : ""}` +
+    (p.confirmaPresenca ? " Responde *SIM* pra confirmar que tu vem ou me avisa se precisar remarcar." : " Até já! 💈"),
   POS_FALTA: (p: { nome: string; hora: string }) =>
     `Oi, ${primeiro(p.nome)}! Sentimos sua falta no horário das ${p.hora}. Aconteceu alguma coisa? Se quiser, já vejo um novo horário para você.`,
   POS_ATENDIMENTO: (p: { nome: string; link: string | null }) =>

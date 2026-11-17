@@ -58,3 +58,18 @@ it("autoriza o wa_id brasileiro sem nono dígito somente para o mesmo dono ativo
   await expect(enviarTexto("554799990000", "Campanha", 0, "CAMPANHA")).rejects.toThrow("bloqueados");
   expect(m.enviar).toHaveBeenCalledTimes(1);
 });
+
+it("restringe o teste individual mesmo quando há mais de um dono ou gerente ativo", async () => {
+  vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_NUMERO", "5547999990000");
+  vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_ATE", new Date(Date.now() + 60_000).toISOString());
+  m.usuario.mockResolvedValue({ id: "equipe-ativa" });
+  await expect(destinatarioTesteEquipe("5547999990001")).resolves.toBe(false);
+  expect(m.usuario).not.toHaveBeenCalled();
+  await expect(destinatarioTesteEquipe("554799990000")).resolves.toBe(true);
+  await expect(envioTesteEquipe("5547999990000", "CAMPANHA")).resolves.toBe(false);
+  vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_ATE", new Date(Date.now() - 1).toISOString());
+  await expect(destinatarioTesteEquipe("5547999990000")).resolves.toBe(false);
+  vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_ATE", undefined);
+  await expect(destinatarioTesteEquipe("5547999990000")).resolves.toBe(false);
+  expect(m.usuario).toHaveBeenCalledTimes(1);
+});

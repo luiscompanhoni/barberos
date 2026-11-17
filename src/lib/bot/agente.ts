@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ImagemBot } from "./multimodal";
 import { executarFerramenta, FERRAMENTAS, type ContextoBot, type ResultadoFerramenta } from "./ferramentas";
+import { confirmouReserva } from "./escolha-horario";
 
 type Msg = Anthropic.Beta.BetaMessageParam;
 type Params = Anthropic.Beta.MessageCreateParamsNonStreaming;
@@ -53,6 +54,7 @@ export async function executarTurno(p: {
   imagem?: ImagemBot;
   /** Imagem/figurinha sem texto não autoriza efeitos operacionais. */
   somenteConsulta?: boolean;
+  ferramentasPermitidas?: ReadonlySet<string>;
   /** Recepção pode assumir enquanto download/modelo está em andamento. */
   podeContinuar?: () => Promise<boolean>;
   ctx: ContextoBot;
@@ -63,6 +65,7 @@ export async function executarTurno(p: {
   const modelo = p.modelo ?? modeloAnthropic;
   const nomeModelo = p.nomeModelo ?? MODELO_PADRAO;
   const executor = p.executor ?? executarFerramenta;
+  const ferramentas = p.ferramentasPermitidas ? FERRAMENTAS.filter(f => p.ferramentasPermitidas?.has(f.name)) : FERRAMENTAS;
   const historico: Msg[] = [
     ...p.historico,
     { role: "user", content: [
@@ -80,7 +83,7 @@ export async function executarTurno(p: {
       model: nomeModelo,
       max_tokens: 8000,
       system: [{ type: "text", text: p.sistema }],
-      tools: FERRAMENTAS,
+      tools: ferramentas,
       messages: historico,
       cache_control: { type: "ephemeral" }, // cacheia o prefixo (ferramentas + sistema + conversa)
       ...extrasDoModelo(nomeModelo),
@@ -117,12 +120,18 @@ export async function executarTurno(p: {
         return interromper();
       }
       usadas.push(c.name);
-      const consulta = ["listar_servicos", "consultar_horarios", "meus_agendamentos", "listar_planos", "minha_assinatura", "meus_presentes", "oferta_cancelamento", "chamar_atendente"].includes(c.name);
+      const consulta = ["listar_servicos", "consultar_horarios", "meus_agendamentos", "listar_planos", "minha_assinatura", "meus_presentes", "oferta_cancelamento", "chamar_atendente", "minha_preferencia_de_atendimento"].includes(c.name);
+      const semHorarioConfirmado = c.name === "agendar" && p.ctx.textoEntrada !== undefined &&
+        !confirmouReserva(p.ctx.textoEntrada, p.historico, c.input);
       const res: ResultadoFerramenta = passouParaHumano
         ? { texto: "A equipe assumiu. Não execute mais ações nesta conversa.", erro: true }
-        : p.somenteConsulta && !consulta
-          ? { texto: "Imagem ou figurinha sem texto não autoriza esta ação. Peça confirmação explícita em texto com os detalhes.", erro: true }
-          : await executor(c.name, c.input, p.ctx);
+        : p.ferramentasPermitidas && !p.ferramentasPermitidas.has(c.name)
+          ? { texto: "Operação indisponível neste teste. Informe o cliente sem executar a ação.", erro: true }
+          : p.somenteConsulta && !consulta
+            ? { texto: "Imagem ou figurinha sem texto não autoriza esta ação. Peça confirmação explícita em texto com os detalhes.", erro: true }
+            : semHorarioConfirmado
+              ? { texto: "A escolha não confere com a última oferta verificada. Consulte a agenda, mostre serviço, barbeiro, data e horários e aguarde a escolha clara do cliente.", erro: true }
+              : await executor(c.name, c.input, p.ctx);
       if (res.passouParaHumano) passouParaHumano = true;
       resultados.push({ type: "tool_result", tool_use_id: c.id, content: res.texto, is_error: res.erro || undefined });
     }
