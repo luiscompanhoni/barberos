@@ -8,6 +8,8 @@ import { publicar } from "@/lib/eventos";
 import { configuracao } from "@/lib/agenda/carregar";
 import { enviarNaConversa, registrarEntrada } from "@/lib/whatsapp/conversas";
 import { provedorWhatsApp } from "@/lib/whatsapp/canal";
+import { indicarDigitacaoEvolution } from "@/lib/whatsapp/evolution";
+import { telefoneCanonico } from "@/lib/whatsapp/webhook";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { APRESENTACAO_REATIVACAO, pediuParar } from "@/lib/automacoes/regras";
 import { executarTurno, type Modelo } from "./agente";
@@ -17,11 +19,15 @@ import { historicoSemImagens, prepararMidia, type ImagemBot } from "./multimodal
 import type { MidiaRecebida } from "@/lib/whatsapp/midia-tipos";
 import { atualizarPreferencia, travarPreferencia } from "@/lib/whatsapp/preferencia";
 import { destinatarioTesteEquipe, destinoTesteIndividual, testeEquipeAtivo, testeIndividualConfigurado } from "@/lib/whatsapp/teste-equipe";
+import { OPERACOES_PRIVADAS } from "./ferramentas-operacao";
 
 /** Sessao com o modelo reinicia depois desse tempo sem mensagens (ou se ficar longa demais). */
 const SESSAO_INATIVA_MS = 3 * 3_600_000;
 const SESSAO_MAX_MENSAGENS = 60;
-const FERRAMENTAS_TESTE_REATIVACAO = new Set(["minha_preferencia_de_atendimento", "listar_servicos", "meus_agendamentos", "chamar_atendente"]);
+const FERRAMENTAS_TESTE_REATIVACAO = new Set([
+  "minha_preferencia_de_atendimento", "listar_servicos", "meus_agendamentos", "listar_planos",
+  "minha_assinatura", "link_pagamento_assinatura", "consultar_produto", "minhas_comandas_abertas", "chamar_atendente",
+]);
 
 // Entradas e turnos têm FIFO próprio: uma pausa nunca atrasa o registro de PARAR.
 const g = globalThis as unknown as { filaConversas?: Map<string, Promise<unknown>>; entradaBotAtual?: Map<string, AbortController> };
@@ -175,8 +181,11 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
 
   let resultado;
   try {
+    const sistema = promptSistema(testeIndividual ? { ...cfg, agendaExternaAtiva: true } : cfg);
     resultado = await executarTurno({
-      sistema: promptSistema(testeIndividual ? { ...cfg, agendaExternaAtiva: true } : cfg),
+      sistema: testeIndividual
+        ? sistema + "\nNo teste individual, resolva dúvidas com as ferramentas de consulta disponíveis. Pedidos de reserva, alteração de plano ou emissão de cobrança ficam com a equipe."
+        : sistema,
       historico,
       contexto: contextoDaMensagem({
         agora, fuso: cfg.fuso, inicioDeSessao: historico.length === 0,
@@ -189,7 +198,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
       somenteConsulta: !!e.midia && e.midia.tipo !== "audio" && !e.texto?.trim(),
       ferramentasPermitidas: testeIndividual ? FERRAMENTAS_TESTE_REATIVACAO : undefined,
       podeContinuar: aindaComBot,
-      ctx: { conversaId: conversa.id, telefone: conversa.telefone, nomePerfil: conversa.nomePerfil, textoEntrada: e.texto },
+      ctx: { conversaId: conversa.id, telefone: conversa.telefone, nomePerfil: conversa.nomePerfil, textoEntrada: e.texto, entradaId: e.wamid },
       modelo: opts.modelo,
     });
   } catch (err) {
@@ -200,10 +209,12 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     return;
   }
 
+  const turnoPrivado = resultado.ferramentas.some(nome => OPERACOES_PRIVADAS.has(nome));
+  const sessaoDoTurno = (enviadas: string[]) => (turnoPrivado ? [] : historicoEntregue(resultado.historico, resultado.resposta, enviadas)) as unknown as Prisma.InputJsonValue;
   if (resultado.interrompido || sinal.aborted || (!resultado.passouParaHumano && !await aindaComBot())) {
     // Guarda inclusive resultados já executados, sem reabrir estado ou preferências.
     await db.conversa.update({ where: { id: conversa.id }, data: {
-      sessao: historicoEntregue(resultado.historico, resultado.resposta, []) as unknown as Prisma.InputJsonValue,
+      sessao: sessaoDoTurno([]),
       sessaoInicioEm: historico.length ? conversa.sessaoInicioEm : new Date(),
     } });
     return;
@@ -211,7 +222,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
 
   if (resultado.recusado) {
     await passarParaEquipe(conversa.id, "O modelo recusou responder essa mensagem.");
-    await db.conversa.update({ where: { id: conversa.id }, data: { sessao: historicoSemImagens(resultado.historico) as unknown as Prisma.InputJsonValue } });
+    await db.conversa.update({ where: { id: conversa.id }, data: { sessao: (turnoPrivado ? [] : historicoSemImagens(resultado.historico)) as unknown as Prisma.InputJsonValue } });
     await enviarNaConversa(conversa.id, "Vou pedir para alguém da equipe te responder, tudo bem? 🙂", "BOT", { respostaAtendimento: true });
     return;
   }
@@ -219,7 +230,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
   await db.conversa.update({
     where: { id: conversa.id },
     data: {
-      sessao: historicoEntregue(resultado.historico, resultado.resposta, []) as unknown as Prisma.InputJsonValue,
+      sessao: sessaoDoTurno([]),
       sessaoInicioEm: historico.length ? conversa.sessaoInicioEm : new Date(),
       ...(resultado.passouParaHumano ? { estado: "HUMANO" } : {}),
     },
@@ -243,15 +254,19 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
   };
   const bolhas = dividirEmBolhas(resultado.resposta);
   const enviadas: string[] = [];
+  const destino = conversa.waId && telefoneCanonico(conversa.waId) === conversa.telefone ? conversa.waId : conversa.telefone;
   for (const bolha of bolhas) {
     if (!await podeEnviar()) return;
     // A espera fica local e cancelável; o provedor não recebe uma entrega atrasada irrevogável.
-    if (provedorWhatsApp() !== "simulador" && !await esperarBolha(bolha, sinal)) return;
+    const provedor = provedorWhatsApp();
+    const atraso = tempoDigitando(bolha);
+    if (provedor === "evolution") void indicarDigitacaoEvolution(destino, atraso, sinal).catch(() => {});
+    if (provedor !== "simulador" && !await esperarBolha(atraso, sinal)) return;
     if (!await podeEnviar()) return;
     const envio = await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: 0, respostaAtendimento: true });
     if (!envio.ok) return;
     enviadas.push(bolha);
-    await db.conversa.update({ where: { id: conversa.id }, data: { sessao: historicoEntregue(resultado.historico, resultado.resposta, enviadas) as unknown as Prisma.InputJsonValue } });
+    await db.conversa.update({ where: { id: conversa.id }, data: { sessao: sessaoDoTurno(enviadas) } });
   }
 }
 
@@ -264,11 +279,11 @@ function historicoEntregue(historico: Anthropic.Beta.BetaMessageParam[], respost
   return historicoSemImagens([...semPendente, ...(enviadas.length ? [{ role: "assistant" as const, content: enviadas.join("\n\n") }] : [])]);
 }
 
-async function esperarBolha(texto: string, sinal: AbortSignal) {
+async function esperarBolha(atraso: number, sinal: AbortSignal) {
   if (sinal.aborted) return false;
   return new Promise<boolean>((resolve) => {
     const cancelar = () => { clearTimeout(timer); resolve(false); };
-    const timer = setTimeout(() => { sinal.removeEventListener("abort", cancelar); resolve(!sinal.aborted); }, tempoDigitando(texto));
+    const timer = setTimeout(() => { sinal.removeEventListener("abort", cancelar); resolve(!sinal.aborted); }, atraso);
     sinal.addEventListener("abort", cancelar, { once: true });
   });
 }

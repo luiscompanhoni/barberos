@@ -5,9 +5,9 @@ import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 import { resumoPessoal } from "@/lib/equipe-regras";
+import { criarLancamentoPessoal, lancamentoPessoalSchema } from "@/lib/financeiro/pessoal";
 
 export const dynamic = "force-dynamic";
-const dataValida = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(s => { const d = new Date(s + "T00:00:00Z"); return Number.isFinite(+d) && d.toISOString().slice(0, 10) === s; });
 export const GET = rota(async (req: Request) => {
   const s = await exigirSessao();
   const mes = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/).parse(new URL(req.url).searchParams.get("mes"));
@@ -18,8 +18,8 @@ export const GET = rota(async (req: Request) => {
 });
 export const POST = rota(async (req: Request) => {
   const s = await exigirSessao();
-  const b = await corpo(req, z.object({ tipo: z.enum(["RECEITA", "DESPESA"]), descricao: z.string().trim().min(2).max(150), categoria: z.string().trim().min(2).max(60), valorCentavos: z.number().int().min(1).max(100_000_000), data: dataValida, realizado: z.boolean() }));
-  const item = await db.lancamentoPessoal.create({ data: { ...b, usuarioId: s.usuarioId, data: new Date(b.data + "T00:00:00Z") } });
+  const b = await corpo(req, lancamentoPessoalSchema);
+  const item = await criarLancamentoPessoal(s.usuarioId, b);
   return NextResponse.json({ id: item.id }, { status: 201 });
 });
 export const PATCH = rota(async (req: Request) => {

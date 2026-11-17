@@ -1,11 +1,11 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const m = vi.hoisted(() => ({ entrada: vi.fn(), enviar: vi.fn(), modelo: vi.fn(), cfg: vi.fn(), piloto: vi.fn(), conversa: vi.fn(), carregar: vi.fn(), update: vi.fn(), mensagens: vi.fn(), equipe: vi.fn(), provedor: vi.fn(), depois: vi.fn() }));
+const m = vi.hoisted(() => ({ entrada: vi.fn(), enviar: vi.fn(), digitando: vi.fn(), modelo: vi.fn(), cfg: vi.fn(), piloto: vi.fn(), conversa: vi.fn(), carregar: vi.fn(), update: vi.fn(), mensagens: vi.fn(), equipe: vi.fn(), provedor: vi.fn(), depois: vi.fn() }));
 vi.mock("next/server", async (original) => ({ ...await original<typeof import("next/server")>(), after: m.depois }));
 vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: m.entrada, enviarNaConversa: m.enviar }));
 vi.mock("@/lib/whatsapp/canal", () => ({ provedorWhatsApp: m.provedor }));
-vi.mock("@/lib/whatsapp/evolution", () => ({ tokenWebhookEvolution: () => "token-ficticio" }));
+vi.mock("@/lib/whatsapp/evolution", () => ({ tokenWebhookEvolution: () => "token-ficticio", indicarDigitacaoEvolution: m.digitando }));
 vi.mock("@/lib/whatsapp/status", () => ({ registrarStatus: vi.fn(async () => {}) }));
 vi.mock("@/lib/bot/agente", () => ({ executarTurno: m.modelo }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: m.cfg }));
@@ -47,6 +47,7 @@ beforeEach(() => {
   m.cfg.mockResolvedValue({ botAtivo: true, fuso: "America/Sao_Paulo", janelaAgendamentoDias: 30 });
   m.piloto.mockResolvedValue(null); m.equipe.mockResolvedValue(false); m.provedor.mockReturnValue("evolution");
   m.enviar.mockResolvedValue({ ok: true });
+  m.digitando.mockResolvedValue(undefined);
   m.modelo.mockResolvedValue(retorno());
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
@@ -65,14 +66,17 @@ describe("cadência cancelável do atendimento", () => {
     const turno = m.modelo.mock.calls[0][0];
     expect(turno.sistema).toContain("A agenda está em transição");
     expect([...turno.ferramentasPermitidas].sort()).toEqual([
-      "chamar_atendente", "listar_servicos", "meus_agendamentos", "minha_preferencia_de_atendimento",
+      "chamar_atendente", "consultar_produto", "link_pagamento_assinatura", "listar_planos", "listar_servicos",
+      "meus_agendamentos", "minha_assinatura", "minha_preferencia_de_atendimento", "minhas_comandas_abertas",
     ]);
+    expect(m.digitando).not.toHaveBeenCalled();
     expect(m.enviar).toHaveBeenCalledOnce();
   });
 
   it("aguarda 22,5 s para 30 palavras e envia sem delay pendente no provedor", async () => {
     const turno = receberMensagem(recebida());
     await vi.advanceTimersByTimeAsync(0);
+    expect(m.digitando).toHaveBeenCalledExactlyOnceWith(telefone, 22_500, expect.any(AbortSignal));
     expect(vi.getTimerCount()).toBe(1); expect(m.enviar).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(22499); expect(m.enviar).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1); await turno;
@@ -110,6 +114,7 @@ describe("cadência cancelável do atendimento", () => {
     m.modelo.mockResolvedValueOnce(retorno("Resposta antiga.\n\nSegunda bolha antiga.")).mockResolvedValueOnce(retorno("Resposta atual."));
     const primeira = receberMensagem(recebida()); await vi.advanceTimersByTimeAsync(1000);
     const segunda = receberMensagem(recebida("m2", "Prefiro amanhã")); await vi.advanceTimersByTimeAsync(0);
+    expect(m.digitando.mock.calls[0][2].aborted).toBe(true);
     await primeira;
     expect(m.entrada).toHaveBeenCalledTimes(2); expect(m.modelo).toHaveBeenCalledTimes(2);
     expect(m.modelo.mock.calls[1][0].historico).toEqual([{ role: "user", content: "pedido" }]);
@@ -117,6 +122,17 @@ describe("cadência cancelável do atendimento", () => {
     await vi.advanceTimersByTimeAsync(2000); await segunda;
     expect(m.enviar).toHaveBeenCalledExactlyOnceWith("c1", "Resposta atual.", "BOT", { digitandoMs: 0, respostaAtendimento: true });
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("falha da presença não impede a resposta nem altera a pausa", async () => {
+    m.digitando.mockRejectedValue(new Error("Evolution indisponível para presença"));
+    m.modelo.mockResolvedValue(retorno("Fechou!"));
+    const turno = receberMensagem(recebida());
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(m.enviar).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    await turno;
+    expect(m.enviar).toHaveBeenCalledOnce();
   });
 
   it("interrompe bolhas restantes se a nova entrada chega depois da primeira", async () => {

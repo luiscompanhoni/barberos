@@ -4,6 +4,7 @@
  * Cada envio grava antes uma linha unica (tipo + chave): nada sai duas vezes.
  */
 import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
+import { sincronizarDisponibilidadeAtendimento } from "@/lib/whatsapp/disponibilidade-atendimento";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { apagarCandidaturasVencidas } from "@/lib/recrutamento/servico";
 import { configuracao } from "@/lib/agenda/carregar";
@@ -19,6 +20,7 @@ import { atualizarPremios } from "@/lib/jogos/premios";
 import { sincronizarRecentes } from "@/lib/conciliacao/celcash";
 import { processarEsperas, processarIndicacoes, processarRetornos } from "@/lib/crescimento/rotina";
 import { enviarAutomacao as enviar } from "./enviar";
+import { canalDaReativacaoAtivo, iniciarReativacao } from "./reativacao";
 import { fazAniversario, horarioComercial, lembreteDevido, quandoFalar, TEXTOS } from "./regras";
 
 const MIN = 60_000;
@@ -71,7 +73,7 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
       if (!tipo || (tipo === "LEMBRETE_VESPERA" && !comercial)) continue;
       const texto = tipo === "LEMBRETE_VESPERA"
         ? TEXTOS.LEMBRETE_VESPERA({ nome: a.cliente.nome, quando: quandoFalar(+a.inicio, agora, cfg.fuso), servico: a.servico.nome, barbeiro: a.barbeiro.nome, barbearia: cfg.nomeBarbearia })
-        : TEXTOS.LEMBRETE_PROXIMO({ nome: a.cliente.nome, hora: minParaHhmm(minutosLocal(a.inicio, cfg.fuso)), servico: a.servico.nome, barbeiro: a.barbeiro.nome, endereco: cfg.endereco });
+        : TEXTOS.LEMBRETE_PROXIMO({ nome: a.cliente.nome, hora: minParaHhmm(minutosLocal(a.inicio, cfg.fuso)), servico: a.servico.nome, barbeiro: a.barbeiro.nome, endereco: cfg.endereco, confirmaPresenca: a.status === "MARCADO" });
       // Chave com o horario: se remarcar, o lembrete do novo horario sai de novo.
       if (await enviar({ tipo, chave: `${a.id}@${a.inicio.toISOString()}`, clienteId: a.clienteId, agendamentoId: a.id, telefone: a.cliente.telefone, texto })) cont.lembretes++;
     }
@@ -140,7 +142,7 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   }
 
   // ---- reativacao de quem sumiu (ultima visita ha X dias, nada marcado)
-  if (cfg.reativacaoDias > 0) {
+  if (cfg.reativacaoDias > 0 && canalDaReativacaoAtivo(cfg.botAtivo)) {
     const limite = new Date(agora - cfg.reativacaoDias * DIA);
     const ultimas = await db.agendamento.groupBy({
       by: ["clienteId"],
@@ -153,12 +155,10 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
       if (enviados >= MAX_REATIVACAO_POR_RODADA) break;
       const visita = u._max.inicio!;
       const c = await db.cliente.findUnique({ where: { id: u.clienteId } });
-      if (!c || !c.aceitaMensagens || (c.ultimaReativacaoEm && c.ultimaReativacaoEm > visita)) continue;
+      if (!c || c.excluidoEm || !c.aceitaMensagens || (c.ultimaReativacaoEm && c.ultimaReativacaoEm > visita)) continue;
       const futuro = await db.agendamento.count({ where: { clienteId: c.id, status: { in: ["MARCADO", "CONFIRMADO"] }, inicio: { gt: new Date(agora) } } });
       if (futuro) continue;
-      const dias = Math.floor((agora - +visita) / DIA);
-      const texto = TEXTOS.REATIVACAO({ nome: c.nome, dias, barbearia: cfg.nomeBarbearia });
-      if (await enviar({ tipo: "REATIVACAO", chave: `${c.id}:${visita.toISOString()}`, clienteId: c.id, telefone: c.telefone, texto })) {
+      if (await iniciarReativacao(c, visita, agora)) {
         await db.cliente.update({ where: { id: c.id }, data: { ultimaReativacaoEm: new Date(agora) } });
         enviados++;
       }
@@ -176,17 +176,19 @@ export function agendarAutomacoes() {
   let rodando = false;
   const rodar = async () => {
     // Não consome fila nem marca checklist como enviado durante o bloqueio de mensagens.
-    if (rodando || quarentenaRestauracao() || (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" && !loteAutorizadoConfigurado())) return;
+    if (rodando || quarentenaRestauracao()) return;
     rodando = true;
     try {
+      await sincronizarDisponibilidadeAtendimento();
+      if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" && !loteAutorizadoConfigurado()) return;
       const r = await rodarAutomacoes();
       if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return;
       // Checklist da equipe (lista da manha e resumo da noite).
       const ck = await (await import("@/lib/checklist/servico")).rodarChecklist().catch((e) => {
         console.error("[checklist] falhou:", e);
-        return { listas: 0, resumos: 0 };
+        return { listas: 0, resumos: 0, lembretes: 0 };
       });
-      if (ck.listas || ck.resumos) console.log(`[checklist] listas ${ck.listas}, resumos ${ck.resumos}`);
+      if (ck.listas || ck.resumos || ck.lembretes) console.log(`[checklist] listas ${ck.listas}, resumos ${ck.resumos}, lembretes ${ck.lembretes}`);
       const total = Object.values(r).reduce((a, b) => a + b, 0);
       if (total) console.log(`[automacoes] lembretes ${r.lembretes}, pós-falta ${r.faltas}, pós-atendimento ${r.pos}, reativação ${r.reativacao}, aniversário ${r.aniversario}, espera ${r.espera}, retorno ${r.retorno}, indicação ${r.indicacao}, campanha ${r.campanha}`);
     } catch (e) {

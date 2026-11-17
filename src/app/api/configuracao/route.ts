@@ -6,6 +6,7 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
+import { sincronizarDisponibilidadeAtendimento } from "@/lib/whatsapp/disponibilidade-atendimento";
 
 export const GET = rota(async () => {
   await exigirSessao(GESTAO);
@@ -47,8 +48,10 @@ export const PATCH = rota(async (req: Request) => {
     }),
   );
   const atual = await configuracao(); // garante a linha
-  return NextResponse.json(await db.$transaction(async (tx) => {
+  const atualizada = await db.$transaction(async (tx) => {
     await auditarMudanca(tx, sessao.usuarioId, "configurar", "configuracao", "barbearia", atual, b);
     return tx.configuracao.update({ where: { id: 1 }, data: b });
-  }));
+  });
+  if (b.botAtivo !== undefined) await sincronizarDisponibilidadeAtendimento();
+  return NextResponse.json(atualizada);
 });

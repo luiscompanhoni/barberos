@@ -5,7 +5,7 @@ import { aberturaReativacao, avisoAoReservar, horarioComercial, lembreteDevido, 
 it("a abertura de reativação só cumprimenta e se apresenta em dois balões", () => {
   expect(aberturaReativacao("Ygor Teste")).toEqual([
     "Fala, Ygor!",
-    "Aqui é o Leonel da Black.\n\nSe não quiser receber mensagens, responda PARAR.",
+    "Aqui é o Leonel da Black.",
   ]);
 });
 

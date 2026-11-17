@@ -126,7 +126,9 @@ export async function salvarAcesso(s: Sessao, id: string | null, d: EdicaoUsuari
       if (id && !anterior) throw naoEncontrado("Usuário");
       if (anterior) validarMudancaDeAcesso({ proprio: id === s.usuarioId, papelAtual: anterior.papel, ativoAtual: anterior.ativo, papel: dados.papel ?? anterior.papel, ativo: dados.ativo ?? anterior.ativo, donosAtivos: await tx.usuario.count({ where: { papel: "DONO", ativo: true } }) });
       const u = anterior
-        ? await tx.usuario.update({ where: { id: anterior.id }, data: dados })
+        ? await tx.usuario.update({ where: { id: anterior.id }, data: {
+          ...dados, ...(dados.telefone && dados.telefone !== anterior.telefone ? { telefoneVerificadoEm: null } : {}),
+        } })
         : await tx.usuario.create({ data: { nome: dados.nome!, telefone: dados.telefone!, papel: dados.papel!, login: dados.login, ativo: dados.ativo } });
       await atualizarPerfil(tx, u.id, d, anterior?.ativo ?? true);
       if (d.permissoes) {

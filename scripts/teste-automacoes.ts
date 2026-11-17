@@ -65,7 +65,10 @@ async function main() {
     ok(de(TELS[0]).some((t) => t.includes("Daqui a pouco, às 13:00")), "chegando a hora: 13:00");
     ok(de(TELS[1]).some((t) => t.includes("Sentimos sua falta")), "depois da falta oferece remarcar");
     ok(de(TELS[2]).some((t) => t.includes("https://g.page/r/teste")), "agradecimento com link de avaliação");
-    ok(de(TELS[3]).some((t) => t.includes("Faz 40 dias") && t.includes("PARAR")), "reativação com opção de PARAR");
+    const contato = de(TELS[3]);
+    ok(contato.length === 2 && contato.includes("Fala, Auto!") &&
+      contato.includes("Aqui é o Leonel da Black.") &&
+      contato.every(t => !t.includes("horário")), "reativação abre com dois balões e espera a resposta");
     ok(de(TELS[4]).length === 0, "quem pediu para parar não recebe");
     ok(de(TELS[5]).some((t) => t.includes("Feliz aniversário") && t.includes("uma cerveja por nossa conta")), "aniversário com o presente");
 

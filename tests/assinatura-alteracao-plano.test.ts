@@ -30,6 +30,12 @@ describe("pedido de upgrade e downgrade", () => {
     m.pedido.mockResolvedValue(pedido());
     expect((await solicitar()).id).toBe("p"); expect(m.criar).not.toHaveBeenCalled();
   });
+  it("confere as condições confirmadas antes de devolver um pedido existente do mesmo plano", async () => {
+    m.pedido.mockResolvedValue(pedido());
+    await expect(solicitarAlteracaoPlano({ assinaturaId: "a", planoId: "novo", origem: "BOT", usuarioId: "u",
+      esperado: { nome: "Completo", precoCentavos: 16000, renovacao: "2030-02-01" } })).rejects.toMatchObject({ status: 409 });
+    expect(m.criar).not.toHaveBeenCalled();
+  });
   it("bloqueia escolhas concorrentes de outro plano", async () => {
     m.pedido.mockResolvedValue({ ...pedido(), planoDestinoId: "outro" });
     await expect(solicitar()).rejects.toMatchObject({ codigo: "troca_existente" });

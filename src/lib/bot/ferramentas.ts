@@ -8,7 +8,7 @@ import { agendarPeloCliente, cancelarPeloCliente, confirmarPeloCliente, proximos
 import { executarAssinatura, FERRAMENTAS_ASSINATURA, NOMES_ASSINATURA } from "./ferramentas-assinatura";
 import { executarCrescimento, FERRAMENTAS_CRESCIMENTO, NOMES_CRESCIMENTO } from "./ferramentas-crescimento";
 import { executarPagamento, FERRAMENTAS_PAGAMENTO, NOMES_PAGAMENTO } from "./ferramentas-pagamento";
-import { preferenciaDeAtendimento } from "./historico-atendimento";
+import { executarOperacao, FERRAMENTAS_OPERACAO, NOMES_OPERACAO } from "./ferramentas-operacao";
 import { ORIGENS_CLIENTE, zNascimento } from "@/lib/validacao-cliente";
 import { dataLocal, hhmmParaMin, instanteLocal, minParaHhmm, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 import { atualizarPreferencia, travarPreferencia } from "@/lib/whatsapp/preferencia";
@@ -22,6 +22,7 @@ export type ContextoBot = {
   telefone: string;
   nomePerfil: string | null;
   textoEntrada?: string | null;
+  entradaId?: string;
 };
 type Ferramenta = Anthropic.Beta.BetaTool;
 export const FERRAMENTAS: Ferramenta[] = [
@@ -147,8 +148,7 @@ export const FERRAMENTAS: Ferramenta[] = [
   ...FERRAMENTAS_ASSINATURA,
   ...FERRAMENTAS_CRESCIMENTO,
   ...FERRAMENTAS_PAGAMENTO,
-  { name: "minha_preferencia_de_atendimento", description: "Consulta último serviço e barbeiro ativos e horário médio das visitas do próprio cliente. Use quando ele aceitar ajuda para marcar ou pedir para repetir o atendimento.",
-    input_schema: { type: "object", properties: {}, additionalProperties: false } },
+  ...FERRAMENTAS_OPERACAO,
 ];
 
 const zData = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -196,10 +196,9 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
   if (NOMES_ASSINATURA.has(nome)) return executarAssinatura(nome, entrada, ctx);
   if (NOMES_CRESCIMENTO.has(nome)) return executarCrescimento(nome, entrada, ctx);
   if (NOMES_PAGAMENTO.has(nome)) return executarPagamento(nome, entrada, ctx);
+  if (NOMES_OPERACAO.has(nome)) return executarOperacao(nome, entrada, ctx);
   const cfg = await configuracao();
   switch (nome) {
-    case "minha_preferencia_de_atendimento":
-      return { texto: JSON.stringify(await preferenciaDeAtendimento(ctx.telefone, cfg.fuso)) };
     case "listar_servicos": {
       const servicos = await db.servico.findMany({
         where: { ativo: true },
@@ -221,6 +220,7 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
       };
     }
     case "consultar_horarios": {
+      if (cfg.agendaExternaAtiva) return { texto: "A recepção precisa conferir a disponibilidade na agenda atual. Nenhum horário foi oferecido ou reservado.", erro: true };
       const e = ENTRADAS.consultar_horarios.parse(entrada);
       const hoje = dataLocal(Date.now(), cfg.fuso);
       if (e.data < hoje) return { texto: "Essa data já passou.", erro: true };

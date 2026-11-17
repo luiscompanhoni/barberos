@@ -2,6 +2,14 @@
 
 O objetivo é responder com atenção, concisão e contexto, executar somente o que o sistema consegue comprovar e transferir exceções com informação suficiente para a equipe agir. A base está em `src/lib/bot/conhecimento-atendimento.ts`, incorporada ao prompt. São 18 procedimentos; não houve fine-tuning dos pesos do modelo nem publicação em produção.
 
+## Conversa do Leonel em 17/11
+
+A reativação começa com “Fala, {nome}!” e “Aqui é o Leonel da Black.”, em dois balões. Leonel aguarda a resposta antes de oferecer ajuda para marcar. Pedidos para parar mensagens continuam registrados, inclusive quando os envios estão bloqueados.
+
+Na Evolution, o indicador de digitação é separado do envio. Cada balão conserva a pausa local. Uma nova entrada durante a pausa cancela o texto pendente. A disponibilidade da conta acompanha o atendimento geral habilitado e é renovada pela rotina do servidor, inclusive fora do expediente. O teste individual usa somente o indicador no próprio chat.
+
+Durante a transição da agenda, a recepção confere disponibilidade, reserva e remarcação. Preços, serviços, estoque de venda, assinatura e a comanda aberta do titular podem ser consultados no chat. Indicadores do negócio e informações privadas da equipe dependem do papel, das permissões e do telefone verificado. Upgrade e downgrade exigem aceite escrito das condições conferidas e registram o pedido para a renovação.
+
 ## Evidências e cobertura
 
 Foram abertas as 100 conversas exibidas no painel de produção. Nos elementos de mensagem disponíveis, contaram-se 1.899 registros: 1.034 CLIENTE, 497 BOT, 342 SISTEMA e 26 EQUIPE. Notas internas não entram nessa contagem. Há 117 entradas de mídia sem conteúdo, em 41 conversas. Vinte e três conversas tinham somente mensagens de sistema.

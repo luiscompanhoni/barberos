@@ -246,7 +246,7 @@ describe("prompt", () => {
     const t = contextoDaMensagem({
       agora: Date.parse("2026-11-17T17:40:00Z"), fuso: "America/Sao_Paulo", inicioDeSessao: false,
       janelaDias: 2, cliente: { nome: "Ygor" }, nomePerfil: null,
-      avisos: ["Fala, Ygor!", "Aqui é o Leonel da Black.\n\nSe não quiser receber mensagens, responda PARAR."],
+      avisos: ["Fala, Ygor!", "Aqui é o Leonel da Black."],
     });
     expect(t).toContain("O cliente respondeu à abertura da reativação.");
   });

@@ -38,6 +38,21 @@ it.each(["DONO", "BARBEIRO", "RECEPCAO"])("preserva credenciais e sessões da eq
   expect(await verificarCodigo("5547999990000", "123456", "equipe")).toBe(equipe);
   expect(m.salvarUsuario).not.toHaveBeenCalled(); expect(m.apagarIdentidades).not.toHaveBeenCalled();
 });
+
+it("registra só a prova do número da equipe quando o código é do WhatsApp", async () => {
+  vi.stubEnv("OTP_PROVIDER", "whatsapp");
+  const u = { id: "staff", ativo: true, papel: "BARBEIRO", telefoneVerificadoEm: null, senhaHash: "legitima", sessaoVersao: 4 };
+  m.consumir.mockResolvedValue({ count: 1 }); m.usuario.mockResolvedValue(u);
+  m.salvarUsuario.mockResolvedValue({ ...u, telefoneVerificadoEm: new Date() });
+  expect(await verificarCodigo("5547999990000", "123456", "equipe")).toMatchObject({
+    senhaHash: "legitima", sessaoVersao: 4, papel: "BARBEIRO", telefoneVerificadoEm: expect.any(Date),
+  });
+  expect(m.salvarUsuario).toHaveBeenCalledWith(expect.objectContaining({
+    where: { id: "staff", ativo: true, telefone: "5547999990000", papel: "BARBEIRO" },
+    data: { telefoneVerificadoEm: expect.any(Date) },
+  }));
+  expect(m.apagarIdentidades).not.toHaveBeenCalled();
+});
 it("preserva senha e vínculos de cliente já verificado", async () => {
   const cliente = { id: "u1", ativo: true, papel: "CLIENTE", telefoneVerificadoEm: new Date(), senhaHash: "legitima", sessaoVersao: 1, cliente: { id: "c1" } };
   m.consumir.mockResolvedValue({ count: 1 }); m.usuario.mockResolvedValue(cliente);

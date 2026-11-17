@@ -9,6 +9,9 @@ import { assinar, entrarNaListaDeEspera, situacaoDoCliente, vagasRestantes, veri
 import { executarCancelamento } from "./ferramentas-cancelamento";
 import type { ContextoBot, ResultadoFerramenta } from "./ferramentas";
 import { linkDaMensalidadeParaAtendimento } from "@/lib/assinaturas/link-atendimento";
+import { alteracaoAtual, classificacaoTroca, solicitarAlteracaoPlano } from "@/lib/assinaturas/alteracao-plano";
+import { urlSite } from "@/lib/dominios";
+import { confirmouTrocaNoWhatsApp } from "./confirmacao-plano";
 
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
@@ -26,6 +29,18 @@ export const FERRAMENTAS_ASSINATURA: Anthropic.Beta.BetaTool[] = [
     name: "minha_assinatura",
     description: "Situação do plano do cliente desta conversa: status, próxima mensalidade e link de pagamento em aberto.",
     input_schema: { type: "object", properties: {}, additionalProperties: false },
+  },
+  {
+    name: "link_pagamento_assinatura",
+    description: "Quando o titular pedir para pagar a assinatura, devolve link vigente ou encaminha à área autenticada. Informe PIX se o titular pedir Pix. Não gera cobrança nem desativa cartão recorrente.",
+    input_schema: { type: "object", properties: { forma: { type: "string", enum: ["PIX", "CARTAO", "BOLETO"] } }, additionalProperties: false },
+  },
+  {
+    name: "solicitar_troca_plano",
+    description: "Registra pedido de upgrade/downgrade para a renovação. Primeiro informe nome, preço e data do novo plano usando listar_planos e minha_assinatura; só execute após confirmação explícita do titular.",
+    input_schema: { type: "object", properties: { plano_id: { type: "string" }, nome_conferido: { type: "string" },
+      preco_conferido_centavos: { type: "integer" }, renovacao_conferida: { type: "string", description: "AAAA-MM-DD" } },
+      required: ["plano_id", "nome_conferido", "preco_conferido_centavos", "renovacao_conferida"], additionalProperties: false },
   },
   {
     name: "assinar_plano",
@@ -132,6 +147,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
               plano_id: p.id,
               nome: p.nome,
               preco_mensal: reais(p.precoCentavos),
+              preco_mensal_centavos: p.precoCentavos,
               descricao: p.descricao,
               disponivel_para_compra: p.compravel && !p.vendaSomenteEquipe,
               venda_somente_equipe: p.vendaSomenteEquipe,
@@ -149,7 +165,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
     }
     case "minha_assinatura": {
       const c = await db.cliente.findUnique({ where: { telefone: ctx.telefone } });
-      const sit = c ? await situacaoDoCliente(c.id) : null;
+      const sit = c && !c.excluidoEm ? await situacaoDoCliente(c.id) : null;
       if (!sit) return { texto: "O cliente não tem plano de assinatura." };
       const a = sit.assinatura;
       const pagamento = sit.cobrancaEmAberto && c ? await linkDaMensalidadeParaAtendimento(c.id, sit.cobrancaEmAberto.id) : null;
@@ -159,7 +175,10 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
           status: a.status === "PENDENTE" ? "aguardando primeiro pagamento" : a.status === "ATIVA" ? "ativo" : "mensalidade atrasada",
           pode_usar_o_plano: sit.valida,
           mensalidade: reais(a.precoCentavos),
+          forma_pagamento: a.formaPagamento,
           proxima_mensalidade: dataBr(a.proximoVencimento),
+          proxima_mensalidade_iso: a.proximoVencimento?.toISOString().slice(0, 10) ?? null,
+          troca_solicitada: await alteracaoAtual(a.id),
           pagamento_em_aberto: sit.cobrancaEmAberto && {
             valor: reais(sit.cobrancaEmAberto.valorCentavos),
             vencimento: dataBr(sit.cobrancaEmAberto.vencimento),
@@ -167,6 +186,44 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
           },
         }),
       };
+    }
+    case "link_pagamento_assinatura": {
+      const e = z.object({ forma: z.enum(["PIX", "CARTAO", "BOLETO"]).optional() }).strict().parse(entrada);
+      const c = await db.cliente.findUnique({ where: { telefone: ctx.telefone } });
+      const sit = c && !c.excluidoEm ? await situacaoDoCliente(c.id) : null;
+      if (!sit || !c) return { texto: "Não encontrei uma assinatura deste titular.", erro: true };
+      const a = sit.assinatura;
+      const aberta = sit.cobrancaEmAberto;
+      const pagamento = aberta && (!e.forma || aberta.forma === e.forma)
+        ? await linkDaMensalidadeParaAtendimento(c.id, aberta.id) : null;
+      const portal = `${urlSite()}/c/planos`;
+      if (pagamento?.link) return { texto: JSON.stringify({ link: pagamento.link, forma: aberta?.forma, cobranca_existente: true }) };
+      if (a.status === "PENDENTE" && a.tokenPublico && !a.operacaoInicial && (!e.forma || a.plano.formasPagamento.includes(e.forma))) {
+        return { texto: JSON.stringify({ link: portal, orientar: "Abra a assinatura pendente no app e confira as opções de pagamento disponíveis." }) };
+      }
+      if (a.formaPagamento === "CARTAO" || aberta || a.operacaoInicial) {
+        return { texto: JSON.stringify({ link: portal, em_conferencia: true, orientar: "Confira com a equipe a cobrança e as tentativas do cartão antes de gerar outro Pix. Não diga que o cartão foi trocado ou suspenso." }), erro: true };
+      }
+      return { texto: JSON.stringify({ link: portal, orientar: "Não há um link vigente confirmado. Confira a assinatura no app." }) };
+    }
+    case "solicitar_troca_plano": {
+      const e = z.object({ plano_id: z.string().min(1).max(40), nome_conferido: z.string().trim().min(2).max(100),
+        preco_conferido_centavos: z.number().int().nonnegative(), renovacao_conferida: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict().parse(entrada);
+      const c = await db.cliente.findUnique({ where: { telefone: ctx.telefone }, select: {
+        id: true, excluidoEm: true, usuario: { select: { id: true, ativo: true, telefone: true, telefoneVerificadoEm: true, papel: true } },
+      } });
+      if (!c || c.excluidoEm || !c.usuario?.ativo || !c.usuario.telefoneVerificadoEm || c.usuario.telefone !== ctx.telefone || c.usuario.papel !== "CLIENTE") {
+        return { texto: `Para solicitar a troca, entre com sua conta verificada em ${urlSite()}/c/planos.`, erro: true };
+      }
+      if (!confirmouTrocaNoWhatsApp(ctx.textoEntrada)) {
+        return { texto: "Peça confirmação escrita da troca depois de informar o novo plano, valor e renovação.", erro: true };
+      }
+      const sit = await situacaoDoCliente(c.id);
+      if (!sit) return { texto: "Nenhuma assinatura em andamento para trocar.", erro: true };
+      const p = await solicitarAlteracaoPlano({ assinaturaId: sit.assinatura.id, planoId: e.plano_id, origem: "BOT", usuarioId: c.usuario.id,
+        esperado: { nome: e.nome_conferido, precoCentavos: e.preco_conferido_centavos, renovacao: e.renovacao_conferida } });
+      return { texto: JSON.stringify({ pedido: p.estado, tipo: classificacaoTroca(p.precoAnteriorCentavos, p.precoNovoCentavos),
+        a_partir_da_renovacao: dataBr(p.efetivaEm), valorCentavos: p.precoNovoCentavos, orientacao: "Pedido registrado. O plano atual permanece até a troca ser aplicada." }) };
     }
     case "assinar_plano": {
       const e = ENTRADAS.assinar_plano.parse(entrada);

@@ -8,7 +8,7 @@ export type Envio = { tipo: TipoAutomacao; chave: string; clienteId: string; age
  * Reserva o envio (linha unica tipo + chave) e manda no WhatsApp. Devolve false se ja tinha saido.
  * Falha de envio fica registrada na linha (aparece no historico das automacoes).
  */
-export async function enviarAutomacao(e: Envio) {
+export async function enviarAutomacao(e: Envio, entregar = () => notificarCliente(e.telefone, e.texto)) {
   let id: string;
   try {
     id = (await db.automacaoEnviada.create({
@@ -19,7 +19,7 @@ export async function enviarAutomacao(e: Envio) {
     throw err;
   }
   try {
-    const r = await notificarCliente(e.telefone, e.texto);
+    const r = await entregar();
     const erro = r && typeof r === "object" && "erro" in r ? (r.erro as string | null) : null;
     if (erro || (r && typeof r === "object" && "ok" in r && r.ok === false)) {
       await db.automacaoEnviada.update({ where: { id }, data: { ok: false, erro: erro ?? "Canal não confirmou o envio." } });

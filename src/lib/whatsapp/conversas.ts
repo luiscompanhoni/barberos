@@ -50,7 +50,7 @@ export async function registrarEntrada(p: { telefone: string; waId?: string; nom
 }
 
 /** Envia texto livre numa conversa (dentro da janela de 24h) e registra. */
-export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean; envioAutorizadoId?: string; aberturaTeste?: boolean } = {}) {
+export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean; envioAutorizadoId?: string; aberturaTeste?: boolean; pararSeHumano?: boolean } = {}) {
   const conversa = await db.conversa.findUniqueOrThrow({ where: { id: conversaId } });
   let erro: string | null = null;
   let wamid: string | null = null;
@@ -58,7 +58,9 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
     if (autor === "SISTEMA" || opts.aberturaTeste) {
       const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { aceitaMensagens: true, excluidoEm: true } });
       if (conversa.recusaAutomaticas || cliente?.aceitaMensagens === false) throw new Error("O contato pediu para não receber mensagens automáticas.");
-      if (opts.aberturaTeste && (cliente?.excluidoEm || conversa.estado !== "BOT")) throw new Error("Contato indisponível para a abertura do teste.");
+      if ((opts.aberturaTeste || opts.pararSeHumano) && (cliente?.excluidoEm || conversa.estado !== "BOT")) {
+        throw new Error("Contato indisponível para a abertura automática.");
+      }
     }
     const origem = opts.entrevistaPiloto ? "ENTREVISTA_PILOTO" : autor === "EQUIPE" || (autor === "BOT" && opts.respostaAtendimento) ? "ATENDIMENTO" : "PADRAO";
     const resultado = opts.envioAutorizadoId && autor === "SISTEMA"
@@ -82,7 +84,7 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
  * Aviso do sistema. Fora da janela de 24 h vai pelo modelo `Olá {{1}}! {{2}}`: campanhas podem usar o modelo
  * de marketing (`WHATSAPP_TEMPLATE_CAMPANHA`), pois a Meta não aceita divulgação no modelo de utilidade.
  */
-export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string; envioAutorizadoId?: string } = {}) {
+export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string; envioAutorizadoId?: string; apenasTextoLivre?: boolean; pararSeHumano?: boolean } = {}) {
   const conversa = await obterConversa(telefone);
   const cliente = conversa.clienteId
     ? await db.cliente.findUnique({ where: { id: conversa.clienteId }, select: { nome: true, aceitaMensagens: true } })
@@ -99,13 +101,15 @@ export async function notificarCliente(telefone: string, texto: string, opcoes: 
   }
 
   if (opcoes.envioAutorizadoId || dentroDaJanela || !temJanela24h()) {
-    return enviarNaConversa(conversa.id, texto, "SISTEMA", { envioAutorizadoId: opcoes.envioAutorizadoId });
+    return enviarNaConversa(conversa.id, texto, "SISTEMA", { envioAutorizadoId: opcoes.envioAutorizadoId, pararSeHumano: opcoes.pararSeHumano });
   }
 
   const template = opcoes.template || process.env.WHATSAPP_TEMPLATE_AVISO;
   let erro: string | null = null;
   let wamid: string | null = null;
-  if (!template) {
+  if (opcoes.apenasTextoLivre) {
+    erro = "A janela de 24h do WhatsApp oficial não está aberta para mensagens livres.";
+  } else if (!template) {
     erro = "Fora da janela de 24h e WHATSAPP_TEMPLATE_AVISO não configurado: aviso não enviado.";
   } else {
     try {

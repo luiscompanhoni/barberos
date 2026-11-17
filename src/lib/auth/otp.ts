@@ -130,7 +130,15 @@ export async function verificarCodigo(telefone: string, codigo: string, area: Ar
         if (!cliente || cliente.excluidoEm) throw invalido;
       }
       // A prova do celular nunca altera credenciais nem permissões da equipe.
-      if (usuario.papel !== "CLIENTE") return usuario;
+      if (usuario.papel !== "CLIENTE") {
+        if (usuario.telefoneVerificadoEm || (!ehHomologacao() && process.env.OTP_PROVIDER !== "whatsapp")) return usuario;
+        const atualizado = await tx.usuario.update({
+          where: { id: usuario.id, telefone, ativo: true, papel: usuario.papel },
+          data: { telefoneVerificadoEm: new Date() }, include: incluir,
+        });
+        await auditar(tx, atualizado.id, "equipe_confirmar_celular", "usuario", atualizado.id);
+        return atualizado;
+      }
       if (!usuario.telefoneVerificadoEm) {
         // Cadastros legados podiam criar senha sem comprovar o número. A primeira
         // prova remove essas credenciais e revoga inclusive sessões já emitidas.

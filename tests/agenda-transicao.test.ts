@@ -23,8 +23,10 @@ describe("convivência com a agenda externa", () => {
   });
   it("orienta o bot a encaminhar a confirmação, sem alegar uma integração ativa", () => {
     const p = promptSistema({ nomeBarbearia: "Black", endereco: null, antecedenciaMinimaMin: 60, prazoCancelamentoMin: 120, janelaAgendamentoDias: 30, agendaExternaAtiva: true });
-    expect(p).toContain("Para qualquer pedido de agenda, use chamar_atendente");
+    expect(p).toContain("Quando ela pedir para conferir disponibilidade, marcar, remarcar ou cancelar, use chamar_atendente");
+    expect(p).toContain("Continue resolvendo perguntas de preço, serviços e assinatura no próprio chat.");
     expect(p).toContain("Não diga que houve sincronização automática.");
+    expect(p).not.toContain("Consulte consultar_horarios para encontrar horários livres.");
   });
   it("não cria um contato falso quando não há número público configurado", () => {
     expect(contatoParaConfirmacao(undefined)).toBeNull();

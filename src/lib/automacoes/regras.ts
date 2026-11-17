@@ -65,7 +65,7 @@ export const APRESENTACAO_REATIVACAO = "Aqui é o Leonel da Black.";
 
 export function aberturaReativacao(nome: string) {
   const apelido = nome.trim().split(/\s+/)[0];
-  return [apelido ? `Fala, ${apelido}!` : "Fala!", `${APRESENTACAO_REATIVACAO}\n\nSe não quiser receber mensagens, responda PARAR.`] as const;
+  return [apelido ? `Fala, ${apelido}!` : "Fala!", APRESENTACAO_REATIVACAO] as const;
 }
 
 export const TEXTOS = {
@@ -84,9 +84,6 @@ export const TEXTOS = {
   ANIVERSARIO: (p: { nome: string; barbearia: string; presente: string | null }) =>
     `Feliz aniversário, ${primeiro(p.nome)}! 🎉 Toda a equipe da ${p.barbearia} te deseja um dia incrível.` +
     `${p.presente ? ` Seu presente: ${p.presente} na sua próxima visita este mês, é só avisar na recepção.` : ""}`,
-  REATIVACAO: (p: { nome: string; dias: number; barbearia: string }) =>
-    `Oi, ${primeiro(p.nome)}! Faz ${p.dias} dias que você não passa aqui na ${p.barbearia}. Bora dar aquele trato no visual? ` +
-    `Posso ver um horário para você esta semana. (Se não quiser mais receber mensagens, responda PARAR.)`,
 };
 
 /** Aniversario hoje? Quem nasceu em 29/02 comemora em 28/02 nos anos que nao sao bissextos. */

@@ -20,16 +20,32 @@ export function tokenWebhookEvolution() {
   return process.env.EVOLUTION_WEBHOOK_TOKEN || createHmac("sha256", process.env.SESSION_SECRET ?? "").update("evolution-webhook").digest("hex");
 }
 
-async function chamar<T>(metodo: string, caminho: string, corpo?: unknown): Promise<{ status: number; json: T }> {
+async function chamar<T>(metodo: string, caminho: string, corpo?: unknown, cancelar?: AbortSignal): Promise<{ status: number; json: T }> {
   const { url, chave } = config();
+  const limite = AbortSignal.timeout(30_000);
   const r = await fetch(`${url}${caminho}`, {
     method: metodo,
     headers: { apikey: chave, "Content-Type": "application/json" },
     body: corpo === undefined ? undefined : JSON.stringify(corpo),
-    signal: AbortSignal.timeout(30_000), // o envio do bot espera o "digitando..." (ate ~14 s)
+    signal: cancelar ? AbortSignal.any([limite, cancelar]) : limite,
   });
   const json = (await r.json().catch(() => ({}))) as T;
   return { status: r.status, json };
+}
+
+/** Indicador do chat. Este endpoint da Evolution não envia mensagem. */
+export async function indicarDigitacaoEvolution(telefone: string, atrasoMs: number, sinal: AbortSignal) {
+  const { status } = await chamar("POST", `/chat/sendPresence/${instancia()}`, {
+    number: telefone.replace(/\D/g, ""), delay: atrasoMs, presence: "composing",
+  }, sinal);
+  if (status >= 300) throw new Error(`Evolution: presença no chat (${status}).`);
+}
+
+export async function publicarDisponibilidadeEvolution(disponivel: boolean) {
+  const { status } = await chamar("POST", `/instance/setPresence/${instancia()}`, {
+    presence: disponivel ? "available" : "unavailable",
+  }, AbortSignal.timeout(2_000));
+  if (status >= 300) throw new Error(`Evolution: presença da conta (${status}).`);
 }
 
 function erroDe(json: unknown) {

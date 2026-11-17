@@ -37,7 +37,7 @@ beforeEach(() => {
   m.entrada.mockResolvedValue({ id: "c1", telefone: entrada.telefone, estado: "BOT", sessao: null });
   m.cfg.mockResolvedValue({ botAtivo: true, fuso: "America/Sao_Paulo", janelaAgendamentoDias: 30, prazoCancelamentoMin: 60 });
   m.midia.mockResolvedValue({ texto: "[figurinha]", imagem: { tipo: "image/jpeg", base64: "BASE64_PRIVADO_TESTE" } });
-  m.modelo.mockResolvedValue({ resposta: "Valeu!", historico: [{ role: "user", content: [{ type: "image", source: { data: "BASE64_PRIVADO_TESTE" } }] }] });
+  m.modelo.mockResolvedValue({ resposta: "Valeu!", ferramentas: [], historico: [{ role: "user", content: [{ type: "image", source: { data: "BASE64_PRIVADO_TESTE" } }] }] });
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -86,13 +86,13 @@ describe("gates da entrada multimodal", () => {
     expect(m.modelo).not.toHaveBeenCalled();
   });
   it("não manda aviso de transferência se a equipe já respondeu durante o turno", async () => {
-    m.modelo.mockResolvedValue({ resposta: "Pedi para a equipe continuar por aqui.", historico: [], passouParaHumano: true });
+    m.modelo.mockResolvedValue({ resposta: "Pedi para a equipe continuar por aqui.", historico: [], ferramentas: [], passouParaHumano: true });
     m.mensagens.mockImplementation(async (q: { where?: { autor?: string } }) => q.where?.autor === "EQUIPE" ? [{ id: "resposta-equipe" }] : []);
     await receberMensagem({ ...entrada, texto: "Preciso de uma pessoa", midia: undefined });
     expect(m.enviar).not.toHaveBeenCalled();
   });
   it("avisa transferência própria quando a equipe ainda não respondeu", async () => {
-    m.modelo.mockResolvedValue({ resposta: "Pedi para a equipe continuar por aqui.", historico: [], passouParaHumano: true });
+    m.modelo.mockResolvedValue({ resposta: "Pedi para a equipe continuar por aqui.", historico: [], ferramentas: [], passouParaHumano: true });
     await receberMensagem({ ...entrada, texto: "Preciso de uma pessoa", midia: undefined });
     expect(m.enviar).toHaveBeenCalledTimes(1);
   });

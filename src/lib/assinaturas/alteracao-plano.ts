@@ -18,6 +18,7 @@ function condicoes(p: PlanoCompleto): Prisma.InputJsonObject {
 
 export const classificacaoTroca = (atual: number, novo: number) => novo > atual ? "UPGRADE" : novo < atual ? "DOWNGRADE" : "TROCA";
 const pedidoMudou = () => new ErroNegocio("O pedido de troca mudou. Atualize a tela para conferir o pedido atual.", 409, "troca_desatualizada");
+const condicoesMudaram = () => new ErroNegocio("As condições da troca mudaram. Apresente o plano, preço e data da renovação antes de confirmar outra vez.", 409, "troca_desatualizada");
 export function condicoesIguais(a: unknown, b: unknown): boolean {
   const canonica = (v: unknown): string => v === null || typeof v !== "object" ? JSON.stringify(v) : Array.isArray(v)
     ? `[${v.map(canonica).join(",")}]` : `{${Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => `${JSON.stringify(k)}:${canonica(x)}`).join(",")}}`;
@@ -33,7 +34,8 @@ export async function alteracaoAtual(assinaturaId: string) {
 }
 
 /** A escolha registra intenção para a renovação; não muda benefícios nem preço do período pago. */
-export async function solicitarAlteracaoPlano(p: { assinaturaId: string; planoId: string; origem: OrigemAgendamento; usuarioId: string }) {
+export async function solicitarAlteracaoPlano(p: { assinaturaId: string; planoId: string; origem: OrigemAgendamento; usuarioId: string;
+  esperado?: { nome: string; precoCentavos: number; renovacao: string } }) {
   const hoje = dataLocal(Date.now(), (await configuracao()).fuso);
   return db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${p.assinaturaId}`}, 0))`;
@@ -45,12 +47,18 @@ export async function solicitarAlteracaoPlano(p: { assinaturaId: string; planoId
     if (a.planoId === p.planoId) throw new ErroNegocio("Esse já é o plano atual.", 409);
     const existente = await tx.alteracaoPlanoAssinatura.findFirst({ where: { assinaturaId: a.id, estado: { in: ESTADOS_ABERTOS } } });
     if (existente) {
-      if (existente.planoDestinoId === p.planoId) return existente;
-      throw new ErroNegocio("Já existe uma troca solicitada. Cancele o pedido anterior para escolher outro plano.", 409, "troca_existente");
+      if (existente.planoDestinoId !== p.planoId) throw new ErroNegocio("Já existe uma troca solicitada. Cancele o pedido anterior para escolher outro plano.", 409, "troca_existente");
+      const nome = (existente.condicoes as { nome?: string } | null)?.nome;
+      if (p.esperado && (nome !== p.esperado.nome || existente.precoNovoCentavos !== p.esperado.precoCentavos ||
+        dia(existente.efetivaEm) !== p.esperado.renovacao || dia(a.proximoVencimento) !== p.esperado.renovacao)) throw condicoesMudaram();
+      return existente;
     }
     const novo = await tx.plano.findUnique({ where: { id: p.planoId }, include: incluirPlano });
     if (!novo || !novo.ativo || !novo.compravel || ((p.origem === "SITE" || p.origem === "BOT") && !novo.visivel)
       || (novo.vendaSomenteEquipe && p.origem !== "RECEPCAO" && p.origem !== "PAINEL")) throw naoEncontrado("Plano disponível");
+    if (p.esperado && (novo.nome !== p.esperado.nome || novo.precoCentavos !== p.esperado.precoCentavos || dia(a.proximoVencimento) !== p.esperado.renovacao)) {
+      throw condicoesMudaram();
+    }
     if (!novo.formasPagamento.includes(a.formaPagamento)) throw new ErroNegocio("O novo plano não aceita a forma de pagamento atual. Confira com a recepção.", 409);
     const pedido = await tx.alteracaoPlanoAssinatura.create({ data: {
       assinaturaId: a.id, planoAnteriorId: a.planoId, planoDestinoId: novo.id,

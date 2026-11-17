@@ -3,7 +3,7 @@ import { aberturaReativacao } from "@/lib/automacoes/regras";
 import { db } from "@/lib/db";
 import { provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { enviarNaConversa } from "@/lib/whatsapp/conversas";
-import { estadoEvolution } from "@/lib/whatsapp/evolution";
+import { estadoEvolution, indicarDigitacaoEvolution } from "@/lib/whatsapp/evolution";
 import { destinatarioTesteEquipe, destinoTesteIndividual } from "@/lib/whatsapp/teste-equipe";
 import { telefoneCanonico } from "@/lib/whatsapp/webhook";
 
@@ -35,11 +35,15 @@ async function enviarAbertura() {
 
   const mensagens = aberturaReativacao(usuario.nome);
   for (const [indice, texto] of mensagens.entries()) {
-    if (indice > 0) await esperar(2000);
+    const digitacao = indice > 0
+      ? indicarDigitacaoEvolution(conversa.waId ?? telefone, 2000, AbortSignal.timeout(5000)).then(() => true, () => false)
+      : undefined;
+    if (digitacao) await esperar(2000);
     const envio = await enviarNaConversa(conversa.id, texto, "BOT", { respostaAtendimento: true, aberturaTeste: true });
     const registro = await db.mensagem.findUnique({ where: { id: envio.mensagemId }, select: { wamid: true } });
     if (!envio.ok || !registro?.wamid) throw new Error(`O WhatsApp não confirmou o balão ${indice + 1}. Confira antes de repetir.`);
     console.log(`BALAO_${indice + 1}_ACEITO`);
+    if (digitacao) console.log(await digitacao ? "DIGITACAO_ACEITA" : "DIGITACAO_NAO_CONFIRMADA");
   }
 }
 

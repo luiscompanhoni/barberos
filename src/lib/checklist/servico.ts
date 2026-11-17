@@ -13,6 +13,10 @@ import { urlPainel } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { normalizarTelefone } from "@/lib/telefone";
 import { notificarCliente } from "@/lib/whatsapp/conversas";
+import { equipeVerificadaPeloWhatsApp } from "@/lib/whatsapp/equipe-verificada";
+import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
+import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
+import { testeEquipeAtivo } from "@/lib/whatsapp/teste-equipe";
 import { previaDeFaixas, resumoPontos, totaisDePontos, travarPontoDoItem } from "./pontos";
 import { hhmmParaMinutos, tarefasDoDia, textoLista, textoResumo } from "./regras";
 
@@ -221,8 +225,9 @@ async function reservar(chave: string, forcar: boolean) {
 async function mandar(envioId: string, telefone: string, texto: string) {
   try {
     const r = await notificarCliente(telefone, texto);
-    // Equipe nao conversa com o bot: a conversa fica com atendimento humano.
-    await db.conversa.updateMany({ where: { telefone }, data: { estado: "HUMANO" } });
+    if (!await equipeVerificadaPeloWhatsApp(telefone)) {
+      await db.conversa.updateMany({ where: { telefone, estado: "BOT" }, data: { estado: "HUMANO" } });
+    }
     if (r && !r.ok) await db.checklistEnvio.update({ where: { id: envioId }, data: { ok: false, erro: r.erro?.slice(0, 300) ?? "falhou" } });
     return !!r?.ok;
   } catch (e) {
@@ -261,10 +266,40 @@ export async function enviarResumo(data: string, forcar = false) {
   return n;
 }
 
+export async function minhasTarefasDoDia(usuarioId: string) {
+  const p = await db.checklistPessoa.findUnique({ where: { usuarioId } });
+  if (!p?.ativo || !p.funcao) return { habilitado: false };
+  const hoje = dataLocal(Date.now(), (await configuracao()).fuso);
+  await gerarItens(hoje, [p.id]);
+  const itens = await db.checklistItem.findMany({ where: { pessoaId: p.id, data: dataDb(hoje) },
+    select: { titulo: true, horario: true, feito: true }, orderBy: [{ horario: "asc" }, { ordem: "asc" }] });
+  return { habilitado: true, data: hoje, itens, link: linkPessoa(p.token) };
+}
+
+async function lembrarPendencias(data: string) {
+  const pessoas = await db.checklistPessoa.findMany({
+    where: { ativo: true, funcao: "BARBEIRO", itens: { some: { data: dataDb(data), feito: false } } },
+    select: { id: true, nome: true, telefone: true, token: true },
+  });
+  let lembretes = 0;
+  for (const p of pessoas) {
+    const original = await db.checklistEnvio.findUnique({ where: { chave: `lista:${p.id}:${data}` } });
+    if (!original?.ok) continue;
+    const pendentes = await db.checklistItem.count({ where: { pessoaId: p.id, data: dataDb(data), feito: false } });
+    if (!pendentes) continue;
+    const id = await reservar(`lembrete:${p.id}:${data}`, false);
+    if (id && await mandar(id, p.telefone, `Oi, ${p.nome.trim().split(/\s+/)[0]}! Ainda tem tarefa aberta no checklist de hoje. Dá uma olhada aqui: ${linkPessoa(p.token)}`)) lembretes++;
+  }
+  return lembretes;
+}
+
 /** Rotina (a cada 5 min): lista de manha a partir de `horaEnvio`, resumo a partir de `horaResumo`. */
 export async function rodarChecklist(agora = Date.now()) {
+  if (quarentenaRestauracao() || recursoPiloto() || testeEquipeAtivo() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") {
+    return { listas: 0, resumos: 0, lembretes: 0 };
+  }
   const cfg = await db.checklistConfig.findUnique({ where: { id: 1 } });
-  if (!cfg?.ativo) return { listas: 0, resumos: 0 };
+  if (!cfg?.ativo) return { listas: 0, resumos: 0, lembretes: 0 };
   const fuso = (await configuracao()).fuso;
   const hoje = dataLocal(agora, fuso);
   const min = minutosLocal(agora, fuso);
@@ -273,6 +308,10 @@ export async function rodarChecklist(agora = Date.now()) {
     const pessoas = await db.checklistPessoa.findMany({ where: { ativo: true, funcao: { not: null } }, select: { id: true } });
     for (const p of pessoas) if (await enviarLista(p.id, hoje)) listas++;
   }
-  if (min >= hhmmParaMinutos(cfg.horaResumo)) resumos = await enviarResumo(hoje);
-  return { listas, resumos };
+  let lembretes = 0;
+  if (min >= hhmmParaMinutos(cfg.horaResumo)) {
+    lembretes = await lembrarPendencias(hoje);
+    resumos = await enviarResumo(hoje);
+  }
+  return { listas, resumos, lembretes };
 }
