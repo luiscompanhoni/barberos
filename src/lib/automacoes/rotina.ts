@@ -39,7 +39,10 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   const so = opts.clienteIds ? { clienteId: { in: opts.clienteIds } } : {};
   const comercial = horarioComercial(agora, cfg.fuso);
 
-  if (recursoPiloto()) return cont; // Piloto não dispara campanhas nem rotinas de contato.
+  if (recursoPiloto()) {
+    if (comercial && process.env.WHATSAPP_CAMPANHAS_MANUAIS_ATIVAS === "true") cont.campanha = await processarCampanhas(agora, opts);
+    return cont;
+  }
 
   // O canal do aplicativo tem preferências próprias; uma falha não interrompe os canais existentes.
   try {

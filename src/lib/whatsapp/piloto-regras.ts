@@ -5,6 +5,9 @@ export const recursoPiloto = () => process.env.WHATSAPP_PILOTO_ENTREVISTAS_HABIL
 export function atendimentoAposPiloto(p: EstadoPiloto | null) {
   return recursoPiloto() && process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO === "true" && !!p && !p.ativo;
 }
+export function campanhasManuaisAposPiloto(p: EstadoPiloto | null) {
+  return process.env.WHATSAPP_CAMPANHAS_MANUAIS_ATIVAS === "true" && atendimentoAposPiloto(p);
+}
 export function telefonePiloto(valor: string) {
   const numero = valor.replace(/@s\.whatsapp\.net$/i, "");
   if (!/^(?:55)?[0-9]{10,11}$/.test(numero)) return null;

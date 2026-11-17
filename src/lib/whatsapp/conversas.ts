@@ -50,7 +50,7 @@ export async function registrarEntrada(p: { telefone: string; waId?: string; nom
 }
 
 /** Envia texto livre numa conversa (dentro da janela de 24h) e registra. */
-export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean; envioAutorizadoId?: string; aberturaTeste?: boolean; pararSeHumano?: boolean } = {}) {
+export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean; envioAutorizadoId?: string; aberturaTeste?: boolean; pararSeHumano?: boolean; campanha?: boolean } = {}) {
   const conversa = await db.conversa.findUniqueOrThrow({ where: { id: conversaId } });
   let erro: string | null = null;
   let wamid: string | null = null;
@@ -62,7 +62,7 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
         throw new Error("Contato indisponível para a abertura automática.");
       }
     }
-    const origem = opts.entrevistaPiloto ? "ENTREVISTA_PILOTO" : autor === "EQUIPE" || (autor === "BOT" && opts.respostaAtendimento) ? "ATENDIMENTO" : "PADRAO";
+    const origem = opts.entrevistaPiloto ? "ENTREVISTA_PILOTO" : autor === "EQUIPE" || (autor === "BOT" && opts.respostaAtendimento) ? "ATENDIMENTO" : autor === "SISTEMA" && opts.campanha ? "CAMPANHA" : "PADRAO";
     const resultado = opts.envioAutorizadoId && autor === "SISTEMA"
       ? await enviarTextoLoteAutorizado(opts.envioAutorizadoId, conversa, texto)
       : await enviarTexto(opts.entrevistaPiloto ? conversa.telefone : conversa.waId ?? conversa.telefone, texto, opts.digitandoMs, origem);
@@ -84,7 +84,7 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
  * Aviso do sistema. Fora da janela de 24 h vai pelo modelo `Olá {{1}}! {{2}}`: campanhas podem usar o modelo
  * de marketing (`WHATSAPP_TEMPLATE_CAMPANHA`), pois a Meta não aceita divulgação no modelo de utilidade.
  */
-export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string; envioAutorizadoId?: string; apenasTextoLivre?: boolean; pararSeHumano?: boolean } = {}) {
+export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string; envioAutorizadoId?: string; apenasTextoLivre?: boolean; pararSeHumano?: boolean; campanha?: boolean } = {}) {
   const conversa = await obterConversa(telefone);
   const cliente = conversa.clienteId
     ? await db.cliente.findUnique({ where: { id: conversa.clienteId }, select: { nome: true, aceitaMensagens: true } })
@@ -101,27 +101,28 @@ export async function notificarCliente(telefone: string, texto: string, opcoes: 
   }
 
   if (opcoes.envioAutorizadoId || dentroDaJanela || !temJanela24h()) {
-    return enviarNaConversa(conversa.id, texto, "SISTEMA", { envioAutorizadoId: opcoes.envioAutorizadoId, pararSeHumano: opcoes.pararSeHumano });
+    return enviarNaConversa(conversa.id, texto, "SISTEMA", { envioAutorizadoId: opcoes.envioAutorizadoId, pararSeHumano: opcoes.pararSeHumano, campanha: opcoes.campanha });
   }
 
-  const template = opcoes.template || process.env.WHATSAPP_TEMPLATE_AVISO;
+  const template = opcoes.campanha ? opcoes.template : opcoes.template || process.env.WHATSAPP_TEMPLATE_AVISO;
   let erro: string | null = null;
   let wamid: string | null = null;
   if (opcoes.apenasTextoLivre) {
     erro = "A janela de 24h do WhatsApp oficial não está aberta para mensagens livres.";
   } else if (!template) {
-    erro = "Fora da janela de 24h e WHATSAPP_TEMPLATE_AVISO não configurado: aviso não enviado.";
+    erro = opcoes.campanha ? "Fora da janela de 24h e sem modelo de campanha aprovado." : "Fora da janela de 24h e WHATSAPP_TEMPLATE_AVISO não configurado: aviso não enviado.";
   } else {
     try {
       const [atual, titular] = await Promise.all([
-        db.conversa.findUnique({ where: { id: conversa.id }, select: { recusaAutomaticas: true } }),
-        db.cliente.findUnique({ where: { telefone }, select: { aceitaMensagens: true } }),
+        db.conversa.findUnique({ where: { id: conversa.id }, select: { recusaAutomaticas: true, estado: true } }),
+        db.cliente.findUnique({ where: { telefone }, select: { aceitaMensagens: true, excluidoEm: true } }),
       ]);
       if (atual?.recusaAutomaticas || titular?.aceitaMensagens === false) throw new Error("O contato pediu para não receber mensagens automáticas.");
+      if (opcoes.pararSeHumano && (atual?.estado !== "BOT" || titular?.excluidoEm)) throw new Error("Contato indisponível para envio automático.");
       wamid = (await enviarTemplate(conversa.waId ?? telefone, {
         nome: template,
         parametros: [cliente?.nome.split(" ")[0] ?? "cliente", texto],
-      })).wamid;
+      }, opcoes.campanha ? "CAMPANHA" : "TEMPLATE")).wamid;
     } catch (e) {
       erro = (e as Error).message;
     }

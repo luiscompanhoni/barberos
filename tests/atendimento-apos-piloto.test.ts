@@ -14,6 +14,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.stubEnv("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "true");
   vi.stubEnv("WHATSAPP_ATENDIMENTO_APOS_PILOTO", "true");
+  vi.stubEnv("WHATSAPP_CAMPANHAS_MANUAIS_ATIVAS", "false");
   vi.stubEnv("WHATSAPP_PROVIDER", "evolution");
   vi.stubEnv("AMBIENTE", "producao");
   m.find.mockResolvedValue(piloto); m.evolution.mockResolvedValue({ wamid: "fixture" });
@@ -38,5 +39,14 @@ describe("separação do atendimento após piloto", () => {
     vi.stubEnv("WHATSAPP_ATENDIMENTO_APOS_PILOTO", "false");
     await expect(enviarTexto(telefone, "resposta", 0, "ATENDIMENTO")).rejects.toMatchObject({ status: 403 });
     expect(m.evolution).not.toHaveBeenCalled();
+  });
+  it("libera campanha manual separadamente e fecha o canal se o piloto reabrir", async () => {
+    await expect(enviarTexto(telefone, "campanha", 0, "CAMPANHA")).rejects.toMatchObject({ status: 403 });
+    vi.stubEnv("WHATSAPP_CAMPANHAS_MANUAIS_ATIVAS", "true");
+    await enviarTexto(telefone, "campanha", 0, "CAMPANHA");
+    await expect(enviarTexto(telefone, "automação")).rejects.toMatchObject({ status: 403 });
+    m.find.mockResolvedValue({ ...piloto, ativo: true });
+    await expect(enviarTexto(telefone, "campanha", 0, "CAMPANHA")).rejects.toMatchObject({ status: 403 });
+    expect(m.evolution).toHaveBeenCalledTimes(1);
   });
 });

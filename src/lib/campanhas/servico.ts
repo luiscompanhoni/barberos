@@ -13,7 +13,9 @@ import { urlSite } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { noAr } from "@/lib/jogos/motor";
 import { notificarCliente } from "@/lib/whatsapp/conversas";
-import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
+import { estadoPiloto } from "@/lib/whatsapp/piloto";
+import { campanhasManuaisAposPiloto, recursoPiloto } from "@/lib/whatsapp/piloto-regras";
+import { testeEquipeAtivo } from "@/lib/whatsapp/teste-equipe";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { CHAVES_SEGMENTO, montarMensagem, segmentosDoCliente, SEGMENTOS, type Segmento } from "./regras";
 import { impedimentoCampanha } from "./contato";
@@ -21,12 +23,13 @@ import { campanhaConferida, identificadorDoLote, loteAutorizadoConfirmado, loteA
 import { INTERVALO_CAMPANHAS_MS, migracaoDoCliente, reservarContatoCampanha } from "./reservar-contato";
 import { MODELOS_SEGMENTOS } from "./modelos-segmento";
 
-export function campanhasBloqueadas() {
-  return process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" || quarentenaRestauracao() || recursoPiloto();
+export async function campanhasBloqueadas() {
+  return process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" || quarentenaRestauracao() || testeEquipeAtivo() ||
+    (recursoPiloto() && (process.env.WHATSAPP_CAMPANHAS_MANUAIS_ATIVAS !== "true" || !campanhasManuaisAposPiloto(await estadoPiloto())));
 }
 
-function exigirCampanhaLiberada() {
-  if (campanhasBloqueadas()) throw new ErroNegocio("Envios de campanhas bloqueados nesta instalação.", 409, "campanhas_bloqueadas");
+async function exigirCampanhaLiberada() {
+  if (await campanhasBloqueadas()) throw new ErroNegocio("Envios de campanhas bloqueados nesta instalação.", 409, "campanhas_bloqueadas");
 }
 
 /** Quantas mensagens de campanha saem por rodada da rotina (a cada 5 min), somando todas: espalha o envio. */
@@ -142,8 +145,8 @@ export async function editarCampanha(s: Sessao, campanhaId: string, d: DadosCamp
 
 /** Libera o proximo lote: os `quantidade` primeiros elegiveis entram na fila da campanha. `clienteIds` limita (testes). */
 export async function liberarLote(s: Sessao, campanhaId: string, quantidade: number, agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
-  const autorizado = campanhasBloqueadas() ? await loteAutorizadoDisponivel() : null;
-  if (!autorizado || autorizado.campanhaId !== campanhaId) exigirCampanhaLiberada();
+  const autorizado = await campanhasBloqueadas() ? await loteAutorizadoDisponivel() : null;
+  if (!autorizado || autorizado.campanhaId !== campanhaId) await exigirCampanhaLiberada();
   const c = await db.campanha.findUnique({ where: { id: campanhaId } });
   if (!c) throw naoEncontrado("Campanha");
   if (c.status !== "ATIVA" && !(autorizado && c.status === "PAUSADA")) throw new ErroNegocio(c.status === "PAUSADA" ? "Retome a campanha antes de liberar outro lote." : "Campanha encerrada.", 409);
@@ -158,7 +161,7 @@ export async function liberarLote(s: Sessao, campanhaId: string, quantidade: num
   return db.$transaction(async (tx) => {
     // Dois cliques ao mesmo tempo: um espera o outro (e o unique campanha+cliente nao deixa repetir).
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`campanha:${campanhaId}`}))`;
-    if (!autorizado) exigirCampanhaLiberada();
+    if (!autorizado) await exigirCampanhaLiberada();
     const atual = await tx.campanha.findUnique({ where: { id: campanhaId } });
     if (!atual || atual.status !== c.status || atual.segmentos.join(",") !== c.segmentos.join(",") || atual.mensagem !== c.mensagem ||
         atual.jogoId !== c.jogoId || atual.limiteDiario !== c.limiteDiario) {
@@ -182,9 +185,9 @@ export async function liberarLote(s: Sessao, campanhaId: string, quantidade: num
 }
 
 export async function mudarStatus(s: Sessao, campanhaId: string, acao: "pausar" | "retomar" | "encerrar") {
-  if (acao === "retomar") exigirCampanhaLiberada();
   await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`campanha:${campanhaId}`}))`;
+    if (acao === "retomar") await exigirCampanhaLiberada();
     const c = await tx.campanha.findUnique({ where: { id: campanhaId } });
     if (!c) throw naoEncontrado("Campanha");
     if (c.status === "ENCERRADA") throw new ErroNegocio("Campanha encerrada.", 409);
@@ -243,8 +246,9 @@ export async function listarCampanhas(agora = Date.now()) {
 
 /** Rotina (horario comercial): manda a fila das campanhas ativas, respeitando o limite diario de cada uma. */
 export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
-  const autorizado = campanhasBloqueadas() ? await loteAutorizadoDisponivel() : null;
-  if (campanhasBloqueadas() && !autorizado) return 0;
+  const bloqueadas = await campanhasBloqueadas();
+  const autorizado = bloqueadas ? await loteAutorizadoDisponivel() : null;
+  if (bloqueadas && !autorizado) return 0;
   if (autorizado && !await loteAutorizadoConfirmado(autorizado)) return 0;
   const cfg = await configuracao();
   if (autorizado && !horarioComercial(agora, cfg.fuso)) return 0;
@@ -270,6 +274,7 @@ export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?
         const link = e.token ? `${urlSite()}/c/r/${e.token}` : `${urlSite()}/c/agendar`;
         const r = await notificarCliente(destino.telefone, montarMensagem(destino.mensagem, { nome: destino.nome, barbearia: cfg.nomeBarbearia, link }), {
           template: process.env.WHATSAPP_TEMPLATE_CAMPANHA?.trim(), envioAutorizadoId: autorizado ? e.id : undefined,
+          campanha: true, pararSeHumano: true,
         });
         await db.campanhaEnvio.update({
           where: { id: e.id },

@@ -13,6 +13,7 @@ import { criarCampanha, liberarLote, listarCampanhas, mudarStatus, processarCamp
 import { db } from "@/lib/db";
 import { jogarPelaCampanha } from "@/lib/jogos/motor";
 import { configurarPiloto, estadoPiloto } from "@/lib/whatsapp/piloto";
+import { enviarTexto } from "@/lib/whatsapp/canal";
 import { registrarStatus } from "@/lib/whatsapp/status";
 
 const ok = (c: boolean, msg: string) => { console.log(`${c ? "OK  " : "FALHOU"} ${msg}`); if (!c) process.exitCode = 1; };
@@ -223,6 +224,29 @@ async function main() {
     ok((await rodarAutomacoes(horaLote)).campanha === 2 &&
       await db.campanhaEnvio.count({ where: { campanhaId: restrita.id, status: "ENVIADO", mensagemId: { not: null } } }) === 2 &&
       await db.campanhaEnvio.count({ where: { campanhaId: outra.id, status: "FILA" } }) === 1, "simulador processa só o lote autorizado e preserva a outra fila");
+
+    // A liberação manual convive com o bot, sem reabrir as demais rotinas.
+    await mudarStatus(s, outra.id, "pausar");
+    const manual = await criarCampanha(s, { ...base, nome: `${TAG} liberação manual`, segmentos: ["d31a60"] });
+    await mudarStatus(s, manual.id, "pausar");
+    delete process.env.WHATSAPP_LOTE_CAMPANHA_AUTORIZADO;
+    process.env.WHATSAPP_ENVIOS_BLOQUEADOS = "false";
+    process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO = "true";
+    ok((await falha(() => mudarStatus(s, manual.id, "retomar")))?.codigo === "campanhas_bloqueadas", "atendimento liberado ainda isola campanhas");
+    process.env.WHATSAPP_CAMPANHAS_MANUAIS_ATIVAS = "true";
+    const segunda = horaLote + 3 * D;
+    ok((await rodarAutomacoes(segunda, { clienteIds: todos })).campanha === 0 && (await naFila(manual.id)).length === 0, "desbloquear o painel não retoma campanhas nem cria fila");
+    await mudarStatus(s, manual.id, "retomar");
+    ok((await rodarAutomacoes(segunda, { clienteIds: todos })).campanha === 0, "retomar sozinho não dispara mensagens");
+    await liberarLote(s, manual.id, 1, segunda, { clienteIds: [d.id] });
+    await mudarStatus(s, manual.id, "pausar");
+    ok((await rodarAutomacoes(segunda, { clienteIds: todos })).campanha === 0, "pausa de novo preserva o lote sem enviar");
+    await mudarStatus(s, manual.id, "retomar");
+    const rodada = await rodarAutomacoes(segunda, { clienteIds: todos });
+    ok(rodada.campanha === 1 && Object.entries(rodada).every(([tipo, n]) => tipo === "campanha" || n === 0) &&
+      await db.campanhaEnvio.count({ where: { campanhaId: manual.id, status: "ENVIADO", mensagemId: { not: null } } }) === 1 &&
+      await db.campanhaEnvio.count({ where: { campanhaId: outra.id, status: "FILA" } }) === 1, "só o lote manual ativo é processado");
+    ok(!!await falha(() => enviarTexto(TELS[4], "aviso avulso")), "desbloquear campanhas não libera avisos genéricos");
   } finally {
     await limpar();
   }

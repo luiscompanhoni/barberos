@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 /** Segmentos da base (tamanhos) e campanhas com os numeros de cada uma. */
 export const GET = rota(async () => {
   await exigirSessao(GESTAO);
-  const [segmentos, campanhas, jogos] = await Promise.all([resumoSegmentos(), listarCampanhas(), listarJogos()]);
+  const [segmentos, campanhas, jogos, enviosBloqueados] = await Promise.all([resumoSegmentos(), listarCampanhas(), listarJogos(), campanhasBloqueadas()]);
   return NextResponse.json({
-    ...segmentos, campanhas, enviosBloqueados: campanhasBloqueadas(),
+    ...segmentos, campanhas, enviosBloqueados,
     mensagemPadrao: MENSAGEM_PADRAO, mensagemPadraoRoleta: MENSAGEM_PADRAO_ROLETA,
     // Jogos no ar que podem ir de presente no link.
     jogos: jogos.filter((j) => noAr(j)).map((j) => ({ id: j.id, nome: j.nome })),
