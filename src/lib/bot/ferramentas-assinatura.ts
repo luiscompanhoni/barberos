@@ -10,12 +10,18 @@ import { executarCancelamento } from "./ferramentas-cancelamento";
 import type { ContextoBot, ResultadoFerramenta } from "./ferramentas";
 import { linkDaMensalidadeParaAtendimento } from "@/lib/assinaturas/link-atendimento";
 import { alteracaoAtual, classificacaoTroca, solicitarAlteracaoPlano } from "@/lib/assinaturas/alteracao-plano";
+import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { urlSite } from "@/lib/dominios";
 import { confirmouTrocaNoWhatsApp } from "./confirmacao-plano";
 
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
 const dataBr = (d: Date | null) => (d ? d.toISOString().slice(0, 10).split("-").reverse().join("/") : null);
+const CONFERIR_CASHBARBER = {
+  cobranca_externa: true,
+  em_conferencia: true,
+  orientar: "A mensalidade é gerida no CashBarber. Use chamar_atendente para a equipe conferir o ciclo na Celcoin. O cadastro local não confirma dívida nem quitação. Não envie link, não gere Pix e não sugira nova adesão para pagar.",
+} as const;
 
 const MOTIVOS_DESCRICAO = MOTIVOS.map((m) => `${m} = ${ROTULO_MOTIVO[m]}`).join("; ");
 
@@ -166,8 +172,15 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
     case "minha_assinatura": {
       const c = await db.cliente.findUnique({ where: { telefone: ctx.telefone } });
       const sit = c && !c.excluidoEm ? await situacaoDoCliente(c.id) : null;
-      if (!sit) return { texto: "O cliente não tem plano de assinatura." };
+      if (!sit) return { texto: "Não encontrei um plano em andamento no BarberOS. Se o titular relata ter plano no sistema antigo, peça à equipe para conferir o vínculo no CashBarber antes de orientar pagamento ou adesão." };
       const a = sit.assinatura;
+      if (ehCashbarber(a.gatewayId)) {
+        return { texto: JSON.stringify({
+          plano: a.plano.nome,
+          pode_usar_o_plano: sit.valida,
+          ...CONFERIR_CASHBARBER,
+        }) };
+      }
       const pagamento = sit.cobrancaEmAberto && c ? await linkDaMensalidadeParaAtendimento(c.id, sit.cobrancaEmAberto.id) : null;
       return {
         texto: JSON.stringify({
@@ -191,8 +204,9 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
       const e = z.object({ forma: z.enum(["PIX", "CARTAO", "BOLETO"]).optional() }).strict().parse(entrada);
       const c = await db.cliente.findUnique({ where: { telefone: ctx.telefone } });
       const sit = c && !c.excluidoEm ? await situacaoDoCliente(c.id) : null;
-      if (!sit || !c) return { texto: "Não encontrei uma assinatura deste titular.", erro: true };
+      if (!sit || !c) return { texto: "Não encontrei uma assinatura deste titular no BarberOS. Se houver plano no CashBarber, peça à equipe para localizar o contrato e conferir antes de orientar pagamento.", erro: true };
       const a = sit.assinatura;
+      if (ehCashbarber(a.gatewayId)) return { texto: JSON.stringify(CONFERIR_CASHBARBER), erro: true };
       const aberta = sit.cobrancaEmAberto;
       const pagamento = aberta && (!e.forma || aberta.forma === e.forma)
         ? await linkDaMensalidadeParaAtendimento(c.id, aberta.id) : null;

@@ -3,7 +3,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, publicacao-leonel-cobranca-20261118]
   pull_request:
 
 permissions:
@@ -14,6 +14,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  imagem-leonel-cobranca:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/publicacao-leonel-cobranca-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Construir e conferir a imagem do aplicativo
+        run: |
+          docker build --build-arg VCS_REF="$GITHUB_SHA" -t "barberos-app:$GITHUB_SHA" .
+          node scripts/publicacao/teste-imagem-app.mjs "barberos-app:$GITHUB_SHA"
+      - name: Empacotar a imagem testada
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/leonel"
+          cd "$RUNNER_TEMP/leonel"
+          docker image inspect --format '{{.Id}}' "barberos-app:$GITHUB_SHA" > imagem-id.txt
+          printf '%s\n' "$GITHUB_SHA" > revisao.txt
+          docker save "barberos-app:$GITHUB_SHA" | gzip -1 > app.tar.gz
+          sha256sum app.tar.gz > app.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: leonel-${{ github.sha }}
+          path: ${{ runner.temp }}/leonel
+          retention-days: 1
+          if-no-files-found: error
+          compression-level: 0
   atendimento-audio:
     runs-on: ubuntu-latest
     timeout-minutes: 15
