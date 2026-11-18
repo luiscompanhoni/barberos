@@ -203,7 +203,7 @@ export const pagarme: Gateway = {
       installments: 1,
       currency: "BRL",
       statement_descriptor: descritorFatura(process.env.NOME_FATURA ?? a.descricao),
-      items: [{ description: a.descricao.slice(0, 256), quantity: 1, pricing_scheme: { scheme_type: "unit", price: a.valorCentavos } }],
+      items: [{ description: a.descricao.slice(0, 256), quantity: 1, ...(a.ciclos === 1 ? { cycles: 1 } : {}), pricing_scheme: { scheme_type: "unit", price: a.valorCentavos } }],
       metadata: { assinatura_id: a.referencia },
     });
     return r.id;

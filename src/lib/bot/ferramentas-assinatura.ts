@@ -13,6 +13,7 @@ import { alteracaoAtual, classificacaoTroca, solicitarAlteracaoPlano } from "@/l
 import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { urlSite } from "@/lib/dominios";
 import { confirmouTrocaNoWhatsApp } from "./confirmacao-plano";
+import { ofertaTesteVenda, assinaturaTesteUnico } from "@/lib/assinaturas/teste-venda";
 
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
@@ -140,8 +141,11 @@ async function clienteGarantido(ctx: ContextoBot, nome?: string) {
 export async function executarAssinatura(nome: string, entrada: unknown, ctx: ContextoBot): Promise<ResultadoFerramenta> {
   switch (nome) {
     case "listar_planos": {
+      const teste = ofertaTesteVenda();
+      const titularTeste = teste && await db.cliente.findUnique({ where: { telefone: ctx.telefone }, select: { id: true, excluidoEm: true } });
+      const interno = teste && titularTeste?.id === teste.clienteId && !titularTeste.excluidoEm ? teste : null;
       const planos = await db.plano.findMany({
-        where: { ativo: true, visivel: true },
+        where: { ativo: true, ...(interno ? { OR: [{ visivel: true }, { id: interno.planoId, visivel: false, precoCentavos: 100 }] } : { visivel: true }) },
         orderBy: [{ ordem: "asc" }, { precoCentavos: "asc" }],
         include: { servicos: { include: { servico: { select: { nome: true } } } } },
       });
@@ -154,6 +158,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
               nome: p.nome,
               preco_mensal: reais(p.precoCentavos),
               preco_mensal_centavos: p.precoCentavos,
+              ...(interno?.planoId === p.id ? { teste_interno: true, cobranca_unica: true, sem_renovacao_automatica: true, valor_total_teste: "R$ 1,00" } : {}),
               descricao: p.descricao,
               disponivel_para_compra: p.compravel && !p.vendaSomenteEquipe,
               venda_somente_equipe: p.vendaSomenteEquipe,
@@ -188,6 +193,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
           status: a.status === "PENDENTE" ? "aguardando primeiro pagamento" : a.status === "ATIVA" ? "ativo" : "mensalidade atrasada",
           pode_usar_o_plano: sit.valida,
           mensalidade: reais(a.precoCentavos),
+          ...(assinaturaTesteUnico(a) ? { teste_interno: true, cobranca_unica: true, sem_renovacao_automatica: true } : {}),
           forma_pagamento: a.formaPagamento,
           proxima_mensalidade: dataBr(a.proximoVencimento),
           proxima_mensalidade_iso: a.proximoVencimento?.toISOString().slice(0, 10) ?? null,

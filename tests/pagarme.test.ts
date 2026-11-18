@@ -121,6 +121,13 @@ describe("chamadas a API", () => {
     expect(chamadas).toHaveLength(0);
   });
 
+  it("limita a cobrança do item de homologação a um único ciclo", async () => {
+    respostas.push({ id: "sub_teste" });
+    await pagarme.criarAssinatura({ clienteGatewayId: "cus_teste", valorCentavos: 100, forma: "CARTAO",
+      primeiroVencimento: "2030-01-01", descricao: "Teste interno", referencia: "teste", cartaoToken: "token_ficticio", ciclos: 1 });
+    expect(chamadas[0].corpo).toMatchObject({ items: [{ cycles: 1, quantity: 1, pricing_scheme: { price: 100 } }] });
+  });
+
   it("Pix nao cria assinatura no gateway (o BarberOS gera o Pix do mes)", async () => {
     const id = await pagarme.criarAssinatura({
       clienteGatewayId: "cus_1", valorCentavos: 9900, forma: "PIX", primeiroVencimento: "2026-10-01", descricao: "x", referencia: "ass_7",

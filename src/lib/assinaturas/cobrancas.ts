@@ -18,6 +18,7 @@ import { dataLocal } from "@/lib/agenda/tempo";
 import { dadosRecebimento } from "@/lib/pagamentos/recebimento";
 import { auditar } from "@/lib/auditoria";
 import { processarEventoAssinatura } from "./eventos";
+import { assinaturaTesteUnico } from "./teste-venda";
 
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = (iso: string) => iso.split("-").reverse().join("/");
@@ -106,6 +107,7 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
       const atual = assinatura.proximoVencimento?.toISOString().slice(0, 10);
       if (assinatura.pausadaAte && atual && atual > proximo) proximo = atual;
       dados.proximoVencimento = new Date(`${proximo}T00:00:00Z`);
+      if (assinaturaTesteUnico(assinatura)) dados.encerraEm = dados.proximoVencimento;
     }
     if (status === "ATIVA" && !assinatura.ativadaEm) dados.ativadaEm = new Date();
     if (status === "ATIVA" && assinatura.status === "PENDENTE" && cob.status === "PAGA" &&

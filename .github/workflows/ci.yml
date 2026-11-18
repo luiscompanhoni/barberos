@@ -3,7 +3,7 @@ name: CI
 
 on:
   push:
-    branches: [main, publicacao-leonel-cobranca-20261118, publicacao-leonel-novas-adesoes-20261118]
+    branches: [main, publicacao-leonel-cobranca-20261118, publicacao-leonel-novas-adesoes-20261118, publicacao-venda-teste-real-20261118]
   pull_request:
 
 permissions:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   imagem-leonel-cobranca:
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/publicacao-leonel-cobranca-20261118' || github.ref == 'refs/heads/publicacao-leonel-novas-adesoes-20261118')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/publicacao-leonel-cobranca-20261118' || github.ref == 'refs/heads/publicacao-leonel-novas-adesoes-20261118' || github.ref == 'refs/heads/publicacao-venda-teste-real-20261118')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

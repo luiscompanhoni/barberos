@@ -18,6 +18,7 @@ import { cobrancaEmAberto, sincronizarAssinatura, sincronizarCobranca } from "./
 import { valorComRetencao } from "./retencao-regras";
 import { creditoDoCicloParaPix } from "@/lib/crescimento/credito-assinatura";
 import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, reservarPagamentoInicial } from "./operacao-inicial";
+import { assinaturaTesteUnico } from "./teste-venda";
 
 /** Gera (e salva) a cobranca Pix de um mes da assinatura. */
 export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
@@ -140,6 +141,7 @@ export async function ativarComCartao(tokenPublico: string, cartaoToken: string)
       descricao: `${a.plano.nome} - ${cfg.nomeBarbearia}`,
       referencia: a.id,
       cartaoToken,
+      ...(assinaturaTesteUnico(a) ? { ciclos: 1 as const } : {}),
     });
     // Uma resposta sem a identidade do contrato não comprova que a criação falhou.
     if (typeof gatewayId !== "string" || !gatewayId.trim() || (g.nome === "pagarme" && !/^sub_\S+$/.test(gatewayId))) {

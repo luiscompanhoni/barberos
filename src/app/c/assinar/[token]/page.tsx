@@ -7,6 +7,7 @@ import { cobrancaEmAberto } from "@/lib/assinaturas/cobrancas";
 import { db } from "@/lib/db";
 import { chavePublicaPagarme, modoCartaoCheckout } from "@/lib/pagamentos/checkout";
 import { provedorPagamento } from "@/lib/pagamentos/gateway";
+import { assinaturaTesteUnico } from "@/lib/assinaturas/teste-venda";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export default async function AssinarPlano(props: PageProps<"/c/assinar/[token]"
     if (aberta?.tokenPublico) redirect(`/c/pagar/${aberta.tokenPublico}`);
   }
   const cfg = await configuracao();
+  const teste = assinaturaTesteUnico(a);
   const troca = a.formaPagamento === "CARTAO" && !!a.gatewayId && (a.status === "ATIVA" || a.status === "ATRASADA");
   const inicial = troca ? { status: "PENDENTE" as const, forma: null, pix: null, link: null } : await checkoutDaAssinatura(token);
   const formas = troca ? (["CARTAO"] as const) : (["CARTAO", "PIX"] as const).filter((f) => a.plano.formasPagamento.includes(f));
@@ -42,7 +44,7 @@ export default async function AssinarPlano(props: PageProps<"/c/assinar/[token]"
         )}
         <Checkout
           alvo={{ tipo: "assinatura", token }}
-          resumo={{ titulo: a.plano.nome, descricao: "Cobrança mensal. Cancele quando quiser.", valorCentavos: a.precoCentavos, mensal: true, para: a.cliente.nome }}
+          resumo={{ titulo: a.plano.nome, descricao: teste ? "Teste interno. Uma única cobrança, sem renovação automática." : "Cobrança mensal. Cancele quando quiser.", valorCentavos: a.precoCentavos, mensal: !teste, para: a.cliente.nome }}
           formas={[...formas]}
           modoCartao={modoCartaoCheckout()}
           chavePublica={chavePublicaPagarme()}
