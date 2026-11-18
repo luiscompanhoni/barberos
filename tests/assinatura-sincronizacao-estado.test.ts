@@ -41,6 +41,16 @@ describe("vencimento local condicional", () => {
 });
 
 describe("conciliação preserva encerramento inicial", () => {
+  it("autoriza aviso transacional após confirmar a liquidação integral no provedor", async () => {
+    m.atual.mockResolvedValue({ ...assinatura, status: "ATRASADA" });
+    await sincronizarCobranca({ ...cobranca, recebimento: { valorCentavos: 10000, em: "2030-02-01T12:00:00Z", fonte: "simulado", referencia: cobranca.id, status: "paid", campoValor: "value", campoData: "paid_at" } });
+    expect(m.avisar).toHaveBeenCalledWith("telefone-ficticio", expect.stringContaining("Recebemos o pagamento"), { pagamentoConfirmado: true });
+  });
+  it("aguarda a prova monetária antes de avisar que recebeu o pagamento", async () => {
+    m.atual.mockResolvedValue({ ...assinatura, status: "ATRASADA" });
+    await sincronizarCobranca(cobranca);
+    expect(m.avisar).not.toHaveBeenCalled();
+  });
   it("relê cancelamento depois da consulta inicial e registra evidência recebida sem reativar", async () => {
     m.atual.mockResolvedValue({ ...assinatura, status: "CANCELADA" });
     expect(await sincronizarCobranca(cobranca)).toEqual({ de: "CANCELADA", para: "CANCELADA" });

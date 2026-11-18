@@ -21,7 +21,7 @@ export async function reservarEnvioPiloto(para: string, origem: string) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('whatsapp-piloto',0))`;
     const p = await tx.pilotoEntrevistaWhatsApp.findUnique({ where: { id: 1 } });
     if (!p) throw new ErroNegocio("Modo piloto: nenhum destinatário autorizado.", 403);
-    if (origem === "ATENDIMENTO" && atendimentoAposPiloto(p)) return;
+    if (["ATENDIMENTO", "PAGAMENTO_CONFIRMADO"].includes(origem) && atendimentoAposPiloto(p)) return;
     if (!p.ativo || !permitePiloto(p, para, origem)) throw new ErroNegocio("Envio bloqueado pelo piloto restrito de entrevistas.", 403);
     await tx.pilotoEntrevistaWhatsApp.update({ where: { id: 1 }, data: { enviados: { increment: 1 } } });
     await auditar(tx, p.usuarioId, "recrutamento.piloto.tentativa", "PilotoEntrevistaWhatsApp", "1", { tentativa: p.enviados + 1 });

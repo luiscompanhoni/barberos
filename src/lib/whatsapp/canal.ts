@@ -102,10 +102,10 @@ export async function enviarTextoLoteAutorizado(envioId: string, conversa: Conve
   return entregarTexto(destino, texto);
 }
 
-export async function enviarTemplate(para: string, t: TemplateWhatsApp): Promise<ResultadoEnvio> {
+export async function enviarTemplate(para: string, t: TemplateWhatsApp, origem: "TEMPLATE" | "PAGAMENTO_CONFIRMADO" = "TEMPLATE"): Promise<ResultadoEnvio> {
   if (testeEquipeAtivo()) throw new Error("Templates bloqueados durante o teste da equipe.");
   if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") throw new Error("Envios de mensagens bloqueados nesta publicação.");
-  await reservarEnvioPiloto(para, "TEMPLATE");
+  await reservarEnvioPiloto(para, origem);
   return entregarTemplate(para, t);
 }
 

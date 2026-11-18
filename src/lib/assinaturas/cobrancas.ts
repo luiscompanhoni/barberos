@@ -137,12 +137,14 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
 
   // Avisos no WhatsApp so nas mudancas que importam para o cliente.
   const nome = assinatura.cliente.nome.split(" ")[0] || "tudo bem";
-  if (cob.status === "PAGA" && assinatura.status !== "ATIVA" && status === "ATIVA") {
+  if (cob.status === "PAGA" && assinatura.status !== "ATIVA" && status === "ATIVA" &&
+    recebimento.valorRecebidoConfirmadoCentavos === cob.valorCentavos && cob.valorCentavos > 0 && recebimento.recebidoConfirmadoEm) {
     notificarEmSegundoPlano(
       assinatura.cliente.telefone,
       assinatura.status === "PENDENTE"
         ? `Oi, ${nome}! Pagamento confirmado ✅ Seu ${assinatura.plano.nome} está ativo. Já pode marcar seu horário por aqui!`
         : `Oi, ${nome}! Recebemos o pagamento ✅ Seu ${assinatura.plano.nome} voltou a valer normalmente.`,
+      { pagamentoConfirmado: true },
     );
   }
   // O aviso legado é separado do atendimento, login e confirmação de pagamento.
