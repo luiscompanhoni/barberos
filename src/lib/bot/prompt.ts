@@ -116,14 +116,22 @@ export function contextoDaMensagem(p: {
   plano?: string | null;
   /** Mensagens automaticas enviadas desde a ultima fala do cliente (lembrete que ele esta respondendo). */
   avisos?: string[];
+  respondeuConviteApp?: boolean;
+  etapaNoApp?: string;
 }) {
   const hoje = dataLocal(p.agora, p.fuso);
   const linhas = [`Agora: ${hoje} ${minParaHhmm(minutosLocal(p.agora, p.fuso))} (horário de Brasília).`];
   if (p.avisos?.length) {
     linhas.push(`Mensagens automáticas que a barbearia mandou antes desta resposta:\n${p.avisos.map((a) => `- "${a}"`).join("\n")}`);
-    if (p.avisos.some(aviso => aviso.startsWith(APRESENTACAO_REATIVACAO))) {
+    if (!p.respondeuConviteApp && p.avisos.some(aviso => aviso.startsWith(APRESENTACAO_REATIVACAO))) {
       linhas.push("O cliente respondeu à abertura da reativação. Siga a etapa que corresponde ao que ele acabou de dizer.");
     }
+  }
+  if (p.etapaNoApp) {
+    linhas.push(`A pessoa recebeu o convite ao app. Última etapa observada: ${p.etapaNoApp}. Se pediu ajuda, pergunte o que apareceu ou qual aparelho usa e oriente um passo por vez. Preserve o assunto trazido pela pessoa. Nunca solicite o código de acesso, alegue que alguém está vendo uma tela agora ou prometa reserva antes da confirmação.`);
+  }
+  if (p.respondeuConviteApp) {
+    linhas.push("A saudação e a apresentação do convite ao novo aplicativo já foram enviadas. Se o cliente acolheu o contato ou pediu o link do novo app, responda somente [CONVITE_APP]. O sistema envia o aviso da troca e o endereço em dois balões. Se recusou, encerre sem link. Se trouxe outra dúvida ou pediu uma pessoa, atenda o pedido. Só explique como instalar se ele pedir ajuda, conforme o aparelho.");
   }
   if (p.plano !== undefined) linhas.push(p.plano ? `Plano de assinatura do cliente agora: ${p.plano}.` : "Cliente sem plano de assinatura.");
   if (p.inicioDeSessao) {

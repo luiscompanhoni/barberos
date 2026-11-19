@@ -11,6 +11,7 @@ import { itensDoPlano, planoEmDestaque, porDia } from "@/lib/assinaturas/itens";
 import { reais } from "@/lib/cliente-api";
 import { COOKIE_INDICACAO, donoDoCodigo } from "@/lib/crescimento/indicacao";
 import { dadosDaVitrine } from "@/lib/vitrine";
+import { urlSite } from "@/lib/dominios";
 
 // Planos, vagas e numero de assinantes vem do banco a cada visita.
 export const dynamic = "force-dynamic";
@@ -20,6 +21,15 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: `Assinatura — ${v.nomeBarbearia}`,
     description: `Conheça os planos da ${v.nomeBarbearia} e consulte as condições de cada opção.`,
+    openGraph: {
+      type: "website",
+      title: `App da ${v.nomeBarbearia}`,
+      description: "Escolha seu barbeiro e peça seu próximo horário pelo celular.",
+      images: [{
+        url: `${urlSite()}/brand/black/previa-app-v1.png`,
+        width: 1200, height: 630, type: "image/png", alt: "Black Barber",
+      }],
+    },
   };
 }
 

@@ -22,6 +22,12 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("separação do atendimento após piloto", () => {
+  it("permite confirmação de pagamento mantendo a automação genérica bloqueada", async () => {
+    await enviarTexto(telefone, "Pagamento confirmado.", 0, "PAGAMENTO_CONFIRMADO");
+    expect(m.evolution).toHaveBeenCalledTimes(1);
+    await expect(enviarTexto(telefone, "Campanha")).rejects.toMatchObject({ status: 403 });
+    expect(m.evolution).toHaveBeenCalledTimes(1);
+  });
   it("permite somente a finalidade de atendimento ao encerrar o piloto", async () => {
     await enviarTexto(telefone, "resposta", 0, "ATENDIMENTO");
     expect(m.evolution).toHaveBeenCalledTimes(1);

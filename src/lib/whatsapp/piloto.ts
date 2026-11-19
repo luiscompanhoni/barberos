@@ -2,6 +2,7 @@ import type { EstadoConversa } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, proibido } from "@/lib/erros";
+import { telefoneCanonico } from "./webhook";
 import { normalizarTelefone } from "@/lib/telefone";
 import { atendimentoAposPiloto, campanhasManuaisAposPiloto, recursoPiloto, permitePiloto } from "./piloto-regras";
 import { envioTesteEquipe, testeEquipeAtivo } from "./teste-equipe";
@@ -21,7 +22,14 @@ export async function reservarEnvioPiloto(para: string, origem: string) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('whatsapp-piloto',0))`;
     const p = await tx.pilotoEntrevistaWhatsApp.findUnique({ where: { id: 1 } });
     if (!p) throw new ErroNegocio("Modo piloto: nenhum destinatário autorizado.", 403);
-    if (origem === "ATENDIMENTO" && atendimentoAposPiloto(p)) return;
+    if (["ATENDIMENTO", "PAGAMENTO_CONFIRMADO"].includes(origem) && atendimentoAposPiloto(p)) return;
+    if (origem === "CONVITE_APP" && atendimentoAposPiloto(p)) {
+      const telefone = telefoneCanonico(para);
+      const jornada = await tx.jornadaConviteApp.findFirst({ where: { parouEm: null,
+        conversa: { telefone, estado: "BOT", recusaAutomaticas: false, cliente: { telefone, aceitaMensagens: true, excluidoEm: null } } },
+        select: { clienteId: true, conversa: { select: { clienteId: true } } } });
+      if (jornada && jornada.clienteId === jornada.conversa.clienteId) return;
+    }
     if (origem === "CAMPANHA" && campanhasManuaisAposPiloto(p)) return;
     if (!p.ativo || !permitePiloto(p, para, origem)) throw new ErroNegocio("Envio bloqueado pelo piloto restrito de entrevistas.", 403);
     await tx.pilotoEntrevistaWhatsApp.update({ where: { id: 1 }, data: { enviados: { increment: 1 } } });

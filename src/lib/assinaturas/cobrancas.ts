@@ -18,6 +18,7 @@ import { dataLocal } from "@/lib/agenda/tempo";
 import { dadosRecebimento } from "@/lib/pagamentos/recebimento";
 import { auditar } from "@/lib/auditoria";
 import { processarEventoAssinatura } from "./eventos";
+import { assinaturaTesteUnico } from "./teste-venda";
 
 const reais = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const dataBr = (iso: string) => iso.split("-").reverse().join("/");
@@ -106,6 +107,7 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
       const atual = assinatura.proximoVencimento?.toISOString().slice(0, 10);
       if (assinatura.pausadaAte && atual && atual > proximo) proximo = atual;
       dados.proximoVencimento = new Date(`${proximo}T00:00:00Z`);
+      if (assinaturaTesteUnico(assinatura)) dados.encerraEm = dados.proximoVencimento;
     }
     if (status === "ATIVA" && !assinatura.ativadaEm) dados.ativadaEm = new Date();
     if (status === "ATIVA" && assinatura.status === "PENDENTE" && cob.status === "PAGA" &&
@@ -137,12 +139,14 @@ export async function sincronizarCobranca(cob: CobrancaGateway, opcoes: { apenas
 
   // Avisos no WhatsApp so nas mudancas que importam para o cliente.
   const nome = assinatura.cliente.nome.split(" ")[0] || "tudo bem";
-  if (cob.status === "PAGA" && assinatura.status !== "ATIVA" && status === "ATIVA") {
+  if (cob.status === "PAGA" && assinatura.status !== "ATIVA" && status === "ATIVA" &&
+    recebimento.valorRecebidoConfirmadoCentavos === cob.valorCentavos && cob.valorCentavos > 0 && recebimento.recebidoConfirmadoEm) {
     notificarEmSegundoPlano(
       assinatura.cliente.telefone,
       assinatura.status === "PENDENTE"
         ? `Oi, ${nome}! Pagamento confirmado ✅ Seu ${assinatura.plano.nome} está ativo. Já pode marcar seu horário por aqui!`
         : `Oi, ${nome}! Recebemos o pagamento ✅ Seu ${assinatura.plano.nome} voltou a valer normalmente.`,
+      { pagamentoConfirmado: true },
     );
   }
   // O aviso legado é separado do atendimento, login e confirmação de pagamento.

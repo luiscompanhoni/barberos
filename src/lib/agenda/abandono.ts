@@ -28,6 +28,10 @@ export async function registrarAtividadeAgendamento(clienteId: string, agora = n
       }, update: { consentiuEm: agora, ultimaAcaoEm: agora, canceladoEm: null } });
       await auditar(tx, usuarioId, "consentir", "lembrete_agendamento", clienteId, { consentiuEm: agora.toISOString() });
     }
+    await tx.$executeRaw`UPDATE jornadas_convite_app SET "proximaEm"=GREATEST(${agora}::timestamptz+interval '2 hours',"ultimaRetomadaEm"+interval '24 hours')
+      WHERE "clienteId"=${clienteId} AND "agendaEm" IS NOT NULL AND "linkId" IS NOT NULL AND "parouEm" IS NULL AND retomadas<3
+        AND ("ultimaRetomadaEm" IS NULL OR "ultimaRetomadaEm" <= ${agora}::timestamptz-interval '7 days' OR "ultimaRetomadaEm" < "agendaEm")
+        AND "inicioEm" >= ${agora}::timestamptz-interval '14 days'`;
     return { ativo: true };
   });
 }
@@ -36,6 +40,7 @@ export async function cancelarLembreteAgendamento(clienteId: string, agora = new
   return db.$transaction(async tx => {
     await travarClienteAgenda(tx, clienteId);
     const r = await tx.lembreteAgendamento.updateMany({ where: { clienteId, canceladoEm: null }, data: { canceladoEm: agora } });
+    if (r.count) await tx.jornadaConviteApp.updateMany({ where: { clienteId, agendaEm: { not: null } }, data: { proximaEm: null } });
     if (r.count) await auditar(tx, usuarioId, "revogar", "lembrete_agendamento", clienteId, { canceladoEm: agora.toISOString() });
     return { ativo: false };
   });

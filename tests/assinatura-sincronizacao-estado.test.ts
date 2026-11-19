@@ -41,6 +41,26 @@ describe("vencimento local condicional", () => {
 });
 
 describe("conciliação preserva encerramento inicial", () => {
+  it("encerra o ciclo do teste também no BarberOS depois do primeiro pagamento", async () => {
+    vi.stubEnv("ASSINATURA_TESTE_CLIENTE_ID", "c"); vi.stubEnv("ASSINATURA_TESTE_PLANO_ID", "p");
+    try {
+      m.atual.mockResolvedValue({ ...assinatura, planoId: "p", precoCentavos: 100 });
+      await sincronizarCobranca({ ...cobranca, valorCentavos: 100 });
+      expect(m.atualizar).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        proximoVencimento: new Date("2030-03-01"), encerraEm: new Date("2030-03-01"),
+      }) }));
+    } finally { vi.unstubAllEnvs(); }
+  });
+  it("autoriza aviso transacional após confirmar a liquidação integral no provedor", async () => {
+    m.atual.mockResolvedValue({ ...assinatura, status: "ATRASADA" });
+    await sincronizarCobranca({ ...cobranca, recebimento: { valorCentavos: 10000, em: "2030-02-01T12:00:00Z", fonte: "simulado", referencia: cobranca.id, status: "paid", campoValor: "value", campoData: "paid_at" } });
+    expect(m.avisar).toHaveBeenCalledWith("telefone-ficticio", expect.stringContaining("Recebemos o pagamento"), { pagamentoConfirmado: true });
+  });
+  it("aguarda a prova monetária antes de avisar que recebeu o pagamento", async () => {
+    m.atual.mockResolvedValue({ ...assinatura, status: "ATRASADA" });
+    await sincronizarCobranca(cobranca);
+    expect(m.avisar).not.toHaveBeenCalled();
+  });
   it("relê cancelamento depois da consulta inicial e registra evidência recebida sem reativar", async () => {
     m.atual.mockResolvedValue({ ...assinatura, status: "CANCELADA" });
     expect(await sincronizarCobranca(cobranca)).toEqual({ de: "CANCELADA", para: "CANCELADA" });

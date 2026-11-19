@@ -1,3 +1,4 @@
+import { VisitaConvite } from "@/components/convites/VisitaConvite";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AvisoTermos } from "@/components/cliente/AvisoTermos";
@@ -30,6 +31,7 @@ export default async function LayoutCliente({ children }: { children: React.Reac
   return (
     <div className="black-client-area flex min-h-full flex-1 flex-col pb-20">
       <a href="#conteudo-cliente" className="black-skip-link">Pular para o conteúdo</a>
+      <VisitaConvite etapa="entrou" />
       <RegistroApp area="cliente" />
       <header className="black-client-header sticky top-0 z-30 border-b border-zinc-200 bg-fundo/90 backdrop-blur-md">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-5 py-3">

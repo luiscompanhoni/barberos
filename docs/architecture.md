@@ -271,6 +271,12 @@ Lá não há Evolution nem o backup do compose.
 
 ### Backups e restauração
 
+Homologação nominal de novas adesões: `ASSINATURA_TESTE_CLIENTE_ID`, `ASSINATURA_TESTE_PLANO_ID` e
+`ASSINATURA_TESTE_ATE` reservam um plano oculto de R$ 1 para o titular indicado, exclusivamente pelo bot.
+O prazo fecha novas ofertas. Mantenha os identificadores enquanto houver contrato de teste: o checkout
+limita o item do cartão a um ciclo e a conciliação encerra o ciclo local, inclusive para Pix.
+O catálogo público e os preços normais permanecem independentes dessa configuração.
+
 - Container `backup` (`deploy/backup.sh`): todo dia às 03h (`BACKUP_HORA`; e ao subir, se passou da hora) copia o
   banco e manifesto do mesmo snapshot, **restaura num banco separado** e compara SHA-256/contagens de todas as tabelas,
   estrutura, constraints, triggers, funções e privilégios. Prova imutabilidade da auditoria apenas no restaurado. Falha aparece como erro.

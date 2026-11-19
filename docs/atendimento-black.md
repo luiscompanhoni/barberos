@@ -2,6 +2,16 @@
 
 O objetivo é responder com atenção, concisão e contexto, executar somente o que o sistema consegue comprovar e transferir exceções com informação suficiente para a equipe agir. A base está em `src/lib/bot/conhecimento-atendimento.ts`, incorporada ao prompt. São 18 procedimentos; não houve fine-tuning dos pesos do modelo nem publicação em produção.
 
+## Convite para o novo aplicativo
+
+No painel de Conversas, “Convidar para o novo app” inicia dois envios individuais pelo bot. A primeira mensagem é “Fala, {primeiro nome}!” e a segunda é “Aqui é o Leonel da Black.” O convite fica aguardando o cliente, inclusive se ele voltar outro dia.
+
+Quando o cliente cumprimenta de volta ou pede o link, Leonel explica a troca de aplicativo e termina com “Aqui está o link 👇”. O balão seguinte contém apenas o endereço oficial. Se o cliente trouxer outro assunto, recusar ou pedir a equipe, atenda essa resposta. Oriente a instalação quando ele pedir ajuda.
+
+Em **Conversas → Jornada dos convites**, a equipe acompanha as aberturas, os recibos disponíveis, as respostas, os links enviados e acessados, o login, a agenda, a reserva e o comparecimento. Cada convite tem um endereço próprio. A prévia do WhatsApp não conta como visita. O primeiro acesso anônimo identifica o link, e o login e a agenda exigem a conta do titular. A instalação só aparece quando o navegador fornece esse sinal.
+
+Sem resposta, Leonel pode retomar nos dias 1, 3 e 7, entre 9h e 18h da barbearia. O limite é de três retomadas por convite. Depois do clique ou da tela de login, ele espera pelo menos quatro horas para oferecer ajuda. Na agenda, o cliente pode pedir um lembrete após duas horas de inatividade. Uma recusa, a intervenção da equipe, um pedido de horário pendente ou uma reserva interrompem as retomadas. Os lembretes da reserva usam o horário efetivamente marcado, na véspera e 90 minutos antes. O cliente pode confirmar pelo WhatsApp. A recepção registra o comparecimento.
+
 ## Conversa do Leonel em 17/11
 
 A reativação começa com “Fala, {nome}!” e “Aqui é o Leonel da Black.”, em dois balões. Leonel aguarda a resposta antes de oferecer ajuda para marcar. Pedidos para parar mensagens continuam registrados, inclusive quando os envios estão bloqueados.

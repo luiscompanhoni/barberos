@@ -19,12 +19,15 @@ import { estaPausada } from "./retencao-regras";
 import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, cancelarOperacaoInicial } from "./operacao-inicial";
 import { fimDoCicloManual } from "./registro-manual-regras";
+import { assinaturaTesteUnico, autorizaOfertaTeste, planoReservadoParaTeste } from "./teste-venda";
 
 /** Assinaturas que ocupam vaga: ativas, atrasadas e pendentes recentes (link ainda valendo). */
 const PENDENTE_SEGURA_VAGA_MS = 3 * 86_400_000;
 
-function exigirVenda(plano: Pick<Plano, "ativo" | "visivel" | "compravel" | "vendaSomenteEquipe"> | null, origem?: OrigemAgendamento) {
-  if (!plano || !plano.ativo || ((origem === "SITE" || origem === "BOT") && !plano.visivel)) throw naoEncontrado("Plano");
+function exigirVenda(plano: Pick<Plano, "id" | "precoCentavos" | "ativo" | "visivel" | "compravel" | "vendaSomenteEquipe"> | null, origem?: OrigemAgendamento, clienteId?: string) {
+  const autorizado = autorizaOfertaTeste(plano, origem, clienteId);
+  if (plano && planoReservadoParaTeste(plano.id) && !autorizado) throw naoEncontrado("Plano");
+  if (!plano || !plano.ativo || ((origem === "SITE" || origem === "BOT") && !plano.visivel && !autorizado)) throw naoEncontrado("Plano");
   if (!plano.compravel) throw new ErroNegocio("Este plano está disponível apenas para consulta. Fale com a equipe para conhecer as condições.", 409, "plano_consulta");
   if (plano.vendaSomenteEquipe && origem !== "RECEPCAO" && origem !== "PAINEL") throw new ErroNegocio("A contratação deste plano é feita somente pela recepção. Posso chamar a equipe para ajudar.", 409, "plano_venda_equipe");
 }
@@ -126,7 +129,7 @@ export async function assinar(p: {
     throw new ErroNegocio("Existe uma assinatura pendente. Conclua o pagamento ou fale com a equipe antes de solicitar uma nova assinatura.", 409, "assinatura_pendente");
   }
 
-  exigirVenda(plano, p.origem);
+  exigirVenda(plano, p.origem, cliente.id);
 
   const vagas = await vagasRestantes(plano);
   if (vagas !== null && vagas <= 0) {
@@ -134,6 +137,7 @@ export async function assinar(p: {
   }
 
   const g = await gateway();
+  if (planoReservadoParaTeste(plano.id) && g.nome !== "pagarme") throw new ErroNegocio("O teste de adesão exige Pagar.me.", 409);
   exigirEmissaoDeCobranca(g.nome);
   const { assinatura, clienteConfirmado, cpf, email } = await db.$transaction(async (tx) => {
     // Exclusão e revogação de sessão ganham ou perdem antes de qualquer adesão.
@@ -154,7 +158,7 @@ export async function assinar(p: {
     // O cadastro de plano também obtém este lock ao alterar as condições de venda.
     await tx.$queryRaw`SELECT id FROM planos WHERE id = ${plano.id} FOR UPDATE`;
     const corrente = await tx.plano.findUnique({ where: { id: plano.id } });
-    exigirVenda(corrente, p.origem);
+    exigirVenda(corrente, p.origem, cliente.id);
     if (!corrente || corrente.precoCentavos !== plano.precoCentavos || !corrente.formasPagamento.includes(p.forma)) {
       throw new ErroNegocio("As condições do plano mudaram. Atualize antes de continuar.", 409, "plano_alterado");
     }
@@ -202,6 +206,7 @@ export async function assinar(p: {
         primeiroVencimento: dataLocal(Date.now(), cfg.fuso),
         descricao: `${plano.nome} - ${cfg.nomeBarbearia}`,
         referencia: assinatura.id,
+        ...(assinaturaTesteUnico(assinatura) ? { ciclos: 1 as const } : {}),
       });
       await db.assinatura.update({ where: { id: assinatura.id }, data: { gatewayId, gatewayClienteId } });
       // Pix sem recorrencia no gateway: o BarberOS gera o Pix do primeiro mes.

@@ -13,8 +13,8 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/conversas/
   const c = await db.conversa.findUnique({
     where: { id },
     select: {
-      id: true, telefone: true, nomePerfil: true, estado: true, ultimaEntradaEm: true,
-      cliente: { select: { id: true, nome: true } },
+      id: true, telefone: true, nomePerfil: true, estado: true, conviteApp: true, recusaAutomaticas: true, ultimaEntradaEm: true,
+      cliente: { select: { id: true, nome: true, aceitaMensagens: true } },
       mensagens: { orderBy: { criadoEm: "asc" }, take: 300, select: { id: true, autor: true, texto: true, erro: true, entregueEm: true, lidaEm: true, criadoEm: true } },
     },
   });

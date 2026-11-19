@@ -1,3 +1,7 @@
+import { confirmarLembreteConvite } from "@/lib/convites/confirmar";
+import { enderecoDoConvite } from "@/lib/convites/link";
+import { AVISO_TROCA_APP, continuacaoConviteApp, respostaAoConvite } from "./convite-app-textos";
+import { naFila, temTurnoNaFila } from "@/lib/whatsapp/fila-conversa";
 import { contemConviteEntrevista, comandoReservadoEntrevista, processarBotEntrevista, registroSeguroEntrevista } from "./entrevistas";
 import { estadoPiloto } from "@/lib/whatsapp/piloto";
 import { atendimentoAposPiloto, permitePiloto, recursoPiloto } from "@/lib/whatsapp/piloto-regras";
@@ -30,24 +34,15 @@ const FERRAMENTAS_TESTE_REATIVACAO = new Set([
 ]);
 
 // Entradas e turnos têm FIFO próprio: uma pausa nunca atrasa o registro de PARAR.
-const g = globalThis as unknown as { filaConversas?: Map<string, Promise<unknown>>; entradaBotAtual?: Map<string, AbortController> };
-const filas = (g.filaConversas ??= new Map());
+const g = globalThis as unknown as { entradaBotAtual?: Map<string, AbortController> };
 const entradasAtuais = (g.entradaBotAtual ??= new Map());
-
-function naFila<T>(chave: string, fn: () => Promise<T>): Promise<T> {
-  const anterior = filas.get(chave) ?? Promise.resolve();
-  const atual = anterior.catch(() => {}).then(fn);
-  filas.set(chave, atual);
-  atual.finally(() => { if (filas.get(chave) === atual) filas.delete(chave); }).catch(() => {});
-  return atual;
-}
 
 export type Entrada = { telefone: string; waId?: string; nomePerfil?: string | null; texto: string | null; wamid?: string; midia?: MidiaRecebida };
 type ConversaRegistrada = NonNullable<Awaited<ReturnType<typeof registrarEntrada>>>;
 
 /** Mensagem que chegou (webhook ou simulador) -> registra, responde com o bot se for o caso. */
 export function receberMensagem(e: Entrada, opts: { modelo?: Modelo } = {}) {
-  const aguardavaTurno = filas.has(e.telefone);
+  const aguardavaTurno = temTurnoNaFila(e.telefone);
   const optOut = !!e.texto && pediuParar(e.texto);
   const registro = naFila(`entrada:${e.telefone}`, async () => {
     const texto = e.texto ?? "[mensagem que não e texto: áudio, foto, figurinha ou documento]";
@@ -123,10 +118,21 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     return;
   }
 
+  if (conversa.conviteApp === "ENCERRADO" && conversa.clienteId && !e.midia && !sinal.aborted && await confirmarLembreteConvite(conversa.id, conversa.clienteId, texto, cfg.fuso)) return;
+  const respondeuConvite = conversa.conviteApp === "AGUARDANDO" && !conversa.recusaAutomaticas && !sinal.aborted &&
+    (await db.conversa.updateMany({
+      where: { id: conversa.id, conviteApp: "AGUARDANDO", estado: "BOT", recusaAutomaticas: false, ultimaEntradaEm: conversa.ultimaEntradaEm },
+      data: { conviteApp: "ENCERRADO" },
+    })).count === 1;
+  const jornada = (respondeuConvite || conversa.conviteApp === "ENCERRADO") ? await db.jornadaConviteApp.findUnique({ where: { conversaId: conversa.id } }) : null;
+  const endereco = jornada ? enderecoDoConvite(jornada.token) : undefined;
+  if (jornada && respondeuConvite) await db.jornadaConviteApp.update({ where: { conversaId: conversa.id }, data: { respostaEm: new Date(), proximaEm: null } });
+  const bolhasDiretas = respondeuConvite && !e.midia ? respostaAoConvite(texto, endereco) : null;
+  const respostaDireta = bolhasDiretas?.join("\n\n");
   // A autorização de IA é independente do estado do piloto e do bot geral.
-  if (!testeEquipe && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") {
+  if (!respostaDireta && !testeEquipe && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") {
     await passarParaEquipe(conversa.id, "Atendimento encaminhado para a equipe; IA paga desativada.");
-    await enviarNaConversa(conversa.id, "Olá! A equipe da Black vai te ajudar por aqui. Para agendar, você também pode acessar appblackbarber.com. 🙂", "BOT", { respostaAtendimento: true });
+    await enviarNaConversa(conversa.id, respondeuConvite ? "A equipe da Black vai continuar contigo por aqui." : "Olá! A equipe da Black vai te ajudar por aqui. Para agendar, você também pode acessar appblackbarber.com. 🙂", "BOT", { respostaAtendimento: true });
     return;
   }
 
@@ -174,7 +180,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     agora - (await ultimaAtividade(conversa.id)) < SESSAO_INATIVA_MS;
   const historico = sessaoValida ? (conversa.sessao as unknown as Anthropic.Beta.BetaMessageParam[]) : [];
   const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { id: true, nome: true } });
-  const sit = cliente && !testeIndividual ? await situacaoDoCliente(cliente.id) : null;
+  const sit = cliente && !testeIndividual && !respostaDireta ? await situacaoDoCliente(cliente.id) : null;
   const plano = sit
     ? `${sit.assinatura.plano.nome} (${sit.assinatura.status === "PENDENTE" ? "aguardando o primeiro pagamento" : sit.valida ? (sit.assinatura.status === "ATRASADA" ? "ativo, com mensalidade atrasada" : "ativo e em dia") : "suspenso por mensalidade atrasada"}${sit.assinatura.plano.descontoExtrasPct ? `; ${sit.assinatura.plano.descontoExtrasPct}% de desconto em avulsos e serviços fora do plano` : ""})`
     : null;
@@ -182,7 +188,10 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
   let resultado;
   try {
     const sistema = promptSistema(testeIndividual ? { ...cfg, agendaExternaAtiva: true } : cfg);
-    resultado = await executarTurno({
+    resultado = respostaDireta ? {
+      resposta: respostaDireta, ferramentas: [], recusado: false, passouParaHumano: false,
+      historico: [...historico, { role: "user" as const, content: textoCliente }, { role: "assistant" as const, content: respostaDireta }],
+    } : await executarTurno({
       sistema: testeIndividual
         ? sistema + "\nNo teste individual, resolva dúvidas com as ferramentas de consulta disponíveis. Pedidos de reserva, alteração de plano ou emissão de cobrança ficam com a equipe."
         : sistema,
@@ -191,6 +200,9 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
         agora, fuso: cfg.fuso, inicioDeSessao: historico.length === 0,
         janelaDias: cfg.janelaAgendamentoDias, cliente: cliente?.nome.trim() ? cliente : null, nomePerfil: conversa.nomePerfil,
         plano: testeIndividual ? undefined : plano,
+        respondeuConviteApp: respondeuConvite,
+        etapaNoApp: jornada?.linkId && !jornada.parouEm ? (jornada.agendaEm ? "agenda" : jornada.entrouEm ? "conta" :
+          jornada.loginEm ? "login" : jornada.clicouEm ? "acesso ao link" : "link enviado") : undefined,
         avisos: await avisosRecentes(conversa.id, agora),
       }),
       texto: registroSeguroEntrevista(textoCliente),
@@ -209,6 +221,12 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     return;
   }
 
+  const modeloIndicouApp = respondeuConvite && !resultado.passouParaHumano && resultado.resposta.trim() === "[CONVITE_APP]";
+  const bolhasConvite = modeloIndicouApp ? continuacaoConviteApp(endereco) : bolhasDiretas;
+  if (modeloIndicouApp && bolhasConvite) {
+    resultado.historico = historicoEntregue(resultado.historico, resultado.resposta, []);
+    resultado.resposta = bolhasConvite.join("\n\n");
+  }
   const turnoPrivado = resultado.ferramentas.some(nome => OPERACOES_PRIVADAS.has(nome));
   const sessaoDoTurno = (enviadas: string[]) => (turnoPrivado ? [] : historicoEntregue(resultado.historico, resultado.resposta, enviadas)) as unknown as Prisma.InputJsonValue;
   if (resultado.interrompido || sinal.aborted || (!resultado.passouParaHumano && !await aindaComBot())) {
@@ -242,7 +260,8 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     if (atual.ultimaEntradaEm?.getTime() !== conversa.ultimaEntradaEm?.getTime() || (atual.recusaAutomaticas && !conversa.recusaAutomaticas)) return false;
     const equipeAgora = await destinatarioTesteEquipe(conversa.telefone);
     if ((testeEquipeAtivo() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") && !equipeAgora) return false;
-    if (!equipeAgora && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true") return false;
+    if (!equipeAgora && process.env.WHATSAPP_ATENDIMENTO_IA_PAGA !== "true" &&
+        !(respostaDireta && process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO === "true")) return false;
     const pilotoAgora = await estadoPiloto();
     if (!equipeAgora && (pilotoAgora || recursoPiloto()) && !atendimentoAposPiloto(pilotoAgora)) return false;
     if (!testeIndividual && !(await configuracao()).botAtivo) return false;
@@ -252,7 +271,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     }
     return !sinal.aborted;
   };
-  const bolhas = dividirEmBolhas(resultado.resposta);
+  const bolhas = bolhasConvite ?? dividirEmBolhas(resultado.resposta);
   const enviadas: string[] = [];
   const destino = conversa.waId && telefoneCanonico(conversa.waId) === conversa.telefone ? conversa.waId : conversa.telefone;
   for (const bolha of bolhas) {
@@ -263,8 +282,11 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     if (provedor === "evolution") void indicarDigitacaoEvolution(destino, atraso, sinal).catch(() => {});
     if (provedor !== "simulador" && !await esperarBolha(atraso, sinal)) return;
     if (!await podeEnviar()) return;
-    const envio = await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: 0, respostaAtendimento: true });
-    if (!envio.ok) return;
+    const envio = await enviarNaConversa(conversa.id, bolha, "BOT", { digitandoMs: 0, respostaAtendimento: true, ...(bolhasConvite ? { pararSeHumano: true } : {}) });
+    if (!envio.ok || (bolhasConvite && provedor !== "simulador" && !envio.wamid)) return;
+    if (respondeuConvite && jornada && bolha === endereco) await db.jornadaConviteApp.updateMany({ where: { conversaId: conversa.id, parouEm: null }, data: {
+      linkId: envio.mensagemId, proximaEm: new Date(Date.now() + 86_400_000),
+    } });
     enviadas.push(bolha);
     await db.conversa.update({ where: { id: conversa.id }, data: { sessao: sessaoDoTurno(enviadas) } });
   }
@@ -304,7 +326,7 @@ async function avisosRecentes(conversaId: string, agora: number) {
       continue;
     }
     if (m.autor === "CLIENTE") break;
-    if (!m.erro && (m.autor === "SISTEMA" || (m.autor === "BOT" && m.texto.startsWith(APRESENTACAO_REATIVACAO)))) {
+    if (!m.erro && (m.autor === "SISTEMA" || (m.autor === "BOT" && (m.texto.startsWith(APRESENTACAO_REATIVACAO) || m.texto === AVISO_TROCA_APP)))) {
       avisos.push(registroSeguroEntrevista(m.texto));
     }
   }

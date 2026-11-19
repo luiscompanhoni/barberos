@@ -83,6 +83,8 @@ export interface Gateway {
     referencia: string;
     /** So com cartao = "token". */
     cartaoToken?: string;
+    /** Homologação nominal em um único ciclo; omitido nas assinaturas normais. */
+    ciclos?: 1;
   }): Promise<string>;
   cobrancasDaAssinatura(assinaturaGatewayId: string): Promise<CobrancaGateway[]>;
   buscarCobranca(cobrancaGatewayId: string): Promise<CobrancaGateway>;

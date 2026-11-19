@@ -50,19 +50,19 @@ export async function registrarEntrada(p: { telefone: string; waId?: string; nom
 }
 
 /** Envia texto livre numa conversa (dentro da janela de 24h) e registra. */
-export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean; envioAutorizadoId?: string; aberturaTeste?: boolean; pararSeHumano?: boolean; campanha?: boolean } = {}) {
+export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { conviteIndividual?: boolean; digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean; envioAutorizadoId?: string; aberturaTeste?: boolean; pararSeHumano?: boolean; campanha?: boolean; pagamentoConfirmado?: true } = {}) {
   const conversa = await db.conversa.findUniqueOrThrow({ where: { id: conversaId } });
   let erro: string | null = null;
   let wamid: string | null = null;
   try {
-    if (autor === "SISTEMA" || opts.aberturaTeste) {
+    if (autor === "SISTEMA" || opts.aberturaTeste || opts.pararSeHumano) {
       const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { aceitaMensagens: true, excluidoEm: true } });
       if (conversa.recusaAutomaticas || cliente?.aceitaMensagens === false) throw new Error("O contato pediu para não receber mensagens automáticas.");
       if ((opts.aberturaTeste || opts.pararSeHumano) && (cliente?.excluidoEm || conversa.estado !== "BOT")) {
         throw new Error("Contato indisponível para a abertura automática.");
       }
     }
-    const origem = opts.entrevistaPiloto ? "ENTREVISTA_PILOTO" : autor === "EQUIPE" || (autor === "BOT" && opts.respostaAtendimento) ? "ATENDIMENTO" : autor === "SISTEMA" && opts.campanha ? "CAMPANHA" : "PADRAO";
+    const origem = opts.conviteIndividual && opts.pararSeHumano ? "CONVITE_APP" : opts.entrevistaPiloto ? "ENTREVISTA_PILOTO" : autor === "EQUIPE" || (autor === "BOT" && opts.respostaAtendimento) ? "ATENDIMENTO" : autor === "SISTEMA" && opts.pagamentoConfirmado ? "PAGAMENTO_CONFIRMADO" : opts.campanha ? "CAMPANHA" : "PADRAO";
     const resultado = opts.envioAutorizadoId && autor === "SISTEMA"
       ? await enviarTextoLoteAutorizado(opts.envioAutorizadoId, conversa, texto)
       : await enviarTexto(opts.entrevistaPiloto ? conversa.telefone : conversa.waId ?? conversa.telefone, texto, opts.digitandoMs, origem);
@@ -73,7 +73,7 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
   }
   const m = await db.mensagem.create({ data: { conversaId, autor, texto, wamid, erro } });
   publicar({ tipo: "conversa", conversaId });
-  return { ok: !erro, erro, mensagemId: m.id };
+  return { ok: !erro, erro, mensagemId: m.id, wamid };
 }
 
 /**
@@ -84,7 +84,7 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
  * Aviso do sistema. Fora da janela de 24 h vai pelo modelo `Olá {{1}}! {{2}}`: campanhas podem usar o modelo
  * de marketing (`WHATSAPP_TEMPLATE_CAMPANHA`), pois a Meta não aceita divulgação no modelo de utilidade.
  */
-export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string; envioAutorizadoId?: string; apenasTextoLivre?: boolean; pararSeHumano?: boolean; campanha?: boolean } = {}) {
+export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string; envioAutorizadoId?: string; apenasTextoLivre?: boolean; pararSeHumano?: boolean; campanha?: boolean; pagamentoConfirmado?: true } = {}) {
   const conversa = await obterConversa(telefone);
   const cliente = conversa.clienteId
     ? await db.cliente.findUnique({ where: { id: conversa.clienteId }, select: { nome: true, aceitaMensagens: true } })
@@ -101,7 +101,7 @@ export async function notificarCliente(telefone: string, texto: string, opcoes: 
   }
 
   if (opcoes.envioAutorizadoId || dentroDaJanela || !temJanela24h()) {
-    return enviarNaConversa(conversa.id, texto, "SISTEMA", { envioAutorizadoId: opcoes.envioAutorizadoId, pararSeHumano: opcoes.pararSeHumano, campanha: opcoes.campanha });
+    return enviarNaConversa(conversa.id, texto, "SISTEMA", { envioAutorizadoId: opcoes.envioAutorizadoId, pararSeHumano: opcoes.pararSeHumano, campanha: opcoes.campanha, pagamentoConfirmado: opcoes.pagamentoConfirmado });
   }
 
   const template = opcoes.campanha ? opcoes.template : opcoes.template || process.env.WHATSAPP_TEMPLATE_AVISO;
@@ -122,7 +122,7 @@ export async function notificarCliente(telefone: string, texto: string, opcoes: 
       wamid = (await enviarTemplate(conversa.waId ?? telefone, {
         nome: template,
         parametros: [cliente?.nome.split(" ")[0] ?? "cliente", texto],
-      }, opcoes.campanha ? "CAMPANHA" : "TEMPLATE")).wamid;
+      }, opcoes.pagamentoConfirmado ? "PAGAMENTO_CONFIRMADO" : opcoes.campanha ? "CAMPANHA" : "TEMPLATE")).wamid;
     } catch (e) {
       erro = (e as Error).message;
     }
@@ -134,6 +134,6 @@ export async function notificarCliente(telefone: string, texto: string, opcoes: 
 }
 
 /** Dispara sem bloquear quem chamou (avisos nao devem travar a agenda). */
-export function notificarEmSegundoPlano(telefone: string, texto: string) {
-  notificarCliente(telefone, texto).catch((e) => console.error("[whatsapp] aviso falhou:", e));
+export function notificarEmSegundoPlano(telefone: string, texto: string, opcoes?: { pagamentoConfirmado: true }) {
+  notificarCliente(telefone, texto, opcoes).catch((e) => console.error("[whatsapp] aviso falhou:", e));
 }

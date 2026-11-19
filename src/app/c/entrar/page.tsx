@@ -1,3 +1,4 @@
+import { VisitaConvite } from "@/components/convites/VisitaConvite";
 import { FormularioLogin } from "@/components/login/FormularioLogin";
 import { configuracao } from "@/lib/agenda/carregar";
 import { modoCodigoNaTela } from "@/lib/auth/otp";
@@ -9,12 +10,12 @@ export const dynamic = "force-dynamic";
 export default async function EntrarCliente() {
   const cfg = await configuracao();
   return (
-    <FormularioLogin
+    <><VisitaConvite etapa="login" /><FormularioLogin
       area="cliente"
       titulo={cfg.nomeBarbearia}
       subtitulo="Seu acesso à Black"
       destinoPadrao="/c" codigoDisponivel={modoCodigoNaTela() || process.env.OTP_PROVIDER === "whatsapp"}
       provedoresSociais={provedoresDisponiveis()}
-    />
+    /></>
   );
 }

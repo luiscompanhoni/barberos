@@ -3,6 +3,8 @@
  * lembretes, aviso depois da falta, agradecimento pos-atendimento e reativacao de sumidos.
  * Cada envio grava antes uma linha unica (tipo + chave): nada sai duas vezes.
  */
+import { rodarRetomadas } from "@/lib/convites/retomadas";
+import { lembrarHorarios } from "./lembrar-horarios";
 import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
 import { sincronizarDisponibilidadeAtendimento } from "@/lib/whatsapp/disponibilidade-atendimento";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
@@ -21,7 +23,7 @@ import { sincronizarRecentes } from "@/lib/conciliacao/celcash";
 import { processarEsperas, processarIndicacoes, processarRetornos } from "@/lib/crescimento/rotina";
 import { enviarAutomacao as enviar } from "./enviar";
 import { canalDaReativacaoAtivo, iniciarReativacao } from "./reativacao";
-import { fazAniversario, horarioComercial, lembreteDevido, quandoFalar, TEXTOS } from "./regras";
+import { fazAniversario, horarioComercial, TEXTOS } from "./regras";
 
 const MIN = 60_000;
 const DIA = 24 * 60 * MIN;
@@ -29,7 +31,7 @@ const MAX_REATIVACAO_POR_RODADA = 15;
 
 /** `clienteIds` limita a rodada a esses clientes (usado nos testes). */
 export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
-  const cont = { lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0 };
+  const cont = { retomadasConvite: 0, lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0 };
   if (quarentenaRestauracao()) return cont;
   if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") {
     if (loteAutorizadoConfigurado()) cont.campanha = await processarCampanhas(agora, opts);
@@ -39,6 +41,8 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   const so = opts.clienteIds ? { clienteId: { in: opts.clienteIds } } : {};
   const comercial = horarioComercial(agora, cfg.fuso);
 
+  cont.retomadasConvite = await rodarRetomadas(agora, cfg.fuso, opts.clienteIds);
+  cont.lembretes = await lembrarHorarios(agora, cfg, opts.clienteIds, recursoPiloto());
   if (recursoPiloto()) {
     if (comercial && process.env.WHATSAPP_CAMPANHAS_MANUAIS_ATIVAS === "true") cont.campanha = await processarCampanhas(agora, opts);
     return cont;
@@ -58,29 +62,6 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   cont.indicacao = await processarIndicacoes(opts);
   await processarConvitesAvaliacao(opts, new Date(agora));
   await processarRecompras(agora, opts);
-
-  // ---- lembretes
-  const horizonte = Math.max(cfg.lembreteHorasAntes * 60, cfg.lembreteMinutosAntes) * MIN;
-  if (horizonte > 0) {
-    const ags = await db.agendamento.findMany({
-      where: {
-        status: { in: ["MARCADO", "CONFIRMADO"] },
-        inicio: { gt: new Date(agora), lte: new Date(agora + horizonte) },
-        cliente: { aceitaMensagens: true },
-        ...so,
-      },
-      include: { cliente: true, barbeiro: { select: { nome: true } }, servico: { select: { nome: true } } },
-    });
-    for (const a of ags) {
-      const tipo = lembreteDevido({ inicio: +a.inicio, criadoEm: +a.criadoEm, status: a.status }, agora, cfg);
-      if (!tipo || (tipo === "LEMBRETE_VESPERA" && !comercial)) continue;
-      const texto = tipo === "LEMBRETE_VESPERA"
-        ? TEXTOS.LEMBRETE_VESPERA({ nome: a.cliente.nome, quando: quandoFalar(+a.inicio, agora, cfg.fuso), servico: a.servico.nome, barbeiro: a.barbeiro.nome, barbearia: cfg.nomeBarbearia })
-        : TEXTOS.LEMBRETE_PROXIMO({ nome: a.cliente.nome, hora: minParaHhmm(minutosLocal(a.inicio, cfg.fuso)), servico: a.servico.nome, barbeiro: a.barbeiro.nome, endereco: cfg.endereco, confirmaPresenca: a.status === "MARCADO" });
-      // Chave com o horario: se remarcar, o lembrete do novo horario sai de novo.
-      if (await enviar({ tipo, chave: `${a.id}@${a.inicio.toISOString()}`, clienteId: a.clienteId, agendamentoId: a.id, telefone: a.cliente.telefone, texto })) cont.lembretes++;
-    }
-  }
 
   if (!comercial) return cont;
 

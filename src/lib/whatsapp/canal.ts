@@ -6,6 +6,7 @@
  *   tela /simulador (para testar sem conta na Meta). Na homologacao e sempre ele.
  */
 
+import { linkPublicoApp } from "@/lib/convites/link";
 import type { Conversa } from "@prisma/client";
 import { configuracao } from "@/lib/agenda/carregar";
 import { campanhaConferida, loteAutorizadoConfirmado, loteAutorizadoDisponivel } from "@/lib/campanhas/lote-autorizado";
@@ -79,7 +80,7 @@ async function entregarTexto(para: string, texto: string, digitandoMs = 0): Prom
   if (p === "simulador") return { wamid: null };
   if (p === "evolution") return enviarTextoEvolution(para, texto, digitandoMs);
   if (digitandoMs > 0) await new Promise((r) => setTimeout(r, digitandoMs));
-  return postarCloud({ to: para, type: "text", text: { preview_url: false, body: texto.slice(0, 4096) } });
+  return postarCloud({ to: para, type: "text", text: { preview_url: linkPublicoApp(texto), body: texto.slice(0, 4096) } });
 }
 
 /** O desbloqueio vale somente para um envio já reservado da lista conferida. */
@@ -102,7 +103,7 @@ export async function enviarTextoLoteAutorizado(envioId: string, conversa: Conve
   return entregarTexto(destino, texto);
 }
 
-export async function enviarTemplate(para: string, t: TemplateWhatsApp, origem: "TEMPLATE" | "CAMPANHA" = "TEMPLATE"): Promise<ResultadoEnvio> {
+export async function enviarTemplate(para: string, t: TemplateWhatsApp, origem: "TEMPLATE" | "CAMPANHA" | "PAGAMENTO_CONFIRMADO" = "TEMPLATE"): Promise<ResultadoEnvio> {
   if (testeEquipeAtivo()) throw new Error("Templates bloqueados durante o teste da equipe.");
   if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") throw new Error("Envios de mensagens bloqueados nesta publicação.");
   await reservarEnvioPiloto(para, origem);

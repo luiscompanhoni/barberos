@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
@@ -17,11 +18,13 @@ type Resumo = {
   mensagens: { texto: string; autor: string; criadoEm: string }[];
 };
 type Detalhe = {
+  recusaAutomaticas: boolean;
+  conviteApp: "ABRINDO" | "AGUARDANDO" | "ENCERRADO" | null;
   id: string;
   telefone: string;
   nomePerfil: string | null;
   estado: "BOT" | "HUMANO";
-  cliente: { id: string; nome: string } | null;
+  cliente: { id: string; nome: string; aceitaMensagens: boolean } | null;
   mensagens: { id: string; autor: "CLIENTE" | "BOT" | "EQUIPE" | "SISTEMA" | "NOTA"; texto: string; erro: string | null; entregueEm: string | null; lidaEm: string | null; criadoEm: string }[];
 };
 
@@ -31,7 +34,8 @@ const hora = (iso: string) =>
   new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
 
 /** Conversas do WhatsApp: a equipe acompanha o bot e assume quando precisa. */
-export function ConversasTela() {
+export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
+  const [iniciandoConvite, setIniciandoConvite] = useState(false);
   const [lista, setLista] = useState<Resumo[]>([]);
   const [aberta, setAberta] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<Detalhe | null>(null);
@@ -92,7 +96,7 @@ export function ConversasTela() {
       {novo && <NovoContato fechar={() => setNovo(false)} criado={id => { setNovo(false); setBusca(""); setAberta(id); void carregarLista(); }} />}
       <aside aria-label="Lista de conversas" className={`cartao overflow-y-auto p-0 ${aberta ? "hidden md:block" : ""}`}>
         <header className={styles.titulo}><p className="eyebrow">Relacionamento</p><h1 className="titulo-marca text-xl">Conversas</h1></header>
-        <div className="space-y-2 p-3"><label className="sr-only" htmlFor="busca-conversa">Buscar por nome ou WhatsApp</label><input id="busca-conversa" type="search" className="campo" placeholder="Buscar nome ou WhatsApp" maxLength={100} value={busca} onChange={e => setBusca(e.target.value)} /><button className="btn w-full" onClick={() => setNovo(true)}>+ Adicionar cliente</button></div>
+        <div className="space-y-2 p-3"><label className="sr-only" htmlFor="busca-conversa">Buscar por nome ou WhatsApp</label><input id="busca-conversa" type="search" className="campo" placeholder="Buscar nome ou WhatsApp" maxLength={100} value={busca} onChange={e => setBusca(e.target.value)} /><button className="btn w-full" onClick={() => setNovo(true)}>+ Adicionar cliente</button>{podeConvidar && <Link className="btn block text-center" href="/conversas/convites">Acompanhar convites ao app</Link>}</div>
         {lista.length === 0 && <p role="status" className="p-4 text-sm text-zinc-500">{consulta ? "Nenhuma conversa encontrada." : "Nenhuma conversa ainda."}</p>}
         {erro && <p role="alert" className="px-3 text-sm text-red-700">{erro}</p>}
         <ul className="divide-y divide-zinc-100">
@@ -122,7 +126,16 @@ export function ConversasTela() {
                 <p className="text-sm font-semibold">{nomeDe(detalhe)}</p>
                 <p className="text-xs text-zinc-500">{formatarTelefone(detalhe.telefone)} · {detalhe.estado === "BOT" ? "Bot respondendo" : "Equipe respondendo"}</p>
               </div>
-              <div className="ml-auto">
+              <div className="ml-auto flex flex-wrap items-center gap-2">
+                {podeConvidar && detalhe.cliente?.aceitaMensagens && !detalhe.recusaAutomaticas && detalhe.estado === "BOT" && !detalhe.conviteApp && (
+                  <button className="btn" disabled={iniciandoConvite} onClick={async () => {
+                    setIniciandoConvite(true);
+                    try { await acao(() => api(`/api/conversas/${detalhe.id}/convite-app`, { method: "POST" })); }
+                    finally { setIniciandoConvite(false); }
+                  }}>Convidar para o novo app</button>
+                )}
+                {detalhe.conviteApp === "ABRINDO" && <span className="text-xs">Enviando abertura do convite…</span>}
+                {detalhe.conviteApp === "AGUARDANDO" && <span className="text-xs">Convite ao app aguarda resposta</span>}
                 {detalhe.estado === "BOT" ? (
                   <button className="btn" onClick={() => acao(() => api(`/api/conversas/${detalhe.id}`, { method: "PATCH", body: { estado: "HUMANO" } }))}>Assumir conversa</button>
                 ) : (

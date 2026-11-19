@@ -616,6 +616,8 @@ enum AutorMensagem {
 
 /// Uma conversa de WhatsApp por telefone.
 model Conversa {
+  jornadaApp       JornadaConviteApp?
+  conviteApp      EtapaConviteApp?
   id              String         @id @default(cuid())
   telefone        String         @unique
   /// Recusa preservada mesmo antes de existir um cadastro de cliente.
@@ -653,9 +655,45 @@ model Mensagem {
   lidaEm         DateTime?       @db.Timestamptz(3)
   criadoEm       DateTime        @default(now()) @db.Timestamptz(3)
   enviosCampanha CampanhaEnvio[]
+  aberturaConvite JornadaConviteApp[] @relation("AberturaConvite")
+  linkConvite JornadaConviteApp[] @relation("LinkConvite")
 
   @@index([conversaId, criadoEm])
   @@map("mensagens")
+}
+
+model JornadaConviteApp {
+  conversaId String @id
+  conversa Conversa @relation(fields: [conversaId], references: [id], onDelete: Cascade)
+  clienteId String
+  token String @unique
+  inicioEm DateTime @default(now()) @db.Timestamptz(3)
+  aberturaId String?
+  abertura Mensagem? @relation("AberturaConvite", fields: [aberturaId], references: [id], onDelete: SetNull)
+  respostaEm DateTime? @db.Timestamptz(3)
+  linkId String?
+  link Mensagem? @relation("LinkConvite", fields: [linkId], references: [id], onDelete: SetNull)
+  clicouEm DateTime? @db.Timestamptz(3)
+  loginEm DateTime? @db.Timestamptz(3)
+  entrouEm DateTime? @db.Timestamptz(3)
+  agendaEm DateTime? @db.Timestamptz(3)
+  instalouEm DateTime? @db.Timestamptz(3)
+  parouEm DateTime? @db.Timestamptz(3)
+  proximaEm DateTime? @db.Timestamptz(3)
+  lembreteMensagemId String?
+  lembreteAgendamentoId String?
+  lembreteInicio DateTime? @db.Timestamptz(3)
+  ultimaRetomadaEm DateTime? @db.Timestamptz(3)
+  retomadas Int @default(0)
+  @@index([proximaEm])
+  @@index([clienteId])
+  @@map("jornadas_convite_app")
+}
+
+enum EtapaConviteApp {
+  ABRINDO
+  AGUARDANDO
+  ENCERRADO
 }
 
 enum FormaPagamento {

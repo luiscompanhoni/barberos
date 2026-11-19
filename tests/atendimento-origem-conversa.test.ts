@@ -14,6 +14,10 @@ beforeEach(() => {
 });
 
 describe("origem interna do envio de conversa", () => {
+  it("identifica confirmação do gateway como finalidade transacional", async () => {
+    await enviarNaConversa("c", "Pagamento confirmado.", "SISTEMA", { pagamentoConfirmado: true });
+    expect(m.enviar.mock.calls[0][3]).toBe("PAGAMENTO_CONFIRMADO");
+  });
   it("marca somente respostas da equipe e bot identificado como atendimento", async () => {
     await enviarNaConversa("c", "oi", "EQUIPE");
     await enviarNaConversa("c", "oi", "BOT", { respostaAtendimento: true });

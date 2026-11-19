@@ -267,9 +267,10 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
 }
 
 /** Cliente confirma presenca (resposta ao lembrete). */
-export async function confirmarPeloCliente(clienteId: string, agendamentoId: string) {
+export async function confirmarPeloCliente(clienteId: string, agendamentoId: string, inicioEsperado?: Date) {
   const ag = await db.agendamento.findUnique({ where: { id: agendamentoId } });
   if (!ag || ag.clienteId !== clienteId || ag.adicionalDeId) throw naoEncontrado("Agendamento");
+  if (inicioEsperado && +ag.inicio !== +inicioEsperado) throw conflitoHorario();
   if (ag.status === "CONFIRMADO") return ag;
   if (ag.status !== "MARCADO" || ag.inicio.getTime() < Date.now()) throw new ErroNegocio("Esse horário não pode mais ser confirmado.");
   const cfg = await configuracao();
