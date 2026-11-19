@@ -141,13 +141,15 @@ ALTER TABLE "esperas_horario"
         with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
             exigir_migracoes_da_publicacao([*nomes, "20261104224600_outra"])
 
-    def test_agenda_exige_valor_true_do_registro_principal(self):
+    def test_agenda_exige_leitura_integra_do_registro_principal(self):
         with patch("deploy_vps_comum.consultar_banco", return_value="t") as consulta:
             self.assertIs(exigir_agenda_equipe("db"), True)
             consulta.assert_called_once_with("db", 'SELECT "agendaExternaAtiva" FROM configuracao WHERE id = 1')
-            for valor in ("f", "", "t\nf", "1"):
+            consulta.return_value = "f"  # transição encerrada: agenda só no BarberOS
+            self.assertIs(exigir_agenda_equipe("db"), True)
+            for valor in ("", "t\nf", "1"):
                 consulta.return_value = valor
-                with self.assertRaisesRegex(RuntimeError, "confirmação pela equipe"):
+                with self.assertRaisesRegex(RuntimeError, "leitura íntegra"):
                     exigir_agenda_equipe("db")
 
     def test_prova_pix_executa_leitura_isolada_sem_rede_credenciais_ou_volume(self):

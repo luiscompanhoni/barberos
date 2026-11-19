@@ -124,8 +124,10 @@ def exigir_migracoes_da_publicacao(pendentes):
 
 def exigir_agenda_equipe(banco):
     valor = consultar_banco(banco, 'SELECT "agendaExternaAtiva" FROM configuracao WHERE id = 1')
-    if valor != "t":
-        raise RuntimeError("Agenda principal do Cash Barber sem confirmação pela equipe.")
+    # A transição do Cash Barber acabou (dono, 19/11/2026): a opção pode estar desligada.
+    # Continua exigindo leitura íntegra do registro principal; True significa "conferida".
+    if valor not in ("t", "f"):
+        raise RuntimeError("Configuração da agenda sem leitura íntegra no registro principal.")
     return True
 
 
