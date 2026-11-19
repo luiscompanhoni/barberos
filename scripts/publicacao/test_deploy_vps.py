@@ -32,6 +32,12 @@ class DeployTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
             exigir_migracoes_da_publicacao([nome, "20261111180000_reativacao_clientes"])
 
+    def test_convite_app_aceita_somente_as_duas_migracoes_liberadas(self):
+        nomes = ["20261119000100_convite_app_whatsapp", "20261119000300_jornada_convite_app"]
+        exigir_migracoes_da_publicacao(nomes)
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao([*nomes, "20261111180000_reativacao_clientes"])
+
     def test_registro_manual_aceita_somente_a_coluna_opcional_revisada(self):
         nome = "20261111120000_assinatura_pagamento_manual"
         exigir_migracoes_da_publicacao([nome])
