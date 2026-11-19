@@ -64,7 +64,9 @@ try {
   resultado = { ...resultado, ...JSON.parse(remoto(comando.map(shell).join(" ")).toString()) };
   if (resultado.concluido !== true || resultado.revisao !== commit) throw new Error("Conclusão não comprovada.");
   process.stdout.write("Publicação confirmada com backup restaurado, HTTPS e worker ativos.\n");
-} catch {
+} catch (erro) {
+  // Motivo fixo devolvido pelo procedimento remoto: vai só para o relatório cifrado, nunca para o log.
+  try { resultado.motivo = JSON.parse(String(erro?.stdout ?? "")).motivo; } catch { /* falha sem resposta remota */ }
   process.stderr.write(`Publicação não concluída na etapa ${resultado.etapa || "remota"}; detalhes privados omitidos.\n`);
   process.exitCode = 1;
 } finally {

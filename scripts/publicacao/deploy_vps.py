@@ -282,6 +282,8 @@ if __name__ == "__main__":
         with open(trava, "a") as f:
             fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
             print(json.dumps(publicar(Path(args.base), args.project, args.commit, args.imagem_anterior)))
-    except BaseException:
-        print(json.dumps({"concluido": False, "revisao": args.commit, "registroPrivado": "operacao.json"}))
+    except BaseException as erro:
+        # Só as mensagens fixas deste procedimento; quem chama grava o motivo apenas no relatório cifrado.
+        motivo = str(erro) if type(erro) is RuntimeError else type(erro).__name__
+        print(json.dumps({"concluido": False, "revisao": args.commit, "registroPrivado": "operacao.json", "motivo": motivo}))
         raise SystemExit(1) from None
