@@ -63,12 +63,14 @@ export function ComandaTela({ id, papel }: { id: string; papel: string }) {
     }
   }
 
-  async function incluirServico(servicoId: string, barbeiroId: string) {
+  async function incluirServico(servicoId: string, barbeiroId: string, reservarTempo: boolean) {
     if (acaoEmVoo.current) return;
     const storage = armazenamentoAdicional();
-    const solicitacaoId = solicitacaoAdicional(adicionaisPendentes.current, id, servicoId, barbeiroId, storage);
-    const encerrar = () => encerrarSolicitacaoAdicional(adicionaisPendentes.current, id, servicoId, barbeiroId, storage);
-    const sucesso = await executar(`/api/comandas/${id}`, { acao: "servico", servicoId, barbeiroId, solicitacaoId }, "PATCH", e => {
+    // A opcao de tempo entra na chave: trocar a escolha depois de um timeout e uma nova intencao.
+    const chaveBarbeiro = `${barbeiroId}:${reservarTempo ? "tempo" : "junto"}`;
+    const solicitacaoId = solicitacaoAdicional(adicionaisPendentes.current, id, servicoId, chaveBarbeiro, storage);
+    const encerrar = () => encerrarSolicitacaoAdicional(adicionaisPendentes.current, id, servicoId, chaveBarbeiro, storage);
+    const sucesso = await executar(`/api/comandas/${id}`, { acao: "servico", servicoId, barbeiroId, solicitacaoId, reservarTempo }, "PATCH", e => {
       if (e instanceof ErroApi && ["solicitacao_encerrada", "solicitacao_reutilizada"].includes(e.codigo ?? "")) encerrar();
     });
     if (sucesso) encerrar();

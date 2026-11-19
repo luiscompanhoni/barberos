@@ -78,8 +78,12 @@ describe("assinaturaValida", () => {
 
 describe("utilitarios", () => {
   it("desconto em extras", () => {
-    expect(precoComDesconto(6500, 10)).toBe(5850);
-    expect(precoComDesconto(6500, 0)).toBe(6500);
+    expect(precoComDesconto(6500, 10)).toBe(5900); // 58,50 sobe para o real inteiro
+    expect(precoComDesconto(2500, 10)).toBe(2300); // 22,50 -> 23,00
+    expect(precoComDesconto(5000, 10)).toBe(4500); // ja inteiro: nao muda
+    expect(precoComDesconto(6550, 0)).toBe(6550); // sem desconto nao arredonda
+    expect(precoComDesconto(50, 10)).toBe(50); // nunca passa do preco cheio
+    expect(precoComDesconto(6500, 100)).toBe(0);
   });
   it("proximo vencimento mensal mantem o dia ou usa o ultimo do mes", () => {
     expect(somarMes("2026-10-15")).toBe("2026-11-15");

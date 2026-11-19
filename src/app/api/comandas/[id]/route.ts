@@ -34,7 +34,7 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/comandas/
       await adicionarAvulso(s, id, b.descricao, b.precoCentavos, b.quantidade);
       break;
     case "servico":
-      await adicionarServico(s, id, b.servicoId, b.barbeiroId, b.solicitacaoId);
+      await adicionarServico(s, id, b.servicoId, b.barbeiroId, b.solicitacaoId, b.reservarTempo);
       break;
     case "desconto":
       await definirDesconto(s, id, b.descontoCentavos);

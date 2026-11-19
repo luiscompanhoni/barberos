@@ -88,9 +88,14 @@ export function avaliarUso(p: {
   return { cobre: true };
 }
 
-/** Preco para assinante em servico fora do plano (desconto em extras). */
+/**
+ * Preco para assinante em servico fora do plano (desconto em extras).
+ * Arredonda para cima ao real inteiro (R$ 22,50 vira R$ 23): falta moeda para troco no caixa.
+ */
 export function precoComDesconto(precoCentavos: number, descontoPct: number) {
-  return Math.round((precoCentavos * (100 - Math.min(100, Math.max(0, descontoPct)))) / 100);
+  const pct = Math.min(100, Math.max(0, descontoPct));
+  if (!pct) return precoCentavos;
+  return Math.min(precoCentavos, Math.ceil((precoCentavos * (100 - pct)) / 10_000) * 100);
 }
 
 /**

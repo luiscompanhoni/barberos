@@ -12,7 +12,7 @@ type BarbeiroCat = { id: string; nome: string; ativo: boolean };
 export function Catalogo({ onProduto, onServico, barbeiroPadrao, onAvulso, podeAvulso, desabilitado }: {
   onProduto: (produtoId: string) => void;
   /** Servico adicional (ex.: sobrancelha junto do corte). Sem isso, a aba Servicos nao aparece. */
-  onServico?: (servicoId: string, barbeiroId: string) => void;
+  onServico?: (servicoId: string, barbeiroId: string, reservarTempo: boolean) => void;
   /** Barbeiro do atendimento da comanda (ja vem escolhido). */
   barbeiroPadrao?: string | null;
   onAvulso: (descricao: string, precoCentavos: number) => void;
@@ -100,8 +100,9 @@ export function Catalogo({ onProduto, onServico, barbeiroPadrao, onAvulso, podeA
 /** Servico adicional: escolhe o barbeiro (o do atendimento ja vem marcado) e toca no servico. */
 function ServicosAdicionais({ servicos, barbeiros, barbeiro, setBarbeiro, desabilitado, onServico }: {
   servicos: ServicoCat[] | null; barbeiros: BarbeiroCat[]; barbeiro: string; setBarbeiro: (id: string) => void;
-  desabilitado: boolean; onServico: (servicoId: string, barbeiroId: string) => void;
+  desabilitado: boolean; onServico: (servicoId: string, barbeiroId: string, reservarTempo: boolean) => void;
 }) {
+  const [reservarTempo, setReservarTempo] = useState(true);
   if (!servicos) return <p className="text-sm text-zinc-500">Carregando serviços...</p>;
   const doBarbeiro = servicos.filter((s) => s.barbeiros.some((b) => b.barbeiroId === barbeiro));
   return (
@@ -120,7 +121,7 @@ function ServicosAdicionais({ servicos, barbeiros, barbeiro, setBarbeiro, desabi
           {doBarbeiro.map((s) => {
             const preco = s.barbeiros.find((b) => b.barbeiroId === barbeiro)?.precoCentavos ?? s.precoCentavos;
             return (
-              <button key={s.id} disabled={desabilitado} onClick={() => onServico(s.id, barbeiro)}
+              <button key={s.id} disabled={desabilitado} onClick={() => onServico(s.id, barbeiro, reservarTempo)}
                 className="flex min-h-20 flex-col justify-between rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-left transition hover:border-ouro active:scale-[0.98] disabled:opacity-50">
                 <span className="line-clamp-2 text-sm font-semibold">{s.nome}</span>
                 <span className="mt-2 text-sm font-bold text-ouro">{reais(preco)}</span>
@@ -129,7 +130,16 @@ function ServicosAdicionais({ servicos, barbeiros, barbeiro, setBarbeiro, desabi
           })}
         </div>
       )}
-      <p className="text-[11px] text-zinc-500">Entra junto do atendimento da comanda: conta na comissão de quem fez e no plano do assinante (se o plano cobrir), sem ocupar horário na agenda.</p>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={reservarTempo} onChange={(e) => setReservarTempo(e.target.checked)} />
+        Reservar o tempo do serviço na agenda
+      </label>
+      <p className="text-[11px] text-zinc-500">
+        {reservarTempo
+          ? "O serviço ganha horário próprio logo depois do atendimento. Se o próximo horário estiver ocupado, o lançamento é recusado."
+          : "Entra junto do atendimento, sem ocupar horário na agenda."}
+        {" "}Conta na comissão de quem fez e no plano do assinante (se o plano cobrir).
+      </p>
     </div>
   );
 }

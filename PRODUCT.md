@@ -111,7 +111,9 @@ A atualização de equipe acrescenta **Reuniões** (`/reunioes`), **Meu dia** (`
   consumo, ajuste, perda, estorno) com autor e saldo depois; venda sem entrada deixa negativo e o painel avisa.
   Cancelar comanda fechada devolve os produtos; o dinheiro volta pelo estorno.
   **Serviço adicional** (`src/lib/comandas/adicional.ts`): serviço extra na comanda vira atendimento ligado ao
-  principal (comissão, uso do plano e relatórios contam normal) sem ocupar a agenda.
+  principal (comissão, uso do plano e relatórios contam normal). Quem lança escolhe se o serviço reserva o próprio
+  tempo na agenda (padrão) ou entra junto do atendimento, sem ocupar horário. O desconto de assinante em serviço
+  fora do plano arredonda o preço para cima ao real inteiro (R$ 22,50 vira R$ 23), por causa do troco no caixa.
 - **Assinaturas** (`/planos`, `/assinaturas`, `/c/planos`): planos com preço, serviços incluídos (à vontade ou N por
   mês), dias entre usos, horários por vez, dias da semana, vagas, desconto nos extras, formas de pagamento e
   barbeiros (um plano só aceita Pix, cartão e boleto). Mudar o preço vale só para novas adesões. Tela Assinaturas

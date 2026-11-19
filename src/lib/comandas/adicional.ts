@@ -1,7 +1,7 @@
 /**
  * Servico adicional na comanda (ex.: o cliente veio cortar e quer fazer a sobrancelha tambem).
  * Vira um atendimento ligado ao principal (comissao do barbeiro, uso do plano e relatorios contam normal),
- * Novos adicionais reservam horário próprio. Os registros antigos preservam seu comportamento.
+ * Por padrão reserva horário próprio. Com reservarTempo=false acontece junto do principal, sem ocupar a agenda.
  */
 import { randomUUID } from "node:crypto";
 import { auditar } from "@/lib/auditoria";
@@ -22,7 +22,7 @@ import { retomarSolicitacaoAdicional } from "./adicional-solicitacao";
 
 const MIN = 60_000;
 
-export async function adicionarServico(s: Sessao, comandaId: string, servicoId: string, barbeiroId: string, solicitacaoId: string = randomUUID()) {
+export async function adicionarServico(s: Sessao, comandaId: string, servicoId: string, barbeiroId: string, solicitacaoId: string = randomUUID(), reservarTempo = true) {
   exigirGestaoBarbeiro(s, barbeiroId);
   const cfg = await configuracao();
   const r = await db.$transaction(async (tx) => {
@@ -45,14 +45,15 @@ export async function adicionarServico(s: Sessao, comandaId: string, servicoId: 
     if (!profissional?.ativo) throw naoEncontrado("Barbeiro ativo");
     if (!atual) throw new ErroNegocio(`${profissional.nome} não faz esse serviço.`, 422, "servico_barbeiro");
     const grupo = await tx.agendamento.findMany({ where: { adicionalDeId: principal.id, status: { in: [...STATUS_ATIVOS] } }, select: { id: true, fim: true, ocupaAgenda: true } });
-    const inicio = Math.max(Date.now(), +principal.fim, ...grupo.filter(a => a.ocupaAgenda).map(a => +a.fim));
+    // Sem reservar tempo: fica colado ao principal e segue o status dele, sem conferir encaixe nem cadeira.
+    const inicio = reservarTempo ? Math.max(Date.now(), +principal.fim, ...grupo.filter(a => a.ocupaAgenda).map(a => +a.fim)) : +principal.fim;
     const fim = inicio + atual.duracaoMin * MIN;
     const ignorarIds = [principal.id, ...grupo.map(a => a.id)];
-    await validarEncaixe(tx, barbeiroId, { inicio, fim }, { fuso: cfg.fuso, intervaloEntreClientes: cfg.intervaloEntreClientes, ignorarAgendamentoIds: ignorarIds });
-    const choque = await tx.agendamento.findFirst({ where: { clienteId: c.clienteId, id: { notIn: ignorarIds }, OR: [{ adicionalDeId: null }, { ocupaAgenda: true }], status: { in: [...STATUS_ATIVOS] }, inicio: { lt: new Date(fim) }, fim: { gt: new Date(inicio) } }, select: { id: true } });
+    if (reservarTempo) await validarEncaixe(tx, barbeiroId, { inicio, fim }, { fuso: cfg.fuso, intervaloEntreClientes: cfg.intervaloEntreClientes, ignorarAgendamentoIds: ignorarIds });
+    const choque = reservarTempo && await tx.agendamento.findFirst({ where: { clienteId: c.clienteId, id: { notIn: ignorarIds }, OR: [{ adicionalDeId: null }, { ocupaAgenda: true }], status: { in: [...STATUS_ATIVOS] }, inicio: { lt: new Date(fim) }, fim: { gt: new Date(inicio) } }, select: { id: true } });
     if (choque) throw new ErroNegocio("O cliente já tem outro atendimento nesse período. Escolha outro horário antes de incluir o adicional.", 409, "choque_cliente");
     const cadeiraId = profissional.cadeiraId ?? (principal.barbeiroId === barbeiroId ? principal.cadeiraId : null);
-    await validarCadeira(tx, cadeiraId, { inicio, fim }, undefined, cfg.intervaloEntreClientes, ignorarIds);
+    if (reservarTempo) await validarCadeira(tx, cadeiraId, { inicio, fim }, undefined, cfg.intervaloEntreClientes, ignorarIds);
     // Assinante: o plano cobre se a regra deixar; senao sai avulso (com o desconto de assinante), sem travar o balcao.
     const preco = await precificar({
       clienteId: c.clienteId, servicoId, barbeiroId, inicio, precoBase: atual.precoCentavos, fuso: cfg.fuso, forcarAvulso: true, c: tx,
@@ -61,7 +62,7 @@ export async function adicionarServico(s: Sessao, comandaId: string, servicoId: 
       data: {
         id: solicitacaoId,
         barbeiroId, cadeiraId, clienteId: c.clienteId, servicoId, inicio: new Date(inicio), fim: new Date(fim),
-        status: "MARCADO", ocupaAgenda: true, origem: "RECEPCAO", precoCentavos: preco.precoCentavos, assinaturaId: preco.assinaturaId,
+        status: reservarTempo ? "MARCADO" : principal.status, ocupaAgenda: reservarTempo, origem: "RECEPCAO", precoCentavos: preco.precoCentavos, assinaturaId: preco.assinaturaId,
         adicionalDeId: principal.id, observacao: "Adicional lançado na comanda", criadoPorId: s.usuarioId,
       },
     });
@@ -72,7 +73,7 @@ export async function adicionarServico(s: Sessao, comandaId: string, servicoId: 
       },
     });
     await auditar(tx, s.usuarioId, "servico_adicional", "comanda", comandaId, {
-      comanda: c.numero, servico: atual.servico.nome, barbeiro: profissional.nome, precoCentavos: preco.precoCentavos, peloPlano: !!preco.assinaturaId, agendamentoId: ag.id, principalId: principal.id, ocupaAgenda: true, cadeiraId, inicio: ag.inicio.toISOString(), fim: ag.fim.toISOString(),
+      comanda: c.numero, servico: atual.servico.nome, barbeiro: profissional.nome, precoCentavos: preco.precoCentavos, peloPlano: !!preco.assinaturaId, agendamentoId: ag.id, principalId: principal.id, ocupaAgenda: reservarTempo, cadeiraId, inicio: ag.inicio.toISOString(), fim: ag.fim.toISOString(),
     });
     await auditar(tx, s.usuarioId, "criar_adicional", "solicitacao_adicional", solicitacaoId, { comandaId, servicoId, barbeiroId, principalId: principal.id, clienteId: c.clienteId });
     return ag;

@@ -50,8 +50,18 @@ describe.skipIf(!habilitado)("estabilização: agenda, adicionais e entrevistas 
     const comanda = await db.comanda.create({ data: { clienteId: cliente.id, abertaPorId: u.id, itens: { create: { agendamentoId: principal.id, descricao: "Principal fictício", quantidade: 1, precoUnitCentavos: precoCentavos, barbeiroId: barbeiro.id } } } });
     const dono: Sessao = { usuarioId: u.id, papel: "DONO", nome: u.nome, barbeiroId: usuarioDono ? barbeiro.id : null, clienteId: null };
     const reservar = (barbeiroId: string, clienteId: string, inicio = horario(630), cadeiraId?: string) => criarAgendamento({ barbeiroId, cliente: { id: clienteId }, servicoId: servico.id, inicio, origem: "RECEPCAO", ...(cadeiraId ? { cadeiraId } : {}) }, dono);
-    return { dono, barbeiro, outro, cadeira, cliente, terceiro, servico, principal, comanda, reservar, adicionar: () => adicionarServico(dono, comanda.id, servico.id, barbeiro.id) };
+    return { dono, barbeiro, outro, cadeira, cliente, terceiro, servico, principal, comanda, reservar, adicionar: (reservarTempo = true) => adicionarServico(dono, comanda.id, servico.id, barbeiro.id, undefined, reservarTempo) };
   }
+
+  it("sem reservar tempo: entra junto do principal mesmo com o próximo horário ocupado e não bloqueia a agenda", async () => {
+    const f = await fixture();
+    await f.reservar(f.barbeiro.id, f.terceiro.id);
+    await expect(f.adicionar()).rejects.toMatchObject({ status: 409 });
+    const junto = await f.adicionar(false);
+    expect(junto).toMatchObject({ ocupaAgenda: false, status: f.principal.status, adicionalDeId: f.principal.id });
+    expect(+junto.inicio).toBe(+f.principal.fim);
+    expect(await db.itemComanda.count({ where: { comandaId: f.comanda.id, agendamentoId: junto.id } })).toBe(1);
+  });
 
   it("reserva profissional, cliente e cadeira; aparece separadamente sem duplicar o total do principal", async () => {
     const f = await fixture(), adicional = await f.adicionar();
