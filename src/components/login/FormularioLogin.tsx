@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { VisitaConvite } from "@/components/convites/VisitaConvite";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Smartphone, UserRound } from "lucide-react";
@@ -282,6 +283,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
 export function FormularioLogin(props: Props) {
   return (
     <Suspense>
+      {props.area === "cliente" && <VisitaConvite etapa="login" />}
       <Formulario {...props} />
     </Suspense>
   );
