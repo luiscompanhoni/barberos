@@ -1,10 +1,10 @@
 CREATE TABLE "jornadas_convite_app" (
-  "conversaId" TEXT PRIMARY KEY REFERENCES conversas(id) ON DELETE CASCADE,
+  "conversaId" TEXT PRIMARY KEY REFERENCES conversas(id) ON DELETE CASCADE ON UPDATE CASCADE,
   "clienteId" TEXT NOT NULL,
   token TEXT NOT NULL UNIQUE,
   "inicioEm" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "aberturaId" TEXT REFERENCES mensagens(id) ON DELETE SET NULL,
-  "respostaEm" TIMESTAMPTZ(3), "linkId" TEXT REFERENCES mensagens(id) ON DELETE SET NULL,
+  "aberturaId" TEXT REFERENCES mensagens(id) ON DELETE SET NULL ON UPDATE CASCADE,
+  "respostaEm" TIMESTAMPTZ(3), "linkId" TEXT REFERENCES mensagens(id) ON DELETE SET NULL ON UPDATE CASCADE,
   "clicouEm" TIMESTAMPTZ(3), "loginEm" TIMESTAMPTZ(3), "entrouEm" TIMESTAMPTZ(3),
   "agendaEm" TIMESTAMPTZ(3), "instalouEm" TIMESTAMPTZ(3), "parouEm" TIMESTAMPTZ(3),
   "lembreteMensagemId" TEXT, "lembreteAgendamentoId" TEXT, "lembreteInicio" TIMESTAMPTZ(3),
@@ -31,7 +31,7 @@ SELECT j."conversaId", c.nome, j."inicioEm", a."criadoEm" AS "aberturaEm", a."en
        j."clicouEm", j."loginEm", j."entrouEm", j."agendaEm", j."instalouEm",
        j."parouEm", j.retomadas, j."proximaEm",
        EXISTS (SELECT FROM pedidos_agendamento p WHERE p."clienteId"=j."clienteId"
-         AND p."criadoEm" >= l."criadoEm") AS pediu,
+         AND p."criadoEm" BETWEEN l."criadoEm" AND l."criadoEm" + INTERVAL '30 days') AS pediu,
        COALESCE(r.marcou,false) AS marcou, COALESCE(r.confirmou,false) AS confirmou, COALESCE(r.compareceu,false) AS compareceu
 FROM jornadas_convite_app j JOIN conversas v ON v.id=j."conversaId" AND v."clienteId"=j."clienteId"
 JOIN clientes c ON c.id=j."clienteId" AND c."excluidoEm" IS NULL
