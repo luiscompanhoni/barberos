@@ -1,7 +1,7 @@
-import { urlSite } from "@/lib/dominios";
+import { enderecoDoConvite } from "@/lib/convites/link";
 
 export const AVISO_TROCA_APP = "A gente está trocando o aplicativo da Black. Tu já pode instalar o novo app no celular e pedir teu próximo horário por lá. Aqui está o link 👇";
-export const continuacaoConviteApp = (endereco = urlSite()) => [AVISO_TROCA_APP, endereco];
+export const continuacaoConviteApp = (endereco = enderecoDoConvite()) => [AVISO_TROCA_APP, endereco];
 
 // Somente respostas completas e inequívocas seguem sem interpretação pelo modelo.
 export function respostaAoConvite(texto: string, endereco?: string): string[] | null {

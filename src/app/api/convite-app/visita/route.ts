@@ -16,7 +16,9 @@ export const POST = rota(async (req: NextRequest) => {
   const { evento, token: recebido } = await corpo(req, z.object({
     evento: z.enum(["clique", "login", "entrou", "agenda", "instalou"]), token: z.string().max(40).optional(),
   }).strict(), { maxBytes: 1024, tipoJson: true });
-  const token = evento === "clique" ? recebido : req.cookies.get(cookie)?.value;
+  const abriuConvite = evento === "login" && recebido !== undefined;
+  const veioDoLink = evento === "clique" || abriuConvite;
+  const token = veioDoLink ? recebido : req.cookies.get(cookie)?.value;
   const resposta = new NextResponse(null, { status: 204 });
   if (!token || !tokenDeConvite(token)) return resposta;
   limitar("convite-visita:" + (req.headers.get("x-real-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "?"), 180, 60_000);
@@ -30,11 +32,14 @@ export const POST = rota(async (req: NextRequest) => {
       +jornada.inicioEm < Date.now() - 30 * 86_400_000) return resposta;
   await db.$transaction(async tx => {
     const primeiro = await tx.jornadaConviteApp.updateMany({ where: { token, [campo]: null }, data: { [campo]: new Date() } });
+    if (abriuConvite) {
+      await tx.jornadaConviteApp.updateMany({ where: { token, clicouEm: null }, data: { clicouEm: new Date() } });
+    }
     if (primeiro.count && ["clique", "login", "entrou"].includes(evento)) {
       await tx.$executeRaw`UPDATE jornadas_convite_app SET "proximaEm"=GREATEST(now()+interval '4 hours',"ultimaRetomadaEm"+interval '24 hours')
         WHERE token=${token} AND "parouEm" IS NULL AND "proximaEm" IS NOT NULL AND retomadas<3 AND "agendaEm" IS NULL`;
     }
   });
-  if (evento === "clique") resposta.cookies.set(cookie, token, { path: "/", maxAge: 30 * 86400, httpOnly: true, secure: cookieSeguro(), sameSite: "lax" });
+  if (veioDoLink) resposta.cookies.set(cookie, token, { path: "/", maxAge: 30 * 86400, httpOnly: true, secure: cookieSeguro(), sameSite: "lax" });
   return resposta;
 });

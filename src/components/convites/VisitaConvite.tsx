@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-export type EtapaVisita = "clique" | "login" | "entrou" | "agenda" | "instalou";
+export type EtapaVisita = "login" | "entrou" | "agenda" | "instalou";
 
 export function VisitaConvite({ etapa, token }: { etapa: EtapaVisita; token?: string }) {
   useEffect(() => {
@@ -18,8 +18,7 @@ export function VisitaConvite({ etapa, token }: { etapa: EtapaVisita; token?: st
       iniciou = true;
       void registrar(etapa).then(() => {
         if (!ativo) return;
-        if (etapa === "clique") window.location.replace("/c/agendar");
-        else if (window.matchMedia("(display-mode: standalone)").matches ||
+        if (window.matchMedia("(display-mode: standalone)").matches ||
           (navigator as Navigator & { standalone?: boolean }).standalone) void registrar("instalou");
       });
     };

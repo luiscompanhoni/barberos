@@ -21,6 +21,7 @@ type Props = {
   titulo: string;
   subtitulo: string;
   destinoPadrao: string;
+  conviteApp?: string;
   /** O codigo consegue chegar ate a pessoa (WhatsApp ligado ou teste local)? */
   codigoDisponivel: boolean;
   provedoresSociais?: { id: "google" | "facebook" | "apple"; disponivel: boolean }[];
@@ -28,12 +29,12 @@ type Props = {
 type Modo = "senha" | "cadastro" | "codigo-tel" | "codigo";
 type RespostaLogin = { papel?: string; base?: string; definirSenha?: boolean; trocaSenhaObrigatoria?: boolean };
 
-function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, provedoresSociais = [] }: Props) {
+function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigoDisponivel, provedoresSociais = [] }: Props) {
   const router = useRouter();
   const busca = useSearchParams();
   const voltar = busca.get("voltar") ?? destinoPadrao;
   const contaExcluida = area === "cliente" && busca.get("excluida") === "1";
-  const [modo, setModo] = useState<Modo>(area === "cliente" && codigoDisponivel && busca.get("confirmar") === "1" ? "codigo-tel" : "senha");
+  const [modo, setModo] = useState<Modo>(area === "cliente" && codigoDisponivel && (conviteApp || busca.get("confirmar") === "1") ? "codigo-tel" : "senha");
   const [identificador, setIdentificador] = useState("");
   const [senha, setSenha] = useState("");
   const [nome, setNome] = useState("");
@@ -283,7 +284,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, codigoDisponivel, 
 export function FormularioLogin(props: Props) {
   return (
     <Suspense>
-      {props.area === "cliente" && <VisitaConvite etapa="login" />}
+      {props.area === "cliente" && <VisitaConvite etapa="login" token={props.conviteApp} />}
       <Formulario {...props} />
     </Suspense>
   );

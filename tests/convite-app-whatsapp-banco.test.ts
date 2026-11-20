@@ -60,7 +60,7 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
     const entrada = { telefone, texto: "Oi, Leonel! Tudo bem?", wamid: randomUUID() };
     await receberMensagem(entrada);
     await receberMensagem(entrada);
-    expect(await falas(id)).toEqual([...abertura, expect.stringMatching(/^A gente está trocando o aplicativo.*Aqui está o link 👇$/), expect.stringMatching(/^https:\/\/black\.exemplo\.test\/c\/r\/app_[0-9a-f]{32}$/)]);
+    expect(await falas(id)).toEqual([...abertura, expect.stringMatching(/^A gente está trocando o aplicativo.*Aqui está o link 👇$/), expect.stringMatching(/^https:\/\/black\.exemplo\.test\/c\/entrar\?convite=app_[0-9a-f]{32}$/)]);
     expect((await etapa(id)).conviteApp).toBe("ENCERRADO");
   });
 
@@ -87,7 +87,7 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
       };
       await receberMensagem({ telefone, texto: "Manda aí pra eu ver como ficou, Leonel!", wamid: randomUUID() }, { modelo: { criar } });
       const mensagens = await falas(id);
-      expect(mensagens).toEqual([...abertura, expect.stringContaining("Aqui está o link 👇"), expect.stringMatching(/^https:\/\/black\.exemplo\.test\/c\/r\/app_[0-9a-f]{32}$/)]);
+      expect(mensagens).toEqual([...abertura, expect.stringContaining("Aqui está o link 👇"), expect.stringMatching(/^https:\/\/black\.exemplo\.test\/c\/entrar\?convite=app_[0-9a-f]{32}$/)]);
       const sessao = await db.conversa.findUniqueOrThrow({ where: { id }, select: { sessao: true } });
       expect(sessao.sessao).toEqual(expect.arrayContaining([{ role: "assistant", content: mensagens.slice(2).join("\n\n") }]));
     } finally { vi.stubEnv("WHATSAPP_ATENDIMENTO_IA_PAGA", "false"); }
@@ -101,10 +101,11 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
     expect(j.clicouEm).toBeNull();
     const evento = (tipo: string) => visita(new NextRequest(site + "/api/convite-app/visita", { method: "POST",
       headers: { origin: site, "content-type": "application/json", cookie: "black_convite_app=" + j.token },
-      body: JSON.stringify({ evento: tipo, ...(tipo === "clique" ? { token: j.token } : {}) }) }));
+      body: JSON.stringify({ evento: tipo, ...(["clique", "login"].includes(tipo) ? { token: j.token } : {}) }) }));
     const antes = (await relatorioConvites(1)).totais.cliques;
-    expect((await evento("clique")).headers.get("set-cookie")).toContain("HttpOnly");
-    await evento("clique"); await evento("login"); await evento("agenda");
+    expect((await evento("login")).headers.get("set-cookie")).toContain("HttpOnly");
+    expect((await relatorioConvites(1)).totais.cliques).toBe(antes + 1);
+    await evento("login"); await evento("clique"); await evento("agenda");
     expect((await relatorioConvites(1)).totais.cliques).toBe(antes + 1);
     sessao.mockResolvedValue({ papel: "CLIENTE", clienteId: "outro" });
     await evento("entrou");
