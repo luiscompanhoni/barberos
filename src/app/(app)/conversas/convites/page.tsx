@@ -1,5 +1,6 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
-import { exigirSessao, GESTAO } from "@/lib/auth/sessao";
+import { GESTAO, sessaoAtual } from "@/lib/auth/sessao";
 import { relatorioConvites, type RotaConvite } from "@/lib/convites/relatorio";
 
 const data = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
@@ -29,7 +30,10 @@ function ultimaEtapa(j: RotaConvite) {
 }
 
 export default async function Convites({ searchParams }: PageProps<"/conversas/convites">) {
-  await exigirSessao(GESTAO);
+  const sessao = await sessaoAtual();
+  if (!sessao) redirect("/entrar");
+  if (sessao.papel === "CLIENTE") redirect("/c");
+  if (!GESTAO.includes(sessao.papel)) redirect("/");
   const n = Number((await searchParams).pagina);
   const pagina = Number.isSafeInteger(n) && n >= 1 && n <= 1000000 ? n : 1;
   const { totais, linhas } = await relatorioConvites(pagina);

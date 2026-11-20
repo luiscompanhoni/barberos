@@ -38,6 +38,18 @@ class DeployTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
             exigir_migracoes_da_publicacao([*nomes, "20261111180000_reativacao_clientes"])
 
+    def test_revisao_integral_exige_as_migracoes_revisadas(self):
+        revisadas = {
+            "20261120000000_liberar_agenda_comanda_cancelada": "9d3afd52f7f754b6c0995207a20f94c9ee79a3d3ea510161d9172d1153cc7102",
+            "20261120001000_indice_envios_por_cliente": "3b1b615666a71ab20742b2b2ce557fabe27ae4a5ac483e43059455db08891074",
+        }
+        exigir_migracoes_da_publicacao(list(revisadas))
+        for nome, checksum in revisadas.items():
+            arquivo = Path(__file__).resolve().parents[2] / "prisma/migrations" / nome / "migration.sql"
+            self.assertEqual(hashlib.sha256(arquivo.read_text(encoding="utf8").encode()).hexdigest(), checksum)
+            with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+                exigir_migracoes_da_publicacao([*revisadas, nome + "_extra"])
+
     def test_registro_manual_aceita_somente_a_coluna_opcional_revisada(self):
         nome = "20261111120000_assinatura_pagamento_manual"
         exigir_migracoes_da_publicacao([nome])

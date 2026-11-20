@@ -11,7 +11,7 @@ const intervalo = (de: number, ate: number) => ({ gte: new Date(de), lt: new Dat
 export async function indicadoresDeAssinaturas(p: Periodo) {
   const dias = (p.ate - p.de) / 86_400_000;
   const [ativas, atrasadas, novas, canceladas, ativasNoInicio, recebido, usos, planos] = await Promise.all([
-    db.assinatura.findMany({ where: { status: { in: ["ATIVA", "ATRASADA"] } }, select: { precoCentavos: true, planoId: true, ultimoPagamentoManualEm: true } }),
+    db.assinatura.findMany({ where: { status: { in: ["ATIVA", "ATRASADA"] } }, select: { id: true, precoCentavos: true, planoId: true, ultimoPagamentoManualEm: true } }),
     db.assinatura.count({ where: { status: "ATRASADA" } }),
     db.assinatura.count({ where: { ativadaEm: intervalo(p.de, p.ate), ultimoPagamentoManualEm: null } }),
     db.assinatura.findMany({ where: { canceladaEm: intervalo(p.de, p.ate), ativadaEm: { not: null }, ultimoPagamentoManualEm: null }, select: { motivoCancelamento: true } }),
@@ -40,7 +40,8 @@ export async function indicadoresDeAssinaturas(p: Periodo) {
     const m = (c.motivoCancelamento ?? "Não informado").split(":")[0].trim() || "Não informado";
     motivos[m] = (motivos[m] ?? 0) + 1;
   }
-  const assinantesQueUsaram = new Set(usos.map((u) => u.assinaturaId)).size;
+  const contratosComUso = new Set(usos.map((u) => u.assinaturaId));
+  const assinantesQueUsaram = contratosComUso.size;
   const receitaPeriodo = recebido.total;
   // Quanto o assinante "economizou": preco de tabela dos servicos usados menos o que pagou.
   const valorDeTabela = usos.reduce((s, u) => s + u.servico.precoCentavos, 0);
@@ -61,7 +62,7 @@ export async function indicadoresDeAssinaturas(p: Periodo) {
     // Valor efetivo de cada corte do plano (receita / usos) comparado ao preco de tabela
     valorPorUsoCentavos: usos.length ? Math.round(receitaPeriodo / usos.length) : null,
     tabelaPorUsoCentavos: usos.length ? Math.round(valorDeTabela / usos.length) : null,
-    assinantesSemUso: Math.max(0, ativas.length - assinantesQueUsaram),
+    assinantesSemUso: ativas.filter(a => !contratosComUso.has(a.id)).length,
     porPlano: [...porPlano].map(([id, total]) => ({ nome: planos.find(p => p.id === id)?.nome ?? "?", ...total })).sort((a, b) => b.mrrCentavos - a.mrrCentavos),
   };
 }
@@ -98,6 +99,7 @@ export async function indicadoresDoBar(p: Periodo, atendimentos: number) {
     // Quanto o bar rende, em media, por atendimento feito (mede o habito de consumir)
     barPorAtendimentoCentavos: atendimentos ? Math.round(bar / atendimentos) : null,
     comandasComBarPct: comandas.length ? comBar / comandas.length : null,
+    baseDaMargem: "Custo de reposição atual",
     margemBrutaPct: receita ? (receita - custo) / receita : null,
     topProdutos: produtos.sort((a, b) => b.receita - a.receita).slice(0, 8).map((x) => ({ ...x, margemPct: x.receita ? (x.receita - x.custo) / x.receita : null })),
   };

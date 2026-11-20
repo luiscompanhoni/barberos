@@ -45,6 +45,14 @@ async function limpar() {
   await db.jogo.deleteMany({ where: { id: JOGO } });
 }
 
+// O canal simulado conclui no relógio de 2031 deste teste.
+async function noInstante<T>(instante: number, executar: () => Promise<T>) {
+  const relogio = Date.now;
+  let proximo = instante + 1000;
+  Date.now = () => proximo++;
+  try { return await executar(); } finally { Date.now = relogio; }
+}
+
 async function main() {
   await limpar();
   const dono = await db.usuario.findFirstOrThrow({ where: { papel: "DONO" } });
@@ -98,7 +106,7 @@ async function main() {
     ok((await db.campanhaEnvio.count({ where: { campanhaId: { in: [cAss.id, cPerd.id] }, status: "PULADO" } })) === 2, "encerrar: quem estava na fila não recebe");
 
     // ================= ENVIO COM LIMITE DIARIO
-    ok((await processarCampanhas(agora, { clienteIds: todos })) === 1, "limite 1/dia: sai uma mensagem");
+    ok((await noInstante(agora, () => processarCampanhas(agora, { clienteIds: todos }))) === 1, "limite 1/dia: sai uma mensagem");
     ok((await processarCampanhas(agora + 60_000, { clienteIds: todos })) === 0, "no mesmo dia não sai mais nenhuma");
     const conversaA = await db.conversa.findFirst({ where: { telefone: TELS[0] }, include: { mensagens: true } });
     const texto = conversaA?.mensagens[0]?.texto ?? "";
@@ -122,7 +130,7 @@ async function main() {
     await db.cliente.update({ where: { id: b.id }, data: { aceitaMensagens: true } });
     const cDup = await criarCampanha(s, { ...base, limiteDiario: 50, nome: `${TAG} duplo`, segmentos: ["d31a60"] });
     await liberarLote(s, cDup.id, 10, agora, { clienteIds: todos });
-    const [x, y] = await Promise.all([processarCampanhas(agora + 2 * D, { clienteIds: todos }), processarCampanhas(agora + 2 * D, { clienteIds: todos })]);
+    const [x, y] = await noInstante(agora + 2 * D, () => Promise.all([processarCampanhas(agora + 2 * D, { clienteIds: todos }), processarCampanhas(agora + 2 * D, { clienteIds: todos })]));
     const conversaB = await db.conversa.findFirst({ where: { telefone: TELS[1] }, include: { mensagens: true } });
     ok(x + y === 1 && conversaB?.mensagens.length === 1, "duas rodadas juntas: o Bruno recebe uma vez só");
 
@@ -137,7 +145,10 @@ async function main() {
     ok(fila.length === 2 && fila.every((e) => e.token && e.token.length >= 16) && new Set(fila.map((e) => e.token)).size === 2, "cada mensagem tem o seu link (token)");
     const tokenA = fila.find((e) => e.clienteId === a.id)!.token!, tokenB = fila.find((e) => e.clienteId === b.id)!.token!;
     ok((await landingDaCampanha(tokenA)) === null, "link de mensagem que ainda não saiu não abre");
-    ok((await processarCampanhas(depois, { clienteIds: [a.id, b.id] })) === 2, "roleta: as 2 mensagens saem");
+    ok((await noInstante(depois, () => processarCampanhas(depois, { clienteIds: [a.id, b.id] }))) === 2, "roleta: as 2 mensagens saem");
+    const confirmados = await db.campanhaEnvio.findMany({ where: { campanhaId: cRol.id }, select: { enviadoEm: true } });
+    ok(confirmados.length === 2 && confirmados.every(e => +e.enviadoEm! > depois) &&
+      new Set(confirmados.map(e => +e.enviadoEm!)).size === 2, "cada contato guarda o instante de sucesso após a reserva do lote");
     const envA = await db.campanhaEnvio.findFirstOrThrow({ where: { token: tokenA }, include: { mensagem: true } });
     ok(!!envA.mensagem && envA.mensagem.texto.includes(`/c/r/${tokenA}`), "mensagem leva o link rastreado e fica ligada ao envio");
 
@@ -200,10 +211,10 @@ async function main() {
     });
     const verificaLote = async (n: number) => (await db.campanhaEnvio.count({ where: { campanhaId: restrita.id } })) === n;
     ok((await listarCampanhas(horaLote)).find(x => x.id === restrita.id)?.loteAutorizado === 2, "só o lote conferido aparece disponível no painel");
-    ok(Object.values(await rodarAutomacoes(horaLote)).every(n => n === 0) && await verificaLote(0), "ativar a autorização não cria fila nem executa as outras rotinas");
+    ok(Object.values(await noInstante(horaLote, () => rodarAutomacoes(horaLote))).every(n => n === 0) && await verificaLote(0), "ativar a autorização não cria fila nem executa as outras rotinas");
     await db.campanha.update({ where: { id: restrita.id }, data: { status: "ATIVA" } });
     const filaAnterior = await db.campanhaEnvio.create({ data: { campanhaId: restrita.id, clienteId: a.id, lote: 1, token: "lote-teste-anterior" } });
-    ok((await rodarAutomacoes(horaLote)).campanha === 0, "fila anterior da própria campanha aguarda a confirmação do lote");
+    ok((await noInstante(horaLote, () => rodarAutomacoes(horaLote))).campanha === 0, "fila anterior da própria campanha aguarda a confirmação do lote");
     await db.campanhaEnvio.delete({ where: { id: filaAnterior.id } });
     await mudarStatus(s, restrita.id, "pausar");
     ok((await falha(() => liberarLote(s, outra.id, 1, horaLote)))?.codigo === "campanhas_bloqueadas", "outra campanha continua bloqueada");
@@ -221,7 +232,7 @@ async function main() {
     ok(resultados.filter(r => r.status === "fulfilled").length === 1 &&
       (await naFila(restrita.id)).join() === [a.id, b.id].sort().join(), "dois cliques criam um lote com os nomes aprovados");
     ok((await rodarAutomacoes(horaLote - 5 * 3_600_000)).campanha === 0, "lote autorizado espera o horário comercial");
-    ok((await rodarAutomacoes(horaLote)).campanha === 2 &&
+    ok((await noInstante(horaLote, () => rodarAutomacoes(horaLote))).campanha === 2 &&
       await db.campanhaEnvio.count({ where: { campanhaId: restrita.id, status: "ENVIADO", mensagemId: { not: null } } }) === 2 &&
       await db.campanhaEnvio.count({ where: { campanhaId: outra.id, status: "FILA" } }) === 1, "simulador processa só o lote autorizado e preserva a outra fila");
 
@@ -242,7 +253,7 @@ async function main() {
     await mudarStatus(s, manual.id, "pausar");
     ok((await rodarAutomacoes(segunda, { clienteIds: todos })).campanha === 0, "pausa de novo preserva o lote sem enviar");
     await mudarStatus(s, manual.id, "retomar");
-    const rodada = await rodarAutomacoes(segunda, { clienteIds: todos });
+    const rodada = await noInstante(segunda, () => rodarAutomacoes(segunda, { clienteIds: todos }));
     ok(rodada.campanha === 1 && Object.entries(rodada).every(([tipo, n]) => tipo === "campanha" || n === 0) &&
       await db.campanhaEnvio.count({ where: { campanhaId: manual.id, status: "ENVIADO", mensagemId: { not: null } } }) === 1 &&
       await db.campanhaEnvio.count({ where: { campanhaId: outra.id, status: "FILA" } }) === 1, "só o lote manual ativo é processado");

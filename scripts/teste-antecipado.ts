@@ -4,10 +4,11 @@ process.env.PAGAMENTOS_PROVIDER = "simulado";
 process.env.WHATSAPP_PROVIDER = "simulador";
 
 import type { Sessao } from "@/lib/auth/sessao";
-import { aoCancelarHorario, pagarAntecipado, sincronizarAntecipado } from "@/lib/agenda/antecipado";
+import { antecipadoDoHorario, checkoutDoHorario, aoCancelarHorario, pagarAntecipado, sincronizarAntecipado } from "@/lib/agenda/antecipado";
 import { cancelarPeloCliente } from "@/lib/agenda/cliente";
 import { cancelarPagamento } from "@/lib/comandas/maquininha";
 import { abrirComanda, detalheComanda, fecharComanda } from "@/lib/comandas/servico";
+import { atualizarPremios, reservarPremio } from "@/lib/jogos/premios";
 import { db } from "@/lib/db";
 import { pagarSimulada } from "@/lib/pagamentos/simulado";
 import { horarioLivre } from "./util-teste";
@@ -24,6 +25,8 @@ async function limpar() {
   await db.pagamentoComanda.deleteMany({ where: { comandaId: { in: cs.map((x) => x.id) } } });
   await db.itemComanda.deleteMany({ where: { comandaId: { in: cs.map((x) => x.id) } } });
   await db.comanda.deleteMany({ where: { id: { in: cs.map((x) => x.id) } } });
+  const cobrancas = await db.pagamentoAntecipado.findMany({ where: { clienteId: c.id }, select: { gatewayId: true } });
+  await db.cobrancaSimulada.deleteMany({ where: { id: { in: cobrancas.flatMap(a => a.gatewayId ? [a.gatewayId] : []) } } });
   await db.pagamentoAntecipado.deleteMany({ where: { clienteId: c.id } });
   await db.cobrancaSimulada.deleteMany({ where: { assinaturaGatewayId: { in: ags.map((a) => `avulsa:ag-${a.id}`) } } });
   await db.cobrancaSimulada.deleteMany({ where: { assinaturaGatewayId: { startsWith: "avulsa:ag-" }, valorCentavos: 4321 } });
@@ -32,6 +35,7 @@ async function limpar() {
   const conv = await db.conversa.findUnique({ where: { telefone: TEL } });
   if (conv) { await db.mensagem.deleteMany({ where: { conversaId: conv.id } }); await db.conversa.delete({ where: { id: conv.id } }); }
   await db.cliente.delete({ where: { id: c.id } });
+  await db.jogo.deleteMany({ where: { id: `antecipado-${c.id}` } });
 }
 
 async function main() {
@@ -53,6 +57,49 @@ async function main() {
     await pagarSimulada(a.gatewayId!);
     return sincronizarAntecipado(a.id);
   };
+
+  const agPremio = await marcar();
+  await db.agendamento.update({ where: { id: agPremio.id }, data: { precoCentavos: 5000 } });
+  const jogo = await db.jogo.create({ data: { id: `antecipado-${cliente.id}`, tipo: "ROLETA", nome: "Teste de prêmio" } });
+  const jogada = await db.jogada.create({ data: { chave: jogo.id, clienteId: cliente.id, jogoId: jogo.id, tipo: "ROLETA", origem: "MANUAL", vitoria: true, resultado: {} } });
+  const premio = await db.premioGanho.create({ data: { codigo: jogo.id, jogadaId: jogada.id, jogoId: jogo.id, clienteId: cliente.id, tipo: "DESCONTO", percentual: 20,
+    rotulo: "Desconto de R$ 10 no corte de R$ 50", raridade: "COMUM", icone: "desconto", status: "DISPONIVEL", expiraEm: new Date(Date.now() - 1000) } });
+  const reservar = (titular: string) => db.$transaction(tx => reservarPremio(tx, titular, premio.id, agPremio));
+  ok((await falha(() => reservar(cliente.id)))?.codigo === "premio_validade", "bloqueia prêmio vencido");
+  await atualizarPremios({ clienteId: cliente.id });
+  ok((await db.premioGanho.findUniqueOrThrow({ where: { id: premio.id } })).status === "EXPIRADO", "expiração registrada");
+  await db.premioGanho.update({ where: { id: premio.id }, data: { status: "DISPONIVEL", expiraEm: null } });
+  ok(!!await falha(() => reservar("outro-titular")), "somente o titular pode reservar o prêmio");
+  await reservar(cliente.id);
+  const emitir = () => pagarAntecipado({ clienteId: cliente.id, agendamentoId: agPremio.id, forma: "PIX" });
+  ok((await falha(emitir))?.codigo === "premio_balcao", "desconto de R$ 10 impede gerar Pix de R$ 50");
+  ok((await falha(() => checkoutDoHorario(cliente.id, agPremio.id)))?.message.includes("Pague no balcão") === true, "GET orienta balcão somente sem pagamento ativo");
+  ok(!await db.pagamentoAntecipado.count({ where: { agendamentoId: agPremio.id } }), "nenhuma cobrança criada");
+  await db.premioGanho.update({ where: { id: premio.id }, data: { tipo: "BRINDE" } });
+  ok((await emitir()).valorCentavos === 5000, "brinde permite antecipar os R$ 50");
+  await db.premioGanho.update({ where: { id: premio.id }, data: { tipo: "SERVICO" } });
+  const novaTentativa = await falha(emitir);
+  ok(novaTentativa?.codigo === "antecipado_conferencia" && novaTentativa.message.includes("Aguarde"), "POST orienta aguardar o Pix pendente com prêmio");
+  const checkout = await checkoutDoHorario(cliente.id, agPremio.id, false);
+  ok(checkout.processando === true && checkout.pix === null && checkout.link === null && !!checkout.mensagem?.includes("Aguarde"), "GET rápido informa conferência sem Pix ou link");
+  const leitura = await antecipadoDoHorario(cliente.id, agPremio.id);
+  ok(leitura?.status === "PENDENTE" && leitura.link === null && leitura.pixCopiaECola === null && leitura.pixQrUrl === null && "mensagem" in leitura && leitura.mensagem.includes("Aguarde"), "GET sincronizado informa conferência sem link ou QR");
+  await db.premioGanho.delete({ where: { id: premio.id } });
+  ok((await emitir()).valorCentavos === 5000, "prêmio excluído permite pagamento normal");
+  await db.premioGanho.create({ data: { codigo: jogo.id, jogadaId: jogada.id, jogoId: jogo.id, clienteId: cliente.id, agendamentoId: agPremio.id,
+    tipo: "DESCONTO", percentual: 20, rotulo: "Desconto reservado", raridade: "COMUM", icone: "desconto", status: "RESERVADO" } });
+  const pix = await db.pagamentoAntecipado.findUniqueOrThrow({ where: { agendamentoId: agPremio.id } });
+  await pagarSimulada(pix.gatewayId!);
+  ok((await db.pagamentoAntecipado.findUniqueOrThrow({ where: { id: pix.id } })).status === "PENDENTE", "Pix recebido ainda aguarda webhook no BarberOS");
+  const jaPago = await falha(emitir);
+  ok(jaPago?.codigo === "ja_pago" && jaPago.message.includes("já está pago"), "POST sincroniza Pix recebido e prioriza já pago");
+  ok((await checkoutDoHorario(cliente.id, agPremio.id)).status === "PAGO", "consulta ao gateway reconhece pagamento antes da orientação do prêmio");
+  const recebido = await antecipadoDoHorario(cliente.id, agPremio.id);
+  ok(recebido?.status === "PAGO" && recebido.link === null && recebido.pixCopiaECola === null, "GET sincronizado informa pagamento recebido sem reapresentar a cobrança");
+  await db.pagamentoAntecipado.update({ where: { id: pix.id }, data: { status: "CREDITADO" } });
+  ok((await falha(emitir))?.codigo === "ja_pago" && (await checkoutDoHorario(cliente.id, agPremio.id)).status === "PAGO", "POST e GET reconhecem o valor creditado");
+  await db.jogada.delete({ where: { id: jogada.id } });
+  await db.jogo.delete({ where: { id: jogo.id } });
 
   // ---- 1) paga antes e a comanda ja nasce paga
   const ag1 = await marcar();

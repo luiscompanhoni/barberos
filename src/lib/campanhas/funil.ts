@@ -6,35 +6,24 @@
 import { resumoComanda } from "@/lib/comandas/regras";
 import { db } from "@/lib/db";
 import { naoEncontrado } from "@/lib/erros";
-import { DIAS_RESULTADO } from "./servico";
+import { DIAS_RESULTADO, resultadosAtribuidos } from "./atribuicao";
 import { montarFunil, type LinhaFunil } from "./regras";
-
-const DIA = 86_400_000;
 
 export async function funilCampanha(campanhaId: string) {
   const c = await db.campanha.findUnique({ where: { id: campanhaId }, select: { id: true, nome: true, jogo: { select: { nome: true } } } });
   if (!c) throw naoEncontrado("Campanha");
   const envios = await db.campanhaEnvio.findMany({
-    where: { campanhaId, status: "ENVIADO", enviadoEm: { not: null } },
+    where: { campanhaId, status: "ENVIADO" },
     select: {
       clienteId: true, enviadoEm: true, clicouEm: true, appAbertoEm: true,
-      mensagem: { select: { wamid: true, entregueEm: true, lidaEm: true } },
+      mensagem: { select: { criadoEm: true, erro: true, wamid: true, entregueEm: true, lidaEm: true } },
       jogada: { select: { vitoria: true, premios: { select: { tipo: true, status: true, beneficioId: true } } } },
       cliente: { select: { usuario: { select: { criadoEm: true } } } },
     },
   });
-  const ids = envios.map((e) => e.clienteId);
-  const primeiro = envios.reduce((m, e) => Math.min(m, +e.enviadoEm!), Infinity);
-
-  // Atendimentos marcados depois de receber (janela igual a das campanhas).
-  const ags = envios.length
-    ? await db.agendamento.findMany({ where: { clienteId: { in: ids }, criadoEm: { gt: new Date(primeiro) } }, select: { id: true, clienteId: true, criadoEm: true, status: true } })
-    : [];
-  const daCampanha = new Map<string, typeof ags>();
-  for (const e of envios) {
-    const de = +e.enviadoEm!, ate = de + DIAS_RESULTADO * DIA;
-    daCampanha.set(e.clienteId, ags.filter((a) => a.clienteId === e.clienteId && +a.criadoEm > de && +a.criadoEm <= ate));
-  }
+  const reservas = envios.length ? await resultadosAtribuidos(campanhaId) : [];
+  const marcados = new Set(reservas.map(r => r.clienteId));
+  const atendidos = new Set(reservas.filter(r => r.status === "CONCLUIDO").map(r => r.clienteId));
 
   // Premio do jogo usado: credito gasto (inteiro ou em parte) ou premio validado na barbearia.
   const beneficios = envios.flatMap((e) => e.jogada?.premios.map((p) => p.beneficioId) ?? []).filter((x): x is string => !!x);
@@ -48,22 +37,25 @@ export async function funilCampanha(campanhaId: string) {
   );
 
   // Faturado: comandas fechadas dos atendimentos que vieram da campanha (o que ficou com a barbearia).
-  const agIds = [...daCampanha.values()].flat().map((a) => a.id);
-  const comandaIds = agIds.length ? [...new Set((await db.itemComanda.findMany({ where: { agendamentoId: { in: agIds } }, select: { comandaId: true } })).map((i) => i.comandaId))] : [];
+  const comandaIds = reservas.flatMap(r => r.comandaId ? [r.comandaId] : []);
   const comandas = comandaIds.length
     ? await db.comanda.findMany({ where: { id: { in: comandaIds }, status: "FECHADA" }, include: { itens: true, pagamentos: true } })
     : [];
-  const faturadoCentavos = comandas.reduce((t, cm) => t + resumoComanda(cm.itens, cm.pagamentos, cm.descontoCentavos).pago, 0);
+  const faturadoCentavos = comandas.reduce((total, cm) => {
+    const { pago, troco } = resumoComanda(cm.itens, cm.pagamentos, cm.descontoCentavos);
+    return total + (pago - troco);
+  }, 0);
 
   const linhas: LinhaFunil[] = envios.map((e) => {
-    const seus = daCampanha.get(e.clienteId) ?? [];
     const g = e.jogada;
     const usuario = e.cliente.usuario;
+    const instante = e.mensagem && e.mensagem.erro === null ? Math.max(+e.mensagem.criadoEm, e.enviadoEm?.getTime() ?? -Infinity) : null;
     return {
+      enviada: instante !== null,
       entregue: !!(e.mensagem?.entregueEm || e.mensagem?.lidaEm), lida: !!e.mensagem?.lidaEm, clicou: !!e.clicouEm,
-      girou: !!g, ganhou: !!g?.vitoria, app: !!e.appAbertoEm,
-      conta: !!usuario, contaNova: !!usuario && usuario.criadoEm > e.enviadoEm!,
-      agendou: seus.length > 0, compareceu: seus.some((a) => a.status === "CONCLUIDO"),
+      girou: !!g, ganhou: !!g?.vitoria, app: instante !== null && !!e.appAbertoEm && +e.appAbertoEm >= instante,
+      conta: instante !== null && !!usuario, contaNova: instante !== null && !!usuario && +usuario.criadoEm > instante,
+      agendou: marcados.has(e.clienteId), compareceu: atendidos.has(e.clienteId),
       resgatou: !!g?.premios.some((p) => (p.tipo === "CREDITO" ? !!p.beneficioId && usados.has(p.beneficioId) : p.status === "UTILIZADO")),
     };
   });

@@ -91,6 +91,7 @@ export const MENSAGEM_PADRAO =
 
 /** O que aconteceu com cada mensagem enviada (montado de envio, mensagem, giro, conta, agenda e comanda). */
 export type LinhaFunil = {
+  enviada: boolean;
   entregue: boolean; lida: boolean; clicou: boolean; girou: boolean; ganhou: boolean; app: boolean;
   conta: boolean; contaNova: boolean; agendou: boolean; compareceu: boolean; resgatou: boolean;
 };
@@ -101,31 +102,34 @@ export type EtapaFunil = { chave: string; rotulo: string; qtd: number | null; do
  * Sem confirmacao do WhatsApp (simulador), entregue e lida ficam sem numero. Jogada, premio e resgate so na campanha com jogo.
  */
 export function montarFunil(linhas: LinhaFunil[], o: { jogo: string | null; statusDisponivel: boolean }): EtapaFunil[] {
-  const conta = (k: keyof LinhaFunil) => linhas.filter((l) => l[k]).length;
-  const etapas: { chave: string; rotulo: string; qtd: number | null; detalhe?: string }[] = [
-    { chave: "enviadas", rotulo: "Mensagens enviadas", qtd: linhas.length },
-    { chave: "entregues", rotulo: "Entregues", qtd: o.statusDisponivel ? conta("entregue") : null },
-    { chave: "lidas", rotulo: "Lidas", qtd: o.statusDisponivel ? conta("lida") : null },
-    { chave: "clicaram", rotulo: "Abriram o link", qtd: conta("clicou") },
+  const total = linhas.filter(l => l.enviada).length;
+  function etapa(chave: string, rotulo: string, campo: keyof LinhaFunil, disponivel = true) {
+    const eventos = linhas.filter(l => l[campo]);
+    return { chave, rotulo, qtd: disponivel ? eventos.length : null, comparavel: eventos.every(l => l.enviada) };
+  }
+  const novas = linhas.filter(l => l.contaNova).length;
+  const etapas = [
+    etapa("enviadas", "Mensagens enviadas", "enviada"),
+    etapa("entregues", "Entregues", "entregue", o.statusDisponivel),
+    etapa("lidas", "Lidas", "lida", o.statusDisponivel),
+    etapa("clicaram", "Abriram o link", "clicou"),
     ...(o.jogo ? [
-      { chave: "giraram", rotulo: `Jogaram (${o.jogo})`, qtd: conta("girou") },
-      { chave: "ganharam", rotulo: "Ganharam prêmio", qtd: conta("ganhou") },
+      etapa("giraram", `Jogaram (${o.jogo})`, "girou"),
+      etapa("ganharam", "Ganharam prêmio", "ganhou"),
     ] : []),
-    { chave: "app", rotulo: "Abriram o app", qtd: conta("app") },
-    { chave: "conta", rotulo: "Têm conta no app", qtd: conta("conta"), detalhe: `${conta("contaNova")} criada(s) depois da mensagem` },
-    { chave: "agendaram", rotulo: "Agendaram", qtd: conta("agendou") },
-    { chave: "compareceram", rotulo: "Compareceram", qtd: conta("compareceu") },
-    ...(o.jogo ? [{ chave: "resgataram", rotulo: "Resgataram o prêmio", qtd: conta("resgatou") }] : []),
+    etapa("app", "Abriram o app", "app"),
+    { ...etapa("conta", "Têm conta no app", "conta"), detalhe: `${novas} criada(s) depois da mensagem` },
+    etapa("agendaram", "Agendaram", "agendou"),
+    etapa("compareceram", "Compareceram", "compareceu"),
+    ...(o.jogo ? [etapa("resgataram", "Resgataram o prêmio", "resgatou")] : []),
   ];
-  const total = linhas.length;
   let anterior: number | null = null;
-  return etapas.map((e) => {
-    const out: EtapaFunil = {
-      ...e,
-      doTotal: e.qtd === null || !total ? null : e.qtd / total,
-      daAnterior: e.qtd === null || anterior === null || !anterior ? null : e.qtd / anterior,
-    };
-    if (e.qtd !== null) anterior = e.qtd;
+  return etapas.map(({ comparavel, ...e }) => {
+    // O evento rastreado permanece visível mesmo sem comprovante da mensagem.
+    const qtd = comparavel ? e.qtd : null;
+    const out = { ...e, doTotal: qtd !== null && total ? qtd / total : null,
+      daAnterior: qtd !== null && anterior ? qtd / anterior : null };
+    if (e.qtd !== null) anterior = qtd;
     return out;
   });
 }

@@ -44,8 +44,9 @@ export function FunilCampanha({ id }: { id: string }) {
         <div className={estilos.metrica}><p>Ticket por cliente</p><strong>{f.ticketMedioCentavos === null ? "—" : reais(f.ticketMedioCentavos)}</strong></div>
       </div>
       <p className="text-xs text-zinc-500">
-        Agendou = marcou até {f.janelaDias} dias depois de receber. Faturado = o que ficou com a barbearia nas comandas desses atendimentos.
+        Cada reserva conta para o último envio confirmado nos {f.janelaDias} dias anteriores. Quando uma comanda reúne reservas de campanhas diferentes, o valor líquido conta uma vez, para o envio mais recente.
         {f.etapas.find((e) => e.chave === "conta")?.detalhe && ` Conta: ${f.etapas.find((e) => e.chave === "conta")!.detalhe}.`}
+        {f.etapas.some(e => e.qtd !== null && e.qtd > 0 && e.doTotal === null) && " Há interações sem comprovante de envio. Nessas etapas, apenas a quantidade está disponível."}
         {f.etapas.some((e) => e.qtd === null) && " Entregue e lida só aparecem com o WhatsApp oficial ou a Evolution (o simulador não informa)."}
       </p>
     </div>

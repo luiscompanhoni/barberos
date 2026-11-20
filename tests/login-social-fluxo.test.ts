@@ -14,7 +14,7 @@ vi.mock("@/lib/auth/otp", () => ({ verificarCodigo: m.otp }));
 vi.mock("@/lib/auth/social-cookies", () => ({ COOKIE_SOCIAL_NAVEGADOR: "cookie-browser", guardarIdentidadePendente: m.guardar,
   identidadePendente: m.pendente, limparIdentidadePendente: m.limpar, socialSeguro: () => true }));
 vi.mock("@/lib/auth/social-provedores", () => ({ configuracaoSocial: () => ({}), urlAutorizacao: () => "https://provider.example.test", verificarIdentidadeSocial: m.verificar }));
-import { concluirCadastroSocial, retornarSocial, vincularSocialDaSessao } from "@/lib/auth/social";
+import { concluirCadastroSocial, iniciarSocial, retornarSocial, vincularSocialDaSessao } from "@/lib/auth/social";
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 beforeEach(() => {
@@ -27,6 +27,19 @@ beforeEach(() => {
 });
 
 describe("state e vínculo social", () => {
+  it.each([
+    ["/c/agendar?premio=p1&servico=corte", "/c/agendar?premio=p1&servico=corte"],
+    ["//externo.invalid", "/c"],
+  ])("leva o retorno local pelo provedor até a conta vinculada: %s", async (voltar, esperado) => {
+    await iniciarSocial("google", voltar);
+    const navegador = m.cookie.set.mock.calls[0][1];
+    m.cookie.get.mockReturnValue({ value: navegador });
+    const fluxo = m.fluxo.create.mock.calls[0][0].data;
+    m.fluxo.findUnique.mockResolvedValue(fluxo);
+    m.identidade.findUnique.mockResolvedValue({ usuario: { ativo: true, papel: "CLIENTE", telefoneVerificadoEm: new Date(),
+      cliente: { nome: "Cliente Teste", telefone: "5547999990000", cpf: "52998224725", email: "x@example.test", endereco: "Rua de teste 42", dataNascimento: new Date("2000-01-01") } } });
+    await expect(retornarSocial("google", "state", "code")).resolves.toBe(esperado);
+  });
   it("uma identidade criada antes da prova do celular não abre sessão", async () => {
     m.identidade.findUnique.mockResolvedValue({ usuario: { id: "u1", ativo: true, papel: "CLIENTE", telefoneVerificadoEm: null, cliente: { id: "c1" } } });
     expect(await retornarSocial("google", "state", "code")).toBe("/c/entrar?social=pendente");
@@ -82,8 +95,13 @@ describe("state e vínculo social", () => {
     const dados = { telefone: "5547999990000", nome: "Cliente social", cpf: "52998224725", email: "social@example.test",
       endereco: "Rua de teste, 123", dataNascimento: new Date("2000-01-01T00:00:00Z") };
     const u = { id: "u-social", ativo: true, papel: "CLIENTE", telefoneVerificadoEm: new Date(), sessaoVersao: 0, cliente: { id: "c-social", excluidoEm: null } };
-    m.pendente.mockResolvedValue({ provedor: "google", subject: "sub-novo" }); m.otp.mockResolvedValue(u); m.usuario.findUnique.mockResolvedValue(u);
-    await expect(concluirCadastroSocial(dados, "123456")).resolves.toMatchObject({ ok: true });
+    await iniciarSocial("google", "/c/agendar?premio=p1");
+    m.cookie.get.mockReturnValue({ value: m.cookie.set.mock.calls[0][1] });
+    m.fluxo.findUnique.mockResolvedValue(m.fluxo.create.mock.calls[0][0].data);
+    await expect(retornarSocial("google", "state", "code")).resolves.toBe("/c/entrar?social=pendente&voltar=%2Fc%2Fagendar%3Fpremio%3Dp1");
+    m.pendente.mockResolvedValue(m.guardar.mock.calls[0][0]);
+    m.otp.mockResolvedValue(u); m.usuario.findUnique.mockResolvedValue(u);
+    await expect(concluirCadastroSocial(dados, "123456")).resolves.toMatchObject({ ok: true, destino: "/c/agendar?premio=p1" });
     expect(m.otp).toHaveBeenCalledWith(dados.telefone, "123456", "cliente", "acesso", { permitirNovoCadastro: true });
     expect(m.salvarCliente).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ ...dados, perfilCompletoEm: expect.any(Date) }) }));
     expect(m.abrir).toHaveBeenCalledWith({ ...u, nome: dados.nome });

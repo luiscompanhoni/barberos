@@ -4,6 +4,7 @@
  * autoatendimento: antecedencia minima, janela de dias, prazo para cancelar e
  * limite de agendamentos futuros.
  */
+import { premioFinanceiro } from "@/lib/jogos/tipos";
 import { aoCancelarHorario } from "./antecipado";
 import type { OrigemAgendamento } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -19,16 +20,21 @@ import { dataLocal } from "./tempo";
 import { checarTransicaoNaReserva } from "./transicao";
 import { travarClienteAgenda, type TitularAgenda } from "./cliente-identidade";
 import { conferirSemReservaAdicional } from "./reservas-adicionais";
-import { conferirAntecipadoParaRemarcar } from "./antecipado-grupo";
+import { premioReservadoFinanceiro, conferirAntecipadoParaRemarcar } from "./antecipado-grupo";
 
 const MIN = 60_000;
 const ATIVOS_FUTUROS = ["MARCADO", "CONFIRMADO"] as const;
 
 export async function proximosDoCliente(clienteId: string) {
-  return db.agendamento.findMany({
+  const horarios = await db.agendamento.findMany({
     where: { clienteId, adicionalDeId: null, status: { in: [...ATIVOS_FUTUROS] }, fim: { gt: new Date() } },
-    include: { barbeiro: { select: { id: true, nome: true, cor: true, fotoVersao: true } }, servico: { select: { id: true, nome: true } }, adicionais: { where: { origem: "SITE", status: { not: "CANCELADO" } }, orderBy: { inicio: "asc" }, select: { precoCentavos: true, servico: { select: { id: true, nome: true } } } }, antecipado: { select: { status: true, forma: true, link: true } } },
+    include: { premiosGanhos: premioReservadoFinanceiro, barbeiro: { select: { id: true, nome: true, cor: true, fotoVersao: true } }, servico: { select: { id: true, nome: true } }, adicionais: { where: { origem: "SITE", status: { not: "CANCELADO" } }, orderBy: { inicio: "asc" }, select: { premiosGanhos: premioReservadoFinanceiro, precoCentavos: true, servico: { select: { id: true, nome: true } } } }, antecipado: { select: { status: true, forma: true, link: true } } },
     orderBy: { inicio: "asc" },
+  });
+  return horarios.map(({ premiosGanhos, adicionais, antecipado, ...ag }) => {
+    const premioBalcao = premiosGanhos.length > 0 || adicionais.some(a => a.premiosGanhos.length > 0);
+    return { ...ag, adicionais: adicionais.map(a => ({ precoCentavos: a.precoCentavos, servico: a.servico })), premioBalcao,
+      antecipado: premioBalcao && antecipado?.status === "PENDENTE" ? { ...antecipado, link: null } : antecipado };
   });
 }
 
@@ -210,7 +216,7 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
       if (adicionais.length && await tx.itemComanda.findFirst({ where: { agendamentoId: { in: [ag.id, ...adicionais.map((a) => a.id)] } } })) throw new ErroNegocio("Este atendimento já tem comanda. Fale com a barbearia para alterar.", 409);
       // Revalida sob trava o mesmo prazo exigido ao reservar; não prolonga o prêmio ao remarcar.
       await tx.$queryRaw`SELECT id FROM premios_ganhos WHERE "agendamentoId" = ${ag.id} AND status = 'RESERVADO' ORDER BY id FOR UPDATE`;
-      const premios = await tx.premioGanho.findMany({ where: { agendamentoId: ag.id, status: "RESERVADO" }, select: { expiraEm: true } });
+      const premios = await tx.premioGanho.findMany({ where: { agendamentoId: ag.id, status: "RESERVADO" }, select: { expiraEm: true, tipo: true } });
       if (premios.some((p) => p.expiraEm && +p.expiraEm < inicio)) throw new ErroNegocio("O novo horário ultrapassa a validade do prêmio reservado. Escolha uma data dentro da validade.", 422, "premio_validade");
       const choque = await tx.agendamento.findFirst({ where: { clienteId, OR: [{ adicionalDeId: null }, { ocupaAgenda: true }], id: { not: ag.id }, status: { in: ["MARCADO", "CONFIRMADO", "CHEGOU", "EM_ATENDIMENTO", "CONCLUIDO"] }, inicio: { lt: new Date(fim) }, fim: { gt: new Date(inicio) } } });
       if (choque) throw new ErroNegocio("Você já tem um horário marcado nesse período.", 409, "choque_cliente");
@@ -252,7 +258,7 @@ export async function remarcarPeloCliente(clienteId: string, agendamentoId: stri
         para: n.inicio.toISOString(),
         barbeiroId: destino,
       });
-      return n;
+      return { ...n, premioBalcao: premios.some(p => premioFinanceiro(p.tipo)) };
     });
     publicar({
       tipo: "agenda",

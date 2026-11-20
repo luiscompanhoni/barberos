@@ -98,7 +98,7 @@ export function RecrutamentoTela() {
         <AvaliacaoCandidato aoAlterar={alterarRascunho} id={c.id} atualizou={() => setRevisao(x => x + 1)} />
         {c.historico.length > 0 && <details><summary className="cursor-pointer text-sm">Histórico recente</summary><ol className="mt-2 space-y-2 text-xs">{c.historico.map((h) => <li className="whitespace-pre-wrap" key={h.id}>{ROTULOS[h.etapa]} · {new Date(h.criadoEm).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}: {h.motivo}</li>)}</ol></details>}
       </article>)}</div>
-      {dados && dados.total > 30 && <div className="flex items-center justify-between gap-2"><button className="btn" disabled={filtro.pagina <= 1} onClick={() => mudarFiltro({ ...filtro, pagina: filtro.pagina - 1 })}>Anterior</button><span>Página {dados.pagina}</span><button className="btn" disabled={filtro.pagina * 30 >= dados.total} onClick={() => mudarFiltro({ ...filtro, pagina: filtro.pagina + 1 })}>Próxima</button></div>}
+      {dados && dados.total > 30 && <div className="flex items-center justify-between gap-2"><button className="btn" disabled={dados.pagina <= 1} onClick={() => mudarFiltro({ ...filtro, pagina: dados.pagina - 1 })}>Anterior</button><span>Página {dados.pagina}</span><button className="btn" disabled={dados.pagina * 30 >= dados.total} onClick={() => mudarFiltro({ ...filtro, pagina: dados.pagina + 1 })}>Próxima</button></div>}
     </div>}
   </div>;
 }

@@ -7,7 +7,7 @@
 import Link from "next/link";
 import { CalendarPlus, Gift, House, Share2, X } from "lucide-react";
 import { reais } from "@/lib/cliente-api";
-import { descricaoPremio, ROTULO_RARIDADE, type JogadaCliente, type PremioCliente } from "@/lib/jogos/tipos";
+import { premioParaAgendar, descricaoPremio, ROTULO_RARIDADE, type JogadaCliente, type PremioCliente } from "@/lib/jogos/tipos";
 import { IconePremio } from "./IconePremio";
 
 const ORDEM = { COMUM: 0, RARO: 1, EPICO: 2, LENDARIO: 3 } as const;
@@ -37,7 +37,7 @@ export function ModalResultado({ jogada, aoFechar, campanha = false, jogarDeNovo
   podeIndicar?: boolean;
 }) {
   const ps = jogada.premios;
-  const usar = ps.find((p) => p.tipo !== "CREDITO");
+  const usar = premioParaAgendar(ps);
   const titulo = ps.length ? "Você ganhou!" : "Não foi dessa vez";
 
   return (
@@ -61,8 +61,8 @@ export function ModalResultado({ jogada, aoFechar, campanha = false, jogarDeNovo
             {ps[0]?.expiraEm && <p className="mt-1 text-center text-[11px] text-zinc-500">Válido até {new Date(ps[0].expiraEm).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}.</p>}
 
             <div className="mt-5 grid gap-2">
-              <Link href={campanha ? "/c/agendar" : `/c/agendar${usar ? `?premio=${usar.id}` : ""}`} className="jogo-botao-ouro">
-                <CalendarPlus size={18} /> {usar ? "Agendar para utilizar" : "Agendar e usar o crédito"}
+              <Link href={`/c/agendar${usar ? `?premio=${encodeURIComponent(usar.id)}` : ""}`} className="jogo-botao-ouro">
+                <CalendarPlus size={18} /> {usar ? "Agendar para utilizar" : ps.some(p => p.tipo === "CREDITO") ? "Agendar e usar o crédito" : "Agendar horário"}
               </Link>
               {!campanha && (
                 <Link href={`/c/premios${usar ? `?destaque=${usar.id}` : ""}`} className="jogo-botao-grafite">

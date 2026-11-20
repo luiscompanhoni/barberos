@@ -95,11 +95,40 @@ describe.skipIf(!habilitado)("estabilização: agenda, adicionais e entrevistas 
     await alterarStatus(f.principal.id, "CONFIRMADO", f.dono);
     expect((await db.agendamento.findUniqueOrThrow({ where: { id: a.id } })).status).toBe("CANCELADO");
     await expect(alterarStatus(a.id, "CONFIRMADO", f.dono)).rejects.toMatchObject({ codigo: "adicional_cancelado" });
-    await expect(abrirComanda(f.dono, { agendamentoId: f.principal.id })).rejects.toMatchObject({ codigo: "comanda_cancelada" });
+    expect(await db.comanda.count({ where: { clienteId: f.principal.clienteId, status: "ABERTA" } })).toBe(0);
+    const reaberta = await abrirComanda(f.dono, { agendamentoId: f.principal.id });
+    expect(reaberta.id).not.toBe(f.comanda.id);
+    expect(await db.itemComanda.findMany({ where: { comandaId: reaberta.id }, select: { agendamentoId: true } })).toEqual([{ agendamentoId: f.principal.id }]);
+    expect(await db.pagamentoComanda.count({ where: { comandaId: reaberta.id } })).toBe(0);
     expect(await db.pagamentoComanda.count({ where: { comandaId: f.comanda.id } })).toBe(0);
     expect(await db.itemComanda.count({ where: { agendamentoId: f.principal.id } })).toBe(1);
     expect(await db.auditoria.count({ where: { entidadeId: f.comanda.id, acao: "cancelar" } })).toBe(1);
     await expect(f.reservar(f.barbeiro.id, f.terceiro.id)).resolves.toBeTruthy();
+  });
+
+  it.each([
+    { reservado: false, legado: false }, { reservado: true, legado: false },
+    { reservado: false, legado: true }, { reservado: true, legado: true },
+  ])("mantém a conta completa para adicional presencial, reservado=$reservado legado=$legado", async ({ reservado, legado }) => {
+    const f = await fixture();
+    const adicional = await f.adicionar(reservado);
+    if (reservado) await alterarStatus(adicional.id, "CONCLUIDO", f.dono);
+    if (legado) {
+      await db.comanda.update({ where: { id: f.comanda.id }, data: { status: "CANCELADA" } });
+      await db.$executeRaw`SELECT liberar_agenda_comanda_cancelada(${f.comanda.id}, NULL)`;
+    } else {
+      await cancelarComanda(f.dono, f.comanda.id, "Verificar adicional presencial");
+    }
+    await expect(abrirComanda(f.dono, { agendamentoId: adicional.id })).rejects.toMatchObject({ codigo: "alteracao_multiplos" });
+    const abrir = () => abrirComanda(f.dono, { agendamentoId: f.principal.id });
+    const [nova, repetida] = await Promise.all([abrir(), abrir()]);
+    expect(nova.id).toBe(repetida.id);
+    expect(nova.id).not.toBe(f.comanda.id);
+    expect(await db.itemComanda.count({ where: { comandaId: f.comanda.id, agendamentoId: null } })).toBe(2);
+    const itens = await db.itemComanda.findMany({ where: { comandaId: nova.id } });
+    expect(itens.map(i => i.agendamentoId).sort()).toEqual([f.principal.id, adicional.id].sort());
+    expect(itens.reduce((total, item) => total + item.quantidade * item.precoUnitCentavos, 0)).toBe(10000);
+    expect(await db.comanda.count({ where: { clienteId: f.cliente.id, status: "ABERTA" } })).toBe(1);
   });
 
   it("remover adicional pendente cancela a reserva, mas não permite remover o principal antes dele", async () => {

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Check, Copy, CreditCard, ExternalLink, Loader2, QrCode, RefreshCw } from "lucide-react";
 import { api, ErroApi, reais } from "@/lib/cliente-api";
 
-type Pagamento = { status: string; forma: "PIX" | "CARTAO"; valorCentavos: number; link: string | null; pixCopiaECola: string | null; pixQrUrl: string | null };
+type Pagamento = { status: string; mensagem?: string; forma: "PIX" | "CARTAO"; valorCentavos: number; link: string | null; pixCopiaECola: string | null; pixQrUrl: string | null };
 
 /**
  * Pagar um horario avulso antes de vir. Com checkout do BarberOS (Pagar.me) leva para a
@@ -56,8 +56,9 @@ export function PagarAntes({ agendamentoId, precoCentavos, status, checkout, aoP
     setErro("");
     try {
       const r = await api<{ pagamento: Pagamento | null }>(`/api/cliente/agendamentos/${agendamentoId}/pagar`);
-      if (r.pagamento?.status === "PAGO") return aoPagar();
-      setErro("Ainda não recebemos. Se já pagou, pode levar alguns minutos.");
+      if (r.pagamento?.status === "PAGO" || r.pagamento?.status === "CREDITADO") return aoPagar();
+      if (r.pagamento) setPg(r.pagamento);
+      setErro(r.pagamento?.mensagem ?? "Ainda não recebemos. Se já pagou, pode levar alguns minutos.");
     } catch (e) {
       setErro((e as Error).message);
     } finally {

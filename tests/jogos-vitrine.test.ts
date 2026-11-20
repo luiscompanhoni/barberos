@@ -1,3 +1,7 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ModalResultado } from "@/components/jogos/kit/ModalResultado";
+import type { JogadaCliente, PremioCliente } from "@/lib/jogos/tipos";
 import type { JogoPremio } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ saiu: vi.fn() }));
@@ -17,5 +21,23 @@ describe("vitrine de prêmios possíveis", () => {
   });
   it("não consulta contagem sem prêmios", async () => {
     expect(await premiosExibiveis([])).toEqual([]); expect(m.saiu).not.toHaveBeenCalled();
+  });
+});
+
+describe("resultado público da campanha", () => {
+  const premio: PremioCliente = { id: "premio-1", jogoId: "jogo", codigo: "BB-1", tipo: "BRINDE", rotulo: "Brinde",
+    icone: "presente", valorCentavos: 0, percentual: 0, raridade: "COMUM", status: "DISPONIVEL",
+    expiraEm: null, criadoEm: "2026-01-01", utilizadoEm: null, agendamento: null };
+  function resultado(p: PremioCliente) {
+    const jogada: JogadaCliente = { id: "j", jogoId: "jogo", tipo: "CAIXA", vitoria: true, multiplicador: 100, premios: [p],
+      resultado: { tipo: "CAIXA", quantidade: 1 }, revelada: true, criadoEm: "2026-01-01" };
+    return renderToStaticMarkup(createElement(ModalResultado, { jogada, campanha: true, aoFechar: () => {} }));
+  }
+  it("agendar para utilizar leva o prêmio disponível através do login", () => {
+    expect(resultado(premio)).toContain('href="/c/agendar?premio=premio-1"');
+  });
+  it.each<Partial<PremioCliente>>([{ status: "RESERVADO" }, { status: "UTILIZADO" }, { status: "CANCELADO" },
+    { expiraEm: "2000-01-01" }, { tipo: "CREDITO" }])("prêmio indisponível ou crédito deixa o agendamento comum", dados => {
+    expect(resultado({ ...premio, ...dados })).toContain('href="/c/agendar"');
   });
 });

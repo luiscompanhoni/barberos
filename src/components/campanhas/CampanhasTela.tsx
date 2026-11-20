@@ -140,8 +140,8 @@ function CartaoCampanha({ c, vagas7, onAbrir }: { c: Campanha; vagas7: number | 
       </div>
       <div className="grid grid-cols-3 gap-2 text-center text-sm sm:grid-cols-6">
         {[
-          ["Na fila", c.fila], ["Hoje", `${c.enviadosHoje}/${c.limiteDiario}`], ["Enviados", c.enviados],
-          ["Marcaram", `${c.marcaram}${taxa === null ? "" : ` (${taxa}%)`}`], ["Pararam", c.pararam], ["Falhas", c.falhas],
+          ["Na fila", c.fila], ["Enviados hoje", c.enviadosHoje], ["Enviados", c.enviados],
+          ["Marcaram", `${c.marcaram}${taxa === null ? "" : ` (${taxa}%)`}`], ["Hoje recusam mensagens", c.pararam], ["Falhas", c.falhas],
         ].map(([r, v]) => (
           <div key={r as string} className="rounded-lg bg-zinc-100 px-2 py-1.5">
             <p className="text-[11px] text-zinc-500">{r}</p>

@@ -92,7 +92,7 @@ async function resultadoDentroTx(mes: string, c: Prisma.TransactionClient) {
   if (invalidos.length) alertas.push(`${invalidos.length} vínculo(s) de despesa têm status ou valor incompatíveis. Não foram deduplicados; revise e anule o vínculo incorreto.`);
   if (movs.some(m => m.categoria === "JA_LANCADA" && !idsVinculados.has(m.id))) alertas.push("Há saídas marcadas como já lançadas sem vínculo comprovado. Essa etiqueta não exclui valores automaticamente.");
   if (movs.some(m => m.tipo === "OUTRO")) alertas.push("Há movimentos do extrato sem natureza definida. Revise as classificações antes de concluir a conferência.");
-  if (maquininhaEstimada > 0) alertas.push("A taxa estimada da maquininha é informativa e está fora das taxas observadas e do resultado. Confira a liquidação real.");
+  if (cartaoRegistrado > 0 || (pf.PIX ?? 0) > 0) alertas.push("Falta vincular as vendas por cartão ou Pix aos créditos de liquidação da Stone e às tarifas efetivas. A conferência do extrato mensal e a taxa estimada não comprovam essa correspondência.");
   if (validos.some(v => v.despesa.pagoEm && (v.despesa.pagoEm < dados.periodo.gte || v.despesa.pagoEm >= dados.periodo.lt))) alertas.push("Há despesa vinculada a movimento em outra competência. As datas foram preservadas; revise o período de reconhecimento.");
   if (historicosDivergentes.length) alertas.push(`A Celcash mudou após a conciliação. Confira em Corrigir histórico as transações: ${historicosDivergentes.map((v) => v.transacaoId).join(", ")}${historicosDivergentes.length === 50 ? " (primeiras 50)" : ""}. Os registros foram preservados.`);
   if (divergente(mensalidadesCelcash, celcash.recebido)) {

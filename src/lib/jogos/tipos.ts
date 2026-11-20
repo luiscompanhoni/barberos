@@ -39,6 +39,17 @@ export type PremioCliente = {
   agendamento: { id: string; inicio: string } | null;
 };
 
+export const TIPOS_PREMIO_FINANCEIRO = ["SERVICO", "DESCONTO"] as const;
+export const AVISO_PREMIO_CONFERENCIA = "Pagamento em conferência. Aguarde a confirmação antes de pagar novamente.";
+export const AVISO_PREMIO_BALCAO = "Pague no balcão para aplicar o prêmio reservado ao valor do atendimento.";
+export function premioFinanceiro(tipo: TipoPremio) {
+  return TIPOS_PREMIO_FINANCEIRO.some(t => t === tipo);
+}
+export function premioParaAgendar(premios: PremioCliente[], agora = Date.now()) {
+  return premios.find(p => (premioFinanceiro(p.tipo) || p.tipo === "BRINDE") && p.status === "DISPONIVEL" &&
+    (!p.expiraEm || Date.parse(p.expiraEm) >= agora));
+}
+
 export type JogadaCliente = {
   id: string;
   jogoId: string;

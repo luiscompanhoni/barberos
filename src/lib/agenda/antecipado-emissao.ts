@@ -30,9 +30,7 @@ export async function emitirAntecipado(p: Entrada) {
   const cliente = await db.cliente.findFirst({ where: { id: p.clienteId, excluidoEm: null } });
   if (!cliente) throw naoEncontrado("Cliente");
   const email = (p.email ?? cliente.email ?? "").trim().toLowerCase();
-  if (g.exigeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new ErroNegocio("Para pagar online precisamos do seu e-mail.", 422, "email");
   const cpf = (p.cpf ?? cliente.cpf ?? "").replace(/\D/g, "");
-  if (!cpfValido(cpf)) throw new ErroNegocio("Para pagar online precisamos de um CPF válido.", 422, "cpf");
   const cfg = await configuracao();
   const reserva = await db.$transaction(async tx => {
     await travarClienteAgenda(tx, p.clienteId, p.usuarioId ? { usuarioId: p.usuarioId, sessaoVersao: p.sessaoVersao ?? 0 } : undefined);
@@ -42,7 +40,7 @@ export async function emitirAntecipado(p: Entrada) {
     if (ag.barbeiroId !== referencia.barbeiroId) throw revisao();
     const atual = ag.antecipado;
     if (atual?.emissaoChave) throw revisao();
-    if (atual && ["PAGO", "CREDITADO"].includes(atual.status)) throw new ErroNegocio("Esse horário já está pago.", 409, "ja_pago");
+    if (atual?.status === "PAGO" || atual?.status === "CREDITADO") throw new ErroNegocio("Esse horário já está pago.", 409, "ja_pago");
     if (atual?.status === "ESTORNADO") throw new ErroNegocio("O pagamento desse horário foi estornado: pague no balcão.", 409, "estornado");
     if (atual?.status === "PENDENTE") {
       const reutilizavel = atual.forma === p.forma && atual.valorCentavos === valorCentavos && !!atual.link && !p.cartaoToken && !(p.forma === "PIX" && pixVencido(atual.pixExpiraEm));
@@ -50,6 +48,8 @@ export async function emitirAntecipado(p: Entrada) {
       // Uma consulta/timeout não comprova cancelamento. Nunca emite uma substituta aqui.
       throw revisao();
     }
+    if (g.exigeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new ErroNegocio("Para pagar online precisamos do seu e-mail.", 422, "email");
+    if (!cpfValido(cpf)) throw new ErroNegocio("Para pagar online precisamos de um CPF válido.", 422, "cpf");
     if (p.forma === "CARTAO" && g.cartao === "token" && !p.cartaoToken) return { tipo: "existente" as const, pagamento: { id: atual?.id ?? "", status: "PENDENTE" as const, forma: "CARTAO" as const, valorCentavos, link: linkAbsoluto(caminhoCheckoutHorario(ag.id)), pixCopiaECola: null, pixQrUrl: null, pixExpiraEm: null, pagoEm: null } };
     const chave = randomUUID();
     const dados = { clienteId: p.clienteId, valorCentavos, forma: p.forma, status: "PENDENTE" as const, emissaoChave: chave, gatewayId: null, link: null, pixCopiaECola: null, pixQrUrl: null, pixExpiraEm: null, pagoEm: null };

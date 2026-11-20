@@ -17,7 +17,7 @@ beforeEach(() => {
   m.count.mockResolvedValue(0); m.marcou.mockResolvedValue(0); m.reservar.mockResolvedValue({ count: 1 }); m.enviar.mockResolvedValue({ mensagemId: "m" });
   m.contato.mockResolvedValue(cliente); m.recente.mockResolvedValue(null);
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
 describe("campanha reavalia o contato antes de despachar", () => {
   it.each([
     { ...cliente, aceitaMensagens: false },
@@ -33,9 +33,17 @@ describe("campanha reavalia o contato antes de despachar", () => {
   });
   it("mantém o envio do convite autorizado e registra a mensagem", async () => {
     m.fila.mockResolvedValue([{ id: "e", clienteId: "proprio", token: "teste", cliente }]);
+    const reserva = new Date("2026-11-19T14:00:00Z");
+    const sucesso = new Date("2026-11-19T14:00:03Z");
+    vi.useFakeTimers({ now: reserva });
+    m.enviar.mockImplementationOnce(async () => {
+      vi.setSystemTime(sucesso);
+      return { mensagemId: "m" };
+    });
     expect(await processarCampanhas()).toBe(1); expect(m.enviar).toHaveBeenCalledTimes(1);
+    expect(m.reservar.mock.calls[0][0].data.enviadoEm).toEqual(reserva);
     expect(m.enviar.mock.calls[0][1]).toContain("PARAR");
-    expect(m.salvar).toHaveBeenCalledWith({ where: { id: "e" }, data: { mensagemId: "m" } });
+    expect(m.salvar).toHaveBeenCalledWith({ where: { id: "e" }, data: { mensagemId: "m", enviadoEm: sucesso } });
   });
   it("aguarda 48 horas entre campanhas sem descartar o destinatário", async () => {
     m.fila.mockResolvedValue([{ id: "e", clienteId: "proprio", token: "teste", cliente }]);

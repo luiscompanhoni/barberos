@@ -4,6 +4,7 @@ export type HorarioInicio = {
   id: string; inicio: string; status: string; precoCentavos: number; assinaturaId?: string | null;
   barbeiro: { id?: string; nome: string; cor?: string; fotoVersao?: number };
   servico: { id?: string; nome: string };
+  premioBalcao?: boolean;
   adicionais?: { precoCentavos: number; servico: { id?: string; nome: string } }[];
   antecipado?: { status: string } | null;
 };

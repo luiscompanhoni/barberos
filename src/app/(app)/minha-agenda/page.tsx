@@ -6,6 +6,7 @@ import { entradaAgenda, queryEntradaAgenda } from "@/lib/agenda/entrada";
 export default async function MinhaAgenda({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const s = (await sessaoAtual())!;
   const query = await searchParams;
+  if (!s.barbeiroId && s.papel === "BARBEIRO") redirect("/conta");
   if (!s.barbeiroId) redirect(`/recepcao?${queryEntradaAgenda(entradaAgenda(query, s))}`);
   const entrada = entradaAgenda(query, s, true);
   return (

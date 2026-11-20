@@ -9,11 +9,13 @@ export const GET = rota(async (req: Request) => {
   await exigirSessao(GESTAO);
   const p = z.object({ vagaId: z.string().max(40).optional(), etapa: z.enum(ETAPAS).optional(), busca: z.string().max(100).optional(), pagina: z.coerce.number().int().min(1).max(10000).default(1) }).parse(Object.fromEntries(new URL(req.url).searchParams));
   const where = { ...(p.vagaId ? { vagaId: p.vagaId } : {}), ...(p.etapa ? { etapa: p.etapa } : {}), ...(p.busca ? { candidato: { nome: { contains: p.busca, mode: "insensitive" as const } } } : {}) };
-  const [total, candidaturas] = await db.$transaction([
-    db.candidaturaRecrutamento.count({ where }),
-    db.candidaturaRecrutamento.findMany({ where, orderBy: [{ criadoEm: "desc" }, { id: "desc" }], take: 30, skip: (p.pagina - 1) * 30,
+  const lista = await db.$transaction(async tx => {
+    const total = await tx.candidaturaRecrutamento.count({ where });
+    const pagina = Math.min(p.pagina, Math.max(1, Math.ceil(total / 30)));
+    const candidaturas = await tx.candidaturaRecrutamento.findMany({ where, orderBy: [{ criadoEm: "desc" }, { id: "desc" }], take: 30, skip: (pagina - 1) * 30,
       select: { vagaSnapshot: true, id: true, candidato: true, vaga: { select: { titulo: true } }, etapa: true, versao: true, criadoEm: true, experienciaMeses: true, servicos: true, disponibilidade: true, portfolio: true, instagram: true, futurasOportunidades: true, origem: true, historico: { orderBy: { criadoEm: "desc" }, take: 10 } },
-    }),
-  ]);
-  return NextResponse.json({ total, candidaturas, pagina: p.pagina }, { headers: { "Cache-Control": "no-store" } });
+    });
+    return { total, candidaturas, pagina };
+  }, { isolationLevel: "RepeatableRead" });
+  return NextResponse.json(lista, { headers: { "Cache-Control": "no-store" } });
 });

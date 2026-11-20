@@ -4,6 +4,9 @@
  * cancelado depois de pago, o valor vira saldo do cliente (usa na proxima visita).
  */
 import type { FormaPagamento, PagamentoAntecipado, Prisma } from "@prisma/client";
+import { AVISO_PREMIO_CONFERENCIA, AVISO_PREMIO_BALCAO } from "@/lib/jogos/tipos";
+import { ErroNegocio } from "@/lib/erros";
+import { grupoComPremioFinanceiro } from "./antecipado-grupo";
 import { auditar } from "@/lib/auditoria";
 import { linkAbsoluto } from "@/lib/assinaturas/cobrancas";
 import { db } from "@/lib/db";
@@ -68,17 +71,30 @@ export async function pagarAntecipado(p: {
   return (await import("./antecipado-emissao")).emitirAntecipado(p);
 }
 
+async function consultarParaExibicao(clienteId: string, agendamentoId: string, sincronizar: boolean) {
+  const registro = await db.pagamentoAntecipado.findFirst({ where: { agendamentoId, clienteId } });
+  const a = registro && sincronizar ? ((await sincronizarAntecipado(registro.id)) ?? registro) : registro;
+  if (a?.status === "PAGO" || a?.status === "CREDITADO") return { a, conferencia: false };
+  const temPremio = await db.agendamento.count({ where: { id: agendamentoId, clienteId, ...grupoComPremioFinanceiro } });
+  if (temPremio && a?.status !== "PENDENTE") throw new ErroNegocio(AVISO_PREMIO_BALCAO, 409, "premio_balcao");
+  return { a, conferencia: Boolean(temPremio) };
+}
+
 /** Situacao do pagamento antecipado de um horario (consulta o gateway se ainda estiver em aberto). */
 export async function antecipadoDoHorario(clienteId: string, agendamentoId: string) {
-  const a = await db.pagamentoAntecipado.findFirst({ where: { agendamentoId, clienteId } });
+  const { a, conferencia } = await consultarParaExibicao(clienteId, agendamentoId, true);
   if (!a) return null;
-  return respostaAntecipado((await sincronizarAntecipado(a.id)) ?? a);
+  const pagamento = respostaAntecipado(a);
+  if (conferencia) return { ...pagamento, link: null, pixCopiaECola: null, pixQrUrl: null, pixExpiraEm: null, mensagem: AVISO_PREMIO_CONFERENCIA };
+  if (a.status === "PAGO" || a.status === "CREDITADO") return { ...pagamento, link: null, pixCopiaECola: null, pixQrUrl: null, pixExpiraEm: null };
+  return pagamento;
 }
 
 /** Estado do checkout do horario (sincroniza se estiver em aberto). */
 export async function checkoutDoHorario(clienteId: string, agendamentoId: string, sincronizar = true) {
-  const a = await db.pagamentoAntecipado.findFirst({ where: { agendamentoId, clienteId } });
-  return estadoCheckoutAntecipado(a && sincronizar ? ((await sincronizarAntecipado(a.id)) ?? a) : a);
+  const { a, conferencia } = await consultarParaExibicao(clienteId, agendamentoId, sincronizar);
+  const estado = estadoCheckoutAntecipado(a);
+  return conferencia ? { ...estado, pix: null, link: null, processando: true, mensagem: AVISO_PREMIO_CONFERENCIA } : estado;
 }
 
 /** Lanca o valor pago na comanda do atendimento (uma vez). */

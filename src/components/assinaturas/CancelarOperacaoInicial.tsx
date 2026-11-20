@@ -36,10 +36,10 @@ export function CancelarOperacaoInicial(p: { endpoint: string; assinaturaId: str
     finally { trava.current = false; setOcupado(false); }
   }
   return <div className="space-y-2">
-    {!encerrada && (!confirmando ? <div className="flex flex-wrap gap-2"><button type="button" className="btn" disabled={ocupado} onClick={manterPagamento}>{ocupado ? "Conferindo…" : "Manter pagamento"}</button><button type="button" className="btn" disabled={ocupado} onClick={() => { setConfirmando(true); setManter(false); }}>Cancelar operação ou trocar forma de pagamento</button></div> : <div className="rounded-xl bg-amber-50 p-3 text-sm space-y-2">
+    {!encerrada && (!confirmando ? <div className="flex flex-wrap gap-2"><button type="button" className="btn" disabled={ocupado} onClick={manterPagamento}>{ocupado ? "Conferindo…" : "Manter pagamento"}</button><button type="button" className="btn max-w-full" style={{ whiteSpace: "normal" }} disabled={ocupado} onClick={() => { setConfirmando(true); setManter(false); }}>Cancelar operação ou trocar forma de pagamento</button></div> : <div className="rounded-xl bg-amber-50 p-3 text-sm space-y-2">
       <p>Desistir deste primeiro pagamento? Outra forma será liberada quando o cancelamento for confirmado. Esta ação não devolve pagamentos já recebidos.</p>
       <div className="flex flex-wrap gap-2"><button type="button" className="btn" disabled={ocupado} onClick={manterPagamento}>Manter pagamento</button>
-        <button type="button" className="btn-perigo" disabled={ocupado} onClick={cancelar}>{ocupado ? "Conferindo…" : "Confirmar cancelamento da operação"}</button></div>
+        <button type="button" className="btn-perigo max-w-full" style={{ whiteSpace: "normal" }} disabled={ocupado} onClick={cancelar}>{ocupado ? "Conferindo…" : "Confirmar cancelamento da operação"}</button></div>
     </div>)}
     {manter && !encerrada && p.continuar}
     {mensagem && <p role={erro ? "alert" : "status"} className={`text-sm ${erro ? "text-red-700" : "text-zinc-600"}`}>{mensagem}</p>}

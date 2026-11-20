@@ -3,10 +3,23 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+function destinoCanonico(destino) {
+  let ancestral = destino;
+  while (true) {
+    try {
+      return resolve(realpathSync(ancestral), relative(ancestral, destino));
+    } catch (erro) {
+      const pai = dirname(ancestral);
+      if (erro?.code !== "ENOENT" || pai === ancestral) throw erro;
+      ancestral = pai;
+    }
+  }
+}
 
 export function preparar(repo, destino) {
   const git = (...args) => execFileSync("git", ["-C", repo, ...args], { stdio: ["ignore", "pipe", "pipe"], maxBuffer: 32 * 1024 * 1024 });
@@ -17,7 +30,7 @@ export function preparar(repo, destino) {
   }
   const commit = git("rev-parse", "HEAD").toString().trim();
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error("Commit inválido.");
-  const saida = resolve(destino ?? join(tmpdir(), `barberos-${commit}`));
+  const saida = destinoCanonico(resolve(destino ?? join(tmpdir(), `barberos-${commit}`)));
   const caminhoRelativo = relative(raiz, saida);
   if (!caminhoRelativo || (!isAbsolute(caminhoRelativo) && caminhoRelativo !== ".." && !caminhoRelativo.startsWith(`..${sep}`))) {
     throw new Error("O pacote deve ficar fora da cópia de trabalho.");

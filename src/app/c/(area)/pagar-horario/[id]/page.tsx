@@ -1,8 +1,10 @@
+import { premioReservadoFinanceiro } from "@/lib/agenda/antecipado-grupo";
+import { AVISO_PREMIO_CONFERENCIA, AVISO_PREMIO_BALCAO } from "@/lib/jogos/tipos";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Checkout } from "@/components/checkout/Checkout";
-import { checkoutDoHorario, motivoParaNaoPagar } from "@/lib/agenda/antecipado";
+import { checkoutDoHorario, motivoParaNaoPagar, sincronizarAntecipado } from "@/lib/agenda/antecipado";
 import { configuracao } from "@/lib/agenda/carregar";
 import { minParaHhmm, minutosLocal } from "@/lib/agenda/tempo";
 import { cpfValido } from "@/lib/assinaturas/regras";
@@ -21,9 +23,16 @@ export default async function PagarHorario(props: PageProps<"/c/pagar-horario/[i
   const { id } = await props.params;
   const ag = await db.agendamento.findFirst({
     where: { id, clienteId: s.clienteId },
-    include: { servico: { select: { nome: true } }, barbeiro: { select: { nome: true } }, cliente: { select: { cpf: true, email: true } }, adicionais: { where: { origem: "SITE", status: { not: "CANCELADO" } }, select: { precoCentavos: true, servico: { select: { nome: true } } } } },
+    include: { premiosGanhos: premioReservadoFinanceiro, antecipado: { select: { id: true, status: true } }, servico: { select: { nome: true } }, barbeiro: { select: { nome: true } }, cliente: { select: { cpf: true, email: true } }, adicionais: { where: { origem: "SITE", status: { not: "CANCELADO" } }, select: { premiosGanhos: premioReservadoFinanceiro, precoCentavos: true, servico: { select: { nome: true } } } } },
   });
   if (!ag) notFound();
+  if (ag.premiosGanhos.length || ag.adicionais.some(a => a.premiosGanhos.length)) {
+    const pagamento = ag.antecipado?.status === "PENDENTE" ? (await sincronizarAntecipado(ag.antecipado.id) ?? ag.antecipado) : ag.antecipado;
+    const recebido = pagamento?.status === "PAGO" || pagamento?.status === "CREDITADO";
+    const mensagem = recebido ? "Pagamento recebido." : pagamento?.status === "PENDENTE"
+      ? AVISO_PREMIO_CONFERENCIA : AVISO_PREMIO_BALCAO;
+    return <div className="cartao"><p role="status">{mensagem}</p><Link className="btn mt-4" href="/c">Meus horários</Link></div>;
+  }
   const cfg = await configuracao();
   const inicial = await checkoutDoHorario(s.clienteId, ag.id);
   const total = ag.precoCentavos + ag.adicionais.reduce((s, a) => s + a.precoCentavos, 0);

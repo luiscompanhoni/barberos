@@ -1,9 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { api } from "@/lib/cliente-api";
 afterEach(() => vi.unstubAllGlobals());
-function preparar(path: string) {
+function preparar(path: string, search = "") {
   const replace = vi.fn();
-  vi.stubGlobal("window", { location: { pathname: path, replace } });
+  vi.stubGlobal("window", { location: { pathname: path, search, replace } });
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ erro: "Código inválido.", codigo: "codigo_invalido" }), { status: 401 })));
   return replace;
 }
@@ -13,9 +13,9 @@ it("código incorreto no cadastro social mantém o formulário", async () => {
   expect(replace).not.toHaveBeenCalled();
 });
 it("sessão expirada no cliente volta ao acesso do cliente", async () => {
-  const replace = preparar("/c/agendar");
+  const replace = preparar("/c/agendar", "?premio=desconto");
   await expect(api("/api/cliente/agendamentos")).rejects.toThrow();
-  expect(replace).toHaveBeenCalledWith("/c/entrar?voltar=%2Fc%2Fagendar");
+  expect(replace).toHaveBeenCalledWith("/c/entrar?voltar=%2Fc%2Fagendar%3Fpremio%3Ddesconto");
 });
 it("sessão expirada da equipe mantém o login da equipe", async () => {
   const replace = preparar("/clientes");

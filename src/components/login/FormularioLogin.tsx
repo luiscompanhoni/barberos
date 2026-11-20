@@ -70,7 +70,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigo
       setErro(AVISO_CONTA_CLIENTE);
       return;
     }
-    const destino = cliente && busca.get("social") === "pendente" ? "/c/perfil?social=pendente"
+    const destino = cliente && busca.get("social") === "pendente" ? "/c/perfil?social=pendente" + (busca.has("voltar") ? "&voltar=" + encodeURIComponent(destinoDoPerfil("CLIENTE", voltar)) : "")
       : cliente && r.trocaSenhaObrigatoria ? "/c/perfil#senha"
       : !cliente && r.definirSenha ? "/conta"
       : destinoDoPerfil(r.papel ?? "CLIENTE", voltar);
@@ -274,7 +274,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigo
         {contaExcluida && <p role="status" className="mt-4 text-sm text-emerald-700">Sua conta foi excluída e seus dados pessoais foram apagados.</p>}
         {erro && <p role="alert" className="mt-4 text-sm text-red-600">{erro}</p>}
         {busca.get("social") === "erro" && <p role="alert" className="mt-4 text-sm text-red-600">Não foi possível concluir o acesso social. Tente novamente ou entre com sua senha.</p>}
-        {area === "cliente" && modo === "senha" && provedoresSociais.length > 0 && <AcessosSociais provedores={provedoresSociais} />}
+        {area === "cliente" && modo === "senha" && provedoresSociais.length > 0 && <AcessosSociais provedores={provedoresSociais} voltar={busca.get("voltar") ?? undefined} />}
         {area === "cliente" && modo === "senha" && (
           <Link href="/assine" className="mt-10 flex items-center gap-2 text-sm font-semibold text-zinc-500 hover:text-zinc-900">
             Ainda não é assinante? <span className="text-ouro">Conheça os planos</span> <ArrowRight size={14} className="text-ouro" />

@@ -33,6 +33,8 @@ Os dados da homologação são fictícios. O ritmo do bot já existente na base 
 
 ## Antecipação e preservação
 
+Quando o atendimento tem prêmio de serviço ou desconto reservado, a resposta depende da situação do pagamento. Um valor já recebido ou creditado aparece como pago. Se há cobrança pendente, a consulta ao provedor pode confirmar o recebimento. Enquanto aguarda confirmação, o cliente vê a orientação para aguardar, sem link, código Pix ou QR. Se não há cobrança ativa, o prêmio será aplicado no balcão. Brindes preservam a antecipação normal.
+
 O pagamento antecipado soma o grupo inteiro (inclusive adicionais pagos de um corte coberto por plano),
 mantém um único pagamento na comanda e credita o valor uma única vez se o horário for cancelado.
 Alterar o grupo com emissão pendente ou recebida exige conferência; não recalcula uma cobrança em aberto.

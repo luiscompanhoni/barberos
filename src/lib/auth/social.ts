@@ -7,6 +7,7 @@ import { ErroNegocio } from "@/lib/erros";
 import { cadastroCompleto, type zDadosCadastroCliente } from "@/lib/clientes/perfil-cadastro";
 import type { z } from "zod";
 import { VERSAO_TERMOS } from "@/lib/lgpd/textos";
+import { destinoAposLogin, destinoDoPerfil } from "./destino";
 import { abrirSessao } from "./abrir-sessao";
 import { verificarCodigo } from "./otp";
 import { COOKIE_SOCIAL_NAVEGADOR, guardarIdentidadePendente, identidadePendente, limparIdentidadePendente, socialSeguro } from "./social-cookies";
@@ -16,9 +17,12 @@ const hash = (v: string) => createHash("sha256").update(v).digest("hex");
 const incluir = { barbeiro: { select: { id: true, ativo: true } }, cliente: true } as const;
 const invalido = () => new ErroNegocio("Este acesso expirou ou já foi utilizado. Comece novamente.", 401, "social_invalido");
 
-export async function iniciarSocial(provedor: ProvedorSocial) {
+export async function iniciarSocial(provedor: ProvedorSocial, retorno = "") {
   if (!configuracaoSocial(provedor)) throw new ErroNegocio("Acesso social ainda não configurado.", 503);
-  const state = randomBytes(32).toString("base64url"), navegador = randomBytes(32).toString("base64url");
+  const voltar = retorno.length <= 1500 ? destinoAposLogin(retorno, "") : "";
+  const state = randomBytes(32).toString("base64url");
+  // O hash persistido vincula tanto o segredo do navegador quanto o retorno ao state.
+  const navegador = randomBytes(32).toString("base64url") + (voltar ? "." + Buffer.from(voltar).toString("base64url") : "");
   const nonce = randomBytes(32).toString("base64url"), verificador = randomBytes(48).toString("base64url");
   await db.fluxoSocial.deleteMany({ where: { expiraEm: { lt: new Date() } } });
   await db.fluxoSocial.create({ data: {
@@ -41,19 +45,22 @@ export async function retornarSocial(provedor: ProvedorSocial, state: string, co
   (await cookies()).set(COOKIE_SOCIAL_NAVEGADOR, "", { path: "/api/auth/social", maxAge: 0 });
   const identidade = await verificarIdentidadeSocial(provedor, code, f.nonce, f.verificador ?? "");
   const vinculo = await db.identidadeSocial.findUnique({ where: { provedor_subject: { provedor, subject: identidade.subject } }, include: { usuario: { include: incluir } } });
+  const codificado = navegador.split(".")[1];
+  const voltar = codificado ? destinoDoPerfil("CLIENTE", Buffer.from(codificado, "base64url").toString()) : undefined;
+  const pendente = "/c/entrar?social=pendente" + (voltar ? "&voltar=" + encodeURIComponent(voltar) : "");
   if (!vinculo) {
-    await guardarIdentidadePendente(identidade);
-    return "/c/entrar?social=pendente";
+    await guardarIdentidadePendente({ ...identidade, voltar });
+    return pendente;
   }
   const u = vinculo.usuario;
   if (!u.ativo || u.papel !== "CLIENTE" || !u.cliente || u.cliente.excluidoEm) throw invalido();
   if (!u.telefoneVerificadoEm) {
-    await guardarIdentidadePendente(identidade);
-    return "/c/entrar?social=pendente";
+    await guardarIdentidadePendente({ ...identidade, voltar });
+    return pendente;
   }
   await limparIdentidadePendente();
   await abrirSessao(u);
-  return cadastroCompleto(u.cliente) ? "/c" : "/c/perfil?completar=1";
+  return cadastroCompleto(u.cliente) ? (voltar ?? "/c") : "/c/perfil?completar=1" + (voltar ? "&voltar=" + encodeURIComponent(voltar) : "");
 }
 
 async function vincular(tx: Prisma.TransactionClient, usuarioId: string, identidade: IdentidadeVerificada) {
@@ -99,5 +106,5 @@ export async function concluirCadastroSocial(dados: z.infer<typeof zDadosCadastr
   });
   await limparIdentidadePendente();
   await abrirSessao({ ...u, nome: dados.nome });
-  return { ok: true, destino: "/c/perfil?foto=1" };
+  return { ok: true, destino: identidade.voltar ? destinoDoPerfil("CLIENTE", identidade.voltar) : "/c/perfil?foto=1" };
 }

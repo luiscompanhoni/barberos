@@ -1,5 +1,6 @@
 "use client";
 
+import { destinoDoPerfil } from "@/lib/auth/destino";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/cliente-api";
@@ -16,10 +17,12 @@ export const OPCOES_ORIGEM: [string, string][] = [
   ["FACHADA", "Passei na frente"], ["WHATSAPP", "WhatsApp"], ["OUTRO", "Outro"],
 ];
 
-export function PerfilTela() {
+export function PerfilTela({ voltar, confirmarSocial = false }: { voltar?: string; confirmarSocial?: boolean }) {
   const [p, setP] = useState<Perfil | null>(null), [f, setF] = useState<DadosCadastroForm>(CADASTRO_VAZIO);
   const [extras, setExtras] = useState({ obs: "", origem: "", detalhe: "" });
-  const [pendente, setPendente] = useState(""), [ocupado, setOcupado] = useState(false);
+  const [vinculo, setVinculo] = useState<"consultando" | "erro" | "ausente" | "pendente" | "confirmado">("consultando");
+  const [tentativa, tentar] = useState(0);
+  const [provedor, setProvedor] = useState(""), [ocupado, setOcupado] = useState(false);
   const [msg, setMsg] = useState<{ texto: string; erro?: boolean } | null>(null);
   const trava = useRef(false);
   useEffect(() => {
@@ -29,12 +32,22 @@ export function PerfilTela() {
       setF({ nome: r.nome, telefone: r.telefone, cpf: "", email: r.email ?? "", endereco: r.endereco ?? "", dataNascimento: r.dataNascimento ?? "" });
       setExtras({ obs: r.observacoes ?? "", origem: r.origem ?? "", detalhe: r.origemDetalhe ?? "" });
     }).catch((e) => { if (ativo) setMsg({ texto: e.message, erro: true }); });
-    api<{ pendente: boolean; provedor?: string }>("/api/auth/social/concluir").then((r) => { if (ativo && r.pendente) setPendente(r.provedor ?? ""); }).catch(() => {});
     return () => { ativo = false; };
   }, []);
+  useEffect(() => {
+    let ativo = true;
+    api<{ pendente: boolean; provedor?: string }>("/api/auth/social/concluir")
+      .then(r => { if (ativo) { setVinculo(r.pendente ? "pendente" : "ausente"); setProvedor(r.provedor ?? ""); } })
+      .catch(() => { if (ativo) setVinculo("erro"); });
+    return () => { ativo = false; };
+  }, [tentativa]);
+  const aguardarVinculo = confirmarSocial && (vinculo === "consultando" || vinculo === "erro");
+  function retomar() {
+    if (voltar) window.location.replace(destinoDoPerfil("CLIENTE", voltar));
+  }
   function campo(k: keyof DadosCadastroForm, v: string) { setF((f) => ({ ...f, [k]: v })); setMsg(null); }
   async function salvar(e: React.FormEvent) {
-    e.preventDefault(); if (trava.current || !p) return; trava.current = true; setOcupado(true); setMsg(null);
+    e.preventDefault(); if (trava.current || !p || aguardarVinculo) return; trava.current = true; setOcupado(true); setMsg(null);
     try {
       const body = alteracoesPerfil(p, f, extras);
       if (!Object.keys(body).length) { setMsg({ texto: "Não há alterações para salvar." }); return; }
@@ -43,12 +56,13 @@ export function PerfilTela() {
       setF({ nome: novo.nome, telefone: novo.telefone, cpf: "", email: novo.email ?? "", endereco: novo.endereco ?? "", dataNascimento: novo.dataNascimento ?? "" });
       setExtras({ obs: novo.observacoes ?? "", origem: novo.origem ?? "", detalhe: novo.origemDetalhe ?? "" });
       setMsg({ texto: "Cadastro salvo." });
+      if (novo.completo && (vinculo === "confirmado" || (!confirmarSocial && vinculo !== "pendente"))) retomar();
     } catch (e) { setMsg({ texto: (e as Error).message, erro: true }); }
     finally { trava.current = false; setOcupado(false); }
   }
   async function vincular() {
     if (trava.current) return; trava.current = true; setOcupado(true); setMsg(null);
-    try { await api("/api/auth/social/concluir", { method: "PATCH", body: { confirmar: true } }); setPendente(""); setMsg({ texto: "Acesso conectado. Você poderá usá-lo no próximo login." }); }
+    try { await api("/api/auth/social/concluir", { method: "PATCH", body: { confirmar: true } }); setVinculo("confirmado"); if (p?.completo) retomar(); setMsg({ texto: "Acesso conectado. Você poderá usá-lo no próximo login." }); }
     catch (e) { setMsg({ texto: (e as Error).message, erro: true }); }
     finally { trava.current = false; setOcupado(false); }
   }
@@ -56,8 +70,13 @@ export function PerfilTela() {
   return <div className="entrar-suave space-y-5">
     <div><p className="eyebrow">Sua conta</p><h1 className="titulo-marca mt-3 text-4xl">Seu <span className="text-ouro">perfil.</span></h1></div>
     {!p.completo && <p className="cartao text-sm">Complete seus dados para manter seu cadastro atualizado. A foto é opcional.</p>}
-    {pendente && <div className="cartao space-y-3"><p className="text-sm">Conectar o acesso {pendente} à conta de <b>{p.nome}</b> ({formatarTelefone(p.telefone)})?</p>
-      <button type="button" className="btn" disabled={ocupado} onClick={() => void vincular()}>Confirmar conexão do acesso</button><Link href="/c/entrar?social=pendente" className="block text-sm text-ouro underline">Confirmar meu celular por código</Link></div>}
+    {confirmarSocial && vinculo === "consultando" && <p role="status">Consultando a conexão do acesso…</p>}
+    {vinculo === "erro" && <div className="cartao"><p role="alert">Não foi possível consultar a conexão do acesso.</p>
+      <button type="button" className="btn" onClick={() => { setVinculo("consultando"); tentar(n => n + 1); }}>Tentar novamente</button></div>}
+    {confirmarSocial && vinculo === "ausente" && <div className="cartao"><p>O pedido de conexão expirou.</p>
+      <Link className="btn" href={"/c/entrar" + (voltar ? "?voltar=" + encodeURIComponent(destinoDoPerfil("CLIENTE", voltar)) : "")}>Recomeçar acesso social</Link></div>}
+    {vinculo === "pendente" && <div className="cartao space-y-3"><p className="text-sm">Conectar o acesso {provedor} à conta de <b>{p.nome}</b> ({formatarTelefone(p.telefone)})?</p>
+      <button type="button" className="btn" disabled={ocupado} onClick={() => void vincular()}>Confirmar conexão do acesso</button><Link href={"/c/entrar?social=pendente" + (voltar ? "&voltar=" + encodeURIComponent(destinoDoPerfil("CLIENTE", voltar)) : "")} className="block text-sm text-ouro underline">Confirmar meu celular por código</Link></div>}
     <FotoPerfil versaoInicial={p.fotoVersao} nome={p.nome} />
     <form onSubmit={salvar} noValidate className="space-y-5">
       <fieldset disabled={ocupado} className="cartao space-y-4">
@@ -74,7 +93,7 @@ export function PerfilTela() {
         </div>
       </fieldset>
       {msg && <p role={msg.erro ? "alert" : "status"} className={`text-sm ${msg.erro ? "text-red-600" : "text-emerald-700"}`}>{msg.texto}</p>}
-      <button className="btn-primario w-full py-3" disabled={ocupado}>{ocupado ? "Salvando…" : "Salvar cadastro"}</button>
+      <button className="btn-primario w-full py-3" disabled={ocupado || aguardarVinculo}>{ocupado ? "Salvando…" : "Salvar cadastro"}</button>
     </form>
     <TrocarSenha equipe={false} />
     <Link href="/c/privacidade" className="cartao-clicavel block text-sm"><b className="block text-zinc-900">Meus dados e privacidade</b><span className="text-zinc-500">Baixar seus dados, mensagens de divulgação e excluir a conta</span></Link>

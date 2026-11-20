@@ -102,7 +102,7 @@ export function EquipeTela() {
     e.preventDefault();
     const preco = Math.round(Number(ns.preco.replace(",", ".")) * 100);
     const dur = Number(ns.duracaoMin);
-    if (ns.nome.trim().length < 2 || !Number.isFinite(preco) || preco < 0 || !dur) return setErro("Preencha nome, duração e preço do serviço.");
+    if (ns.nome.trim().length < 2 || !ns.preco.trim() || !Number.isFinite(preco) || preco < 0 || !dur) return setErro("Preencha nome, duração e preço do serviço.");
     acao(async () => {
       await api("/api/servicos", { method: "POST", body: { nome: ns.nome, duracaoMin: dur, precoCentavos: preco, barbeiroIds: barbeiros.filter((b) => b.ativo).map((b) => b.id) } });
       setNs({ nome: "", duracaoMin: "30", preco: "" });
@@ -200,7 +200,7 @@ export function EquipeTela() {
           <select className="campo w-auto" value={ns.duracaoMin} onChange={(e) => setNs({ ...ns, duracaoMin: e.target.value })}>
             {[15, 30, 45, 60, 75, 90, 120].map((m) => <option key={m} value={m}>{m} min</option>)}
           </select>
-          <input className="campo max-w-32" placeholder="Preço (R$)" inputMode="decimal" value={ns.preco} onChange={(e) => setNs({ ...ns, preco: e.target.value })} />
+          <input className="campo max-w-32" required aria-label="Preço (R$)" placeholder="Preço (R$)" inputMode="decimal" value={ns.preco} onChange={(e) => setNs({ ...ns, preco: e.target.value })} />
           <button className="btn-primario">Adicionar serviço</button>
         </form>
       </section>

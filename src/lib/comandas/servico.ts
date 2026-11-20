@@ -109,7 +109,7 @@ export async function abrirComanda(s: Sessao, a: { clienteId?: string | null; no
       ag = await tx.agendamento.findUnique({ where: { id: a.agendamentoId }, include: { servico: true, barbeiro: true, itemComanda: true } });
       if (!ag) throw naoEncontrado("Atendimento");
       if (ag.barbeiroId !== referencia?.barbeiroId || ag.clienteId !== referencia?.clienteId) throw new ErroNegocio("O atendimento mudou. Confira novamente antes de abrir a comanda.", 409);
-      if (ag.adicionalDeId && ag.origem === "SITE") throw new ErroNegocio("Abra a comanda pelo atendimento principal do grupo.", 422, "alteracao_multiplos");
+      if (ag.adicionalDeId && (ag.origem === "SITE" || !ag.itemComanda)) throw new ErroNegocio("Abra a comanda pelo atendimento principal do grupo.", 422, "alteracao_multiplos");
       if (ag.status === "CANCELADO" || ag.status === "FALTOU") throw new ErroNegocio("Esse atendimento foi cancelado ou o cliente faltou.");
       if (ag.itemComanda) {
         const vinculada = await tx.comanda.findUniqueOrThrow({ where: { id: ag.itemComanda.comandaId }, select: { status: true } });
@@ -134,8 +134,9 @@ export async function abrirComanda(s: Sessao, a: { clienteId?: string | null; no
           barbeiroId: ag.barbeiroId,
         },
       });
-      const adicionais = await tx.agendamento.findMany({ where: { adicionalDeId: ag.id, origem: "SITE", status: { not: "CANCELADO" }, itemComanda: null }, include: { servico: true, barbeiro: true } });
-      for (const adicional of adicionais) await tx.itemComanda.create({ data: {
+      const adicionais = await tx.agendamento.findMany({ where: { adicionalDeId: ag.id, status: { notIn: ["CANCELADO", "FALTOU"] } }, include: { servico: true, barbeiro: true, itemComanda: true } });
+      if (adicionais.some(a => a.itemComanda && a.itemComanda.comandaId !== comanda.id)) throw new ErroNegocio("Há adicional em outra comanda. Confira as comandas antes de cobrar.", 409, "adicional_outra_comanda");
+      for (const adicional of adicionais.filter(a => !a.itemComanda)) await tx.itemComanda.create({ data: {
         comandaId: comanda.id, agendamentoId: adicional.id,
         descricao: descricaoServico(adicional.servico.nome, adicional.barbeiro.nome, !!adicional.assinaturaId),
         quantidade: 1, precoUnitCentavos: adicional.precoCentavos, barbeiroId: adicional.barbeiroId,
@@ -293,6 +294,7 @@ export async function cancelarComanda(s: Sessao, comandaId: string, motivo: stri
     }
     const adicionaisCancelados = await cancelarPendentesAgendados(tx, comandaId, c.itens.flatMap(i => i.agendamentoId ? [i.agendamentoId] : []), c.status === "FECHADA");
     await tx.comanda.update({ where: { id: comandaId }, data: { status: "CANCELADA" } });
+    if (c.status === "ABERTA") await tx.$executeRaw`SELECT liberar_agenda_comanda_cancelada(${comandaId}, ${s.usuarioId})`;
     // Desconto de indicacao usado nessa comanda volta para o cliente.
     await tx.beneficio.updateMany({ where: { comandaId, status: "USADO" }, data: { status: "DISPONIVEL", usadoEm: null, comandaId: null } });
     // Premio de jogo validado nessa comanda (servico gratis, desconto, brinde) volta para o cliente.

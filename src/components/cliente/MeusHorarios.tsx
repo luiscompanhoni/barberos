@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight, CalendarDays, CalendarPlus, Check, Clock3, Crown, History, Scissors } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
 import { IndiqueEsperas } from "./IndiqueEsperas";
+import { AVISO_PREMIO_CONFERENCIA, AVISO_PREMIO_BALCAO } from "@/lib/jogos/tipos";
 import { PagarAntes } from "./PagarAntes";
 import { JogosChamada } from "@/components/jogos/JogosChamada";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
@@ -180,7 +181,7 @@ export function MeusHorarios() {
                         ? <span className="selo-ouro mt-3"><Check size={11} /> Pelo plano</span>
                         : <p className="mt-2 text-xs font-semibold text-zinc-700">{reais(a.precoCentavos + (a.adicionais ?? []).reduce((t, x) => t + x.precoCentavos, 0))}</p>}
                       {a.precoCentavos + (a.adicionais ?? []).reduce((s, x) => s + x.precoCentavos, 0) > 0 && (dados.pagarAntes || a.antecipado?.status === "PAGO") && (
-                        <PagarAntes agendamentoId={a.id} precoCentavos={a.precoCentavos + (a.adicionais ?? []).reduce((s, x) => s + x.precoCentavos, 0)} status={a.antecipado?.status ?? null} checkout={!!dados.checkout}
+                        a.antecipado?.status !== "PAGO" && a.premioBalcao ? <p className="text-sm">{a.antecipado?.status === "PENDENTE" ? AVISO_PREMIO_CONFERENCIA : a.antecipado?.status === "CREDITADO" ? "Pagamento recebido e creditado." : AVISO_PREMIO_BALCAO}</p> : <PagarAntes agendamentoId={a.id} precoCentavos={a.precoCentavos + (a.adicionais ?? []).reduce((s, x) => s + x.precoCentavos, 0)} status={a.antecipado?.status ?? null} checkout={!!dados.checkout}
                           aoPagar={() => { setAviso("Pagamento recebido! É só vir no horário."); carregar(); }} />
                       )}
                     </div>

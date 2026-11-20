@@ -83,7 +83,7 @@ export function SecoesClientes({ d }: { d: Dados }) {
           <Kpi rotulo="Usos por assinante" valor={a.usoMedioPorAssinante === null ? "—" : num(a.usoMedioPorAssinante, 1)} detalhe={`${a.usos} atendimentos pelo plano`} />
           <Kpi rotulo="Cada corte do plano sai por" valor={din(a.valorPorUsoCentavos)} detalhe={a.tabelaPorUsoCentavos ? `tabela ${din(a.tabelaPorUsoCentavos)}` : undefined}
             ajuda="Mensalidades recebidas ÷ atendimentos feitos pelo plano. Se ficar muito abaixo da tabela, o plano está barato para o uso." />
-          <Kpi rotulo="Assinantes sem usar" valor={num(a.assinantesSemUso)} detalhe="risco de cancelar" />
+          <Kpi rotulo="Ativos sem uso no período" valor={num(a.assinantesSemUso)} detalhe="risco de cancelar" />
         </div>
         <div className="grid gap-3 lg:grid-cols-2">
           <div className="cartao space-y-3">
@@ -102,11 +102,11 @@ export function SecoesClientes({ d }: { d: Dados }) {
           <Kpi rotulo="Bar" valor={din(bar.barCentavos)} detalhe={`ticket ${din(bar.ticketBarCentavos)} por comanda`} />
           <Kpi rotulo="Loja" valor={din(bar.lojaCentavos)} detalhe={`ticket ${din(bar.ticketLojaCentavos)} por comanda`} />
           <Kpi rotulo="Bar por atendimento" valor={din(bar.barPorAtendimentoCentavos)} ajuda="Receita do bar ÷ atendimentos feitos. Sobe quando a equipe oferece bebida em todo corte." />
-          <Kpi rotulo="Margem dos produtos" valor={pct(bar.margemBrutaPct)} detalhe={`${pct(bar.comandasComBarPct)} das comandas com bar`} />
+          <Kpi rotulo="Margem estimada pelo custo atual" valor={pct(bar.margemBrutaPct)} detalhe={`${pct(bar.comandasComBarPct)} das comandas com bar`} />
         </div>
         <div className="cartao">
           <p className="mb-3 text-sm font-semibold">Mais vendidos</p>
-          <Barras formato={din} itens={bar.topProdutos.map((p) => ({ rotulo: `${p.nome} (${p.qtd})`, valor: p.receita, nota: p.margemPct === null ? undefined : `margem ${pct(p.margemPct)}` }))}
+          <Barras formato={din} itens={bar.topProdutos.map((p) => ({ rotulo: `${p.nome} (${p.qtd})`, valor: p.receita, nota: p.margemPct === null ? undefined : `margem estimada pelo custo atual ${pct(p.margemPct)}` }))}
             vazio="Nenhuma venda registrada: abra a comanda pelo atendimento na agenda." />
         </div>
       </Secao>

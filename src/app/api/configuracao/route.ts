@@ -47,8 +47,10 @@ export const PATCH = rota(async (req: Request) => {
       presenteAniversario: z.string().trim().max(120).nullable().optional(),
     }),
   );
-  const atual = await configuracao(); // garante a linha
   const atualizada = await db.$transaction(async (tx) => {
+    await tx.configuracao.createMany({ data: [{ id: 1 }], skipDuplicates: true });
+    await tx.$queryRaw`SELECT id FROM configuracao WHERE id = 1 FOR UPDATE`;
+    const atual = await tx.configuracao.findUniqueOrThrow({ where: { id: 1 } });
     await auditarMudanca(tx, sessao.usuarioId, "configurar", "configuracao", "barbearia", atual, b);
     return tx.configuracao.update({ where: { id: 1 }, data: b });
   });

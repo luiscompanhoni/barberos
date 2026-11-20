@@ -8,7 +8,7 @@ export function manifestoApp(area: "cliente" | "equipe" | "gestao"): MetadataRou
     name: gestao ? "BarberOS" : cliente ? "Black Barber" : "Black Barber Equipe",
     short_name: gestao ? "BarberOS" : cliente ? "Black Barber" : "Black Equipe",
     description: gestao ? "Gestão da barbearia no BarberOS." : cliente ? "Sua agenda, planos e benefícios na Black Barber." : "Agenda, reuniões e rotina da equipe Black Barber.",
-    start_url: cliente ? "/c" : "/painel",
+    start_url: cliente ? "/c" : gestao ? "/painel" : "/",
     scope: "/",
     display: "standalone",
     lang: "pt-BR",

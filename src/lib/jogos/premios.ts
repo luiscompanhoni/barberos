@@ -13,6 +13,7 @@ import { avisarComanda } from "@/lib/comandas/servico";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { premioParaCliente } from "./motor";
+import { premioFinanceiro } from "./tipos";
 import { descontoDoPremio, normalizarCodigo } from "./regras";
 
 type Tx = Prisma.TransactionClient;
@@ -120,7 +121,7 @@ export async function validarPremio(s: Sessao, premioId: string, d: { comandaId?
 
     let desconto = 0;
     let comandaId: string | null = d.comandaId ?? null;
-    if (p.tipo === "SERVICO" || p.tipo === "DESCONTO") {
+    if (premioFinanceiro(p.tipo)) {
       if (!comandaId) throw new ErroNegocio("Abra a comanda do cliente e valide o prêmio por ela (o desconto entra na comanda).", 422, "precisa_comanda");
       const c = await tx.comanda.findUnique({ where: { id: comandaId }, include: { itens: { include: { agendamento: { select: { servicoId: true } } } }, pagamentos: true, linksPagamento: { where: { status: "PENDENTE" } } } });
       if (!c) throw naoEncontrado("Comanda");

@@ -7,7 +7,7 @@ import { PedidosAgendamento } from "@/components/recepcao/PedidosAgendamento";
 
 export default async function Recepcao({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const s = (await sessaoAtual())!;
-  if (s.papel === "BARBEIRO" && !s.barbeiroId) redirect("/painel");
+  if (s.papel === "BARBEIRO" && !s.barbeiroId) redirect("/conta");
   const entrada = entradaAgenda(await searchParams, s);
   return (
     <>

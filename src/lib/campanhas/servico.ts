@@ -4,7 +4,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { configuracao } from "@/lib/agenda/carregar";
-import { dataLocal, instanteLocal } from "@/lib/agenda/tempo";
+import { dataLocal, instanteLocal, somarDias } from "@/lib/agenda/tempo";
 import { horarioComercial } from "@/lib/automacoes/regras";
 import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
@@ -21,6 +21,7 @@ import { CHAVES_SEGMENTO, montarMensagem, segmentosDoCliente, SEGMENTOS, type Se
 import { impedimentoCampanha } from "./contato";
 import { campanhaConferida, identificadorDoLote, loteAutorizadoConfirmado, loteAutorizadoDisponivel } from "./lote-autorizado";
 import { INTERVALO_CAMPANHAS_MS, migracaoDoCliente, reservarContatoCampanha } from "./reservar-contato";
+import { contagemDeClientesAtribuidos, resumoDosEnvios } from "./atribuicao";
 import { MODELOS_SEGMENTOS } from "./modelos-segmento";
 
 export async function campanhasBloqueadas() {
@@ -34,8 +35,6 @@ async function exigirCampanhaLiberada() {
 
 /** Quantas mensagens de campanha saem por rodada da rotina (a cada 5 min), somando todas: espalha o envio. */
 const MAX_POR_RODADA = 20;
-/** Marcou ate X dias depois de receber = conta como resultado da campanha. */
-const JANELA_RESULTADO_DIAS = 14;
 
 type ClienteBase = { id: string; aceitaMensagens: boolean; bloqueado: boolean; temFuturo: boolean; ultima: number | null; segmentos: Segmento[] };
 
@@ -204,19 +203,12 @@ export async function listarCampanhas(agora = Date.now()) {
   const cfg = await configuracao();
   const inicioHoje = new Date(instanteLocal(dataLocal(agora, cfg.fuso), 0, cfg.fuso));
   const comJogo = { jogo: { select: { id: true, nome: true } } } as const;
-  const [recentes, modelos, porStatus, hoje, marcaram, pararam, autorizado] = await Promise.all([
+  const [recentes, modelos, porStatus, confirmados, marcaram, autorizado] = await Promise.all([
     db.campanha.findMany({ orderBy: { criadoEm: "desc" }, take: 50, include: comJogo }),
     db.campanha.findMany({ where: { id: { in: MODELOS_SEGMENTOS.map(m => m.id) } }, include: comJogo }),
     db.campanhaEnvio.groupBy({ by: ["campanhaId", "status"], _count: { _all: true } }),
-    db.campanhaEnvio.groupBy({ by: ["campanhaId"], where: { enviadoEm: { gte: inicioHoje }, status: { in: ["ENVIADO", "FALHOU"] } }, _count: { _all: true } }),
-    db.$queryRaw<{ campanhaId: string; n: number }[]>`
-      SELECT e."campanhaId", COUNT(DISTINCT e."clienteId")::int AS n
-      FROM campanha_envios e JOIN agendamentos a ON a."clienteId" = e."clienteId"
-      WHERE e.status = 'ENVIADO' AND a."criadoEm" > e."enviadoEm" AND a."criadoEm" <= e."enviadoEm" + make_interval(days => ${JANELA_RESULTADO_DIAS}::int)
-      GROUP BY 1`,
-    db.$queryRaw<{ campanhaId: string; n: number }[]>`
-      SELECT e."campanhaId", COUNT(*)::int AS n FROM campanha_envios e JOIN clientes c ON c.id = e."clienteId"
-      WHERE e.status = 'ENVIADO' AND c."aceitaMensagens" = false GROUP BY 1`,
+    resumoDosEnvios(inicioHoje, new Date(instanteLocal(somarDias(dataLocal(agora, cfg.fuso), 1), 0, cfg.fuso))),
+    contagemDeClientesAtribuidos(),
     loteAutorizadoDisponivel(),
   ]);
   const cs = [...new Map([...recentes, ...modelos].map(c => [c.id, c])).values()];
@@ -230,13 +222,13 @@ export async function listarCampanhas(agora = Date.now()) {
   return cs.map((c) => {
     const conta = (st: string) => porStatus.find((x) => x.campanhaId === c.id && x.status === st)?._count._all ?? 0;
     const ja = ids.get(c.id) ?? new Set();
-    const enviados = conta("ENVIADO");
+    const envio = confirmados.find(e => e.campanhaId === c.id);
     return {
       id: c.id, nome: c.nome, segmentos: c.segmentos, mensagem: c.mensagem, limiteDiario: c.limiteDiario, taxaRespostaBps: c.taxaRespostaBps,
       status: c.status, jogo: c.jogo, criadoEm: c.criadoEm, criadoPor: c.criadoPorId ? nomes.get(c.criadoPorId) ?? null : null,
-      fila: conta("FILA"), enviados, falhas: conta("FALHOU"), pulados: conta("PULADO"),
-      enviadosHoje: hoje.find((x) => x.campanhaId === c.id)?._count._all ?? 0,
-      marcaram: n(marcaram, c.id), pararam: n(pararam, c.id),
+      fila: conta("FILA"), enviados: envio?.enviados ?? 0, falhas: conta("FALHOU"), pulados: conta("PULADO"),
+      enviadosHoje: envio?.hoje ?? 0,
+      marcaram: n(marcaram, c.id), pararam: envio?.recusam ?? 0,
       loteAutorizado: autorizado && c.status !== "ENCERRADA" && !ja.size && campanhaConferida(c, autorizado) ? autorizado.clienteIds.length : null,
       // Quem ainda da para chamar num proximo lote.
       elegiveis: b.filter((x) => podeReceber(x) && !ja.has(x.id) && x.segmentos.some((s) => c.segmentos.includes(s))).length,
@@ -278,7 +270,7 @@ export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?
         });
         await db.campanhaEnvio.update({
           where: { id: e.id },
-          data: { mensagemId: r.mensagemId, ...(r.erro ? { status: "FALHOU" as const, erro: r.erro.slice(0, 300) } : {}) },
+          data: { mensagemId: r.mensagemId, ...(r.erro ? { status: "FALHOU" as const, erro: r.erro.slice(0, 300) } : { enviadoEm: new Date(Date.now()) }) },
         });
       } catch (err) {
         await db.campanhaEnvio.update({ where: { id: e.id }, data: { status: "FALHOU", erro: (err as Error).message.slice(0, 300) } });
@@ -287,5 +279,3 @@ export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?
   }
   return total;
 }
-
-export const DIAS_RESULTADO = JANELA_RESULTADO_DIAS;

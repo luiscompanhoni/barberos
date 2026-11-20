@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CalendarCheck, Check, Clock3, Gift, Scissors, UserRound, Wallet, type LucideIcon } from "lucide-react";
 import { api, reais } from "@/lib/cliente-api";
-import type { PremioCliente } from "@/lib/jogos/tipos";
+import { AVISO_PREMIO_BALCAO, premioFinanceiro, type PremioCliente } from "@/lib/jogos/tipos";
 import { FotoBarbeiro } from "@/components/FotoBarbeiro";
 import { EtiquetasServico } from "@/components/servicos/EtiquetasServico";
 import type { EtiquetaServico } from "@/lib/servicos/etiquetas";
@@ -38,7 +38,13 @@ export function AgendarTela({ lembreteDisponivel = false }: { lembreteDisponivel
   const remarcarId = q.get("remarcar");
   // "Agendar para resgatar": o premio do jogo fica reservado nesse horario.
   const premioId = remarcarId ? null : q.get("premio");
-  const [premio, setPremio] = useState<PremioCliente | null>(null);
+  const [tentativa, tentarPremio] = useState(0);
+  const [ignorado, ignorarPremio] = useState<string | null>(null);
+  const [consultaPremio, setConsultaPremio] = useState<{ id: string; tentativa: number; premio?: PremioCliente; erro?: boolean }>();
+  const respostaPremio = consultaPremio?.id === premioId && consultaPremio?.tentativa === tentativa ? consultaPremio : undefined;
+  const solicitado = premioId !== null && ignorado !== premioId;
+  const premio = solicitado ? respostaPremio?.premio : undefined;
+  const aguardarPremio = solicitado && !premio;
   const [catalogo, setCatalogo] = useState<Catalogo | null>(null);
   const [servicoId, setServicoId] = useState(q.get("servico") ?? "");
   const [adicionais, setAdicionais] = useState<string[]>(remarcarId ? (q.get("adicionais")?.split(",").filter(Boolean) ?? []) : []);
@@ -50,7 +56,7 @@ export function AgendarTela({ lembreteDisponivel = false }: { lembreteDisponivel
   const [escolha, setEscolha] = useState<Opcao | null>(null);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const [agendado, setAgendado] = useState<{ id: string; total: number; pago?: boolean } | null>(null);
+  const [agendado, setAgendado] = useState<{ id: string; total: number; pago?: boolean; premioBalcao?: boolean } | null>(null);
   const [recarregar, setRecarregar] = useState(0);
   const [recarregarCatalogo, setRecarregarCatalogo] = useState(0);
   const confirmando = useRef(false);
@@ -71,9 +77,13 @@ export function AgendarTela({ lembreteDisponivel = false }: { lembreteDisponivel
     return () => { ativo = false; };
   }, [recarregarCatalogo]);
   useEffect(() => {
-    if (!premioId) return;
-    api<PremioCliente[]>("/api/cliente/premios?reservar=1").then((ps) => setPremio(ps.find((p) => p.id === premioId) ?? null)).catch(() => {});
-  }, [premioId]);
+    if (premioId === null) return;
+    let ativo = true;
+    api<PremioCliente[]>("/api/cliente/premios?reservar=1")
+      .then(ps => { if (ativo) setConsultaPremio({ id: premioId, tentativa, premio: ps.find(p => p.id === premioId) }); })
+      .catch(() => { if (ativo) setConsultaPremio({ id: premioId, tentativa, erro: true }); });
+    return () => { ativo = false; };
+  }, [premioId, tentativa]);
 
   const servico = catalogo?.servicos.find((s) => s.id === servicoId);
   const escolhidos = [servicoId, ...adicionais].filter(Boolean);
@@ -105,19 +115,21 @@ export function AgendarTela({ lembreteDisponivel = false }: { lembreteDisponivel
   }, [disp]);
 
   async function confirmar() {
-    if (!escolha || !previa || confirmando.current) return;
+    if (!escolha || !previa || aguardarPremio || confirmando.current) return;
     confirmando.current = true;
     setErro("");
     setSalvando(true);
     try {
       if (remarcarId) {
-        await api(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId, forcarAvulso: !!previa?.bloqueio, precoEsperadoCentavos: previa?.precoCentavos, duracaoEsperadaMin: escolha.duracaoMin } });
+        const r = await api<{ premioBalcao: boolean }>(`/api/cliente/agendamentos/${remarcarId}`, { method: "PATCH", body: { inicio: escolha.inicio, barbeiroId: escolha.barbeiroId, forcarAvulso: !!previa?.bloqueio, precoEsperadoCentavos: previa?.precoCentavos, duracaoEsperadaMin: escolha.duracaoMin } });
+        setAgendado({ id: remarcarId, total: previa.precoCentavos, premioBalcao: r.premioBalcao });
       } else {
         const r = await api<{ id: string }>("/api/cliente/agendamentos", { method: "POST", body: { servicoId, servicosAdicionais: adicionais, precoEsperadoCentavos: previa?.precoCentavos, duracaoEsperadaMin: escolha.duracaoMin, barbeiroId: escolha.barbeiroId, inicio: escolha.inicio, semPreferencia: barbeiroId === QUALQUER, forcarAvulso: !!previa?.bloqueio, ...(premio ? { premioId: premio.id } : {}) } });
-        setAgendado({ id: r.id, total: previa.precoCentavos });
+        setAgendado({ id: r.id, total: previa.precoCentavos, premioBalcao: premio && premioFinanceiro(premio.tipo) });
       }
-      if (remarcarId) setAgendado({ id: remarcarId, total: previa.precoCentavos });
+
     } catch (e) {
+      if (premio) tentarPremio(n => n + 1);
       setErro(`${(e as Error).message} Confira seus horários antes de tentar novamente.`);
       setSalvando(false);
       confirmando.current = false;
@@ -128,7 +140,7 @@ export function AgendarTela({ lembreteDisponivel = false }: { lembreteDisponivel
   }
 
   if (!catalogo) return <div className="space-y-3"><p role={erro ? "alert" : "status"} className="text-sm text-zinc-500">{erro || "Carregando..."}</p>{erro && <button className="btn" onClick={() => { setErro(""); setRecarregarCatalogo(n => n + 1); }}>Tentar carregar novamente</button>}</div>;
-  if (agendado && escolha) return <section className="space-y-5 entrar-suave"><CalendarCheck size={36} className="text-ouro" aria-hidden="true" /><h1 className="titulo-marca text-3xl">{remarcarId ? "Horário remarcado" : "Seu horário está agendado"}</h1><p role="status" className="text-sm">{new Date(escolha.inicio).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short", timeZone: FUSO })} · {escolha.barbeiroNome}</p><p>{servicosEscolhidos.map(s => s.nome).join(" + ")}</p><p className="font-bold">Total: {reais(agendado.total)}</p>{agendado.total > 0 && catalogo.pagarAntes && <div className="cartao"><p className="text-sm">Quer adiantar o pagamento? Você também pode pagar na barbearia.</p><PagarAntes agendamentoId={agendado.id} precoCentavos={agendado.total} status={agendado.pago ? "PAGO" : null} checkout={catalogo.checkout} aoPagar={() => setAgendado({ ...agendado, pago: true })} /></div>}<Link href="/c" className="btn-primario w-full">Ver meus horários</Link></section>;
+  if (agendado && escolha) return <section className="space-y-5 entrar-suave"><CalendarCheck size={36} className="text-ouro" aria-hidden="true" /><h1 className="titulo-marca text-3xl">{remarcarId ? "Horário remarcado" : "Seu horário está agendado"}</h1><p role="status" className="text-sm">{new Date(escolha.inicio).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short", timeZone: FUSO })} · {escolha.barbeiroNome}</p><p>{servicosEscolhidos.map(s => s.nome).join(" + ")}</p><p className="font-bold">Total: {reais(agendado.total)}</p>{agendado.premioBalcao ? <p className="cartao">{AVISO_PREMIO_BALCAO}</p> : agendado.total > 0 && catalogo.pagarAntes && <div className="cartao"><p className="text-sm">Quer adiantar o pagamento? Você também pode pagar na barbearia.</p><PagarAntes agendamentoId={agendado.id} precoCentavos={agendado.total} status={agendado.pago ? "PAGO" : null} checkout={catalogo.checkout} aoPagar={() => setAgendado({ ...agendado, pago: true })} /></div>}<Link href="/c" className="btn-primario w-full">Ver meus horários</Link></section>;
   const dias = Array.from({ length: catalogo.janelaDias + 1 }, (_, i) => somarDias(hoje, i));
   const barbeiroEscolhido = barbeiroId === QUALQUER ? null : servico?.barbeiros.find((b) => b.id === barbeiroId);
   const voltarPasso = () => {
@@ -148,13 +160,18 @@ export function AgendarTela({ lembreteDisponivel = false }: { lembreteDisponivel
         {[1, 2, 3, 4].map((n) => <div key={n} className={`h-1 rounded-full transition ${n <= passo ? "bg-ouro" : "bg-zinc-200"}`} />)}
       </div>
       {erro && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-700">{erro}</p>}
+      {aguardarPremio && <div className="cartao space-y-2">
+        <p role="status">{!respostaPremio ? "Consultando seu prêmio…" : respostaPremio.erro ? "Não foi possível consultar seu prêmio." : "Este prêmio não está disponível para este agendamento."}</p>
+        {respostaPremio && <button type="button" className="btn" onClick={() => tentarPremio(n => n + 1)}>Consultar novamente</button>}
+        <button type="button" className="btn" onClick={() => ignorarPremio(premioId)}>Agendar sem o prêmio</button>
+      </div>}
       {premio && (
         <div className="mt-5 flex items-center gap-3 rounded-xl border border-ouro/50 bg-ouro/10 p-3 text-sm">
           <Gift className="shrink-0 text-ouro" size={20} />
           <span className="min-w-0 flex-1">Usando o prêmio <b>{premio.rotulo}</b> <span className="font-mono text-xs text-zinc-500">{premio.codigo}</span>
             {premio.expiraEm && <span className="block text-xs text-zinc-500">Escolha um horário até {new Date(premio.expiraEm).toLocaleDateString("pt-BR", { timeZone: FUSO })}.</span>}
           </span>
-          <button type="button" disabled={salvando} className="text-xs font-semibold text-zinc-500 underline" onClick={() => setPremio(null)}>Não usar</button>
+          <button type="button" disabled={salvando} className="text-xs font-semibold text-zinc-500 underline" onClick={() => ignorarPremio(premioId)}>Não usar</button>
         </div>
       )}
 
@@ -262,7 +279,7 @@ export function AgendarTela({ lembreteDisponivel = false }: { lembreteDisponivel
         )}
         {passo === 1 && <button className="btn-primario h-12 flex-1" disabled={!servico || !barbeirosCompativeis.length || escolhidos.length > 10} onClick={() => setServicosConfirmados(true)}>Continuar</button>}
         {passo === 4 && (
-          <button className="btn-primario h-12 flex-1" onClick={confirmar} disabled={salvando || !previa}>
+          <button className="btn-primario h-12 flex-1" onClick={confirmar} disabled={salvando || !previa || aguardarPremio}>
             {salvando ? "Confirmando..." : previa?.bloqueio ? `Confirmar total · ${reais(previa.precoCentavos)}` : remarcarId ? "Confirmar remarcação" : "Confirmar agendamento"}
           </button>
         )}

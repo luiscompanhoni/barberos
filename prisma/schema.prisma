@@ -2261,6 +2261,7 @@ model CampanhaEnvio {
   appAbertoEm DateTime?           @db.Timestamptz(3)
 
   @@unique([campanhaId, clienteId])
+  @@index([clienteId])
   @@index([status, campanhaId])
   @@map("campanha_envios")
 }

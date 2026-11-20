@@ -19,7 +19,7 @@ describe("manifests por público", () => {
   it("separa identidade e entrada do aplicativo sem URLs externas", () => {
     const cliente = manifestoApp("cliente"), equipe = manifestoApp("equipe");
     expect(cliente.id).toBe("/c"); expect(cliente.start_url).toBe("/c"); expect(cliente.name).toBe("Black Barber");
-    expect(equipe.id).toBe("/painel"); expect(equipe.start_url).toBe("/painel"); expect(equipe.name).toBe("Black Barber Equipe");
+    expect(equipe.id).toBe("/painel"); expect(equipe.start_url).toBe("/"); expect(equipe.name).toBe("Black Barber Equipe");
     expect(cliente.display).toBe("standalone");
     expect(cliente.icons?.map(i => i.sizes)).toEqual(["192x192", "512x512"]);
     expect(cliente.icons?.every(i => i.src.startsWith("/brand/black/"))).toBe(true);

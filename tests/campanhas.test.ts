@@ -53,7 +53,7 @@ describe("campanhas: mensagem", () => {
 
 describe("campanhas: funil", () => {
   const l = (x: Partial<LinhaFunil> = {}): LinhaFunil => ({
-    entregue: false, lida: false, clicou: false, girou: false, ganhou: false, app: false,
+    enviada: true, entregue: false, lida: false, clicou: false, girou: false, ganhou: false, app: false,
     conta: false, contaNova: false, agendou: false, compareceu: false, resgatou: false, ...x,
   });
   const linhas = [
@@ -73,6 +73,11 @@ describe("campanhas: funil", () => {
     expect(e.ganharam.daAnterior).toBe(0.5);
     expect(e.enviadas.daAnterior).toBeNull();
     expect(e.conta.detalhe).toBe("1 criada(s) depois da mensagem");
+  });
+  it("mantém clique e jogo antigos sem transformar interação sem mensagem em taxa de envio", () => {
+    const f = montarFunil([l(), l({ enviada: false, clicou: true, girou: true })], { jogo: "Roleta", statusDisponivel: false });
+    expect(f.find(e => e.chave === "enviadas")?.qtd).toBe(1);
+    for (const chave of ["clicaram", "giraram"]) expect(f.find(e => e.chave === chave)).toMatchObject({ qtd: 1, doTotal: null, daAnterior: null });
   });
   it("campanha comum sem confirmacao do WhatsApp: sem giro/premio/resgate e entregue/lida sem numero", () => {
     const f = montarFunil(linhas, { jogo: null, statusDisponivel: false });

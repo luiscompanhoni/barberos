@@ -11,7 +11,7 @@ import { RoletaBlack } from "@/components/jogos/roleta/RoletaBlack";
 import { Marca } from "@/components/Marca";
 import type { Landing } from "@/lib/campanhas/link";
 import { ErroApi } from "@/lib/cliente-api";
-import type { JogadaCliente } from "@/lib/jogos/tipos";
+import { premioParaAgendar, type JogadaCliente } from "@/lib/jogos/tipos";
 
 const enviar = async (token: string, acao: "visita" | "jogar") => {
   const r = await fetch(`/api/r/${token}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ acao }) });
@@ -51,7 +51,13 @@ export function LandingCampanha({ token, dados }: { token: string; dados: Landin
 }
 
 function Presente({ token, dados, jogo }: { token: string; dados: Landing; jogo: NonNullable<Landing["jogo"]> }) {
-  const jogar = useMemo(() => async () => (await enviar(token, "jogar")).jogada as JogadaCliente, [token]);
+  const [resultado, setResultado] = useState(jogo.jogada);
+  const usar = premioParaAgendar(resultado?.premios ?? []);
+  const jogar = useMemo(() => async () => {
+    const jogada = (await enviar(token, "jogar")).jogada as JogadaCliente;
+    setResultado(jogada);
+    return jogada;
+  }, [token]);
   const [abrindo, setAbrindo] = useState(false);
   const [terminou, setTerminou] = useState(!!jogo.jogada);
   const base = { id: jogo.id, nome: jogo.nome, comoGanhar: [], vitrine: jogo.vitrine, pendente: jogo.jogada, fichas: jogo.jogada ? 0 : 1 };
@@ -85,7 +91,7 @@ function Presente({ token, dados, jogo }: { token: string; dados: Landing; jogo:
       )}
 
       {(terminou || !jogo.ativo || jogo.vencido) && (
-        <Link className="btn-primario w-full py-3.5" href="/c/agendar">
+        <Link className="btn-primario w-full py-3.5" href={usar ? `/c/agendar?premio=${encodeURIComponent(usar.id)}` : "/c/agendar"}>
           <CalendarPlus size={17} /> Agendar meu horário
         </Link>
       )}
