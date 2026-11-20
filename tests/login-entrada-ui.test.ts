@@ -32,6 +32,10 @@ function renderLogin(codigoDisponivel = true) {
   return renderToStaticMarkup(createElement(FormularioLogin, { area: "cliente", titulo: "Black teste", subtitulo: "Cliente", destinoPadrao: "/c", codigoDisponivel }));
 }
 describe("modo inicial vindo da área do cliente (confirmar=1)", () => {
+  it("orienta a usar o cadastro de cliente quando a sessão anterior é da equipe", () => {
+    m.busca = new URLSearchParams({ confirmar: "1", voltar: "/c/agendar", conta: "cliente" });
+    expect(renderLogin(true)).toContain("Esta conta é da equipe.");
+  });
   it("abre em receber código quando o envio do código está ligado", () => {
     m.busca = new URLSearchParams({ confirmar: "1", voltar: "/c/agendar" });
     const html = renderLogin(true);

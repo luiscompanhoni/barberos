@@ -39,6 +39,11 @@ export async function proxy(req: NextRequest) {
     if (path === "/c" || path.startsWith("/c/")) url.searchParams.set("confirmar", "1");
     return NextResponse.redirect(url);
   }
+  if (path === "/c" || path.startsWith("/c/")) {
+    const headers = new Headers(req.headers);
+    headers.set("x-barberos-retorno", path + busca);
+    return NextResponse.next({ request: { headers } });
+  }
   return NextResponse.next();
 }
 

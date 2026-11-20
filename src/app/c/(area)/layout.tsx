@@ -1,5 +1,7 @@
 import { VisitaConvite } from "@/components/convites/VisitaConvite";
 import Link from "next/link";
+import { headers } from "next/headers";
+import { destinoAposLogin } from "@/lib/auth/destino";
 import { redirect } from "next/navigation";
 import { AvisoTermos } from "@/components/cliente/AvisoTermos";
 import { BotaoSair } from "@/components/cliente/BotaoSair";
@@ -16,8 +18,12 @@ import { AberturaBlack } from "@/components/visual/AberturaBlack";
 
 export default async function LayoutCliente({ children }: { children: React.ReactNode }) {
   const s = await sessaoAtual();
-  if (!s) redirect("/c/entrar");
-  if (s.papel !== "CLIENTE") redirect("/");
+  if (!s || s.papel !== "CLIENTE") {
+    const caminho = destinoAposLogin((await headers()).get("x-barberos-retorno") ?? "", "/c");
+    const busca = new URLSearchParams({ voltar: caminho, confirmar: "1" });
+    if (s) busca.set("conta", "cliente");
+    redirect(`/c/entrar?${busca}`);
+  }
   // Funil das campanhas: entrou no app depois de receber a mensagem.
   if (s.clienteId) await marcarAppAberto(s.clienteId).catch((e) => console.error("[campanhas] app aberto", e));
   const cfg = await configuracao();

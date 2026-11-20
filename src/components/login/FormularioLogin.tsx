@@ -26,6 +26,8 @@ type Props = {
   codigoDisponivel: boolean;
   provedoresSociais?: { id: "google" | "facebook" | "apple"; disponivel: boolean }[];
 };
+const AVISO_CONTA_CLIENTE = "Esta conta é da equipe. Entre com o celular de uma conta de cliente para continuar.";
+
 type Modo = "senha" | "cadastro" | "codigo-tel" | "codigo";
 type RespostaLogin = { papel?: string; base?: string; definirSenha?: boolean; trocaSenhaObrigatoria?: boolean };
 
@@ -33,6 +35,8 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigo
   const router = useRouter();
   const busca = useSearchParams();
   const voltar = busca.get("voltar") ?? destinoPadrao;
+  const pediuAgenda = destinoAposLogin(voltar, "").split(/[?#]/)[0] === "/c/agendar";
+  const precisaContaCliente = busca.get("conta") === "cliente";
   const contaExcluida = area === "cliente" && busca.get("excluida") === "1";
   const [modo, setModo] = useState<Modo>(area === "cliente" && codigoDisponivel && (conviteApp || busca.get("confirmar") === "1") ? "codigo-tel" : "senha");
   const [identificador, setIdentificador] = useState("");
@@ -60,13 +64,19 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigo
   /** Senha temporária exige troca; cliente que usa código pode criar senha no perfil depois. */
   function seguir(r: RespostaLogin) {
     const cliente = (r.papel ?? "CLIENTE") === "CLIENTE";
+    if (!cliente && (pediuAgenda || precisaContaCliente)) {
+      trocar(codigoDisponivel ? "codigo-tel" : "senha");
+      setSenha(""); setIdentificador(""); setEnviando(false);
+      setErro(AVISO_CONTA_CLIENTE);
+      return;
+    }
     const destino = cliente && busca.get("social") === "pendente" ? "/c/perfil?social=pendente"
       : cliente && r.trocaSenhaObrigatoria ? "/c/perfil#senha"
       : !cliente && r.definirSenha ? "/conta"
       : destinoDoPerfil(r.papel ?? "CLIENTE", voltar);
     if (r.base && new URL(r.base).origin !== window.location.origin) { window.location.assign(new URL(destino, r.base).href); return; }
-    if (destino.startsWith("/c/planos?plano=")) {
-      // A primeira visita ao checkout sem sessão foi redirecionada para cá.
+    if (pediuAgenda || destino.startsWith("/c/planos?plano=")) {
+      // A primeira visita sem sessão foi redirecionada para o login.
       // A nova navegação lê o cookie que a API de login acabou de gravar.
       window.location.replace(destino);
       return;
@@ -187,6 +197,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigo
           </h1>
         </div>
 
+        {precisaContaCliente && !erro && <p role="status" className="mt-4 text-sm">{AVISO_CONTA_CLIENTE}</p>}
         {modo === "senha" && <ConviteInstalacao />}
 
         {modo === "senha" && (

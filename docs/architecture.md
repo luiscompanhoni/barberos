@@ -8,6 +8,7 @@ Sessão nova `barberos_acesso` compartilha apenas o domínio HTTPS explicitament
 Acesso único exige o mesmo host/protocolo ou site e seu subdomínio HTTPS; configuração incompatível
 é recusada antes de gravar o cookie. Localmente, os dois endereços usam `http://localhost:3000`.
 A autorização continua revalidando papel, atividade e versão da sessão no banco.
+Quando um link da área do cliente encontra uma sessão de equipe, o login explica qual conta usar e preserva o destino. Após o acesso de cliente por senha ou código, a agenda é carregada com a nova sessão.
 Antecipação de grupo reserva claim durável antes do gateway; [migração e recuperação](ajustes-anotacoes-2026-11-09.md#recuperação).
 
 - Next.js 16.3.7 (App Router, saída `standalone`), React 19.2.8, TypeScript 5.
