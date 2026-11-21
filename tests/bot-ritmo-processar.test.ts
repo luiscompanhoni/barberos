@@ -33,10 +33,11 @@ beforeEach(() => {
   vi.stubEnv("WHATSAPP_ATENDIMENTO_IA_PAGA", "true");
   conversa = { id: "c1", telefone, estado: "BOT", recusaAutomaticas: false, ultimaEntradaEm: new Date(), sessao: null, sessaoInicioEm: null };
   const vistos = new Set<string>();
-  m.entrada.mockImplementation(async (e: { wamid?: string; optOut: boolean }) => {
+  m.entrada.mockImplementation(async (e: { wamid?: string; optOut: boolean; timestampCloud?: number }) => {
     if (e.wamid && vistos.has(e.wamid)) return null;
     if (e.wamid) vistos.add(e.wamid);
-    conversa.ultimaEntradaEm = new Date();
+    const enviadaEm = new Date(e.timestampCloud ?? Date.now());
+    if (enviadaEm >= conversa.ultimaEntradaEm) conversa.ultimaEntradaEm = enviadaEm;
     if (e.optOut) conversa.recusaAutomaticas = true;
     return { ...conversa };
   });
@@ -193,6 +194,19 @@ describe("cadência cancelável do atendimento", () => {
     const turno = receberMensagem(recebida()); await vi.advanceTimersByTimeAsync(2000); await turno;
     expect(m.enviar).toHaveBeenCalledTimes(1);
     expect(conversa.sessao).toEqual([{ role: "user", content: "pedido" }]);
+  });
+
+  it("um webhook Cloud fora de ordem não interrompe o turno mais recente", async () => {
+    m.provedor.mockReturnValue("cloud");
+    const agora = Date.now();
+    const turno = receberMensagem({ ...recebida(), timestampCloud: agora });
+    await vi.advanceTimersByTimeAsync(1000);
+    const atrasado = receberMensagem({ ...recebida("atrasado", "Oi"), timestampCloud: agora - 60_000 });
+    await vi.advanceTimersByTimeAsync(21_500);
+    await Promise.all([turno, atrasado]);
+    expect(m.entrada).toHaveBeenCalledTimes(2);
+    expect(m.modelo).toHaveBeenCalledOnce();
+    expect(m.enviar).toHaveBeenCalledExactlyOnceWith("c1", trintaPalavras, "BOT", { digitandoMs: 0, respostaAtendimento: true });
   });
 
   it.each(["evolution", "cloud"])("lote %s registra pedido e PARAR sem aguardar a resposta antiga", async (provedor) => {

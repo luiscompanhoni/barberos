@@ -1,5 +1,6 @@
 import { Prisma, type AutorMensagem } from "@prisma/client";
 import { db } from "@/lib/db";
+import { naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { dentroJanela24h, enviarTemplate, enviarTexto, enviarTextoLoteAutorizado, temJanela24h, type TemplateWhatsApp } from "./canal";
 import { instanteDaEntradaCloud } from "./horario-entrada";
@@ -57,6 +58,16 @@ export async function registrarEntrada(p: { telefone: string; waId?: string; nom
   }
   publicar({ tipo: "conversa", conversaId: conversa.id });
   return db.conversa.findUniqueOrThrow({ where: { id: conversa.id } });
+}
+
+/** A mudança de responsável espera o envio automático em curso para este telefone. */
+export function comPreferenciaDaConversa<T>(id: string, executar: (tx: Prisma.TransactionClient) => Promise<T>) {
+  return db.$transaction(async tx => {
+    const conversa = await tx.conversa.findUnique({ where: { id }, select: { telefone: true } });
+    if (!conversa) throw naoEncontrado("Conversa");
+    await travarPreferencia(tx, conversa.telefone);
+    return executar(tx);
+  }, { timeout: 60_000 });
 }
 
 /** A caixa da equipe recebe a entrada mesmo quando o transporte está bloqueado. */

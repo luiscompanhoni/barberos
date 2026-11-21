@@ -292,6 +292,29 @@ describe.skipIf(!habilitado)("jornada da roleta com PostgreSQL e WhatsApp simula
     expect((await lerJornada(jogadaId)).semContinuidadeEm).toEqual(new Date(agora));
   });
 
+  it("um serviço adicional não consome o agradecimento do horário da roleta", async () => {
+    const c = await cliente();
+    const jogadaId = await girar(c.id);
+    const agora = Date.now();
+    const { agendamento: a, ator } = await prepararAgendamento(c.id, new Date(agora + HORA));
+    const horario = await alterarStatus(a.id, "CONCLUIDO", ator);
+    await db.agendamento.create({ data: {
+      clienteId: c.id, barbeiroId: a.barbeiroId, servicoId: a.servicoId, adicionalDeId: a.id,
+      inicio: new Date(agora - 2 * HORA), fim: new Date(agora - HORA), status: "CONCLUIDO", origem: "PAINEL", precoCentavos: 0,
+    } });
+    vi.stubEnv("WHATSAPP_ROLETA_ACOMPANHAMENTO_ATIVO", "true");
+    await db.configuracao.update({ where: { id: 1 }, data: { posAtendimento: true } });
+    try {
+      const opcoes = { clienteIds: [c.id] };
+      expect((await rodarAutomacoes(+horario.atualizadoEm + 10 * 60_000, opcoes)).pos).toBe(0);
+      expect((await rodarAutomacoes(+horario.atualizadoEm + HORA, opcoes)).pos).toBe(1);
+      expect((await lerJornada(jogadaId)).posEnviadoEm).toBeInstanceOf(Date);
+      expect(await falas(c.telefone)).toEqual([POS_ROLETA]);
+    } finally {
+      await db.configuracao.update({ where: { id: 1 }, data: { posAtendimento: false } });
+    }
+  });
+
   it("não manda novo agradecimento se o mesmo corte já teve pós-atendimento", async () => {
     const c = await cliente();
     const jogadaId = await girar(c.id);

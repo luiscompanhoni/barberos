@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { naoEncontrado, rota } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
 import { corpo } from "@/lib/validacao";
+import { comPreferenciaDaConversa } from "@/lib/whatsapp/conversas";
 
 /** Mensagens da conversa (e marca como lida). */
 export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/conversas/[id]">) => {
@@ -28,13 +29,13 @@ export const PATCH = rota(async (req: Request, ctx: RouteContext<"/api/conversas
   const s = await exigirSessao(BALCAO);
   const { id } = await ctx.params;
   const { estado } = await corpo(req, z.object({ estado: z.enum(["BOT", "HUMANO"]) }));
-  await db.$transaction([
+  await comPreferenciaDaConversa(id, async tx => {
     // Ao devolver para o bot, ele comeca uma sessao nova (nao viu o que a equipe falou).
-    db.conversa.update({ where: { id }, data: { estado, ...(estado === "BOT" ? { sessao: [] } : {}) } }),
-    db.mensagem.create({
+    await tx.conversa.update({ where: { id }, data: { estado, ...(estado === "BOT" ? { sessao: [] } : {}) } });
+    await tx.mensagem.create({
       data: { conversaId: id, autor: "NOTA", texto: estado === "HUMANO" ? `${s.nome} assumiu a conversa.` : `${s.nome} devolveu a conversa para o bot.` },
-    }),
-  ]);
+    });
+  });
   publicar({ tipo: "conversa", conversaId: id });
   return NextResponse.json({ ok: true });
 });

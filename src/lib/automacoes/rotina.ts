@@ -97,7 +97,7 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   if (cfg.posAtendimento) {
     const feitos = await db.agendamento.findMany({
       where: { status: "CONCLUIDO", fim: { gt: new Date(agora - 12 * 60 * MIN), lt: new Date(agora - 30 * MIN) }, cliente: { aceitaMensagens: true },
-        ...(acompanhamentoRoletaAtivo() ? { jornadaRoleta: null } : {}), ...so },
+        ...(acompanhamentoRoletaAtivo() ? { jornadaRoleta: null, OR: [{ adicionalDeId: null }, { adicionalDe: { jornadaRoleta: null } }] } : {}), ...so },
       include: { cliente: true },
     });
     // Um por cliente por dia (corte + barba seguidos = uma mensagem).
@@ -107,7 +107,7 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
       vistos.add(a.clienteId);
       const texto = TEXTOS.POS_ATENDIMENTO({ nome: a.cliente.nome, link: cfg.linkAvaliacao });
       const chave = `${a.clienteId}:${new Date(agora).toISOString().slice(0, 10)}`;
-      if (await enviar({ tipo: "POS_ATENDIMENTO", chave, clienteId: a.clienteId, agendamentoId: a.id, telefone: a.cliente.telefone, texto })) cont.pos++;
+      if (await enviar({ tipo: "POS_ATENDIMENTO", chave, clienteId: a.clienteId, agendamentoId: a.adicionalDeId ?? a.id, telefone: a.cliente.telefone, texto })) cont.pos++;
     }
   }
 

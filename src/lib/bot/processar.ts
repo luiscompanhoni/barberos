@@ -17,7 +17,7 @@ import { publicar } from "@/lib/eventos";
 import { configuracao } from "@/lib/agenda/carregar";
 import { encaminharEntradaBloqueada, enviarNaConversa, registrarEntrada } from "@/lib/whatsapp/conversas";
 import { dentroJanela24h, provedorWhatsApp } from "@/lib/whatsapp/canal";
-import { instanteDaEntradaCloud } from "@/lib/whatsapp/horario-entrada";
+import { entradaCloudSuperada, instanteDaEntradaCloud } from "@/lib/whatsapp/horario-entrada";
 import { indicarDigitacaoEvolution } from "@/lib/whatsapp/evolution";
 import { telefoneCanonico } from "@/lib/whatsapp/webhook";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
@@ -55,6 +55,7 @@ export function receberMensagem(e: Entrada, opts: { modelo?: Modelo } = {}) {
     const texto = e.texto ?? "[mensagem que não e texto: áudio, foto, figurinha ou documento]";
     const conversa = await registrarEntrada({ ...e, texto: registroSeguroEntrevista(texto), optOut });
     if (!conversa) return null; // Duplicata não interrompe a resposta original.
+    if (!optOut && e.timestampCloud !== undefined && entradaCloudSuperada(e.timestampCloud, conversa.ultimaEntradaEm)) return null;
     entradasAtuais.get(e.telefone)?.abort();
     const controle = new AbortController();
     entradasAtuais.set(e.telefone, controle);

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { publicar } from "@/lib/eventos";
-import { obterConversa } from "./conversas";
+import { comPreferenciaDaConversa, obterConversa } from "./conversas";
 import { telefoneCanonico } from "./webhook";
 
 /**
@@ -92,11 +92,16 @@ export async function espelhar(mensagens: MensagemEspelhada[], opts: { equipeAss
   }
   for (const [telefone, lista] of porTelefone) {
     const conversa = await obterConversa(telefone, { waId: lista[0].waId });
-    await db.mensagem.createMany({
-      data: lista.map((m) => ({ conversaId: conversa.id, autor: m.daEmpresa ? "EQUIPE" : "CLIENTE", texto: m.texto, wamid: m.wamid, criadoEm: m.quando })),
-      skipDuplicates: true,
-    });
-    if (opts.equipeAssume && conversa.estado !== "HUMANO") await db.conversa.update({ where: { id: conversa.id }, data: { estado: "HUMANO" } });
+    const data = lista.map(m => ({ conversaId: conversa.id, autor: m.daEmpresa ? "EQUIPE" as const : "CLIENTE" as const,
+      texto: m.texto, wamid: m.wamid, criadoEm: m.quando }));
+    if (opts.equipeAssume) {
+      await comPreferenciaDaConversa(conversa.id, async tx => {
+        await tx.conversa.updateMany({ where: { id: conversa.id, estado: "BOT" }, data: { estado: "HUMANO" } });
+        await tx.mensagem.createMany({ data, skipDuplicates: true });
+      });
+    } else {
+      await db.mensagem.createMany({ data, skipDuplicates: true });
+    }
     publicar({ tipo: "conversa", conversaId: conversa.id });
   }
 }

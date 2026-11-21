@@ -10,7 +10,7 @@ vi.mock("@/lib/db", () => ({ db: {
 } }));
 vi.mock("@/lib/eventos", () => ({ publicar: vi.fn() }));
 
-import { registrarEntrada } from "@/lib/whatsapp/conversas";
+import { comPreferenciaDaConversa, registrarEntrada } from "@/lib/whatsapp/conversas";
 
 describe("registro transacional do pedido para parar", () => {
   beforeEach(() => {
@@ -23,7 +23,7 @@ describe("registro transacional do pedido para parar", () => {
     m.transacao.mockImplementation(async (fn: unknown) => typeof fn === "function" ? (fn as (tx: unknown) => unknown)({
       $executeRaw: m.trava,
       cliente: { updateMany: m.optOut },
-      conversa: { update: m.atualizacao, updateMany: m.conversaOptOut },
+      conversa: { findUnique: m.busca, update: m.atualizacao, updateMany: m.conversaOptOut },
       mensagem: { create: m.entrada },
     }) : []);
     m.busca.mockResolvedValue({ id: "conversa" });
@@ -52,6 +52,14 @@ describe("registro transacional do pedido para parar", () => {
     await registrarEntrada({ telefone: "5547999990000", texto: "Oi", timestampCloud: 0 });
     expect(m.entrada).toHaveBeenCalledOnce();
     expect(m.conversaOptOut).not.toHaveBeenCalled();
+  });
+
+  it("aguarda a mesma trava antes de mudar quem atende a conversa", async () => {
+    m.busca.mockResolvedValueOnce({ telefone: "5547999990000" });
+    const mudar = vi.fn(async () => true);
+    expect(await comPreferenciaDaConversa("conversa", mudar)).toBe(true);
+    expect(mudar).toHaveBeenCalledOnce();
+    expect(m.trava.mock.invocationCallOrder[0]).toBeLessThan(mudar.mock.invocationCallOrder[0]);
   });
 
   it("não altera a preferência para uma mensagem comum", async () => {
