@@ -1,9 +1,25 @@
 import type { Conversa } from "@prisma/client";
 import { db } from "@/lib/db";
 import { urlSite } from "@/lib/dominios";
+import type { registrarEntradaJornadaRoleta } from "@/lib/jogos/jornada-roleta";
 import { dentroJanela24h, temJanela24h } from "@/lib/whatsapp/canal";
 import { enviarNaConversa } from "@/lib/whatsapp/conversas";
 import { classificarRespostaAbertura, RECUSA_CONVITE } from "./convite-app-textos";
+
+export async function tratarRespostaRoleta(
+  conversa: Pick<Conversa, "id" | "clienteId" | "ultimaEntradaEm">,
+  resposta: Awaited<ReturnType<typeof registrarEntradaJornadaRoleta>>,
+  texto: string | null,
+  aindaComBot: () => Promise<boolean>,
+  encaminhar: (nota: string) => Promise<void>,
+) {
+  if (!resposta) return false;
+  if (resposta.tipo === "UPSELL") await encaminhar(NOTA_UPSELL);
+  else if (!texto || !await responderNudgeRoleta(conversa, resposta.jogadaId, texto, aindaComBot)) {
+    await encaminhar("Respondeu à retomada da roleta. Confere o prêmio e ajuda a marcar por aqui.");
+  }
+  return true;
+}
 
 export const NOTA_UPSELL = "Quer deixar o próximo corte marcado depois da roleta.";
 

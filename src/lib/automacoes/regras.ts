@@ -98,6 +98,11 @@ export function fazAniversario(nascimento: string, hoje: string) {
 
 /** Texto do cliente pedindo para parar as mensagens automaticas. */
 export function pediuParar(texto: string) {
-  const normal = texto.normalize("NFD").replace(/\p{M}/gu, "").trim().replace(/\s+/g, " ");
-  return /^(?:parar|pare|sair|stop|cancelar mensagens|nao quero(?: mais(?: receber)?|(?: mais)? (?:receber )?(?:mensagens?|recados|novidades)))(?:[.!? ]*)$/i.test(normal);
+  const normal = texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim().replace(/\s+/g, " ")
+    .replace(/^por favor[, ]+/, "").replace(/[.!? ]+$/, "").replace(/[, ]+por favor$/, "");
+  const comando = /^(?:parar|pare|sair|stop|cancelar mensagens|quero sair da lista)$/;
+  const recusa = /^nao quero(?: mais(?: receber)?| (?:(?:mais )?receber |receber mais |mais )?(?:mensagens?|recados|novidades))$/;
+  const pedirSilencio = /^(?:(?:pare|para) de (?:me )?(?:mandar|enviar)|nao (?:me )?(?:manda|mande|envia|envie) mais)(?: (?:mensagens?|recados|novidades))?$/;
+  const sairDaLista = /^(?:(?:tira|tire|retira|retire|remova) (?:meu numero|meu contato)|me (?:tira|tire|retira|retire|remova)) da lista$/;
+  return comando.test(normal) || recusa.test(normal) || pedirSilencio.test(normal) || sairDaLista.test(normal);
 }

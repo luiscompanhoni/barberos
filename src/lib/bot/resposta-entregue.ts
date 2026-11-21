@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { db } from "@/lib/db";
 import { historicoSemImagens } from "./multimodal";
 
 export function historicoEntregue(historico: Anthropic.Beta.BetaMessageParam[], resposta: string, enviadas: string[]) {
@@ -17,4 +18,10 @@ export async function esperarBolha(atraso: number, sinal: AbortSignal) {
     const timer = setTimeout(() => { sinal.removeEventListener("abort", cancelar); resolve(!sinal.aborted); }, atraso);
     sinal.addEventListener("abort", cancelar, { once: true });
   });
+}
+
+/** Hora da mensagem anterior a atual (para saber se a sessao "esfriou"). */
+export async function ultimaAtividade(conversaId: string) {
+  const ultimas = await db.mensagem.findMany({ where: { conversaId }, orderBy: { criadoEm: "desc" }, take: 2, select: { criadoEm: true } });
+  return (ultimas[1] ?? ultimas[0])?.criadoEm.getTime() ?? 0;
 }

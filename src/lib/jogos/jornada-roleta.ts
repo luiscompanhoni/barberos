@@ -40,8 +40,9 @@ export async function vincularAgendamentoRoleta(
     const j = await tx.jornadaRoleta.findUnique({ where: { jogadaId: premio.jogadaId } });
     if (!j?.ganhouEm || j.ganhouEm > a.criadoEm || j.compareceuEm) return;
     await tx.jornadaRoleta.updateMany({ where: { jogadaId: j.jogadaId, compareceuEm: null,
-      OR: [{ agendamentoId: null }, { agendamento: { status: { in: ["CANCELADO", "FALTOU"] } } }] },
-      data: { agendamentoId: a.id, agendouEm: j.agendouEm ?? a.criadoEm } });
+      OR: [{ agendamentoId: null }, { agendamento: { status: { in: ["CANCELADO", "FALTOU"] } } },
+        { agendamento: { premiosGanhos: { none: { jogadaId: j.jogadaId } } } }] },
+      data: { agendamentoId: a.id, agendouEm: a.criadoEm, lembreteEnviadoEm: null } });
     return;
   }
   const candidatas = await tx.jornadaRoleta.findMany({ where: {
@@ -60,6 +61,12 @@ export async function registrarComparecimentoRoleta(
   if (a.status === "CONCLUIDO") {
     await tx.jornadaRoleta.updateMany({ where: { agendamentoId: a.id, concluiuEm: null }, data: { concluiuEm: a.atualizadoEm } });
   }
+}
+
+export async function registrarEnvioRoleta(
+  agendamentoId: string, campo: "lembreteEnviadoEm" | "posEnviadoEm", agora: number, tx: Prisma.TransactionClient = db,
+) {
+  await tx.jornadaRoleta.updateMany({ where: { agendamentoId, [campo]: null }, data: { [campo]: new Date(agora) } });
 }
 
 const normalizar = (texto: string) => texto.trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "")

@@ -51,7 +51,8 @@ describe("campanhas: mensagem", () => {
     expect(montarMensagem("Responda PARAR para sair. {nome}", { nome: "Ana", barbearia: "B", link: "" })).toBe("Responda PARAR para sair. Ana");
     expect(montarMensagem("Vem ver a agenda. Para não receber mais, responda PARAR.", { nome: "Ana", barbearia: "B", link: "" })).toContain("é só responder SAIR.");
   });
-  it.each(["PARAR", "sair!", "não quero mais", "Nao quero mais receber mensagens"])("reconhece opt-out %s", texto => {
+  it.each(["PARAR", "sair!", "não quero mais", "Nao quero mais receber mensagens", "Pare de mandar mensagens",
+    "Não me manda mais recados, por favor!", "Tira meu número da lista.", "Por favor, não quero receber mais mensagens."])("reconhece opt-out %s", texto => {
     expect(pediuParar(texto)).toBe(true);
   });
   it.each(["Não quero mais esse horário", "Não quero agendar", "Posso sair às 14h?"])("não confunde outro assunto com opt-out: %s", texto => {

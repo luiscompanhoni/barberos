@@ -32,6 +32,15 @@ describe("atendimento sem IA paga após piloto", () => {
     expect(m.encaminhar).toHaveBeenCalledWith("conversa", expect.stringContaining("equipe da Black"));
     for (const fn of [m.piloto, m.cfg, m.update, m.enviar, m.modelo, m.entrevista]) expect(fn).not.toHaveBeenCalled();
   });
+  it("encaminha um webhook atrasado da Cloud sem tratar a entrada como janela nova", async () => {
+    const timestampCloud = Date.now() - 25 * 3_600_000;
+    m.entrada.mockResolvedValue({ id: "conversa", telefone, estado: "BOT", ultimaEntradaEm: new Date(timestampCloud) });
+    await receberMensagem({ telefone, texto: "Pode mandar!", timestampCloud });
+    expect(m.entrada).toHaveBeenCalledWith(expect.objectContaining({ timestampCloud }));
+    expect(m.encaminhar).toHaveBeenCalledOnce();
+    expect(m.piloto).not.toHaveBeenCalled();
+    expect(m.enviar).not.toHaveBeenCalled();
+  });
   it("encaminha à equipe com resposta de acolhimento sem chamar modelo ou entrevista", async () => {
     await receberMensagem({ telefone, texto: "oi" });
     expect(m.update).toHaveBeenCalledWith({ where: { id: "conversa" }, data: { estado: "HUMANO" } });

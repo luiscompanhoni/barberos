@@ -2,6 +2,7 @@ import { Prisma, type AutorMensagem } from "@prisma/client";
 import { db } from "@/lib/db";
 import { publicar } from "@/lib/eventos";
 import { dentroJanela24h, enviarTemplate, enviarTexto, enviarTextoLoteAutorizado, temJanela24h, type TemplateWhatsApp } from "./canal";
+import { instanteDaEntradaCloud } from "./horario-entrada";
 import { atualizarPreferencia, travarPreferencia } from "./preferencia";
 import { telefoneCanonico } from "./webhook";
 
@@ -23,22 +24,31 @@ export async function obterConversa(telefone: string, extra: { waId?: string; no
  * Guarda a mensagem do cliente. Retorna null se esse wamid ja foi processado
  * (o WhatsApp reenvia webhooks quando nao recebe 200 a tempo).
  */
-export async function registrarEntrada(p: { telefone: string; waId?: string; nomePerfil?: string | null; texto: string; wamid?: string; optOut?: boolean }) {
+export async function registrarEntrada(p: { telefone: string; waId?: string; nomePerfil?: string | null; texto: string; wamid?: string; optOut?: boolean; timestampCloud?: number }) {
   const conversa = await obterConversa(p.telefone, { waId: p.waId, nomePerfil: p.nomePerfil });
-  const ultimaEntradaEm = new Date(Date.now());
+  const viaCloud = p.timestampCloud !== undefined;
+  const ultimaEntradaEm = viaCloud ? instanteDaEntradaCloud(p.timestampCloud!) : new Date(Date.now());
+  const where = { id: conversa.id };
+  const atualizacoes = (tx: Pick<Prisma.TransactionClient, "conversa">) => [
+    tx.conversa.update({ where, data: { naoLidas: { increment: 1 }, ...(!viaCloud && ultimaEntradaEm ? { ultimaEntradaEm } : {}) } }),
+    ...(viaCloud && ultimaEntradaEm ? [tx.conversa.updateMany({
+      where: { ...where, OR: [{ ultimaEntradaEm: null }, { ultimaEntradaEm: { lt: ultimaEntradaEm } }] },
+      data: { ultimaEntradaEm },
+    })] : []),
+  ];
   try {
     if (p.optOut) {
       // O mesmo lock precede cadastro, recusa e reativação para não perder corridas.
       await db.$transaction(async tx => {
         await travarPreferencia(tx, p.telefone);
         await tx.mensagem.create({ data: { conversaId: conversa.id, autor: "CLIENTE", texto: p.texto, wamid: p.wamid } });
-        await tx.conversa.update({ where: { id: conversa.id }, data: { ultimaEntradaEm, naoLidas: { increment: 1 } } });
+        for (const atualizar of atualizacoes(tx)) await atualizar;
         await atualizarPreferencia(tx, p.telefone, false);
       });
     } else {
       await db.$transaction([
         db.mensagem.create({ data: { conversaId: conversa.id, autor: "CLIENTE", texto: p.texto, wamid: p.wamid } }),
-        db.conversa.update({ where: { id: conversa.id }, data: { ultimaEntradaEm, naoLidas: { increment: 1 } } }),
+        ...atualizacoes(db),
       ]);
     }
   } catch (e) {
@@ -98,14 +108,7 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
   return { ok: !erro, erro, mensagemId: m.id, wamid };
 }
 
-/**
- * Aviso iniciado pela barbearia (remarcacao, cancelamento...). Dentro da janela
- * de 24h vai como texto; fora dela o WhatsApp exige um template aprovado.
- */
-/**
- * Aviso do sistema. Fora da janela de 24 h vai pelo modelo `Olá {{1}}! {{2}}`: campanhas podem usar o modelo
- * de marketing (`WHATSAPP_TEMPLATE_CAMPANHA`), pois a Meta não aceita divulgação no modelo de utilidade.
- */
+/** Avisos da barbearia fora da janela de 24 h podem usar o modelo aprovado para sua finalidade. */
 export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string; apenasTextoLivre?: boolean; pararSeHumano?: boolean; campanha?: boolean; pagamentoConfirmado?: true } = {}) {
   const conversa = await obterConversa(telefone);
   const cliente = conversa.clienteId

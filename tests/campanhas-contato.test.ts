@@ -1,18 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Conversa } from "@prisma/client";
 const m = vi.hoisted(() => ({
   campanhas: vi.fn(), campanha: vi.fn(), fila: vi.fn(), count: vi.fn(), reservar: vi.fn(), salvar: vi.fn(),
   marcou: vi.fn(), visita: vi.fn(), enviar: vi.fn(), contato: vi.fn(), recente: vi.fn(), conversa: vi.fn(), canal: vi.fn(),
+  preferencia: vi.fn(), ultimaSaida: vi.fn(), envioAtual: vi.fn(),
 }));
 vi.mock("@/lib/db", () => {
   const tx = { $queryRaw: vi.fn(), $executeRaw: vi.fn(), cliente: { findUnique: m.contato },
     campanha: { findMany: m.campanhas, findUnique: m.campanha },
-    campanhaEnvio: { findMany: m.fila, findFirst: m.recente, count: m.count, updateMany: m.reservar, update: m.salvar },
+    campanhaEnvio: { findMany: m.fila, findFirst: m.recente, findUnique: m.envioAtual, count: m.count, updateMany: m.reservar, update: m.salvar },
+    mensagem: { findFirst: m.ultimaSaida },
     agendamento: { count: m.marcou, aggregate: m.visita } };
   return { db: { ...tx, $transaction: (fn: (p: typeof tx) => unknown) => fn(tx) } };
 });
 vi.mock("@/lib/whatsapp/piloto-regras", () => ({ recursoPiloto: () => false }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: async () => ({ fuso: "America/Sao_Paulo", nomeBarbearia: "Black" }) }));
 vi.mock("@/lib/whatsapp/conversas", () => ({ enviarNaConversa: m.enviar, obterConversa: m.conversa }));
+vi.mock("@/lib/whatsapp/preferencia", () => ({ travarPreferencia: m.preferencia }));
 vi.mock("@/lib/whatsapp/canal", async original => ({
   ...await original<typeof import("@/lib/whatsapp/canal")>(),
   temJanela24h: () => m.canal() === "cloud",
@@ -22,8 +26,10 @@ vi.mock("node:timers/promises", () => ({ setTimeout: vi.fn() }));
 vi.mock("@/lib/jogos/motor", () => ({ noAr: (j: { ativo: boolean }) => j.ativo, premiosExibiveis: async (lista: unknown[]) => lista }));
 vi.mock("@/lib/dominios", () => ({ urlSite: () => "https://cliente.example.test" }));
 import { processarCampanhas } from "@/lib/campanhas/servico";
+import { continuarCampanha } from "@/lib/campanhas/continuacao";
 const agora = new Date("2026-11-19T14:00:00Z");
-const cliente = { nome: "Teste Sobrenome", telefone: "telefone-ficticio", aceitaMensagens: true, excluidoEm: null, conversa: { estado: "BOT", recusaAutomaticas: false }, agendamentos: [] };
+const conversa = { id: "conversa", telefone: "telefone-ficticio", clienteId: "proprio", ultimaEntradaEm: agora, estado: "BOT", recusaAutomaticas: false } as Conversa;
+const cliente = { nome: "Teste Sobrenome", telefone: conversa.telefone, aceitaMensagens: true, excluidoEm: null, conversa, agendamentos: [] };
 const envio = { id: "e", campanhaId: "c", clienteId: "proprio", token: "teste" };
 const campanha = { id: "c", limiteDiario: 5, status: "ATIVA", mensagem: "Oi {nome}, {link}", jogo: null };
 beforeEach(() => {
@@ -74,12 +80,27 @@ describe("campanha reavalia o contato antes de despachar", () => {
   });
   it("opt-out depois do primeiro balão interrompe a abertura", async () => {
     m.enviar.mockImplementationOnce(async () => {
+      expect(m.preferencia).toHaveBeenCalledExactlyOnceWith(expect.anything(), cliente.telefone);
       m.contato.mockResolvedValue({ ...cliente, aceitaMensagens: false });
       return { ok: true, mensagemId: "primeira" };
     });
     expect(await processarCampanhas()).toBe(1);
     expect(m.enviar.mock.calls.map(c => c[1])).toEqual(["Fala, Teste!"]);
+    expect(m.preferencia).toHaveBeenCalledTimes(2);
     expect(m.salvar.mock.lastCall?.[0].data.status).toBe("FALHOU");
+  });
+  it("relê o SAIR sob trava antes de transmitir uma oferta que já foi reservada", async () => {
+    const atual = { ...envio, cliente, campanha, status: "ENVIADO", mensagemId: "abertura", ofertaTexto: "Oferta: /c/r/teste", respostaEm: null };
+    m.ultimaSaida.mockResolvedValue({ id: "abertura" });
+    m.recente.mockResolvedValue(envio);
+    m.envioAtual.mockResolvedValue(atual);
+    m.reservar.mockImplementationOnce(async () => {
+      m.envioAtual.mockResolvedValue({ ...atual, respostaEm: agora, cliente: { ...cliente, aceitaMensagens: false } });
+      return { count: 1 };
+    });
+    expect(await continuarCampanha(conversa, "Pode mandar!", async () => true)).toBe("equipe");
+    expect(m.preferencia).toHaveBeenCalledTimes(2);
+    expect(m.enviar).not.toHaveBeenCalled();
   });
   it("não repete envio se outra rodada já reservou a mesma linha", async () => {
     m.reservar.mockResolvedValue({ count: 0 });

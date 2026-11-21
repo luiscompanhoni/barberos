@@ -5,7 +5,7 @@ const m = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ db: {
   cliente: { findUnique: m.cliente, updateMany: m.optOut },
-  conversa: { upsert: m.conversa, update: m.atualizacao, findUniqueOrThrow: m.busca },
+  conversa: { upsert: m.conversa, update: m.atualizacao, updateMany: m.conversaOptOut, findUniqueOrThrow: m.busca },
   mensagem: { create: m.entrada }, $transaction: m.transacao,
 } }));
 vi.mock("@/lib/eventos", () => ({ publicar: vi.fn() }));
@@ -35,6 +35,23 @@ describe("registro transacional do pedido para parar", () => {
     expect(m.conversaOptOut).toHaveBeenCalledWith({ where: { telefone: "5547999990000" }, data: { recusaAutomaticas: true } });
     expect(m.trava.mock.invocationCallOrder[0]).toBeLessThan(m.entrada.mock.invocationCallOrder[0]);
     expect(m.entrada).toHaveBeenCalledTimes(1); expect(m.atualizacao).toHaveBeenCalledTimes(1);
+  });
+
+  it("guarda o horário do envio Cloud sem reduzir a janela que já estiver aberta", async () => {
+    const timestampCloud = Date.now() - 25 * 3_600_000;
+    const ultimaEntradaEm = new Date(timestampCloud);
+    await registrarEntrada({ telefone: "5547999990000", texto: "Oi", timestampCloud });
+    expect(m.atualizacao).toHaveBeenCalledWith({ where: { id: "conversa" }, data: { naoLidas: { increment: 1 } } });
+    expect(m.conversaOptOut).toHaveBeenCalledWith({
+      where: { id: "conversa", OR: [{ ultimaEntradaEm: null }, { ultimaEntradaEm: { lt: ultimaEntradaEm } }] },
+      data: { ultimaEntradaEm },
+    });
+  });
+
+  it("guarda a mensagem sem abrir janela se o horário da Cloud for inválido", async () => {
+    await registrarEntrada({ telefone: "5547999990000", texto: "Oi", timestampCloud: 0 });
+    expect(m.entrada).toHaveBeenCalledOnce();
+    expect(m.conversaOptOut).not.toHaveBeenCalled();
   });
 
   it("não altera a preferência para uma mensagem comum", async () => {

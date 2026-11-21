@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ encaminhar: vi.fn(), entrada: vi.fn(), enviar: vi.fn(), modelo: vi.fn(), midia: vi.fn(), cfg: vi.fn(), piloto: vi.fn(), sessao: vi.fn(), estado: vi.fn(), update: vi.fn(), nota: vi.fn(), mensagens: vi.fn(), cliente: vi.fn(), alterarMensagem: vi.fn(), preferencia: vi.fn() }));
+const roleta = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/jogos/jornada-roleta", () => ({ registrarEntradaJornadaRoleta: roleta }));
 vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: m.entrada, enviarNaConversa: m.enviar, encaminharEntradaBloqueada: m.encaminhar }));
 vi.mock("@/lib/bot/agente", () => ({ executarTurno: m.modelo }));
 vi.mock("@/lib/bot/multimodal", async (original) => ({ ...await original<typeof import("@/lib/bot/multimodal")>(), prepararMidia: m.midia }));
@@ -24,6 +26,7 @@ vi.mock("@/lib/whatsapp/teste-equipe", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  roleta.mockResolvedValue(null);
   verificarEquipe.mockResolvedValue(false);
   vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_EQUIPE", "false");
   for (const flag of ["WHATSAPP_ENVIOS_BLOQUEADOS", "WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "WHATSAPP_ATENDIMENTO_APOS_PILOTO", "RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO"]) vi.stubEnv(flag, "false");
@@ -81,9 +84,20 @@ describe("gates da entrada multimodal", () => {
     expect(m.modelo).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled(); expect(m.update).not.toHaveBeenCalled();
   });
   it("pedido PARAR transcrito usa preferência e não o modelo", async () => {
+    roleta.mockResolvedValue({ tipo: "NUDGE", jogadaId: "jogada" });
     m.midia.mockResolvedValue({ texto: "PARAR", imagem: undefined });
     await receberMensagem({ ...entrada, midia: { ...entrada.midia, tipo: "audio" } });
     expect(m.preferencia).toHaveBeenCalledWith(expect.anything(), entrada.telefone, false);
+    expect(roleta).not.toHaveBeenCalled();
+    expect(m.encaminhar).not.toHaveBeenCalled();
+    expect(m.modelo).not.toHaveBeenCalled();
+  });
+  it("entrega à trilha o áudio transcrito somente após autorizar a interpretação", async () => {
+    roleta.mockResolvedValue({ tipo: "UPSELL", jogadaId: "jogada" });
+    m.midia.mockResolvedValue({ texto: "Pode marcar", imagem: undefined });
+    await receberMensagem({ ...entrada, midia: { ...entrada.midia, tipo: "audio" } });
+    expect(roleta).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "c1" }), "Pode marcar", false);
+    expect(m.encaminhar).toHaveBeenCalledWith("c1", expect.stringContaining("próximo corte"));
     expect(m.modelo).not.toHaveBeenCalled();
   });
   it("não manda aviso de transferência se a equipe já respondeu durante o turno", async () => {

@@ -1,3 +1,18 @@
+import type { Prisma } from "@prisma/client";
+import { db } from "@/lib/db";
+import { travarPreferencia } from "@/lib/whatsapp/preferencia";
+
+/** Pausa da campanha e recusa do titular devem confirmar antes ou depois da entrega em curso. */
+export function comPreferenciaCampanha<T>(
+  campanhaId: string, telefone: string, executar: (tx: Prisma.TransactionClient) => Promise<T>,
+) {
+  return db.$transaction(async tx => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`campanha:${campanhaId}`}))`;
+    await travarPreferencia(tx, telefone);
+    return executar(tx);
+  }, { maxWait: 10_000, timeout: 60_000 });
+}
+
 export function impedimentoCampanha(c: {
   aceitaMensagens: boolean;
   excluidoEm: Date | null;

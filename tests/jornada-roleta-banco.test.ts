@@ -236,6 +236,43 @@ describe.skipIf(!habilitado)("jornada da roleta com PostgreSQL e WhatsApp simula
     expect(await lerJornada(jogadaId)).toMatchObject({ agendamentoId: agendamento.id, agendouEm: expect.any(Date), semContinuidadeEm: null });
   });
 
+  it("atribui ao novo horário com prêmio quando o anterior ainda era só inferência", async () => {
+    const c = await cliente();
+    const jogadaId = await girar(c.id, "BRINDE");
+    const { agendamento: a } = await prepararAgendamento(c.id, new Date(Date.now() + HORA));
+    expect((await lerJornada(jogadaId)).agendamentoId).toBe(a.id);
+    const premio = await db.premioGanho.findFirstOrThrow({ where: { jogadaId } });
+    const { agendamento: b } = await prepararAgendamento(c.id, new Date(Date.now() + 2 * HORA), premio.id);
+    expect(await lerJornada(jogadaId)).toMatchObject({ agendamentoId: b.id, agendouEm: b.criadoEm });
+  });
+
+  it.each([false, true])("trilha desligada mede lembrete de rotina ou convite (convite=%s) e pós nativo", async convite => {
+    const c = await cliente(), agora = Date.now();
+    const jogadaId = await girar(c.id);
+    if (convite) {
+      vi.stubEnv("WHATSAPP_ATENDIMENTO_APOS_PILOTO", "true");
+      const conversa = await obterConversa(c.telefone);
+      const link = await db.mensagem.create({ data: {
+        conversaId: conversa.id, autor: "BOT", texto: "fixture", criadoEm: new Date(agora - 2 * HORA),
+      } });
+      await db.jornadaConviteApp.create({ data: { conversaId: conversa.id, clienteId: c.id, token: randomUUID(), linkId: link.id } });
+    }
+    const { agendamento: a, ator } = await prepararAgendamento(c.id, new Date(agora + HORA));
+    await db.agendamento.update({ where: { id: a.id }, data: { criadoEm: new Date(agora - HORA) } });
+    expect(await lembrarHorarios(agora, await configuracao(), [c.id], convite)).toBe(1);
+    expect((await lerJornada(jogadaId)).lembreteEnviadoEm).toBeInstanceOf(Date);
+    await alterarStatus(a.id, "CONCLUIDO", ator);
+    await db.configuracao.update({ where: { id: 1 }, data: { posAtendimento: true } });
+    try {
+      const rodada = await rodarAutomacoes(+a.fim + HORA, { clienteIds: [c.id] });
+      expect(rodada.pos).toBe(1);
+      expect(await lerJornada(jogadaId)).toMatchObject({ posEnviadoEm: expect.any(Date), nudgeEnviadoEm: null, upsellEnviadoEm: null });
+      expect(await falas(c.telefone)).toEqual([expect.stringContaining("*SIM*"), expect.stringContaining("Valeu pela visita")]);
+    } finally {
+      await db.configuracao.update({ where: { id: 1 }, data: { posAtendimento: false } });
+    }
+  });
+
   it("respeita atraso configurado e pedido que a equipe ainda está conferindo", async () => {
     const c = await cliente();
     const jogadaId = await girar(c.id);

@@ -59,6 +59,7 @@ export async function POST(req: Request) {
           nomePerfil: m.nomePerfil,
           texto: m.texto,
           wamid: m.wamid,
+          timestampCloud: m.timestamp,
           midia: m.midia,
         });
       } catch (e) {

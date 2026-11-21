@@ -10,7 +10,7 @@ import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
 import { travarPreferencia } from "@/lib/whatsapp/preferencia";
 import { testeEquipeAtivo } from "@/lib/whatsapp/teste-equipe";
 import { telefoneCanonico } from "@/lib/whatsapp/webhook";
-import { acompanhamentoRoletaAtivo, HORA } from "./jornada-roleta";
+import { acompanhamentoRoletaAtivo, HORA, registrarEnvioRoleta } from "./jornada-roleta";
 
 export type DestinoRoleta = { id: string; telefone: string };
 type Janela = { ultimaEntradaEm: Date | null } | null;
@@ -55,10 +55,6 @@ export async function notificarRoleta(telefone: string, texto: string, permiteMo
     ? r : { ...r, ok: false, erro: r.erro ?? "Canal não confirmou o envio." };
 }
 
-export async function registrarLembreteRoleta(agendamentoId: string, agora: number, tx: Prisma.TransactionClient = db) {
-  await tx.jornadaRoleta.updateMany({ where: { agendamentoId, lembreteEnviadoEm: null }, data: { lembreteEnviadoEm: new Date(agora) } });
-}
-
 export function enviarLembreteRoleta(envio: Envio & { agendamentoId: string }, cfg: Configuracao, agora: number, inicio: Date) {
   return naFila(envio.telefone, () => comContatoRoleta({ id: envio.clienteId, telefone: envio.telefone }, cfg, agora, true, async tx => {
     const vigente = await tx.agendamento.findFirst({ where: {
@@ -66,7 +62,7 @@ export function enviarLembreteRoleta(envio: Envio & { agendamentoId: string }, c
     }, select: { id: true } });
     if (!vigente || +inicio <= Date.now()) return false;
     if (!await enviarAutomacao(envio, () => notificarRoleta(envio.telefone, envio.texto, true))) return false;
-    await registrarLembreteRoleta(envio.agendamentoId, agora, tx);
+    await registrarEnvioRoleta(envio.agendamentoId, "lembreteEnviadoEm", agora, tx);
     return true;
   }));
 }

@@ -5,8 +5,8 @@ import { canalConviteAtivo } from "@/lib/convites/canal";
 import { enviarNaConversa } from "@/lib/whatsapp/conversas";
 import { temJanela24h, provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { naFila } from "@/lib/whatsapp/fila-conversa";
-import { acompanhamentoRoletaAtivo, lembreteVesperaRoleta } from "@/lib/jogos/jornada-roleta";
-import { enviarLembreteRoleta, registrarLembreteRoleta } from "@/lib/jogos/jornada-roleta-envios";
+import { acompanhamentoRoletaAtivo, lembreteVesperaRoleta, registrarEnvioRoleta } from "@/lib/jogos/jornada-roleta";
+import { enviarLembreteRoleta } from "@/lib/jogos/jornada-roleta-envios";
 import { enviarAutomacao as enviar } from "./enviar";
 import { horarioComercial, quandoFalar, lembreteDevido, TEXTOS } from "./regras";
 
@@ -55,7 +55,8 @@ export async function lembrarHorarios(agora: number, cfg: Configuracao, clienteI
         await db.jornadaConviteApp.updateMany({ where: { conversaId: c.id, parouEm: null }, data: {
           lembreteMensagemId: r.mensagemId, lembreteAgendamentoId: a.id, lembreteInicio: a.inicio, proximaEm: null,
         } });
-        if (roleta) await registrarLembreteRoleta(a.id, agora);
+        if (a.jornadaRoleta) await registrarEnvioRoleta(a.id, "lembreteEnviadoEm", agora)
+          .catch(() => console.error("[roleta] Falha ao medir lembrete confirmado."));
         return r;
       }))) total++;
     }

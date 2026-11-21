@@ -2,7 +2,7 @@ import { confirmarLembreteConvite } from "@/lib/convites/confirmar";
 import { enderecoDoConvite } from "@/lib/convites/link";
 import { continuarCampanha } from "@/lib/campanhas/continuacao";
 import { registrarEntradaJornadaRoleta } from "@/lib/jogos/jornada-roleta";
-import { NOTA_UPSELL, responderNudgeRoleta } from "./resposta-roleta";
+import { NOTA_UPSELL, tratarRespostaRoleta } from "./resposta-roleta";
 import { urlSite } from "@/lib/dominios";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { AVISO_TROCA_APP, continuacaoConviteApp, respostaAoConvite } from "./convite-app-textos";
@@ -16,14 +16,15 @@ import { db } from "@/lib/db";
 import { publicar } from "@/lib/eventos";
 import { configuracao } from "@/lib/agenda/carregar";
 import { encaminharEntradaBloqueada, enviarNaConversa, registrarEntrada } from "@/lib/whatsapp/conversas";
-import { provedorWhatsApp } from "@/lib/whatsapp/canal";
+import { dentroJanela24h, provedorWhatsApp } from "@/lib/whatsapp/canal";
+import { instanteDaEntradaCloud } from "@/lib/whatsapp/horario-entrada";
 import { indicarDigitacaoEvolution } from "@/lib/whatsapp/evolution";
 import { telefoneCanonico } from "@/lib/whatsapp/webhook";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { APRESENTACAO_REATIVACAO, pediuParar } from "@/lib/automacoes/regras";
 import { executarTurno, type Modelo } from "./agente";
 import { dividirEmBolhas, tempoDigitando } from "./bolhas";
-import { esperarBolha, historicoEntregue } from "./resposta-entregue";
+import { esperarBolha, historicoEntregue, ultimaAtividade } from "./resposta-entregue";
 import { contextoDaMensagem, promptSistema } from "./prompt";
 import { historicoSemImagens, prepararMidia, type ImagemBot } from "./multimodal";
 import type { MidiaRecebida } from "@/lib/whatsapp/midia-tipos";
@@ -43,7 +44,7 @@ const FERRAMENTAS_TESTE_REATIVACAO = new Set([
 const g = globalThis as unknown as { entradaBotAtual?: Map<string, AbortController> };
 const entradasAtuais = (g.entradaBotAtual ??= new Map());
 
-export type Entrada = { telefone: string; waId?: string; nomePerfil?: string | null; texto: string | null; wamid?: string; midia?: MidiaRecebida };
+export type Entrada = { telefone: string; waId?: string; nomePerfil?: string | null; texto: string | null; wamid?: string; midia?: MidiaRecebida; timestampCloud?: number };
 type ConversaRegistrada = NonNullable<Awaited<ReturnType<typeof registrarEntrada>>>;
 
 /** Mensagem que chegou (webhook ou simulador) -> registra, responde com o bot se for o caso. */
@@ -80,8 +81,13 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
   const encaminhar = async (nota = "A equipe da Black pode continuar o atendimento por aqui.") => {
     if (!optOut && !sinal.aborted && conversa.estado === "BOT") await encaminharEntradaBloqueada(conversa.id, nota);
   };
+  if (e.timestampCloud !== undefined) {
+    const enviadaEm = instanteDaEntradaCloud(e.timestampCloud);
+    if (!dentroJanela24h(enviadaEm) || enviadaEm?.getTime() !== conversa.ultimaEntradaEm?.getTime()) return encaminhar();
+  }
   const quarentena = quarentenaRestauracao();
-  const roleta = !testeEquipe && !sinal.aborted && !quarentena ? await registrarEntradaJornadaRoleta(conversa, e.texto, optOut) : null;
+  const roleta = !testeEquipe && !sinal.aborted && !quarentena && e.midia?.tipo !== "audio"
+    ? await registrarEntradaJornadaRoleta(conversa, e.texto, optOut) : null;
   if ((quarentena || testeEquipeAtivo() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") && !testeEquipe) {
     return encaminhar(roleta?.tipo === "UPSELL" ? NOTA_UPSELL : undefined);
   }
@@ -121,11 +127,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
   const cfg = cfgEntrevista ?? await configuracao();
   if (!cfg.botAtivo && !testeIndividual) return encaminhar();
   if (conversa.estado === "HUMANO") return;
-  if (roleta?.tipo === "UPSELL") return encaminhar(NOTA_UPSELL);
-  if (roleta?.tipo === "NUDGE") {
-    if (e.texto && !e.midia && await responderNudgeRoleta(conversa, roleta.jogadaId, e.texto, aindaComBot)) return;
-    return encaminhar("Respondeu à retomada da roleta. Confere o prêmio e ajuda a marcar por aqui.");
-  }
+  if (await tratarRespostaRoleta(conversa, roleta, e.midia ? null : e.texto, aindaComBot, encaminhar)) return;
   if (!testeEquipe && !optOut && e.texto && !e.midia && !sinal.aborted) {
     const campanha = await continuarCampanha(conversa, e.texto, aindaComBot);
     if (campanha === "equipe") return encaminhar("Conferir a resposta à campanha e continuar o atendimento.");
@@ -189,6 +191,8 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     return;
   }
   if ((await estadoAtual())?.estado !== "BOT") return;
+  if (e.midia?.tipo === "audio" && !testeEquipe && !sinal.aborted && await tratarRespostaRoleta(conversa,
+    await registrarEntradaJornadaRoleta(conversa, textoCliente, false), textoCliente, aindaComBot, encaminhar)) return;
 
   const agora = Date.now();
   const sessaoValida =
@@ -334,12 +338,6 @@ async function avisosRecentes(conversaId: string, agora: number) {
     }
   }
   return avisos.slice(0, 3).reverse();
-}
-
-/** Hora da mensagem anterior a atual (para saber se a sessao "esfriou"). */
-async function ultimaAtividade(conversaId: string) {
-  const ultimas = await db.mensagem.findMany({ where: { conversaId }, orderBy: { criadoEm: "desc" }, take: 2, select: { criadoEm: true } });
-  return (ultimas[1] ?? ultimas[0])?.criadoEm.getTime() ?? 0;
 }
 
 async function passarParaEquipe(conversaId: string, motivo: string) {
