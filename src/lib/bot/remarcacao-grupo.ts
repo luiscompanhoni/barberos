@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { CAMINHO_MEUS_HORARIOS } from "@/lib/auth/destino";
 import { urlSite } from "@/lib/dominios";
 import { checarConfirmacaoAutomatica } from "@/lib/agenda/transicao";
 import type { ResultadoFerramenta } from "./ferramentas";
@@ -12,5 +13,5 @@ export async function orientarRemarcacaoGrupo(clienteId: string, agendamentoId: 
   if (!grupo) return null;
   // Durante a transição, mantém o encaminhamento humano já utilizado pelo bot.
   checarConfirmacaoAutomatica(cfg);
-  return { texto: `Esse horário reúne vários serviços. Para conferir o valor total e confirmar a mudança de todos juntos, abra ${urlSite()}/c e toque em Remarcar no seu horário. O agendamento atual foi mantido. Se precisar, posso chamar a equipe.`, erro: true };
+  return { texto: `Esse horário reúne vários serviços. Para conferir o valor total e confirmar a mudança de todos juntos, abra ${urlSite()}${CAMINHO_MEUS_HORARIOS} e toque em Remarcar no seu horário. O agendamento atual foi mantido. Se precisar, posso chamar a equipe.`, erro: true };
 }

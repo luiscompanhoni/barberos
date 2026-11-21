@@ -1,3 +1,5 @@
+export const CAMINHO_MEUS_HORARIOS = "/c?aba=horarios";
+
 /** Retorno do login aceita somente um caminho local, inclusive após normalização da URL. */
 export function destinoAposLogin(voltar: string, padrao: string) {
   const invalido = (v: string) => !v.startsWith("/") || v.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(v);
@@ -18,6 +20,6 @@ export function destinoDoPerfil(papel: string, voltar: string) {
   const path = destino.split(/[?#]/)[0];
   const privado = path === "/c" || path.startsWith("/c/");
   if (path === "/" || path === "/entrar" || path === "/c/entrar" || path.startsWith("/api/") || privado !== cliente) return cliente ? "/c/jogos/roleta" : padrao;
-  if (cliente && path === "/c") return "/c/jogos/roleta";
+  if (cliente && path === "/c" && destino !== CAMINHO_MEUS_HORARIOS) return "/c/jogos/roleta";
   return destino;
 }

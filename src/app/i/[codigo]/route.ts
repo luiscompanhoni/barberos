@@ -9,7 +9,7 @@ import { cookieSeguro, urlSite } from "@/lib/dominios";
 export async function GET(_req: Request, ctx: RouteContext<"/i/[codigo]">) {
   const { codigo } = await ctx.params;
   const dono = await donoDoCodigo(codigo);
-  const res = NextResponse.redirect(`${urlSite()}/`);
+  const res = NextResponse.redirect(`${urlSite()}/assine`);
   if (dono) {
     res.cookies.set(COOKIE_INDICACAO, codigo.toUpperCase(), {
       httpOnly: true, sameSite: "lax", secure: cookieSeguro(), path: "/", maxAge: 30 * 24 * 3600,

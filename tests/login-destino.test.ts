@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { destinoAposLogin } from "@/lib/auth/destino";
+import { destinoAposLogin, destinoDoPerfil } from "@/lib/auth/destino";
 
 describe("destino depois da autenticação", () => {
   it.each([
@@ -19,5 +19,15 @@ describe("destino depois da autenticação", () => {
   });
   it("retorno inválido da equipe usa o destino da equipe", () => {
     expect(destinoAposLogin("/\\outside.example.test", "/agenda")).toBe("/agenda");
+  });
+
+  it("mantém o destino explícito para remarcar depois do login", () => {
+    expect(destinoDoPerfil("CLIENTE", "/c?aba=horarios")).toBe("/c?aba=horarios");
+    expect(destinoDoPerfil("CLIENTE", "/c")).toBe("/c/jogos/roleta");
+    expect(destinoDoPerfil("BARBEIRO", "/c?aba=horarios")).toBe("/minha-agenda");
+  });
+
+  it("preserva o prêmio na agenda depois da verificação do telefone", () => {
+    expect(destinoDoPerfil("CLIENTE", "/c/agendar?premio=teste-local")).toBe("/c/agendar?premio=teste-local");
   });
 });

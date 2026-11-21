@@ -1,3 +1,4 @@
+import { envioComLinkLiberado } from "@/lib/campanhas/link-acesso";
 import { db } from "@/lib/db";
 import { urlSite } from "@/lib/dominios";
 
@@ -11,7 +12,7 @@ export async function presentesDaConversa(telefone: string, agora = Date.now()) 
       select: { rotulo: true, codigo: true, status: true, expiraEm: true, agendamentoId: true },
     }),
     db.campanhaEnvio.findFirst({
-      where: { clienteId: cliente.id, status: "ENVIADO", token: { not: null }, campanha: { status: "ATIVA", jogoId: { not: null } } },
+      where: { clienteId: cliente.id, ...envioComLinkLiberado, token: { not: null }, campanha: { status: "ATIVA", jogoId: { not: null } } },
       orderBy: { enviadoEm: "desc" },
       select: { token: true, jogadaId: true, enviadoEm: true, campanha: { select: { nome: true, jogo: { select: { ativo: true, inicioEm: true, fimEm: true, validadeDias: true } } } } },
     }),

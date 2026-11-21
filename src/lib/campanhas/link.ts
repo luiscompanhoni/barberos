@@ -7,6 +7,7 @@ import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { db } from "@/lib/db";
 import { noAr, paraCliente, premiosExibiveis } from "@/lib/jogos/motor";
 import { multiplicador } from "@/lib/jogos/regras";
+import { envioComLinkLiberado } from "./link-acesso";
 
 const DIA = 86_400_000;
 /** "Abriu o app" conta ate 14 dias depois de receber (mesma janela do "marcou depois" das campanhas). */
@@ -15,14 +16,14 @@ const JANELA_APP_DIAS = 14;
 /** Dados da pagina do link, ou null se o link nao existe (ou a mensagem ainda nao saiu). */
 export async function landingDaCampanha(token: string) {
   const envio = await db.campanhaEnvio.findUnique({
-    where: { token },
+    where: { token, ...envioComLinkLiberado },
     include: {
       campanha: { include: { jogo: { include: { premios: { where: { ativo: true }, orderBy: [{ ordem: "asc" }, { criadoEm: "asc" }] } } } } },
       cliente: { select: { id: true, nome: true } },
       jogada: { include: { premios: { include: { agendamento: true } } } },
     },
   });
-  if (!envio || envio.status !== "ENVIADO") return null;
+  if (!envio) return null;
   const cfg = await configuracao();
   const base = { nome: envio.cliente.nome.trim().split(/\s+/)[0] || "", barbearia: cfg.nomeBarbearia };
   const j = envio.campanha.jogo;
@@ -49,7 +50,7 @@ export type Landing = NonNullable<Awaited<ReturnType<typeof landingDaCampanha>>>
 
 /** A pagina abriu num navegador (chamado pelo JavaScript da pagina: robo de previa de link nao conta). */
 export async function registrarClique(token: string) {
-  await db.campanhaEnvio.updateMany({ where: { token, status: "ENVIADO", clicouEm: null }, data: { clicouEm: new Date() } });
+  await db.campanhaEnvio.updateMany({ where: { token, ...envioComLinkLiberado, clicouEm: null }, data: { clicouEm: new Date() } });
 }
 
 /** O cliente entrou na area do cliente: conta para as campanhas que ele recebeu nos ultimos 14 dias. */
