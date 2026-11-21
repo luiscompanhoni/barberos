@@ -528,6 +528,7 @@ model Cliente {
   premiosGanhos      PremioGanho[]
   linksPagamento     LinkPagamento[]
   enviosCampanha     CampanhaEnvio[]
+  jornadasRoleta     JornadaRoleta[]
 
   @@map("clientes")
 }
@@ -561,6 +562,7 @@ model Agendamento {
   antecipado        PagamentoAntecipado?
   /// Premios de jogo reservados para usar neste atendimento.
   premiosGanhos     PremioGanho[]
+  jornadaRoleta    JornadaRoleta?
   /// Servico adicional lancado na comanda (ex.: sobrancelha junto do corte): fica ligado ao atendimento principal,
   /// conta para comissao/plano/relatorios, mas nao ocupa a agenda (fora da regra de sobreposicao).
   adicionalDeId     String?
@@ -1519,10 +1521,41 @@ model Jogada {
   ficha         FichaJogo?
   premios       PremioGanho[]
   envioCampanha CampanhaEnvio?
+  jornadaRoleta JornadaRoleta?
 
   @@index([clienteId, criadoEm])
   @@index([jogoId, criadoEm])
   @@map("jogadas")
+}
+
+/// Marcos comprovados da jornada de uma jogada, independentes do opt-in para contato.
+model JornadaRoleta {
+  jogadaId                String       @id
+  jogada                  Jogada       @relation(fields: [jogadaId], references: [id], onDelete: Cascade)
+  clienteId               String
+  cliente                 Cliente      @relation(fields: [clienteId], references: [id], onDelete: Cascade)
+  agendamentoId           String?      @unique
+  agendamento             Agendamento? @relation(fields: [agendamentoId], references: [id], onDelete: SetNull)
+  girouEm                 DateTime     @db.Timestamptz(3)
+  ganhouEm                DateTime?    @db.Timestamptz(3)
+  semContinuidadeEm       DateTime?    @db.Timestamptz(3)
+  nudgeTentadoEm          DateTime?    @db.Timestamptz(3)
+  nudgeEnviadoEm          DateTime?    @db.Timestamptz(3)
+  respondeuEm             DateTime?    @db.Timestamptz(3)
+  agendouEm               DateTime?    @db.Timestamptz(3)
+  lembreteEnviadoEm       DateTime?    @db.Timestamptz(3)
+  compareceuEm            DateTime?    @db.Timestamptz(3)
+  concluiuEm              DateTime?    @db.Timestamptz(3)
+  posEnviadoEm            DateTime?    @db.Timestamptz(3)
+  upsellTentadoEm         DateTime?    @db.Timestamptz(3)
+  upsellEnviadoEm         DateTime?    @db.Timestamptz(3)
+  upsellAceitoEm          DateTime?    @db.Timestamptz(3)
+
+  @@index([girouEm])
+  @@index([clienteId, girouEm])
+  @@index([ganhouEm, nudgeTentadoEm])
+  @@index([concluiuEm])
+  @@map("jornadas_roleta")
 }
 
 /// Premio ganho num jogo: fica com o cliente ate ser usado, vencer ou ser cancelado com autorizacao.
@@ -2259,6 +2292,13 @@ model CampanhaEnvio {
   jogada      Jogada?             @relation(fields: [jogadaId], references: [id], onDelete: SetNull)
   /// Primeira vez que entrou na area do cliente depois de clicar.
   appAbertoEm DateTime?           @db.Timestamptz(3)
+  /// Aberturas anteriores ao protocolo em dois balões permanecem sem estes campos.
+  aberturaIniciadaEm      DateTime? @db.Timestamptz(3)
+  aberturaConcluidaEm     DateTime? @db.Timestamptz(3)
+  respostaEm              DateTime? @db.Timestamptz(3)
+  continuacaoReservadaEm  DateTime? @db.Timestamptz(3)
+  ofertaEnviadaEm         DateTime? @db.Timestamptz(3)
+  ofertaTexto             String?
 
   @@unique([campanhaId, clienteId])
   @@index([clienteId])
