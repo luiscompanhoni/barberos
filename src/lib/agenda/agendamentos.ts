@@ -16,6 +16,7 @@ import { avisarMudanca } from "@/lib/whatsapp/avisos";
 import { precificar } from "@/lib/assinaturas/agenda";
 import { resolverClienteAgenda, travarClienteAgenda } from "./cliente-identidade";
 import { reservarPremio } from "@/lib/jogos/premios";
+import { registrarComparecimentoRoleta, vincularAgendamentoRoleta } from "@/lib/jogos/jornada-roleta";
 import { carregarDia, configuracao, servicoDoBarbeiro, STATUS_ATIVOS } from "./carregar";
 import { contido, sobrepoe, type Intervalo } from "./disponibilidade";
 import { dataLocal, minParaHhmm, minutosLocal, recusaOutroDia, recusaRetroativo } from "./tempo";
@@ -76,7 +77,6 @@ export async function validarEncaixe(
     throw conflitoHorario();
   }
 }
-
 
 export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | null) {
   const cfg = await configuracao();
@@ -175,6 +175,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
       }
       if (input.precoEsperadoCentavos !== undefined && input.precoEsperadoCentavos !== totalCentavos) throw new ErroNegocio("O valor mudou. Consulte o horário e confirme novamente.", 409, "preco_alterado");
       if (input.premioId) await reservarPremio(tx, clienteId, input.premioId, criado);
+      await vincularAgendamentoRoleta(tx, criado, input.premioId);
       if (input.pedidoId) await concluirPedido(tx, input.pedidoId, ator!.usuarioId, agendamentoIds);
       await auditar(tx, ator?.usuarioId ?? input.titular?.usuarioId ?? null, "criar", "agendamento", criado.id, {
         inicio: criado.inicio.toISOString(),
@@ -194,7 +195,6 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
     throw e;
   }
 }
-
 
 export async function alterarAgendamento(id: string, mud: AlteracaoAgendamento, ator: Sessao) {
   const cfg = await configuracao();
@@ -329,6 +329,7 @@ export async function alterarStatus(id: string, status: StatusAgendamento, ator:
         await validarCadeira(tx, atual.cadeiraId, { inicio: +atual.inicio, fim: +atual.fim }, id, cfg.intervaloEntreClientes);
       }
       const novo = await tx.agendamento.update({ where: { id }, data: { status } });
+      await registrarComparecimentoRoleta(tx, novo);
       // Servico adicional da comanda acompanha o atendimento principal (concluiu, faltou, cancelou...).
       await tx.agendamento.updateMany({ where: { adicionalDeId: id, ocupaAgenda: false, status: { not: "CANCELADO" } }, data: { status } });
       await auditar(tx, ator.usuarioId, "status", "agendamento", id, { de: atual.status, para: status });

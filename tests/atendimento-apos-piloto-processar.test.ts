@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ entrada: vi.fn(), enviar: vi.fn(), modelo: vi.fn(), cfg: vi.fn(), piloto: vi.fn(), sessao: vi.fn(), update: vi.fn(), nota: vi.fn(), entrevista: vi.fn() }));
-vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: m.entrada, enviarNaConversa: m.enviar }));
+const m = vi.hoisted(() => ({ encaminhar: vi.fn(), entrada: vi.fn(), enviar: vi.fn(), modelo: vi.fn(), cfg: vi.fn(), piloto: vi.fn(), sessao: vi.fn(), update: vi.fn(), nota: vi.fn(), entrevista: vi.fn() }));
+vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: m.entrada, enviarNaConversa: m.enviar, encaminharEntradaBloqueada: m.encaminhar }));
 vi.mock("@/lib/bot/agente", () => ({ executarTurno: m.modelo }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: m.cfg }));
 vi.mock("@/lib/whatsapp/piloto", () => ({ estadoPiloto: m.piloto }));
@@ -25,10 +25,11 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("atendimento sem IA paga após piloto", () => {
-  it("bloqueio geral impede atendimento antes de consultar piloto ou modelo", async () => {
+  it("bloqueio geral encaminha sem consultar piloto ou modelo", async () => {
     vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "true");
     await receberMensagem({ telefone, texto: "oi" });
     expect(m.entrada).toHaveBeenCalled();
+    expect(m.encaminhar).toHaveBeenCalledWith("conversa", expect.stringContaining("equipe da Black"));
     for (const fn of [m.piloto, m.cfg, m.update, m.enviar, m.modelo, m.entrevista]) expect(fn).not.toHaveBeenCalled();
   });
   it("encaminha à equipe com resposta de acolhimento sem chamar modelo ou entrevista", async () => {

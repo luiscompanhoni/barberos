@@ -2,13 +2,11 @@
  * Campanhas: segmentos da base, vagas livres da agenda e tamanho do lote (regras puras, testadas em
  * tests/campanhas.test.ts).
  */
-import { diasDesde, temperaturaDoCliente } from "@/lib/clientes/segmentos";
+import { diasDesde, LIMITE_VISITA, ROTULO_TEMPERATURA, TEMPERATURAS, temperaturaDoCliente } from "@/lib/clientes/segmentos";
+import { SAIDA_MENSAGENS } from "@/lib/automacoes/regras";
 
 export const SEGMENTOS = [
-  { chave: "quente", rotulo: "Quente · até 30 dias" },
-  { chave: "morno", rotulo: "Morno · 31 a 90 dias" },
-  { chave: "frio", rotulo: "Frio · 91 a 365 dias" },
-  { chave: "muitoFrio", rotulo: "Muito frio · mais de 365 dias" },
+  ...TEMPERATURAS.map(chave => ({ chave, rotulo: ROTULO_TEMPERATURA[chave] })),
   { chave: "ate30", rotulo: "Veio nos últimos 30 dias" },
   { chave: "d31a60", rotulo: "31 a 60 dias" },
   { chave: "d61a90", rotulo: "61 a 90 dias" },
@@ -26,8 +24,8 @@ export type Segmento = (typeof SEGMENTOS)[number]["chave"];
 export const CHAVES_SEGMENTO = SEGMENTOS.map((s) => s.chave) as Segmento[];
 
 /** Mesmo corte dos indicadores (lib/indicadores/calculos.ts): mais de 90 dias sem vir = perdido. */
-const PERDIDO_DIAS = 90;
-const NOVO_DIAS = 30;
+const PERDIDO_DIAS = LIMITE_VISITA.morno;
+const NOVO_DIAS = LIMITE_VISITA.quente;
 
 export type DadosCliente = {
   /** Ultima e primeira visita concluida (ms) ou null. */
@@ -44,10 +42,10 @@ export function segmentosDoCliente(c: DadosCliente, agora: number): Segmento[] {
   if (temperatura === "quente" || temperatura === "morno" || temperatura === "frio" || temperatura === "muitoFrio") out.push(temperatura);
   const dias = diasDesde(c.ultima, agora);
   if (dias === null) out.push("nunca");
-  else if (dias <= 30) out.push("ate30");
+  else if (dias <= LIMITE_VISITA.quente) out.push("ate30");
   else if (dias <= 60) out.push("d31a60");
-  else if (dias <= 90) out.push("d61a90");
-  else if (dias <= 180) out.push("d91a180");
+  else if (dias <= LIMITE_VISITA.morno) out.push("d61a90");
+  else if (dias <= LIMITE_VISITA.frio) out.push("d91a180");
   else out.push("mais180", dias <= 365 ? "d181a365" : "mais365");
   if (dias !== null && dias > PERDIDO_DIAS) out.push("perdido");
   const desdePrimeira = diasDesde(c.primeira, agora);
@@ -79,15 +77,19 @@ export function loteSugerido(p: { vagas: number; taxaRespostaBps: number; limite
 /** Texto final: troca {nome} (primeiro nome), {barbearia} e {link}; sempre termina com como parar de receber. */
 export function montarMensagem(modelo: string, v: { nome: string; barbearia: string; link: string }) {
   const primeiro = v.nome.trim().split(/\s+/)[0] || "tudo bem";
-  const texto = modelo.replaceAll("{nome}", primeiro).replaceAll("{barbearia}", v.barbearia).replaceAll("{link}", v.link).trim();
-  return /\bPARAR\b/.test(texto) ? texto : `${texto}\n\nPara não receber mais, responda PARAR.`;
+  const texto = modelo.replaceAll("{nome}", primeiro).replaceAll("{barbearia}", v.barbearia).replaceAll("{link}", v.link)
+    .replaceAll("Para não receber mais, responda PARAR.", SAIDA_MENSAGENS).trim();
+  return /\b(?:PARAR|SAIR)\b/.test(texto) ? texto : `${texto}\n\n${SAIDA_MENSAGENS}`;
 }
 
+const ABERTURAS_ANTIGAS = /^(?:Oi, \{nome\}! (?:Aqui é da \{barbearia\}\. |É da \{barbearia\}\. ))/;
+export const textoDaOferta = (modelo: string) => modelo.trim().replace(ABERTURAS_ANTIGAS, "");
+
 export const MENSAGEM_PADRAO_ROLETA =
-  "Oi, {nome}! É da {barbearia}. Liberamos uma jogada de presente para você. Veja os prêmios disponíveis e as condições aqui: {link}";
+  "Liberamos uma jogada de presente pra ti. Dá uma olhada nos prêmios e nas condições por aqui: {link}";
 
 export const MENSAGEM_PADRAO =
-  "Oi, {nome}! Aqui é da {barbearia}. Abrimos horários nos próximos dias e lembramos de você. Quer garantir o seu? Marque por aqui: {link}";
+  "Abrimos horários nos próximos dias e lembramos de ti. Quer marcar? Dá uma olhada por aqui: {link}";
 
 /** O que aconteceu com cada mensagem enviada (montado de envio, mensagem, giro, conta, agenda e comanda). */
 export type LinhaFunil = {

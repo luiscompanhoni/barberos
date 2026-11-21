@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GET as indicacao } from "@/app/i/[codigo]/route";
 import { presentesDaConversa } from "@/lib/bot/presentes";
+import { inicioDaValidadeDoLink } from "@/lib/campanhas/link-acesso";
 import { landingDaCampanha, registrarClique } from "@/lib/campanhas/link";
 
 const m = vi.hoisted(() => ({ buscar: vi.fn(), atualizar: vi.fn(), convite: vi.fn(), dono: vi.fn() }));
@@ -38,6 +39,16 @@ describe("destinos dos links do Leonel", () => {
     });
   });
 
+  it("conta validade a partir da oferta mesmo quando o cliente responde no dia seguinte", () => {
+    const abertura = new Date("2026-11-20T12:00:00Z");
+    const reserva = new Date("2026-11-21T14:00:00Z");
+    const oferta = new Date("2026-11-21T14:00:01Z");
+    const envio = { enviadoEm: abertura, liberadoEm: abertura, continuacaoReservadaEm: reserva, ofertaEnviadaEm: oferta };
+    expect(inicioDaValidadeDoLink(envio)).toBe(oferta);
+    expect(inicioDaValidadeDoLink({ ...envio, ofertaEnviadaEm: null })).toBe(reserva);
+    expect(inicioDaValidadeDoLink({ ...envio, ofertaEnviadaEm: null, continuacaoReservadaEm: null })).toBe(abertura);
+  });
+
   it("leva a indicação à vitrine mesmo com site e painel no mesmo domínio", async () => {
     m.dono.mockResolvedValue({ id: "dono-ficticio" });
     const req = new Request("http://localhost:3000/i/ficticio");
@@ -51,7 +62,7 @@ describe("destinos dos links do Leonel", () => {
     expect(await presentesDaConversa("5511900000000")).toMatchObject({ convite: null });
     expect(m.convite).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
       clienteId: "cliente-ficticio", status: "ENVIADO",
-      OR: [{ aberturaIniciadaEm: null }, { continuacaoReservadaEm: { not: null } }],
+      OR: [{ aberturaIniciadaEm: null, enviadoEm: { not: null } }, { ofertaEnviadaEm: { not: null } }],
     }) }));
   });
 });

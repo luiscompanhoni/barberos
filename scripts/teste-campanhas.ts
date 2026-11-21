@@ -4,6 +4,7 @@
 process.env.WHATSAPP_PROVIDER = "simulador";
 
 import type { Sessao } from "@/lib/auth/sessao";
+import { receberMensagem } from "@/lib/bot/processar";
 import { rodarAutomacoes } from "@/lib/automacoes/rotina";
 import { capacidadeDaAgenda } from "@/lib/campanhas/capacidade";
 import { funilCampanha } from "@/lib/campanhas/funil";
@@ -64,7 +65,10 @@ async function main() {
   // O teste do funil não depende de chances ou estoque configurados fora dele.
   await db.jogo.create({ data: {
     id: JOGO, tipo: "ROLETA", nome: "Roleta de teste das campanhas", ativo: false,
-    premios: { create: [{ rotulo: "R$ 5 de teste", tipo: "CREDITO", valorCentavos: 500, chanceBps: 10000, cor: "#C9A24A" }] },
+    premios: { create: [
+      { rotulo: "R$ 5 de teste", tipo: "CREDITO", valorCentavos: 500, chanceBps: 9999, cor: "#C9A24A" },
+      { rotulo: "Outra jogada", tipo: "NADA", chanceBps: 1, cor: "#aaaabb" },
+    ] },
   } });
   try {
     const cliente = (tel: string, nome: string, aceitaMensagens = true) => db.cliente.create({ data: { telefone: tel, nome, aceitaMensagens } });
@@ -99,6 +103,9 @@ async function main() {
     await liberarLote(s, cAss.id, 50, agora, { clienteIds: todos });
     ok((await naFila(cAss.id)).join() === b.id, "segmento assinante: só quem tem assinatura ativa");
     const cPerd = await criarCampanha(s, { ...base, nome: `${TAG} perdidos`, segmentos: ["perdido"] });
+    ok((await falha(() => liberarLote(s, cPerd.id, 50, agora, { clienteIds: todos })))?.message.includes("roleta ativa") === true, "campanha fria sem roleta não entra na fila");
+    await db.jogo.update({ where: { id: JOGO }, data: { ativo: true } });
+    await db.campanha.update({ where: { id: cPerd.id }, data: { jogoId: JOGO } });
     await liberarLote(s, cPerd.id, 50, agora, { clienteIds: todos });
     ok((await naFila(cPerd.id)).join() === c.id, "segmento perdido: mais de 90 dias sem vir");
     await mudarStatus(s, cAss.id, "encerrar");
@@ -108,9 +115,8 @@ async function main() {
     // ================= ENVIO COM LIMITE DIARIO
     ok((await noInstante(agora, () => processarCampanhas(agora, { clienteIds: todos }))) === 1, "limite 1/dia: sai uma mensagem");
     ok((await processarCampanhas(agora + 60_000, { clienteIds: todos })) === 0, "no mesmo dia não sai mais nenhuma");
-    const conversaA = await db.conversa.findFirst({ where: { telefone: TELS[0] }, include: { mensagens: true } });
-    const texto = conversaA?.mensagens[0]?.texto ?? "";
-    ok(texto.startsWith("Oi, Ana!") && /\/c\/r\/[\w-]{16}/.test(texto) && texto.includes("responda PARAR"), "mensagem com o primeiro nome, o link rastreado e como parar");
+    const conversaA = await db.conversa.findFirst({ where: { telefone: TELS[0] }, include: { mensagens: { orderBy: [{ criadoEm: "asc" }, { id: "asc" }] } } });
+    ok(conversaA?.mensagens.map(m => m.texto).join("|") === "Fala, Ana!|Aqui é o Leonel da Black.", "abertura em dois balões, sem oferta nem link");
 
     await db.cliente.update({ where: { id: b.id }, data: { aceitaMensagens: false } });
     ok((await processarCampanhas(agora + D, { clienteIds: todos })) === 0, "no dia seguinte: quem pediu PARAR depois do lote é pulado");
@@ -132,7 +138,7 @@ async function main() {
     await liberarLote(s, cDup.id, 10, agora, { clienteIds: todos });
     const [x, y] = await noInstante(agora + 2 * D, () => Promise.all([processarCampanhas(agora + 2 * D, { clienteIds: todos }), processarCampanhas(agora + 2 * D, { clienteIds: todos })]));
     const conversaB = await db.conversa.findFirst({ where: { telefone: TELS[1] }, include: { mensagens: true } });
-    ok(x + y === 1 && conversaB?.mensagens.length === 1, "duas rodadas juntas: o Bruno recebe uma vez só");
+    ok(x + y === 1 && conversaB?.mensagens.length === 2, "duas rodadas juntas: o Bruno recebe somente uma abertura de dois balões");
 
     // ================= FUNIL DA CAMPANHA DA ROLETA
     // 5 dias depois: o horario da Ana (agora + 3 dias) ja passou e ela volta a poder receber.
@@ -150,7 +156,19 @@ async function main() {
     ok(confirmados.length === 2 && confirmados.every(e => +e.enviadoEm! > depois) &&
       new Set(confirmados.map(e => +e.enviadoEm!)).size === 2, "cada contato guarda o instante de sucesso após a reserva do lote");
     const envA = await db.campanhaEnvio.findFirstOrThrow({ where: { token: tokenA }, include: { mensagem: true } });
-    ok(!!envA.mensagem && envA.mensagem.texto.includes(`/c/r/${tokenA}`), "mensagem leva o link rastreado e fica ligada ao envio");
+    ok(envA.mensagem?.texto === "Aqui é o Leonel da Black." && !envA.ofertaEnviadaEm, "primeiro contato sem o link da roleta");
+    await db.campanha.update({ where: { id: cRol.id }, data: { mensagem: "Novo texto depois da abertura: {link}" } });
+    const resposta = depois + 60_000;
+    for (const [i, telefone] of TELS.slice(0, 2).entries()) {
+      await noInstante(resposta, () => receberMensagem({ telefone, texto: "Pode mandar!", wamid: `simulacao-campanha-teste-${i}` }));
+    }
+    const confirmada = await db.campanhaEnvio.findUniqueOrThrow({ where: { id: envA.id } });
+    const oferta = await db.mensagem.findFirst({ where: { conversaId: envA.mensagem?.conversaId, texto: { contains: `/c/r/${tokenA}` } } });
+    ok(!!confirmada.respostaEm && !!confirmada.ofertaEnviadaEm && !!oferta?.texto.startsWith("Oi, Ana! Gire:") &&
+      oferta.texto.includes("responder SAIR"), "aceite envia a oferta original da roleta, com link individual e saída");
+    await noInstante(resposta + 1000, () => receberMensagem({ telefone: TELS[0], texto: "Pode mandar!", wamid: "simulacao-campanha-teste-0" }));
+    ok(await db.mensagem.count({ where: { conversaId: envA.mensagem?.conversaId, texto: { contains: `/c/r/${tokenA}` } } }) === 1,
+      "webhook repetido não duplica a oferta");
 
     // WhatsApp confirma entregue e lida (o simulador nao manda id: o teste coloca um)
     await db.mensagem.update({ where: { id: envA.mensagemId! }, data: { wamid: `wamid.teste.${tokenA}` } });
@@ -235,6 +253,10 @@ async function main() {
     ok((await noInstante(horaLote, () => rodarAutomacoes(horaLote))).campanha === 2 &&
       await db.campanhaEnvio.count({ where: { campanhaId: restrita.id, status: "ENVIADO", mensagemId: { not: null } } }) === 2 &&
       await db.campanhaEnvio.count({ where: { campanhaId: outra.id, status: "FILA" } }) === 1, "simulador processa só o lote autorizado e preserva a outra fila");
+    await noInstante(horaLote + 60_000, () => receberMensagem({ telefone: TELS[1], texto: "Oi Leonel" }));
+    const bloqueada = await db.conversa.findUniqueOrThrow({ where: { telefone: TELS[1] }, include: { mensagens: { where: { autor: "NOTA" } } } });
+    ok(bloqueada.estado === "HUMANO" && bloqueada.mensagens.length === 1 &&
+      await db.campanhaEnvio.count({ where: { campanhaId: restrita.id, ofertaEnviadaEm: { not: null } } }) === 0, "resposta ao lote autorizado entra na fila humana sob bloqueio e não libera oferta");
 
     // A liberação manual convive com o bot, sem reabrir as demais rotinas.
     await mudarStatus(s, outra.id, "pausar");

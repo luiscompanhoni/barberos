@@ -38,7 +38,8 @@ describe("campanhas dos cards", () => {
     }));
     expect(html).toContain(modelo.objetivo);
     expect(html).toContain("Prévia da mensagem");
-    expect(html).toContain("responda PARAR");
+    expect(html).toMatch(/<li[^>]*>Fala, Cliente!<\/li><li[^>]*>Aqui é o Leonel da Black\.<\/li>/);
+    expect(html).toContain("responder SAIR");
     expect(html).toContain("Envios de campanhas bloqueados");
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*>Ativar campanha<\/button>/);
     expect(html).not.toContain("Confirmar envio do lote");

@@ -9,25 +9,17 @@ import { horarioComercial } from "@/lib/automacoes/regras";
 import { auditar } from "@/lib/auditoria";
 import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
-import { urlSite } from "@/lib/dominios";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { noAr } from "@/lib/jogos/motor";
-import { notificarCliente } from "@/lib/whatsapp/conversas";
-import { estadoPiloto } from "@/lib/whatsapp/piloto";
-import { campanhasManuaisAposPiloto, recursoPiloto } from "@/lib/whatsapp/piloto-regras";
-import { testeEquipeAtivo } from "@/lib/whatsapp/teste-equipe";
-import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
-import { CHAVES_SEGMENTO, montarMensagem, segmentosDoCliente, SEGMENTOS, type Segmento } from "./regras";
+import { CHAVES_SEGMENTO, segmentosDoCliente, SEGMENTOS, type Segmento } from "./regras";
 import { impedimentoCampanha } from "./contato";
 import { campanhaConferida, identificadorDoLote, loteAutorizadoConfirmado, loteAutorizadoDisponivel } from "./lote-autorizado";
-import { INTERVALO_CAMPANHAS_MS, migracaoDoCliente, reservarContatoCampanha } from "./reservar-contato";
+import { INTERVALO_CAMPANHAS_MS, jogoDoLink, migracaoDoCliente, reservarContatoCampanha, roletaDisponivel } from "./reservar-contato";
 import { contagemDeClientesAtribuidos, resumoDosEnvios } from "./atribuicao";
 import { MODELOS_SEGMENTOS } from "./modelos-segmento";
-
-export async function campanhasBloqueadas() {
-  return process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" || quarentenaRestauracao() || testeEquipeAtivo() ||
-    (recursoPiloto() && (process.env.WHATSAPP_CAMPANHAS_MANUAIS_ATIVAS !== "true" || !campanhasManuaisAposPiloto(await estadoPiloto())));
-}
+import { campanhasBloqueadas } from "./bloqueio";
+import { enviarAberturaCampanha } from "./abertura";
+export { campanhasBloqueadas } from "./bloqueio";
 
 async function exigirCampanhaLiberada() {
   if (await campanhasBloqueadas()) throw new ErroNegocio("Envios de campanhas bloqueados nesta instalação.", 409, "campanhas_bloqueadas");
@@ -133,7 +125,7 @@ export async function editarCampanha(s: Sessao, campanhaId: string, d: DadosCamp
     if (await tx.campanhaEnvio.findFirst({ where: { campanhaId, status: "FILA" }, select: { id: true } })) {
       throw new ErroNegocio("Há um lote na fila. Aguarde o processamento antes de alterar a campanha.", 409);
     }
-    if (c.jogoId !== dados.jogoId && await tx.campanhaEnvio.findFirst({ where: { campanhaId }, select: { id: true } })) {
+    if (c.jogoId !== dados.jogoId && await tx.campanhaEnvio.findFirst({ where: { campanhaId, status: { in: ["ENVIADO", "FALHOU"] } }, select: { id: true } })) {
       throw new ErroNegocio("Já há links desta campanha. Mantenha o jogo ou crie uma campanha nova.", 409);
     }
     const atualizada = await tx.campanha.update({ where: { id: campanhaId }, data: dados });
@@ -146,7 +138,7 @@ export async function editarCampanha(s: Sessao, campanhaId: string, d: DadosCamp
 export async function liberarLote(s: Sessao, campanhaId: string, quantidade: number, agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
   const autorizado = await campanhasBloqueadas() ? await loteAutorizadoDisponivel() : null;
   if (!autorizado || autorizado.campanhaId !== campanhaId) await exigirCampanhaLiberada();
-  const c = await db.campanha.findUnique({ where: { id: campanhaId } });
+  const c = await db.campanha.findUnique({ where: { id: campanhaId }, include: { jogo: jogoDoLink } });
   if (!c) throw naoEncontrado("Campanha");
   if (c.status !== "ATIVA" && !(autorizado && c.status === "PAUSADA")) throw new ErroNegocio(c.status === "PAUSADA" ? "Retome a campanha antes de liberar outro lote." : "Campanha encerrada.", 409);
   if (autorizado && (!campanhaConferida(c, autorizado) || quantidade !== autorizado.clienteIds.length)) {
@@ -157,6 +149,10 @@ export async function liberarLote(s: Sessao, campanhaId: string, quantidade: num
     throw new ErroNegocio("A elegibilidade do público aprovado mudou ou o lote já foi liberado. Confira a lista antes de enviar.", 409);
   }
   if (!escolhidos.length) throw new ErroNegocio("Ninguém mais para chamar nesse segmento.", 409, "sem_elegiveis");
+  if (escolhidos.some(e => e.segmentos.includes("frio") || e.segmentos.includes("muitoFrio")) &&
+    !await roletaDisponivel(c.jogo, agora)) {
+    throw new ErroNegocio("Associe uma roleta ativa, aberta ao público e com duas fatias disponíveis antes de liberar um lote com clientes frios ou muito frios.", 409);
+  }
   return db.$transaction(async (tx) => {
     // Dois cliques ao mesmo tempo: um espera o outro (e o unique campanha+cliente nao deixa repetir).
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`campanha:${campanhaId}`}))`;
@@ -243,7 +239,7 @@ export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?
   if (bloqueadas && !autorizado) return 0;
   if (autorizado && !await loteAutorizadoConfirmado(autorizado)) return 0;
   const cfg = await configuracao();
-  if (autorizado && !horarioComercial(agora, cfg.fuso)) return 0;
+  if (!horarioComercial(agora, cfg.fuso)) return 0;
   const inicioHoje = new Date(instanteLocal(dataLocal(agora, cfg.fuso), 0, cfg.fuso));
   const clientes = autorizado ? autorizado.clienteIds.filter(id => !opts.clienteIds || opts.clienteIds.includes(id)) : opts.clienteIds;
   let total = 0;
@@ -256,22 +252,13 @@ export async function processarCampanhas(agora = Date.now(), opts: { clienteIds?
     const fila = await db.campanhaEnvio.findMany({
       where: { campanhaId: c.id, status: "FILA", lote: autorizado ? 1 : undefined, cliente: { enviosCampanha: { none: { status: "ENVIADO", enviadoEm: { gte: new Date(agora - INTERVALO_CAMPANHAS_MS) } } } }, ...(clientes ? { clienteId: { in: clientes } } : {}) },
       orderBy: [{ lote: "asc" }, { liberadoEm: "asc" }], take: vez,
-      include: { cliente: { select: { nome: true, telefone: true, aceitaMensagens: true, excluidoEm: true, conversa: { select: { estado: true, recusaAutomaticas: true } } } } },
     });
     for (const e of fila) {
-      const destino = await reservarContatoCampanha(e.id, c.id, e.clienteId, agora);
+      const destino = await reservarContatoCampanha(e, agora, cfg.nomeBarbearia, autorizado);
       if (!destino) continue;
       total++;
       try {
-        const link = e.token ? `${urlSite()}/c/r/${e.token}` : `${urlSite()}/c/agendar`;
-        const r = await notificarCliente(destino.telefone, montarMensagem(destino.mensagem, { nome: destino.nome, barbearia: cfg.nomeBarbearia, link }), {
-          template: process.env.WHATSAPP_TEMPLATE_CAMPANHA?.trim(), envioAutorizadoId: autorizado ? e.id : undefined,
-          campanha: true, pararSeHumano: true,
-        });
-        await db.campanhaEnvio.update({
-          where: { id: e.id },
-          data: { mensagemId: r.mensagemId, ...(r.erro ? { status: "FALHOU" as const, erro: r.erro.slice(0, 300) } : { enviadoEm: new Date(Date.now()) }) },
-        });
+        await enviarAberturaCampanha(e, destino, autorizado);
       } catch (err) {
         await db.campanhaEnvio.update({ where: { id: e.id }, data: { status: "FALHOU", erro: (err as Error).message.slice(0, 300) } });
       }

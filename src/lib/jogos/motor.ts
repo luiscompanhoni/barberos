@@ -9,11 +9,13 @@ import { randomBytes, randomInt } from "node:crypto";
 import type { Jogada, Jogo, JogoPremio, PremioGanho, Prisma } from "@prisma/client";
 import { auditar, origemDaRequisicao } from "@/lib/auditoria";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
+import { envioComLinkLiberado, inicioDaValidadeDoLink } from "@/lib/campanhas/link-acesso";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { comoGanhar, contarFichas, fichasLivres, sincronizarFichas } from "./fichas";
 import { TODOS_PADRAO } from "./padroes";
 import { codigoDoPremio, comBonus, elegiveis, montarGrade, multiplicador, sortear, type Simbolo } from "./regras";
+import { registrarGiroRoleta } from "./jornada-roleta";
 import type { CentralJogos, FatiaRoleta, JogadaCliente, JogoCliente, PremioCliente, ResultadoJogada } from "./tipos";
 
 type Tx = Prisma.TransactionClient;
@@ -50,9 +52,9 @@ const premiosDoJogo = (tx: Tx | typeof db, jogoId: string) =>
   tx.jogoPremio.findMany({ where: { jogoId, ativo: true }, orderBy: [{ ordem: "asc" }, { criadoEm: "asc" }] });
 
 /** A vitrine segue o mesmo estoque, chance e limite mensal do sorteio. */
-export async function premiosExibiveis(premios: JogoPremio[]) {
+export async function premiosExibiveis(premios: JogoPremio[], tx: Tx = db) {
   if (!premios.length) return [];
-  const saiu = await db.premioGanho.groupBy({ by: ["premioId"], where: { premioId: { in: premios.map(p => p.id) }, criadoEm: { gte: inicioDoMes() } }, _count: true });
+  const saiu = await tx.premioGanho.groupBy({ by: ["premioId"], where: { premioId: { in: premios.map(p => p.id) }, criadoEm: { gte: inicioDoMes() } }, _count: true });
   return elegiveis(premios, new Map(saiu.map(p => [p.premioId!, p._count])));
 }
 
@@ -132,6 +134,7 @@ export async function jogar(clienteId: string, jogoId: string, chave: string, o:
     });
     await tx.fichaJogo.update({ where: { id: ficha.id }, data: { jogadaId: nova.id } });
     for (const p of ganhos) await entregar(tx, jogo, nova, p, mult);
+    await registrarGiroRoleta(tx, nova);
     for (const p of new Set(ganhos)) {
       const e = estoque.get(p.id);
       if (e !== null && e !== undefined) await tx.jogoPremio.update({ where: { id: p.id }, data: { estoque: Math.max(0, e) } });
@@ -286,14 +289,14 @@ export async function jogoDoCliente(clienteId: string, jogoId: string) {
  * Abrir de novo devolve a mesma jogada.
  */
 export async function jogarPelaCampanha(token: string, o: OpcoesJogada = {}) {
-  const envio = await db.campanhaEnvio.findUnique({ where: { token }, include: { campanha: { include: { jogo: true } } } });
+  const envio = await db.campanhaEnvio.findUnique({ where: { token, ...envioComLinkLiberado }, include: { campanha: { include: { jogo: true } } } });
   const jogo = envio?.campanha.jogo;
   if (!envio || !jogo || envio.status !== "ENVIADO") throw naoEncontrado("Link");
   if (envio.jogadaId) {
     const j = await db.jogada.findUniqueOrThrow({ where: { id: envio.jogadaId }, include: { premios: { include: { agendamento: true } } } });
     return { jogada: paraCliente(j), jaJogou: true };
   }
-  const expiraEm = new Date(+(envio.enviadoEm ?? envio.liberadoEm) + jogo.validadeDias * DIA);
+  const expiraEm = new Date(+inicioDaValidadeDoLink(envio) + jogo.validadeDias * DIA);
   if (expiraEm < new Date()) throw new ErroNegocio("Esse presente venceu.", 410, "vencido");
   // createMany + skipDuplicates e atomico no banco (dois cliques ao mesmo tempo nao brigam pela ficha).
   const chaveFicha = { jogoId: jogo.id, clienteId: envio.clienteId, origem: "CAMPANHA" as const, referencia: `envio:${envio.id}` };

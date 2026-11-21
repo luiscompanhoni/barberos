@@ -1,10 +1,9 @@
 import { Prisma, type AutorMensagem } from "@prisma/client";
 import { db } from "@/lib/db";
 import { publicar } from "@/lib/eventos";
-import { enviarTemplate, enviarTexto, enviarTextoLoteAutorizado, temJanela24h } from "./canal";
+import { dentroJanela24h, enviarTemplate, enviarTexto, enviarTextoLoteAutorizado, temJanela24h, type TemplateWhatsApp } from "./canal";
 import { atualizarPreferencia, travarPreferencia } from "./preferencia";
-
-const JANELA_24H_MS = 24 * 3_600_000;
+import { telefoneCanonico } from "./webhook";
 
 /** Conversa do telefone (canonico), ligada ao cliente cadastrado se existir. */
 export async function obterConversa(telefone: string, extra: { waId?: string; nomePerfil?: string | null } = {}) {
@@ -26,19 +25,20 @@ export async function obterConversa(telefone: string, extra: { waId?: string; no
  */
 export async function registrarEntrada(p: { telefone: string; waId?: string; nomePerfil?: string | null; texto: string; wamid?: string; optOut?: boolean }) {
   const conversa = await obterConversa(p.telefone, { waId: p.waId, nomePerfil: p.nomePerfil });
+  const ultimaEntradaEm = new Date(Date.now());
   try {
     if (p.optOut) {
       // O mesmo lock precede cadastro, recusa e reativação para não perder corridas.
       await db.$transaction(async tx => {
         await travarPreferencia(tx, p.telefone);
         await tx.mensagem.create({ data: { conversaId: conversa.id, autor: "CLIENTE", texto: p.texto, wamid: p.wamid } });
-        await tx.conversa.update({ where: { id: conversa.id }, data: { ultimaEntradaEm: new Date(), naoLidas: { increment: 1 } } });
+        await tx.conversa.update({ where: { id: conversa.id }, data: { ultimaEntradaEm, naoLidas: { increment: 1 } } });
         await atualizarPreferencia(tx, p.telefone, false);
       });
     } else {
       await db.$transaction([
         db.mensagem.create({ data: { conversaId: conversa.id, autor: "CLIENTE", texto: p.texto, wamid: p.wamid } }),
-        db.conversa.update({ where: { id: conversa.id }, data: { ultimaEntradaEm: new Date(), naoLidas: { increment: 1 } } }),
+        db.conversa.update({ where: { id: conversa.id }, data: { ultimaEntradaEm, naoLidas: { increment: 1 } } }),
       ]);
     }
   } catch (e) {
@@ -49,8 +49,23 @@ export async function registrarEntrada(p: { telefone: string; waId?: string; nom
   return db.conversa.findUniqueOrThrow({ where: { id: conversa.id } });
 }
 
+/** A caixa da equipe recebe a entrada mesmo quando o transporte está bloqueado. */
+export async function encaminharEntradaBloqueada(conversaId: string, texto: string) {
+  const mudou = await db.$transaction(async tx => {
+    const r = await tx.conversa.updateMany({ where: { id: conversaId, estado: "BOT" }, data: { estado: "HUMANO" } });
+    if (!r.count) return false;
+    await tx.mensagem.create({ data: { conversaId, autor: "NOTA", texto } });
+    return true;
+  });
+  if (mudou) publicar({ tipo: "conversa", conversaId });
+}
+
 /** Envia texto livre numa conversa (dentro da janela de 24h) e registra. */
-export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: { conviteIndividual?: boolean; digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean; envioAutorizadoId?: string; aberturaTeste?: boolean; pararSeHumano?: boolean; campanha?: boolean; pagamentoConfirmado?: true } = {}) {
+export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: {
+  conviteIndividual?: boolean; digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean;
+  aberturaLote?: { envioId: string; etapa: 0 | 1 }; aberturaTeste?: boolean; pararSeHumano?: boolean;
+  campanha?: boolean; templateAberturaCampanha?: TemplateWhatsApp; pagamentoConfirmado?: true;
+} = {}) {
   const conversa = await db.conversa.findUniqueOrThrow({ where: { id: conversaId } });
   let erro: string | null = null;
   let wamid: string | null = null;
@@ -63,9 +78,16 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
       }
     }
     const origem = opts.conviteIndividual && opts.pararSeHumano ? "CONVITE_APP" : opts.entrevistaPiloto ? "ENTREVISTA_PILOTO" : autor === "EQUIPE" || (autor === "BOT" && opts.respostaAtendimento) ? "ATENDIMENTO" : autor === "SISTEMA" && opts.pagamentoConfirmado ? "PAGAMENTO_CONFIRMADO" : opts.campanha ? "CAMPANHA" : "PADRAO";
-    const resultado = opts.envioAutorizadoId && autor === "SISTEMA"
-      ? await enviarTextoLoteAutorizado(opts.envioAutorizadoId, conversa, texto)
-      : await enviarTexto(opts.entrevistaPiloto ? conversa.telefone : conversa.waId ?? conversa.telefone, texto, opts.digitandoMs, origem);
+    const destinoCampanha = conversa.waId && telefoneCanonico(conversa.waId) === conversa.telefone ? conversa.waId : conversa.telefone;
+    const destino = opts.campanha ? destinoCampanha : opts.entrevistaPiloto ? conversa.telefone : conversa.waId ?? conversa.telefone;
+    if (opts.campanha && temJanela24h() && !dentroJanela24h(conversa.ultimaEntradaEm) && !opts.templateAberturaCampanha) {
+      throw new Error("A janela de 24h do WhatsApp oficial não está aberta para mensagens livres.");
+    }
+    const resultado = opts.aberturaLote && autor === "SISTEMA"
+      ? await enviarTextoLoteAutorizado(opts.aberturaLote.envioId, conversa, texto, opts.aberturaLote.etapa)
+      : opts.templateAberturaCampanha && opts.campanha && autor === "SISTEMA" && temJanela24h()
+        ? await enviarTemplate(destino, opts.templateAberturaCampanha, "CAMPANHA")
+        : await enviarTexto(destino, texto, opts.digitandoMs, origem);
     wamid = resultado.wamid;
   } catch (e) {
     erro = (e as Error).message;
@@ -84,12 +106,12 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
  * Aviso do sistema. Fora da janela de 24 h vai pelo modelo `Olá {{1}}! {{2}}`: campanhas podem usar o modelo
  * de marketing (`WHATSAPP_TEMPLATE_CAMPANHA`), pois a Meta não aceita divulgação no modelo de utilidade.
  */
-export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string; envioAutorizadoId?: string; apenasTextoLivre?: boolean; pararSeHumano?: boolean; campanha?: boolean; pagamentoConfirmado?: true } = {}) {
+export async function notificarCliente(telefone: string, texto: string, opcoes: { template?: string; apenasTextoLivre?: boolean; pararSeHumano?: boolean; campanha?: boolean; pagamentoConfirmado?: true } = {}) {
   const conversa = await obterConversa(telefone);
   const cliente = conversa.clienteId
     ? await db.cliente.findUnique({ where: { id: conversa.clienteId }, select: { nome: true, aceitaMensagens: true } })
     : null;
-  const dentroDaJanela = !!conversa.ultimaEntradaEm && Date.now() - conversa.ultimaEntradaEm.getTime() < JANELA_24H_MS;
+  const dentroDaJanela = dentroJanela24h(conversa.ultimaEntradaEm);
 
   // Válido mesmo antes do cadastro; códigos de acesso usam canal independente.
   const preferencia = await db.conversa.findUnique({ where: { id: conversa.id }, select: { recusaAutomaticas: true } });
@@ -100,8 +122,8 @@ export async function notificarCliente(telefone: string, texto: string, opcoes: 
     return { ok: false, erro, mensagemId: m.id };
   }
 
-  if (opcoes.envioAutorizadoId || dentroDaJanela || !temJanela24h()) {
-    return enviarNaConversa(conversa.id, texto, "SISTEMA", { envioAutorizadoId: opcoes.envioAutorizadoId, pararSeHumano: opcoes.pararSeHumano, campanha: opcoes.campanha, pagamentoConfirmado: opcoes.pagamentoConfirmado });
+  if (dentroDaJanela || !temJanela24h()) {
+    return enviarNaConversa(conversa.id, texto, "SISTEMA", { pararSeHumano: opcoes.pararSeHumano, campanha: opcoes.campanha, pagamentoConfirmado: opcoes.pagamentoConfirmado });
   }
 
   const template = opcoes.campanha ? opcoes.template : opcoes.template || process.env.WHATSAPP_TEMPLATE_AVISO;

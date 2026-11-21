@@ -62,6 +62,7 @@ export function quandoFalar(inicio: number, agora: number, fuso: string) {
 const primeiro = (nome: string) => nome.trim().split(/\s+/)[0] || "tudo bem";
 
 export const APRESENTACAO_REATIVACAO = "Aqui é o Leonel da Black.";
+export const SAIDA_MENSAGENS = "Se preferir que eu pare de mandar esses recados, é só responder SAIR.";
 
 export function aberturaReativacao(nome: string) {
   const apelido = nome.trim().split(/\s+/)[0];
@@ -97,5 +98,6 @@ export function fazAniversario(nascimento: string, hoje: string) {
 
 /** Texto do cliente pedindo para parar as mensagens automaticas. */
 export function pediuParar(texto: string) {
-  return /^\s*(parar|pare|sair|stop|cancelar mensagens|não quero( mais)? (receber )?mensagens?)\s*[.!]*\s*$/i.test(texto);
+  const normal = texto.normalize("NFD").replace(/\p{M}/gu, "").trim().replace(/\s+/g, " ");
+  return /^(?:parar|pare|sair|stop|cancelar mensagens|nao quero(?: mais(?: receber)?|(?: mais)? (?:receber )?(?:mensagens?|recados|novidades)))(?:[.!? ]*)$/i.test(normal);
 }

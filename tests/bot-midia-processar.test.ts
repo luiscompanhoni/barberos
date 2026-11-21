@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ entrada: vi.fn(), enviar: vi.fn(), modelo: vi.fn(), midia: vi.fn(), cfg: vi.fn(), piloto: vi.fn(), sessao: vi.fn(), estado: vi.fn(), update: vi.fn(), nota: vi.fn(), mensagens: vi.fn(), cliente: vi.fn(), alterarMensagem: vi.fn(), preferencia: vi.fn() }));
-vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: m.entrada, enviarNaConversa: m.enviar }));
+const m = vi.hoisted(() => ({ encaminhar: vi.fn(), entrada: vi.fn(), enviar: vi.fn(), modelo: vi.fn(), midia: vi.fn(), cfg: vi.fn(), piloto: vi.fn(), sessao: vi.fn(), estado: vi.fn(), update: vi.fn(), nota: vi.fn(), mensagens: vi.fn(), cliente: vi.fn(), alterarMensagem: vi.fn(), preferencia: vi.fn() }));
+vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: m.entrada, enviarNaConversa: m.enviar, encaminharEntradaBloqueada: m.encaminhar }));
 vi.mock("@/lib/bot/agente", () => ({ executarTurno: m.modelo }));
 vi.mock("@/lib/bot/multimodal", async (original) => ({ ...await original<typeof import("@/lib/bot/multimodal")>(), prepararMidia: m.midia }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: m.cfg }));
@@ -42,13 +42,14 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe("gates da entrada multimodal", () => {
-  it("teste restrito responde à equipe com bloqueio geral, mas ignora cliente externo", async () => {
+  it("teste restrito responde à equipe com bloqueio geral, e encaminha cliente externo sem resposta automática", async () => {
     vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_EQUIPE", "true");
     vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "true");
     vi.stubEnv("WHATSAPP_ATENDIMENTO_IA_PAGA", "false");
     vi.stubEnv("WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO", "true");
     await receberMensagem(entrada);
     expect(m.modelo).not.toHaveBeenCalled(); expect(m.midia).not.toHaveBeenCalled();
+    expect(m.encaminhar).toHaveBeenCalledTimes(1);
     verificarEquipe.mockResolvedValue(true);
     await receberMensagem({ ...entrada, wamid: "m2" });
     expect(m.modelo).toHaveBeenCalledTimes(1);

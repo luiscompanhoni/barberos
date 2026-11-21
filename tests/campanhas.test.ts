@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loteSugerido, montarFunil, montarMensagem, segmentosDoCliente, vagasNasJanelas, type LinhaFunil } from "@/lib/campanhas/regras";
+import { pediuParar } from "@/lib/automacoes/regras";
 
 const DIA = 86_400_000;
 const agora = Date.parse("2026-10-14T15:00:00Z");
@@ -10,7 +11,7 @@ describe("campanhas: segmentos", () => {
     expect(segmentosDoCliente({ ultima: ha(10), primeira: ha(400), assinatura: null }, agora)).toEqual(["quente", "ate30"]);
     expect(segmentosDoCliente({ ultima: ha(45), primeira: ha(400), assinatura: null }, agora)).toEqual(["morno", "d31a60"]);
     expect(segmentosDoCliente({ ultima: ha(91), primeira: ha(400), assinatura: null }, agora)).toEqual(["frio", "d91a180", "perdido"]);
-    expect(segmentosDoCliente({ ultima: ha(200), primeira: ha(400), assinatura: "ex" }, agora)).toEqual(["frio", "mais180", "d181a365", "perdido", "exAssinante"]);
+    expect(segmentosDoCliente({ ultima: ha(200), primeira: ha(400), assinatura: "ex" }, agora)).toEqual(["muitoFrio", "mais180", "d181a365", "perdido", "exAssinante"]);
   });
   it.each([180, 181, 365, 366])("separa mais de um ano sem mudar o segmento antigo: %s dias", (dias) => {
     const segmentos = segmentosDoCliente({ ultima: ha(dias), primeira: ha(500), assinatura: null }, agora);
@@ -46,8 +47,15 @@ describe("campanhas: capacidade", () => {
 describe("campanhas: mensagem", () => {
   it("troca as variaveis e sempre diz como parar", () => {
     const m = montarMensagem("Oi, {nome}! Aqui é da {barbearia}: {link}", { nome: "João da Silva", barbearia: "Black Barber", link: "https://x/c/agendar" });
-    expect(m).toBe("Oi, João! Aqui é da Black Barber: https://x/c/agendar\n\nPara não receber mais, responda PARAR.");
+    expect(m).toBe("Oi, João! Aqui é da Black Barber: https://x/c/agendar\n\nSe preferir que eu pare de mandar esses recados, é só responder SAIR.");
     expect(montarMensagem("Responda PARAR para sair. {nome}", { nome: "Ana", barbearia: "B", link: "" })).toBe("Responda PARAR para sair. Ana");
+    expect(montarMensagem("Vem ver a agenda. Para não receber mais, responda PARAR.", { nome: "Ana", barbearia: "B", link: "" })).toContain("é só responder SAIR.");
+  });
+  it.each(["PARAR", "sair!", "não quero mais", "Nao quero mais receber mensagens"])("reconhece opt-out %s", texto => {
+    expect(pediuParar(texto)).toBe(true);
+  });
+  it.each(["Não quero mais esse horário", "Não quero agendar", "Posso sair às 14h?"])("não confunde outro assunto com opt-out: %s", texto => {
+    expect(pediuParar(texto)).toBe(false);
   });
 });
 

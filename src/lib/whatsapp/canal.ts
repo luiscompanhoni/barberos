@@ -8,11 +8,9 @@
 
 import { linkPublicoApp } from "@/lib/convites/link";
 import type { Conversa } from "@prisma/client";
-import { configuracao } from "@/lib/agenda/carregar";
 import { campanhaConferida, loteAutorizadoConfirmado, loteAutorizadoDisponivel } from "@/lib/campanhas/lote-autorizado";
-import { montarMensagem } from "@/lib/campanhas/regras";
+import { aberturaReativacao } from "@/lib/automacoes/regras";
 import { db } from "@/lib/db";
-import { urlSite } from "@/lib/dominios";
 import { reservarEnvioPiloto } from "./piloto";
 import { telefonePiloto } from "./piloto-regras";
 import { textoParametroTemplate } from "./template-parametro";
@@ -43,6 +41,10 @@ export function provedorWhatsApp(): ProvedorWhatsApp {
 
 /** So a API oficial tem a janela de 24h (fora dela, so modelo aprovado pela Meta). */
 export const temJanela24h = () => provedorWhatsApp() === "cloud";
+export function dentroJanela24h(ultimaEntradaEm: Date | null) {
+  const tempo = ultimaEntradaEm ? Date.now() - +ultimaEntradaEm : Infinity;
+  return tempo >= 0 && tempo < 24 * 3_600_000;
+}
 
 async function configCloud() {
   const c = await credenciaisOficial();
@@ -84,21 +86,23 @@ async function entregarTexto(para: string, texto: string, digitandoMs = 0): Prom
 }
 
 /** O desbloqueio vale somente para um envio já reservado da lista conferida. */
-export async function enviarTextoLoteAutorizado(envioId: string, conversa: Conversa, texto: string) {
+export async function enviarTextoLoteAutorizado(envioId: string, conversa: Conversa, texto: string, etapa: 0 | 1) {
   const autorizado = await loteAutorizadoDisponivel();
   const envio = autorizado && await db.campanhaEnvio.findUnique({
-    where: { id: envioId }, include: { campanha: true, cliente: { select: { telefone: true, nome: true, aceitaMensagens: true, excluidoEm: true } } },
+    where: { id: envioId }, include: { campanha: true, mensagem: true, cliente: { select: { telefone: true, nome: true, aceitaMensagens: true, excluidoEm: true } } },
   });
-  if (!autorizado || !envio || envio.lote !== 1 || envio.status !== "ENVIADO" || envio.mensagemId || !envio.token ||
+  if (!autorizado || !envio?.aberturaIniciadaEm || envio.aberturaConcluidaEm || envio.lote !== 1 || envio.status !== "ENVIADO" || !envio.token ||
       envio.campanha.status !== "ATIVA" || !campanhaConferida(envio.campanha, autorizado) || !autorizado.clienteIds.includes(envio.clienteId) ||
       conversa.clienteId !== envio.clienteId || conversa.telefone !== envio.cliente.telefone ||
       conversa.recusaAutomaticas || conversa.estado === "HUMANO" || !envio.cliente.aceitaMensagens || envio.cliente.excluidoEm) {
     throw new Error("O envio não corresponde ao lote aprovado.");
   }
   if (!await loteAutorizadoConfirmado(autorizado)) throw new Error("O lote aguarda confirmação no painel.");
-  const cfg = await configuracao();
-  const esperado = montarMensagem(envio.campanha.mensagem, { nome: envio.cliente.nome, barbearia: cfg.nomeBarbearia, link: `${urlSite()}/c/r/${envio.token}` });
-  if (texto !== esperado) throw new Error("O texto do envio mudou desde a aprovação do lote.");
+  const abertura = aberturaReativacao(envio.cliente.nome);
+  const primeira = envio.mensagem;
+  const etapaCorreta = etapa === 0 ? !envio.mensagemId :
+    primeira?.conversaId === conversa.id && primeira.texto === abertura[0] && !primeira.erro;
+  if (!etapaCorreta || texto !== abertura[etapa]) throw new Error("O envio não corresponde ao balão autorizado.");
   const destino = conversa.waId && telefoneCanonico(conversa.waId) === telefoneCanonico(conversa.telefone) ? conversa.waId : conversa.telefone;
   return entregarTexto(destino, texto);
 }
@@ -127,15 +131,15 @@ async function entregarTemplate(para: string, t: TemplateWhatsApp): Promise<Resu
   const p = provedorWhatsApp();
   if (p === "simulador") return { wamid: null };
   if (p === "evolution") throw new Error("Modelos de mensagem só existem na API oficial.");
-  const components: Record<string, unknown>[] = [
-    { type: "body", parameters: t.parametros.map((text) => ({ type: "text", text: textoParametroTemplate(text) })) },
-  ];
+  const components: Record<string, unknown>[] = t.parametros.length
+    ? [{ type: "body", parameters: t.parametros.map((text) => ({ type: "text", text: textoParametroTemplate(text) })) }]
+    : [];
   if (t.botaoCodigo) {
     components.push({ type: "button", sub_type: "url", index: "0", parameters: [{ type: "text", text: t.botaoCodigo }] });
   }
   return postarCloud({
     to: para,
     type: "template",
-    template: { name: t.nome, language: { code: t.idioma ?? "pt_BR" }, components },
+    template: { name: t.nome, language: { code: t.idioma ?? "pt_BR" }, ...(components.length ? { components } : {}) },
   });
 }

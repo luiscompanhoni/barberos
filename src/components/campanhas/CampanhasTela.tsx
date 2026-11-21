@@ -9,6 +9,7 @@ import { loteSugerido, SEGMENTOS } from "@/lib/campanhas/regras";
 import { MODELOS_SEGMENTOS } from "@/lib/campanhas/modelos-segmento";
 import { CapacidadePainel } from "./CapacidadePainel";
 import { FunilCampanha } from "./FunilCampanha";
+import { PreviaCampanha } from "./PreviaCampanha";
 import { ContadorCrm } from "@/components/visual/ContadorCrm";
 import { CampanhaDetalhe, type Campanha, type JogosCampanha, type SegmentoCampanha } from "./CampanhaDetalhe";
 
@@ -61,6 +62,7 @@ export function CampanhasTela() {
           <h1 className="titulo-marca text-2xl">Campanhas</h1>
           <p className="text-sm text-zinc-500">Chame a base por grupos, no ritmo que a agenda aguenta.</p>
           <div className="mt-2 flex flex-wrap gap-3 text-sm">
+            <Link className="text-ouro underline" href="/campanhas/funil-roleta">Funil da roleta</Link>
             <Link className="text-ouro underline" href="/campanhas/rotas">Rotas de captação (protótipo)</Link>
             <a className="text-ouro underline" href="/migracao-assinaturas">Migração de assinaturas</a>
             <a className="text-ouro underline" href="/crescimento">Metas, margem e orçamento</a>
@@ -220,10 +222,11 @@ function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boo
         <p className="mt-1 text-xs text-zinc-500">{!chave ? "Marque pelo menos um grupo." : elegiveis === null ? "Contando…" : `${num(elegiveis)} ${elegiveis === 1 ? "cliente pode" : "clientes podem"} receber agora.`}</p>
       </div>
       <div>
-        <label className="rotulo">Mensagem</label>
-        <textarea className="campo min-h-28" value={f.mensagem} onChange={(e) => setF({ ...f, mensagem: e.target.value })} />
-        <p className="text-xs text-zinc-500">Use {"{nome}"} (primeiro nome), {"{barbearia}"} e {"{link}"} ({f.jogoId ? "abre o jogo" : "abre a agenda"}; cada cliente recebe o seu, para o funil saber quem clicou). O “responda PARAR” entra sozinho no fim.</p>
+        <label className="rotulo" htmlFor="campanha-oferta">Mensagem após a resposta</label>
+        <textarea id="campanha-oferta" className="campo min-h-28" value={f.mensagem} onChange={(e) => setF({ ...f, mensagem: e.target.value })} />
+        <p className="text-xs text-zinc-500">Use {"{nome}"} (primeiro nome), {"{barbearia}"} e {"{link}"} (individual, para medir os cliques). Para clientes frios e muito frios, o primeiro link precisa abrir uma roleta ativa.</p>
       </div>
+      <PreviaCampanha mensagem={f.mensagem} />
       <div className="flex flex-wrap gap-3">
         <div><label className="rotulo">Limite por dia</label><input className="campo w-28" inputMode="numeric" value={f.limiteDiario} onChange={(e) => setF({ ...f, limiteDiario: e.target.value.replace(/\D/g, "") })} /></div>
         <div><label className="rotulo">Quantos costumam marcar (%)</label><input className="campo w-28" inputMode="decimal" value={f.taxa} onChange={(e) => setF({ ...f, taxa: e.target.value })} /></div>

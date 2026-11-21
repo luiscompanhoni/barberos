@@ -13,7 +13,7 @@ const schema = z.object({
 }).strict().refine(lote => new Set(lote.clienteIds).size === lote.clienteIds.length);
 
 type CampanhaRevisada = { id: string; segmentos: string[]; mensagem: string; jogoId: string | null; limiteDiario: number };
-type Lote = z.infer<typeof schema>;
+export type LoteAutorizado = z.infer<typeof schema>;
 
 /** Autoriza um único lote no canal atual, enquanto os envios gerais estão bloqueados. */
 export function loteAutorizadoConfigurado() {
@@ -35,19 +35,19 @@ export async function loteAutorizadoDisponivel() {
 
 export function revisaoDaCampanha(campanha: CampanhaRevisada) {
   const { id, segmentos, mensagem, jogoId, limiteDiario } = campanha;
-  return createHash("sha256").update(JSON.stringify([id, segmentos, mensagem, jogoId, limiteDiario])).digest("hex");
+  return createHash("sha256").update(JSON.stringify([2, id, segmentos, mensagem, jogoId, limiteDiario])).digest("hex");
 }
 
-export function campanhaConferida(campanha: CampanhaRevisada, lote: Lote) {
+export function campanhaConferida(campanha: CampanhaRevisada, lote: LoteAutorizado) {
   return campanha.id === lote.campanhaId && campanha.limiteDiario >= lote.clienteIds.length && revisaoDaCampanha(campanha) === lote.revisao;
 }
 
-export function identificadorDoLote(lote: Lote) {
+export function identificadorDoLote(lote: LoteAutorizado) {
   return createHash("sha256").update(JSON.stringify([lote.revisao, [...lote.clienteIds].sort()])).digest("hex");
 }
 
 /** Uma fila anterior à confirmação do lote no painel nunca recebe a autorização. */
-export async function loteAutorizadoConfirmado(lote: Lote) {
+export async function loteAutorizadoConfirmado(lote: LoteAutorizado) {
   return !!await db.auditoria.findFirst({
     where: {
       entidade: "campanha", entidadeId: lote.campanhaId, acao: "liberar_lote",

@@ -7,7 +7,7 @@ import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { db } from "@/lib/db";
 import { noAr, paraCliente, premiosExibiveis } from "@/lib/jogos/motor";
 import { multiplicador } from "@/lib/jogos/regras";
-import { envioComLinkLiberado } from "./link-acesso";
+import { envioComLinkLiberado, inicioDaValidadeDoLink } from "./link-acesso";
 
 const DIA = 86_400_000;
 /** "Abriu o app" conta ate 14 dias depois de receber (mesma janela do "marcou depois" das campanhas). */
@@ -31,7 +31,7 @@ export async function landingDaCampanha(token: string) {
 
   const sit = await situacaoDoCliente(envio.cliente.id);
   const premios = await premiosExibiveis(j.premios);
-  const vencido = +(envio.enviadoEm ?? envio.liberadoEm) + j.validadeDias * DIA < Date.now();
+  const vencido = +inicioDaValidadeDoLink(envio) + j.validadeDias * DIA < Date.now();
   return {
     ...base,
     jogo: {

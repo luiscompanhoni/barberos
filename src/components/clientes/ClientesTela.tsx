@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search, UserRoundPlus, UsersRound } from "lucide-react";
 import { api } from "@/lib/cliente-api";
+import { rotuloDaUltimaVisita } from "@/lib/clientes/segmentos";
 import { formatarTelefone } from "@/lib/telefone";
 import { ClienteDetalhe } from "./ClienteDetalhe";
 import { EditorCliente } from "./EditorCliente";
@@ -48,6 +49,7 @@ export function ClientesTela() {
         <p className="mt-1 text-sm text-zinc-500">{formatarTelefone(c.telefone)}</p>
         <p className="mt-3 text-sm">{c.assinatura ? `${c.assinatura.plano.nome} · ${c.assinatura.status.toLowerCase()}` : "Sem assinatura atual"}</p>
         <p className="mt-1 text-xs text-zinc-500">{c.ultimaVisita ? `Último atendimento: ${dataCliente(c.ultimaVisita)}` : "Sem atendimento concluído registrado"} · {c.cadastroCompleto ? "Cadastro completo" : "Cadastro a completar"}</p>
+        {c.ultimaVisita && <p className="mt-1 text-xs font-medium text-zinc-500">{rotuloDaUltimaVisita(c.ultimaVisita)}</p>}
       </button>)}</div>
       {!dados.clientes.length && <p className="cartao text-sm text-zinc-500">Nenhum cliente encontrado. Ajuste a busca ou cadastre um novo cliente.</p>}
       <nav aria-label="Páginas de clientes" className="flex items-center justify-between gap-3"><button className="btn" disabled={pagina <= 1 || carregando} onClick={() => navegar({ pagina: String(pagina - 1) })}>Anterior</button><span className="text-sm text-zinc-500">Página {dados.pagina} de {dados.paginas}</span><button className="btn" disabled={pagina >= dados.paginas || carregando} onClick={() => navegar({ pagina: String(pagina + 1) })}>Próxima</button></nav>

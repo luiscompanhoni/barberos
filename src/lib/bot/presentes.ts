@@ -1,4 +1,4 @@
-import { envioComLinkLiberado } from "@/lib/campanhas/link-acesso";
+import { envioComLinkConfirmado, inicioDaValidadeDoLink } from "@/lib/campanhas/link-acesso";
 import { db } from "@/lib/db";
 import { urlSite } from "@/lib/dominios";
 
@@ -12,14 +12,14 @@ export async function presentesDaConversa(telefone: string, agora = Date.now()) 
       select: { rotulo: true, codigo: true, status: true, expiraEm: true, agendamentoId: true },
     }),
     db.campanhaEnvio.findFirst({
-      where: { clienteId: cliente.id, ...envioComLinkLiberado, token: { not: null }, campanha: { status: "ATIVA", jogoId: { not: null } } },
+      where: { clienteId: cliente.id, ...envioComLinkConfirmado, token: { not: null }, campanha: { status: "ATIVA", jogoId: { not: null } } },
       orderBy: { enviadoEm: "desc" },
-      select: { token: true, jogadaId: true, enviadoEm: true, campanha: { select: { nome: true, jogo: { select: { ativo: true, inicioEm: true, fimEm: true, validadeDias: true } } } } },
+      select: { token: true, jogadaId: true, enviadoEm: true, liberadoEm: true, ofertaEnviadaEm: true, continuacaoReservadaEm: true, campanha: { select: { nome: true, jogo: { select: { ativo: true, inicioEm: true, fimEm: true, validadeDias: true } } } } },
     }),
   ]);
   const jogo = convite?.campanha.jogo;
   const valido = convite && jogo?.ativo && (!jogo.inicioEm || +jogo.inicioEm <= agora) && (!jogo.fimEm || +jogo.fimEm >= agora)
-    && convite.enviadoEm && +convite.enviadoEm + jogo.validadeDias * 86_400_000 >= agora;
+    && +inicioDaValidadeDoLink(convite) + jogo.validadeDias * 86_400_000 >= agora;
   return {
     premios: premios.map(p => ({ ...p, status: p.expiraEm && +p.expiraEm < agora && ["DISPONIVEL", "RESERVADO"].includes(p.status) ? "EXPIRADO" : p.status })),
     convite: convite && valido && convite.token ? { campanha: convite.campanha.nome, link: `${urlSite()}/c/r/${convite.token}`, ja_jogou: !!convite.jogadaId } : null,

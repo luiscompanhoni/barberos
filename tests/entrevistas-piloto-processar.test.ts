@@ -1,6 +1,6 @@
 import { describe,it,expect,vi,beforeEach,afterEach } from "vitest";
-const m=vi.hoisted(()=>({entrada:vi.fn(),enviar:vi.fn(),modelo:vi.fn(),cfg:vi.fn(),piloto:vi.fn(),entrevista:vi.fn()}));
-vi.mock("@/lib/whatsapp/conversas",()=>({registrarEntrada:m.entrada,enviarNaConversa:m.enviar}));
+const m=vi.hoisted(()=>({encaminhar:vi.fn(),entrada:vi.fn(),enviar:vi.fn(),modelo:vi.fn(),cfg:vi.fn(),piloto:vi.fn(),entrevista:vi.fn()}));
+vi.mock("@/lib/whatsapp/conversas",()=>({registrarEntrada:m.entrada,enviarNaConversa:m.enviar,encaminharEntradaBloqueada:m.encaminhar}));
 vi.mock("@/lib/bot/agente",()=>({executarTurno:m.modelo}));
 vi.mock("@/lib/agenda/carregar",()=>({configuracao:m.cfg}));
 vi.mock("@/lib/whatsapp/piloto",()=>({estadoPiloto:m.piloto}));
@@ -10,9 +10,9 @@ const telefone="5547999990000";
 beforeEach(()=>{vi.clearAllMocks();vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS","false");vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_EQUIPE","false");m.piloto.mockResolvedValue({ativo:true,telefone,expiraEm:new Date(Date.now()+60000),enviados:0,versao:1});m.entrada.mockResolvedValue({id:"fixture-piloto",telefone,estado:"BOT"});m.entrevista.mockResolvedValue({tratado:true,resposta:"fixture horarios"});});
 afterEach(()=>vi.unstubAllEnvs());
 describe("piloto determinístico não chama IA ou ferramentas gerais",()=>{
- it("bloqueio geral impede também entrevista ativa sem exceção de equipe",async()=>{
+ it("bloqueio geral encaminha também entrevista ativa sem exceção de equipe",async()=>{
   vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS","true");await receberMensagem({telefone,texto:"INICIAR ENTREVISTA"});
-  expect(m.entrada).toHaveBeenCalled();for(const fn of [m.piloto,m.entrevista,m.cfg,m.enviar,m.modelo])expect(fn).not.toHaveBeenCalled();
+  expect(m.entrada).toHaveBeenCalled();expect(m.encaminhar).toHaveBeenCalledTimes(1);for(const fn of [m.piloto,m.entrevista,m.cfg,m.enviar,m.modelo])expect(fn).not.toHaveBeenCalled();
  });
  it("responde somente pelo fluxo de entrevista com finalidade explícita",async()=>{
   await receberMensagem({telefone,texto:"INICIAR ENTREVISTA"});

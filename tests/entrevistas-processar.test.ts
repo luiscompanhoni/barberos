@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-const m = vi.hoisted(() => ({ entrada: vi.fn(), enviar: vi.fn(), modelo: vi.fn(), cfg: vi.fn(), sessao: vi.fn() }));
-vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: m.entrada, enviarNaConversa: m.enviar }));
+const m = vi.hoisted(() => ({ entrada: vi.fn(), enviar: vi.fn(), encaminhar: vi.fn(), modelo: vi.fn(), cfg: vi.fn(), sessao: vi.fn() }));
+vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: m.entrada, enviarNaConversa: m.enviar, encaminharEntradaBloqueada: m.encaminhar }));
 vi.mock("@/lib/bot/agente", () => ({ executarTurno: m.modelo }));
 vi.mock("@/lib/db", () => ({ db: { entrevistaRecrutamento: { findUnique: m.sessao } } }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: m.cfg }));
@@ -14,6 +14,7 @@ describe("convites não entram no modelo operacional", () => {
     m.cfg.mockResolvedValue({ botAtivo: false });
     await receberMensagem({ telefone: "5547999990000", texto: "ENTREVISTA "+"a".repeat(43) });
     expect(m.modelo).not.toHaveBeenCalled(); expect(m.enviar).not.toHaveBeenCalled(); expect(m.sessao).not.toHaveBeenCalled();
+    expect(m.encaminhar).toHaveBeenCalledWith("conversa-ficticia", expect.stringContaining("equipe da Black"));
   });
   it("uma conversa vinculada continua isolada quando o transporte é desligado", async () => {
     vi.stubEnv("RECRUTAMENTO_ENTREVISTAS_WHATSAPP_ATIVO", "false");

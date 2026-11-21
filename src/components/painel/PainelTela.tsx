@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useAcesso } from "@/components/AcessoContexto";
 import { api, reais } from "@/lib/cliente-api";
+import { rotuloDaUltimaVisita } from "@/lib/clientes/segmentos";
 import { formatarTelefone } from "@/lib/telefone";
 import { CalendarDays, Clapperboard, Scissors } from "lucide-react";
 import { Metrica, PainelFinanceiro, type FinanceiroPainel } from "./PainelFinanceiro";
@@ -251,7 +252,7 @@ export function PainelTela({ nome, estudioHabilitado = false }: { nome: string; 
           <Bloco titulo="Clientes sumidos (35+ dias sem voltar e nada marcado)" qtd={pe.sumidos.length}>
             {pe.sumidos.map((c) => (
               <li key={c.id} className="flex items-center gap-2">
-                <span>{c.nome} · última visita há {diasAtras(c.ultimaVisita)} dias</span>
+                <span>{c.nome} · última visita há {diasAtras(c.ultimaVisita)} dias · {rotuloDaUltimaVisita(c.ultimaVisita)}</span>
                 <a className="text-xs text-emerald-700 underline" target="_blank" rel="noreferrer" href={`https://wa.me/${c.telefone}?text=${MSG_VOLTA}`}>chamar no WhatsApp</a>
               </li>
             ))}

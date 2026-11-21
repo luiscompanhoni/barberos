@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Modal } from "@/components/Modal";
 import { api } from "@/lib/cliente-api";
-import { montarMensagem } from "@/lib/campanhas/regras";
+import { PreviaCampanha } from "./PreviaCampanha";
 import type { MODELOS_SEGMENTOS } from "@/lib/campanhas/modelos-segmento";
 
 type Modelo = (typeof MODELOS_SEGMENTOS)[number];
@@ -93,23 +93,21 @@ export function CampanhaDetalhe(p: {
       <form className="space-y-3" onSubmit={e => { e.preventDefault(); void executar("editar"); }}>
         <fieldset disabled={!podeEditar || ocupado} className="space-y-3">
           <label className="rotulo">Nome<input className="campo" required minLength={2} maxLength={80} value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} /></label>
-          <label className="rotulo">Mensagem<textarea className="campo min-h-28" required minLength={10} maxLength={900} value={form.mensagem} onChange={e => setForm({ ...form, mensagem: e.target.value })} /></label>
+          <label className="rotulo">Mensagem após a resposta<textarea className="campo min-h-28" required minLength={10} maxLength={900} value={form.mensagem} onChange={e => setForm({ ...form, mensagem: e.target.value })} /></label>
           <p className="text-xs text-zinc-500">Campos disponíveis: {"{nome}"}, {"{barbearia}"} e {"{link}"}.</p>
           <label className="rotulo">Destino do link<select className="campo" value={form.jogoId}
-            disabled={!!p.campanha && p.campanha.enviados + p.campanha.falhas + p.campanha.pulados > 0}
+            disabled={!!p.campanha && p.campanha.enviados + p.campanha.falhas > 0}
             onChange={e => setForm({ ...form, jogoId: e.target.value })}>
             <option value="">Agenda, sem presente</option>
             {jogos.map(j => <option key={j.id} value={j.id}>Jogada na {j.nome}</option>)}
           </select></label>
+          <p className="text-xs text-zinc-500">Para clientes frios e muito frios, o primeiro link precisa abrir uma roleta ativa.</p>
           <div className="grid grid-cols-2 gap-3">
             <label className="rotulo">Limite por dia<input className="campo" type="number" required min={1} max={500} value={form.limite} onChange={e => setForm({ ...form, limite: e.target.value })} /></label>
             <label className="rotulo">Estimativa de agendamento (%)<input className="campo" type="number" required min={1} max={100} step={0.01} value={form.taxa} onChange={e => setForm({ ...form, taxa: e.target.value })} /></label>
           </div>
         </fieldset>
-        <section aria-label="Prévia da mensagem" className="space-y-1 rounded-xl border border-zinc-200 p-3">
-          <h3 className="font-semibold">Prévia da mensagem</h3>
-          <p className="whitespace-pre-wrap break-words">{montarMensagem(form.mensagem, { nome: "Cliente", barbearia: "Black Barber", link: "[link individual]" })}</p>
-        </section>
+        <PreviaCampanha mensagem={form.mensagem} />
         {podeEditar && <button className="btn" disabled={ocupado || (!alterado && !novo)}>{novo ? "Salvar rascunho" : "Salvar alterações"}</button>}
       </form>
       {!encerrada && <div className="space-y-3 border-t border-zinc-200 pt-3">

@@ -19,6 +19,8 @@ import { processarRecompras } from "@/lib/recompras/rotina";
 import { gerarNotificacoes } from "@/lib/notificacoes/geracao";
 import { processarPush } from "@/lib/notificacoes/envio";
 import { atualizarPremios } from "@/lib/jogos/premios";
+import { acompanhamentoRoletaAtivo } from "@/lib/jogos/jornada-roleta";
+import { registrarAbandonosRoleta, rodarNudgesRoleta, rodarPosRoleta } from "@/lib/jogos/jornada-roleta-rotina";
 import { sincronizarRecentes } from "@/lib/conciliacao/celcash";
 import { processarEsperas, processarIndicacoes, processarRetornos } from "@/lib/crescimento/rotina";
 import { enviarAutomacao as enviar } from "./enviar";
@@ -31,8 +33,9 @@ const MAX_REATIVACAO_POR_RODADA = 15;
 
 /** `clienteIds` limita a rodada a esses clientes (usado nos testes). */
 export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
-  const cont = { retomadasConvite: 0, lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0 };
+  const cont = { retomadasConvite: 0, lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0, roletaNudge: 0, roletaUpsell: 0 };
   if (quarentenaRestauracao()) return cont;
+  await registrarAbandonosRoleta(agora, opts).catch(() => console.error("[roleta] Falha ao medir jornadas sem continuidade."));
   if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") {
     if (loteAutorizadoConfigurado()) cont.campanha = await processarCampanhas(agora, opts);
     return cont;
@@ -65,6 +68,17 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
 
   if (!comercial) return cont;
 
+  cont.roletaNudge = await rodarNudgesRoleta(agora, cfg, opts).catch(() => {
+    console.error("[roleta] Falha na rotina de retomada.");
+    return 0;
+  });
+  const roleta = await rodarPosRoleta(agora, cfg, opts).catch(() => {
+    console.error("[roleta] Falha na rotina pós-atendimento.");
+    return { pos: 0, upsell: 0 };
+  });
+  cont.pos += roleta.pos;
+  cont.roletaUpsell = roleta.upsell;
+
   // ---- depois da falta: oferece remarcar (se ainda nao remarcou)
   if (cfg.avisoFalta) {
     const faltas = await db.agendamento.findMany({
@@ -82,7 +96,8 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
   // ---- agradecimento (30 min a 12 h depois de concluir)
   if (cfg.posAtendimento) {
     const feitos = await db.agendamento.findMany({
-      where: { status: "CONCLUIDO", fim: { gt: new Date(agora - 12 * 60 * MIN), lt: new Date(agora - 30 * MIN) }, cliente: { aceitaMensagens: true }, ...so },
+      where: { status: "CONCLUIDO", fim: { gt: new Date(agora - 12 * 60 * MIN), lt: new Date(agora - 30 * MIN) }, cliente: { aceitaMensagens: true },
+        ...(acompanhamentoRoletaAtivo() ? { jornadaRoleta: null } : {}), ...so },
       include: { cliente: true },
     });
     // Um por cliente por dia (corte + barba seguidos = uma mensagem).
@@ -164,7 +179,6 @@ export function agendarAutomacoes() {
     rodando = true;
     try {
       await sincronizarDisponibilidadeAtendimento();
-      if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true" && !loteAutorizadoConfigurado()) return;
       const r = await rodarAutomacoes();
       if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return;
       // Checklist da equipe (lista da manha e resumo da noite).
@@ -174,7 +188,7 @@ export function agendarAutomacoes() {
       });
       if (ck.listas || ck.resumos || ck.lembretes) console.log(`[checklist] listas ${ck.listas}, resumos ${ck.resumos}, lembretes ${ck.lembretes}`);
       const total = Object.values(r).reduce((a, b) => a + b, 0);
-      if (total) console.log(`[automacoes] lembretes ${r.lembretes}, pós-falta ${r.faltas}, pós-atendimento ${r.pos}, reativação ${r.reativacao}, aniversário ${r.aniversario}, espera ${r.espera}, retorno ${r.retorno}, indicação ${r.indicacao}, campanha ${r.campanha}`);
+      if (total) console.log(`[automacoes] lembretes ${r.lembretes}, pós-falta ${r.faltas}, pós-atendimento ${r.pos}, reativação ${r.reativacao}, aniversário ${r.aniversario}, espera ${r.espera}, retorno ${r.retorno}, indicação ${r.indicacao}, campanha ${r.campanha}, retomadas da roleta ${r.roletaNudge}, ofertas pós-roleta ${r.roletaUpsell}`);
     } catch (e) {
       console.error("[automacoes] falhou:", e);
     } finally {
