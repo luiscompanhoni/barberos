@@ -328,8 +328,9 @@ depois para a produção.
   `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`; webhook `<PAINEL_URL>/api/whatsapp/webhook` com o campo `messages`.
   Templates: Autenticação com botão "copiar código" → `WHATSAPP_TEMPLATE_CODIGO` (depois `OTP_PROVIDER="whatsapp"`);
   Utilidade com corpo `Olá {{1}}! {{2}}` → `WHATSAPP_TEMPLATE_AVISO` (avisos fora da janela de 24 h).
-  Marketing com o mesmo corpo → `WHATSAPP_TEMPLATE_CAMPANHA` (campanhas; vazio usa o de aviso). Quebras de linha do
-  texto viram " · " no parâmetro, porque a Meta recusa parâmetro com quebra de linha (erro 132018).
+  Campanhas fora da janela usam `WHATSAPP_TEMPLATE_CAMPANHA_SAUDACAO` e `WHATSAPP_TEMPLATE_CAMPANHA_APRESENTACAO`
+  aprovados para as duas mensagens de abertura. A oferta aguarda resposta e sai em texto livre dentro da janela.
+  Veja a [operação do Leonel](../RELATORIO-LEONEL.md).
   A tela WhatsApp (dono) lista, cria e apaga modelos na WABA (`/api/whatsapp/modelos`, auditado); com token no `.env`
   ela precisa de `WHATSAPP_WABA_ID`, e com a conexão pelo painel usa a WABA gravada.
 - **WhatsApp oficial com o número no celular (coexistência):** o app da Meta precisa ser Provedor de Tecnologia

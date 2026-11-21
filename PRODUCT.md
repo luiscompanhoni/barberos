@@ -183,20 +183,21 @@ A atualização de equipe acrescenta **Reuniões** (`/reunioes`), **Meu dia** (`
   - Capacidade da agenda em 3, 7 e 14 dias por barbeiro (expediente menos folgas, agenda fechada e marcados, a
     partir da antecedência mínima), horários ociosos e "capacidade para ~X novos agendamentos" (vaga do tamanho do
     serviço que mais sai, com a duração de cada barbeiro e o intervalo).
-  - Segmentos com tamanho: 0–30, 31–60, 61–90, 91–180, +180 dias, assinantes, ex-assinantes, perdidos (+90 dias),
-    novos (1ª visita em 30 dias) e cadastrados que nunca vieram; mostra quantos podem receber agora.
+  - Temperatura desde o último atendimento concluído: quente até 30 dias, morno de 31 a 90, frio de 91 a 180 e
+    muito frio acima de 180. Os subgrupos de visita, assinatura e cadastro mostram quantos podem receber agora.
   - Cada card abre público, objetivo, texto editável, prévia e configuração de lote. A preparação dos 16 modelos é
     idempotente e grava campanhas pausadas; a equipe ativa e confirma cada lote quando o envio estiver liberado.
-  - Campanha = segmentos + mensagem (`{nome}`, `{barbearia}`, `{link}`; o "responda PARAR" entra sozinho) + limite
-    por dia. O dono libera lotes; o tamanho sugerido vem da agenda livre em 7 dias e da taxa de quem costuma marcar
+  - A campanha abre com duas mensagens do Leonel, sem link ou oferta. A continuação traz a oferta editável
+    (`{nome}`, `{barbearia}`, `{link}`) e a opção de sair, após resposta. O dono libera lotes; o tamanho sugerido vem da agenda livre em 7 dias e da taxa de quem costuma marcar
     (ex.: 40 vagas ÷ 20% = 200). Mais recentes primeiro; até 20 a cada 5 min, 8h–21h; quem marcou ou pediu PARAR
     depois do lote é pulado. A primeira sugerida é só para quem veio nos últimos 60 dias. Pausar segura a fila;
     encerrar cancela quem não recebeu.
-  - Link rastreado `/c/r/<código>` (sem login): abre a agenda ou, na campanha de jogo, dá 1 jogada de presente
-    (prêmio no número do cliente) e depois "Agendar e usar meu prêmio".
+  - Link rastreado `/c/r/<código>` (sem login): abre a agenda ou o jogo associado. Para frio e muito frio, abre
+    diretamente a roleta ativa. O prêmio fica na ficha do telefone. A verificação do número retorna ao agendamento.
   - Funil: enviadas → entregues → lidas → abriram o link → jogaram → ganharam → abriram o app → têm conta →
     agendaram (até 14 dias) → compareceram → resgataram, com % e o faturado. Clique só conta em navegador (robô de
-    prévia não); entregue/lida vêm da API oficial ou da Evolution (o simulador não informa).
+    prévia não); entregue/lida vêm da API oficial ou da Evolution (o simulador não informa). O Funil da roleta
+    filtra pela data do giro e mostra conversão e perdas por etapa, incluindo nudge, resposta, comparecimento e pós-corte.
 - **Jogos de recompensa** (`src/lib/jogos/`, `/jogos`, `/c/jogos`): Roleta Black, Caixas-surpresa e Raspadinha num
   motor único. Jogadas vêm de atendimento, grátis periódico, campanha, indicação, aniversário, assinatura ou manual.
   Prêmios: crédito (vira saldo), brinde, serviço, desconto ou nada, com raridade, chance, estoque, limite mensal,
