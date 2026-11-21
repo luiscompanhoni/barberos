@@ -1,3 +1,5 @@
+BEGIN;
+
 -- AlterTable
 ALTER TABLE "campanha_envios" ADD COLUMN     "aberturaConcluidaEm" TIMESTAMPTZ(3),
 ADD COLUMN     "aberturaIniciadaEm" TIMESTAMPTZ(3),
@@ -53,3 +55,4 @@ ALTER TABLE "jornadas_roleta" ADD CONSTRAINT "jornadas_roleta_clienteId_fkey" FO
 -- AddForeignKey
 ALTER TABLE "jornadas_roleta" ADD CONSTRAINT "jornadas_roleta_agendamentoId_fkey" FOREIGN KEY ("agendamentoId") REFERENCES "agendamentos"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
+COMMIT;
