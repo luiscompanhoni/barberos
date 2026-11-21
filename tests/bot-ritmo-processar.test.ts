@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ entrada: vi.fn(), enviar: vi.fn(), digitando: vi.fn(), modelo: vi.fn(), cfg: vi.fn(), piloto: vi.fn(), conversa: vi.fn(), carregar: vi.fn(), update: vi.fn(), mensagens: vi.fn(), equipe: vi.fn(), provedor: vi.fn(), depois: vi.fn() }));
 vi.mock("next/server", async (original) => ({ ...await original<typeof import("next/server")>(), after: m.depois }));
 vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: m.entrada, enviarNaConversa: m.enviar }));
-vi.mock("@/lib/whatsapp/canal", () => ({ provedorWhatsApp: m.provedor }));
+vi.mock("@/lib/whatsapp/canal", async original => ({ ...await original<typeof import("@/lib/whatsapp/canal")>(), provedorWhatsApp: m.provedor }));
 vi.mock("@/lib/whatsapp/evolution", () => ({ tokenWebhookEvolution: () => "token-ficticio", indicarDigitacaoEvolution: m.digitando }));
 vi.mock("@/lib/whatsapp/status", () => ({ registrarStatus: vi.fn(async () => {}) }));
 vi.mock("@/lib/bot/agente", () => ({ executarTurno: m.modelo }));
@@ -197,9 +197,10 @@ describe("cadência cancelável do atendimento", () => {
 
   it.each(["evolution", "cloud"])("lote %s registra pedido e PARAR sem aguardar a resposta antiga", async (provedor) => {
     const textos = ["Quero cortar", "PARAR"];
+    const timestamp = String(Math.floor(Date.now() / 1000));
     const payload = provedor === "evolution"
       ? { event: "messages.upsert", data: textos.map((texto, i) => ({ key: { id: `m${i}`, remoteJid: `${telefone}@s.whatsapp.net`, fromMe: false }, message: { conversation: texto } })) }
-      : { entry: [{ changes: [{ value: { messages: textos.map((texto, i) => ({ id: `m${i}`, from: telefone, type: "text", text: { body: texto } })) } }] }] };
+      : { entry: [{ changes: [{ value: { messages: textos.map((texto, i) => ({ id: `m${i}`, from: telefone, timestamp, type: "text", text: { body: texto } })) } }] }] };
     const body = JSON.stringify(payload);
     vi.stubEnv("WHATSAPP_APP_SECRET", "segredo-ficticio");
     const headers: Record<string, string> = provedor === "evolution" ? { "x-barberos-token": "token-ficticio" } : { "x-hub-signature-256": `sha256=${createHmac("sha256", "segredo-ficticio").update(body).digest("hex")}` };
