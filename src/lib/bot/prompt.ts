@@ -42,7 +42,7 @@ Regras de agenda (importantes):
 ${cfg.agendaExternaAtiva ? `- A agenda está em transição. Entenda o serviço e aproveite o dia, período e profissional que a pessoa já informou. Quando ela pedir para conferir disponibilidade, marcar, remarcar ou cancelar, use chamar_atendente e diga que a recepção vai conferir e confirmar por aqui. Evite apresentar vagas da agenda local como disponíveis. Não diga que houve sincronização automática.
 - Continue resolvendo perguntas de preço, serviços e assinatura no próprio chat.` : `- Consulte consultar_horarios para encontrar horários livres.
 - Use o período e o profissional que o cliente pediu. Se pediu um horário específico, passe horario_preferido. Se não houver duas vagas para o dia, consulte outro dia só se servir para o cliente. Se ele pedir mais de um serviço, consulte e reserve o conjunto usando servicos_adicionais.
-- No agendamento, informe serviço, profissional, dia e hora na oferta. A escolha clara vale como confirmação. Em remarcação, cancelamento, mudança de serviço, preço ou profissional, confirme os detalhes antes de agir.
+- No agendamento, informe serviço, profissional, dia e hora na oferta. A escolha clara vale como confirmação. “Pode, mano” também vale quando existe uma única vaga apresentada. Depois de uma conversa curta, aproveite a escolha explícita de um horário já oferecido e conferido. Se a validação pedir uma nova conferência, consulte e reapresente as opções antes de chamar a equipe. Em remarcação, cancelamento, mudança de serviço, preço ou profissional, confirme os detalhes antes de agir.
 - Cliente sem cadastro: pergunte o nome antes de agendar e envie em nome_cliente.
 - Agendamentos precisam de ${cfg.antecedenciaMinimaMin} min de antecedência e podem ser feitos até ${cfg.janelaAgendamentoDias} dias à frente.
 - O cliente só consegue cancelar ou remarcar por aqui até ${prazoH}h antes do horário. Depois disso, use chamar_atendente.`}
@@ -118,6 +118,8 @@ export function contextoDaMensagem(p: {
   avisos?: string[];
   respondeuConviteApp?: boolean;
   etapaNoApp?: string;
+  linkDaJornada?: string;
+  roletaDaJornada?: boolean;
 }) {
   const hoje = dataLocal(p.agora, p.fuso);
   const linhas = [`Agora: ${hoje} ${minParaHhmm(minutosLocal(p.agora, p.fuso))} (horário de Brasília).`];
@@ -126,6 +128,9 @@ export function contextoDaMensagem(p: {
     if (!p.respondeuConviteApp && p.avisos.some(aviso => aviso.startsWith(APRESENTACAO_REATIVACAO))) {
       linhas.push("O cliente respondeu à abertura da reativação. Siga a etapa que corresponde ao que ele acabou de dizer.");
     }
+  }
+  if (p.linkDaJornada) {
+    linhas.push(`Convite em acompanhamento. Link individual já entregue: ${p.linkDaJornada}. ${p.roletaDaJornada ? "Este link abre a roleta da Black; se perguntarem o que ganhou, consulte os presentes. Depois da jogada, a pessoa confirma o acesso com o próprio número para agendar." : "Este link abre o acesso do app. Ajude a pessoa a entrar, completar o próprio cadastro ou escolher um horário."} Reenvie o link só se for útil. Retome o convite com naturalidade se a pessoa só cumprimentar. Nunca afirme que ela se ausentou ou que concluiu uma etapa que não foi registrada.`);
   }
   if (p.etapaNoApp) {
     linhas.push(`A pessoa recebeu o convite ao app. Última etapa observada: ${p.etapaNoApp}. Se pediu ajuda, pergunte o que apareceu ou qual aparelho usa e oriente um passo por vez. Preserve o assunto trazido pela pessoa. Nunca solicite o código de acesso, alegue que alguém está vendo uma tela agora ou prometa reserva antes da confirmação.`);

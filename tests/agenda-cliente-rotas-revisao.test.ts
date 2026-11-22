@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ sessao: vi.fn(), agendar: vi.fn(), remarcar: vi.fn(), cancelar: vi.fn(), cliente: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), agendar: vi.fn(), remarcar: vi.fn(), cancelar: vi.fn(), cliente: vi.fn(), avisar: vi.fn(async () => {}) }));
+vi.mock("next/server", async original => ({
+  ...await original<typeof import("next/server")>(),
+  after: (tarefa: () => Promise<void>) => tarefa(),
+}));
+vi.mock("@/lib/convites/confirmar", () => ({ avisarReservaPeloApp: m.avisar }));
 vi.mock("@/lib/auth/sessao", () => ({ exigirCliente: m.sessao }));
 vi.mock("@/lib/agenda/cliente", () => ({ agendarPeloCliente: m.agendar, remarcarPeloCliente: m.remarcar, cancelarPeloCliente: m.cancelar, proximosDoCliente: vi.fn(), historicoDoCliente: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { cliente: { findUniqueOrThrow: m.cliente } } }));
@@ -39,6 +44,7 @@ describe("contratos das mutações de agenda do cliente", () => {
   it("encaminha identidade e versão da sessão nas três mutações", async () => {
     expect((await POST(req("POST", novo))).status).toBe(201);
     expect(m.agendar).toHaveBeenCalledWith(expect.objectContaining({ clienteId: "c", usuarioId: "u", sessaoVersao: 7, origem: "SITE", duracaoEsperadaMin: 50 }));
+    expect(m.avisar).toHaveBeenCalledWith("ag", "c");
     expect((await PATCH(req("PATCH", { inicio: novo.inicio, precoEsperadoCentavos: 8000, duracaoEsperadaMin: 50 }), ctx)).status).toBe(200);
     expect(m.remarcar).toHaveBeenCalledWith("c", "ag", new Date(novo.inicio), undefined, undefined, 8000, { usuarioId: "u", sessaoVersao: 7 }, 50, true);
     expect((await DELETE(req("DELETE"), ctx)).status).toBe(200);

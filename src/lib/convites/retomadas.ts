@@ -6,6 +6,8 @@ import { naFila } from "@/lib/whatsapp/fila-conversa";
 import { temJanela24h, provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { telefoneCanonico } from "@/lib/whatsapp/webhook";
 import { canalConviteAtivo } from "./canal";
+import { destinoDaJornada, ehJornadaComRoleta, ehJornadaLeonel, enderecoDoConvite } from "./link";
+import { instanteDeRetomada, mensagemDaRetomada } from "./jornada-leonel";
 
 const DIA = 86_400_000;
 const HORA = DIA / 24;
@@ -41,12 +43,13 @@ async function retomar(id: string, agora: number) {
   const j = await carregar(id);
   if (!j?.proximaEm || +j.proximaEm > agora || j.parouEm || j.retomadas >= 3) return false;
   const c = j.conversa, cliente = c.cliente;
+  const novo = ehJornadaLeonel(j.token);
   const parar = () => db.jornadaConviteApp.updateMany({ where: { conversaId: id, proximaEm: j.proximaEm }, data: { proximaEm: null } });
   if (!cliente || cliente.id !== j.clienteId || cliente.telefone !== c.telefone || c.estado !== "BOT" || c.recusaAutomaticas ||
     !cliente.aceitaMensagens || cliente.excluidoEm || (c.waId && telefoneCanonico(c.waId) !== c.telefone) ||
     !j.abertura || j.abertura.erro || j.link?.erro || agora - +j.inicioEm > 14 * DIA ||
     (!j.link && (c.conviteApp !== "AGUARDANDO" || j.respostaEm)) ||
-    (j.link && c.ultimaEntradaEm && c.ultimaEntradaEm > j.link.criadoEm)) { await parar(); return false; }
+    (!novo && j.link && c.ultimaEntradaEm && c.ultimaEntradaEm > j.link.criadoEm)) { await parar(); return false; }
   if (j.agendaEm) {
     const preferencia = await db.lembreteAgendamento.findUnique({ where: { clienteId: j.clienteId } });
     if (!preferencia || !lembreteAgendamentoDevido(preferencia, agora)) {
@@ -62,18 +65,32 @@ async function retomar(id: string, agora: number) {
   ]);
   if (reserva || pedido || (temJanela24h() && (!c.ultimaEntradaEm || agora - +c.ultimaEntradaEm >= DIA))) { await parar(); return false; }
   // Dá tempo de concluir a etapa recém-aberta no navegador antes de oferecer ajuda.
-  const ultimaVisita = Math.max(...[j.clicouEm, j.loginEm, j.entrouEm, j.agendaEm, j.instalouEm].map(d => d?.getTime() ?? 0));
-  if (!j.agendaEm && ultimaVisita + 4 * HORA > agora) {
-    await db.jornadaConviteApp.updateMany({ where: { conversaId: id, proximaEm: j.proximaEm }, data: { proximaEm: new Date(ultimaVisita + 4 * HORA) } });
+  const roleta = ehJornadaComRoleta(j.token);
+  const envio = roleta ? await db.campanhaEnvio.findUnique({ where: { token: j.token },
+    select: { status: true, jogada: { select: { criadoEm: true } } },
+  }) : null;
+  if (roleta && envio?.status !== "ENVIADO") return false;
+  const atividades = [j.clicouEm, j.loginEm, j.entrouEm, j.agendaEm, j.instalouEm];
+  if (novo) atividades.push(j.link?.criadoEm ?? null, c.ultimaEntradaEm, envio?.jogada?.criadoEm ?? null);
+  const ultimaVisita = Math.max(...atividades.map(d => d?.getTime() ?? 0));
+  const proxima = novo ? instanteDeRetomada(ultimaVisita) : new Date(ultimaVisita + 4 * HORA);
+  if ((novo || !j.agendaEm) && +proxima > agora) {
+    await db.jornadaConviteApp.updateMany({ where: { conversaId: id, proximaEm: j.proximaEm }, data: { proximaEm: proxima } });
     return false;
   }
   if (!await canalConviteAtivo()) return false;
   const reservaEnvio = await db.jornadaConviteApp.updateMany({ where: { conversaId: id, parouEm: null, proximaEm: j.proximaEm,
-    retomadas: j.retomadas, respostaEm: j.respostaEm, linkId: j.linkId, loginEm: j.loginEm, agendaEm: j.agendaEm,
+    retomadas: j.retomadas, respostaEm: j.respostaEm, linkId: j.linkId, clicouEm: j.clicouEm,
+    loginEm: j.loginEm, entrouEm: j.entrouEm, agendaEm: j.agendaEm,
     conversa: { estado: "BOT", clienteId: j.clienteId, recusaAutomaticas: false, ultimaEntradaEm: c.ultimaEntradaEm } },
     data: { retomadas: { increment: 1 }, ultimaRetomadaEm: new Date(agora), proximaEm: null } });
   if (!reservaEnvio.count) return false;
-  const r = await enviarNaConversa(id, textoAjuda(j), "BOT", { pararSeHumano: true, conviteIndividual: true });
+  const etapa = j.entrouEm || j.agendaEm ? "agenda"
+    : j.loginEm || envio?.jogada ? "cadastro"
+    : (j.clicouEm && roleta ? "roleta" : j.clicouEm ? "cadastro" : "link");
+  const link = etapa === "cadastro" ? enderecoDoConvite(j.token) : destinoDaJornada(j.token);
+  const texto = novo ? mensagemDaRetomada(cliente.nome, etapa, link) : textoAjuda(j);
+  const r = await enviarNaConversa(id, texto, "BOT", { pararSeHumano: true, conviteIndividual: true });
   if (!r.ok || (!r.wamid && provedorWhatsApp() !== "simulador")) return false;
   if (!j.agendaEm && j.retomadas < 2) await db.jornadaConviteApp.updateMany({ where: { conversaId: id, parouEm: null, respostaEm: j.respostaEm, proximaEm: null },
     data: { proximaEm: new Date(agora + (j.retomadas === 0 ? 2 : 4) * DIA) } });

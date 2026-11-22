@@ -1,12 +1,22 @@
 import type { Metadata } from "next";
 import { urlSite } from "@/lib/dominios";
+import type { SegmentoLeonel } from "./jornada-leonel";
 
-export const tokenDeConvite = (token: string) => /^app_[a-f0-9]{32}$/.test(token);
+const prefixos = { quente: "appq", morno: "appm", frio: "rotf", muitoFrio: "rotm" } as const;
+export const tokenDaJornada = (segmento: SegmentoLeonel, sufixo: string) => `${prefixos[segmento]}_${sufixo}`;
+export const tokenDeConvite = (token: string) => /^(?:app|appq|appm|rotf|rotm)_[a-f0-9]{32}$/.test(token);
+export const ehJornadaComRoleta = (token: string) => /^rot[fm]_[a-f0-9]{32}$/.test(token);
+export const ehJornadaLeonel = (token: string) => tokenDeConvite(token) && !token.startsWith("app_");
 
-export function enderecoDoConvite(token?: string) {
+export function destinoDaJornada(token: string) {
+  return ehJornadaComRoleta(token) ? new URL(`/c/r/${token}`, urlSite()).href : enderecoDoConvite(token);
+}
+
+export function enderecoDoConvite(token?: string, voltar?: string) {
   const url = new URL("/c/entrar", urlSite());
   if (token) url.searchParams.set("convite", token);
   else url.searchParams.set("confirmar", "1");
+  if (voltar) url.searchParams.set("voltar", voltar);
   return url.href;
 }
 

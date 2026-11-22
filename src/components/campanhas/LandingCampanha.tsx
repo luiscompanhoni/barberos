@@ -9,6 +9,8 @@ import { som } from "@/components/jogos/kit/som";
 import { RaspadinhaBlack } from "@/components/jogos/raspadinha/RaspadinhaBlack";
 import { RoletaBlack } from "@/components/jogos/roleta/RoletaBlack";
 import { Marca } from "@/components/Marca";
+import { VisitaConvite } from "@/components/convites/VisitaConvite";
+import { ehJornadaComRoleta } from "@/lib/convites/link";
 import type { Landing } from "@/lib/campanhas/link";
 import { ErroApi } from "@/lib/cliente-api";
 import { premioParaAgendar, type JogadaCliente } from "@/lib/jogos/tipos";
@@ -53,6 +55,8 @@ export function LandingCampanha({ token, dados }: { token: string; dados: Landin
 function Presente({ token, dados, jogo }: { token: string; dados: Landing; jogo: NonNullable<Landing["jogo"]> }) {
   const [resultado, setResultado] = useState(jogo.jogada);
   const usar = premioParaAgendar(resultado?.premios ?? []);
+  const jornada = ehJornadaComRoleta(token);
+  const agenda = usar ? `/c/agendar?premio=${encodeURIComponent(usar.id)}` : "/c/agendar";
   const jogar = useMemo(() => async () => {
     const jogada = (await enviar(token, "jogar")).jogada as JogadaCliente;
     setResultado(jogada);
@@ -60,10 +64,12 @@ function Presente({ token, dados, jogo }: { token: string; dados: Landing; jogo:
   }, [token]);
   const [abrindo, setAbrindo] = useState(false);
   const [terminou, setTerminou] = useState(!!jogo.jogada);
+  const destino = jornada && terminou ? `/c/entrar?${new URLSearchParams({ convite: token, voltar: agenda })}` : agenda;
   const base = { id: jogo.id, nome: jogo.nome, comoGanhar: [], vitrine: jogo.vitrine, pendente: jogo.jogada, fichas: jogo.jogada ? 0 : 1 };
 
   return (
     <div className="space-y-4">
+      {jornada && <VisitaConvite etapa="clique" token={token} />}
       <div className="text-center">
         <h1 className="text-2xl font-black">{dados.nome ? `${dados.nome}, ` : ""}você ganhou um presente! <Sparkles className="inline text-ouro" size={20} /></h1>
         <p className="mt-1 text-sm text-zinc-600">Da {dados.barbearia}: 1 jogada na {jogo.nome}.{jogo.jogada ? " Veja de novo o que saiu." : ""}</p>
@@ -91,8 +97,8 @@ function Presente({ token, dados, jogo }: { token: string; dados: Landing; jogo:
       )}
 
       {(terminou || !jogo.ativo || jogo.vencido) && (
-        <Link className="btn-primario w-full py-3.5" href={usar ? `/c/agendar?premio=${encodeURIComponent(usar.id)}` : "/c/agendar"}>
-          <CalendarPlus size={17} /> Agendar meu horário
+        <Link className="btn-primario w-full py-3.5" href={destino}>
+          <CalendarPlus size={17} /> {jornada && terminou ? "Entrar e agendar meu horário" : "Agendar meu horário"}
         </Link>
       )}
       <p className="text-center text-xs text-zinc-500">Para agendar e usar, entre com o seu número de WhatsApp: o prêmio já está nele.</p>

@@ -1,5 +1,6 @@
 import { confirmarLembreteConvite } from "@/lib/convites/confirmar";
 import { enderecoDoConvite } from "@/lib/convites/link";
+import { contextoDaJornada } from "@/lib/convites/resposta";
 import { AVISO_TROCA_APP, continuacaoConviteApp, respostaAoConvite } from "./convite-app-textos";
 import { naFila, temTurnoNaFila } from "@/lib/whatsapp/fila-conversa";
 import { contemConviteEntrevista, comandoReservadoEntrevista, processarBotEntrevista, registroSeguroEntrevista } from "./entrevistas";
@@ -126,6 +127,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
     })).count === 1;
   const jornada = (respondeuConvite || conversa.conviteApp === "ENCERRADO") ? await db.jornadaConviteApp.findUnique({ where: { conversaId: conversa.id } }) : null;
   const endereco = jornada ? enderecoDoConvite(jornada.token) : undefined;
+  const contextoConvite = await contextoDaJornada(jornada, conversa.ultimaEntradaEm, texto, sinal);
   if (jornada && respondeuConvite) await db.jornadaConviteApp.update({ where: { conversaId: conversa.id }, data: { respostaEm: new Date(), proximaEm: null } });
   const bolhasDiretas = respondeuConvite && !e.midia ? respostaAoConvite(texto, endereco) : null;
   const respostaDireta = bolhasDiretas?.join("\n\n");
@@ -201,8 +203,7 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
         janelaDias: cfg.janelaAgendamentoDias, cliente: cliente?.nome.trim() ? cliente : null, nomePerfil: conversa.nomePerfil,
         plano: testeIndividual ? undefined : plano,
         respondeuConviteApp: respondeuConvite,
-        etapaNoApp: jornada?.linkId && !jornada.parouEm ? (jornada.agendaEm ? "agenda" : jornada.entrouEm ? "conta" :
-          jornada.loginEm ? "login" : jornada.clicouEm ? "acesso ao link" : "link enviado") : undefined,
+        ...contextoConvite,
         avisos: await avisosRecentes(conversa.id, agora),
       }),
       texto: registroSeguroEntrevista(textoCliente),

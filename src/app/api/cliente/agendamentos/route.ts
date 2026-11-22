@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { avisarReservaPeloApp } from "@/lib/convites/confirmar";
 import { z } from "zod";
 import { exigirCliente } from "@/lib/auth/sessao";
 import { antecipadoDisponivel } from "@/lib/agenda/antecipado";
@@ -50,5 +51,8 @@ export const POST = rota(async (req: Request) => {
     // A reserva já foi feita; falha ao limpar a prévia não desfaz o horário.
     await cancelarLembreteAgendamento(s.clienteId, new Date(), s.usuarioId).catch(() => {});
   }
+  after(async () => {
+    await avisarReservaPeloApp(ag.id, s.clienteId).catch(() => console.error("[convite] falha ao confirmar reserva no WhatsApp"));
+  });
   return NextResponse.json(ag, { status: 201 });
 });

@@ -6,6 +6,6 @@ import { iniciarConviteApp } from "@/lib/whatsapp/convite-app";
 export const POST = rota(async (req: Request, ctx: RouteContext<"/api/conversas/[id]/convite-app">) => {
   const s = await exigirSessao(GESTAO);
   exigirOrigemAutenticacao(req);
-  await iniciarConviteApp((await ctx.params).id, s.usuarioId);
-  return Response.json({ ok: true });
+  const { segmento } = await iniciarConviteApp((await ctx.params).id, s.usuarioId, true);
+  return Response.json({ ok: true, segmento });
 });

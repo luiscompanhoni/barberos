@@ -12,6 +12,14 @@ Em **Conversas → Jornada dos convites**, a equipe acompanha as aberturas, os r
 
 Sem resposta, Leonel pode retomar nos dias 1, 3 e 7, entre 9h e 18h da barbearia. O limite é de três retomadas por convite. Depois do clique ou da tela de login, ele espera pelo menos quatro horas para oferecer ajuda. Na agenda, o cliente pode pedir um lembrete após duas horas de inatividade. Uma recusa, a intervenção da equipe, um pedido de horário pendente ou uma reserva interrompem as retomadas. Os lembretes da reserva usam o horário efetivamente marcado, na véspera e 90 minutos antes. O cliente pode confirmar pelo WhatsApp. A recepção registra o comparecimento.
 
+## Convite individual por temperatura
+
+Em Conversas, **Enviar convite do Leonel** usa a última visita concluída para escolher o texto. Quente e morno recebem a apresentação e o link pessoal para o login em dois balões. Frio e muito frio recebem o link que abre a roleta, com o acesso ao app após jogar. Associe uma roleta elegível ao card do respectivo segmento em Campanhas. A jogada do link é única e o número do cliente vincula o prêmio ao acesso.
+
+A primeira retomada da jornada nova fica elegível depois de cinco horas da última atividade registrada, na janela de contato de 9h a 18h. A mensagem acompanha a etapa de link, roleta, cadastro ou agenda. O fluxo respeita a recusa, a equipe assumindo e a reserva concluída. O código de acesso é confirmado pelo titular no app. Uma reserva feita no app durante a jornada gera confirmação no WhatsApp e lembrete quando a regra de antecedência permitir.
+
+A agenda aceita confirmação coloquial como “Pode, mano” para uma única vaga conferida. A escolha explícita de um horário oferecido pode seguir após um comentário breve, desde que os dados da reserva ainda coincidam com a consulta. O histórico de convites anteriores segue seu fluxo de abertura.
+
 ## Conversa do Leonel em 17/11
 
 A reativação começa com “Fala, {nome}!” e “Aqui é o Leonel da Black.”, em dois balões. Leonel aguarda a resposta antes de oferecer ajuda para marcar. Pedidos para parar mensagens continuam registrados, inclusive quando os envios estão bloqueados.
