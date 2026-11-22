@@ -74,4 +74,13 @@ describe("Leonel e mensalidades do CashBarber", () => {
     expect(JSON.parse(r.texto)).toMatchObject({ link: "https://app.example.test/c/pagar/fatura", cobranca_existente: true });
     expect(m.link).toHaveBeenCalledWith("cliente", "fatura");
   });
+
+  it("explica plano ativo no cartão sem fatura em aberto sem encaminhar", async () => {
+    m.situacao.mockResolvedValue({ assinatura: { ...assinatura, gatewayId: "sub_321", status: "ATIVA" }, cobrancaEmAberto: null, valida: true });
+    const resposta = await executarAssinatura("link_pagamento_assinatura", {}, ctx);
+    expect(resposta.erro).toBeUndefined();
+    expect(JSON.parse(resposta.texto)).toMatchObject({ cobranca_aberta_encontrada: false, forma_atual: "CARTAO",
+      link_area_do_plano: expect.stringContaining("/c/planos") });
+    expect(m.link).not.toHaveBeenCalled();
+  });
 });

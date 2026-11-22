@@ -12,8 +12,9 @@ import { obterConversa } from "@/lib/whatsapp/conversas";
 import { avisarReservaPeloApp } from "@/lib/convites/confirmar";
 import { idModeloSegmento } from "@/lib/campanhas/modelos-segmento";
 import { jogarPelaCampanha } from "@/lib/jogos/motor";
-import { landingDaCampanha } from "@/lib/campanhas/link";
+import { landingDaCampanha, roletaComEnvioReservado } from "@/lib/campanhas/link";
 import { iniciarConviteApp } from "@/lib/whatsapp/convite-app";
+import { registrarStatus } from "@/lib/whatsapp/status";
 
 const { sessao } = vi.hoisted(() => ({ sessao: vi.fn(async () => null as { papel: string; clienteId: string } | null) }));
 vi.mock("@/lib/auth/sessao", async original => ({ ...await original<typeof import("@/lib/auth/sessao")>(), sessaoAtual: sessao }));
@@ -209,6 +210,36 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
     expect(recusou).toMatchObject({ parouEm: expect.any(Date), proximaEm: null });
   });
 
+  it.each([false, true])("espera uma hora do último balão lido e respeita resposta %s", async (respondeu) => {
+    const { id, clienteId } = await contato();
+    await visitaConcluida(clienteId!, 10);
+    const hora = 3_600_000;
+    const inicio = new Date(); inicio.setUTCHours(12, 1, 0, 0);
+    vi.setSystemTime(inicio);
+    try {
+      await iniciarConviteApp(id, gestorId, true);
+      const j = await db.jornadaConviteApp.findUniqueOrThrow({ where: { conversaId: id } });
+      const abertura = randomUUID(), link = randomUUID();
+      await db.mensagem.update({ where: { id: j.aberturaId! }, data: { wamid: abertura, criadoEm: inicio } });
+      await db.mensagem.update({ where: { id: j.linkId! }, data: { wamid: link, criadoEm: inicio } });
+      const leitura = +inicio + (respondeu ? hora * 4 + 15_000 : 3 * 60_000);
+      await registrarStatus([{ wamid: abertura, status: "LIDA", quando: +inicio + 60000, erro: null }]);
+      expect((await db.jornadaConviteApp.findUniqueOrThrow({ where: { conversaId: id } })).proximaEm).toEqual(j.proximaEm);
+      await registrarStatus([{ wamid: link, status: "LIDA", quando: leitura, erro: null },
+        { wamid: link, status: "LIDA", quando: leitura + 60000, erro: null }]);
+      const prazo = leitura + hora;
+      expect((await db.jornadaConviteApp.findUniqueOrThrow({ where: { conversaId: id } })).proximaEm).toEqual(new Date(prazo));
+      if (respondeu) await db.conversa.update({ where: { id }, data: { ultimaEntradaEm: new Date(prazo - 2000) } });
+      const rodar = (agora: number) => rodarRetomadas(agora, "America/Sao_Paulo", [clienteId!]);
+      expect(await rodar(prazo - 1)).toBe(0);
+      expect((await Promise.all([rodar(prazo), rodar(prazo)])).sort()).toEqual(respondeu ? [0, 0] : [0, 1]);
+      expect(await rodar(prazo + 2 * 86_400_000)).toBe(0);
+      const mensagens = await falas(id);
+      expect(mensagens).toHaveLength(respondeu ? 4 : 5);
+      if (!respondeu) expect(mensagens.at(-1)).toContain("Opa! Conseguiu abrir o link");
+    } finally { vi.useRealTimers(); }
+  });
+
   it("abre a roleta antes do cadastro e conserva um único resultado", async () => {
     const { id, clienteId } = await contato();
     await visitaConcluida(clienteId!, 200);
@@ -221,8 +252,15 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
     } });
     expect(await iniciarConviteApp(id, gestorId, true)).toEqual({ segmento: "frio" });
     const j = await db.jornadaConviteApp.findUniqueOrThrow({ where: { conversaId: id } });
-    expect((await falas(id))[1]).toContain(`/c/r/${j.token}`);
+    const mensagens = await falas(id);
+    expect(mensagens).toHaveLength(3);
+    expect(mensagens[2]).toBe(`${site}/c/r/${j.token}`);
     expect(await db.campanhaEnvio.findUniqueOrThrow({ where: { token: j.token } })).toMatchObject({ status: "ENVIADO", lote: 0, mensagemId: j.linkId });
+    await db.campanhaEnvio.update({ where: { token: j.token }, data: { status: "PULADO", mensagemId: null } });
+    expect(await roletaComEnvioReservado(j.token)).toBe(true);
+    expect(await landingDaCampanha(j.token)).toBeNull();
+    await expect(jogarPelaCampanha(j.token, { ip: null })).rejects.toThrow();
+    await db.campanhaEnvio.update({ where: { token: j.token }, data: { status: "ENVIADO", mensagemId: j.linkId } });
     expect(await landingDaCampanha(j.token)).toMatchObject({ jogo: { tipo: "ROLETA", jogada: null } });
     const first = await jogarPelaCampanha(j.token, { ip: null });
     const second = await jogarPelaCampanha(j.token, { ip: null });

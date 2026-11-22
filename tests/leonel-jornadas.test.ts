@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aberturaDaJornada, mensagemDaRetomada, instanteDeRetomada } from "@/lib/convites/jornada-leonel";
-import { destinoDaJornada, tokenDaJornada, tokenDeConvite, ehJornadaComRoleta } from "@/lib/convites/link";
+import { aberturaDaJornada, mensagemDaRetomada, instanteDeRetomada, instanteDeAjudaAposLeitura } from "@/lib/convites/jornada-leonel";
+import { destinoDaJornada, tokenDaJornada, tokenDeConvite, ehJornadaComRoleta, previaDaRoleta } from "@/lib/convites/link";
 
 describe("jornadas de campanha do Leonel", () => {
   const site = "http://localhost:3000";
@@ -33,10 +33,14 @@ describe("jornadas de campanha do Leonel", () => {
     expect(new URL(destinoDaJornada(token), site).pathname).toBe(`/c/r/${token}`);
     const falas = aberturaDaJornada(segmento, "João", destinoDaJornada(token));
     expect(falas[1]).toMatch(/gira a roleta/i);
+    expect(falas[2]).toBe(destinoDaJornada(token));
+    expect(previaDaRoleta(token).openGraph).toMatchObject({ url: destinoDaJornada(token),
+      images: [{ url: expect.stringContaining("/previa-roleta-v1.jpg"), width: 1200, height: 630 }] });
     expect(falas.join(" ")).not.toMatch(/responda parar/i);
   });
   it("espera cinco horas da última atividade e oferece ajuda adequada à etapa", () => {
     expect(instanteDeRetomada(agora)).toEqual(cincoHoras);
+    expect(instanteDeAjudaAposLeitura(agora, cincoHoras)).toEqual(new Date("2026-11-22T18:00:00Z"));
     expect(mensagemDaRetomada("João", "cadastro", "/c/entrar")).toContain("cadastro");
     expect(mensagemDaRetomada("João", "roleta", "/c/r/teste")).toContain("girar");
     expect(mensagemDaRetomada("João", "agenda", "/c/entrar")).toContain("horário");

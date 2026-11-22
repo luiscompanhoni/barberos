@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { gatewayPorId, type CobrancaAvulsa } from "@/lib/pagamentos/gateway";
+import { travarClienteAgenda, type TitularAgenda } from "@/lib/agenda/cliente-identidade";
 
 const revisao = () => new ErroNegocio("A operação está em conferência. Aguarde a confirmação do cancelamento antes de escolher outra forma de pagamento.", 409, "assinatura_operacao_revisao");
 
@@ -26,11 +27,12 @@ function cobrancasConferidas(anteriores: Cobranca[], atuais: Cobranca[], manter 
 }
 
 /** O claim é gravado antes de qualquer chamada externa. Uma falha não libera repetição. */
-export async function reservarPagamentoInicial(id: string, tipo: "CARTAO" | "PIX") {
+export async function reservarPagamentoInicial(id: string, tipo: "CARTAO" | "PIX", titular?: TitularAgenda & { clienteId: string }) {
   return db.$transaction(async (tx) => {
+    if (titular) await travarClienteAgenda(tx, titular.clienteId, titular);
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${id}`}, 0))`;
     const a = await tx.assinatura.findUnique({ where: { id }, include: { plano: true, cliente: true } });
-    if (!a) throw naoEncontrado("Assinatura");
+    if (!a || (titular && a.clienteId !== titular.clienteId)) throw naoEncontrado("Assinatura");
     if (a.status !== "PENDENTE" || a.ativadaEm) throw new ErroNegocio("Essa assinatura já foi paga ou encerrada. Atualize a tela.", 409, "ja_pago");
     if (a.operacaoInicial) throw revisao();
     if (!a.gatewayClienteId || (tipo === "CARTAO" && (a.formaPagamento !== "CARTAO" || a.gatewayId)) ||

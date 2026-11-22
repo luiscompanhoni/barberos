@@ -7,14 +7,14 @@ import { temJanela24h, provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { telefoneCanonico } from "@/lib/whatsapp/webhook";
 import { canalConviteAtivo } from "./canal";
 import { destinoDaJornada, ehJornadaComRoleta, ehJornadaLeonel, enderecoDoConvite } from "./link";
-import { instanteDeRetomada, mensagemDaRetomada } from "./jornada-leonel";
+import { AJUDA_APOS_LEITURA, instanteDeAjudaAposLeitura, instanteDeRetomada, mensagemDaRetomada } from "./jornada-leonel";
 
 const DIA = 86_400_000;
 const HORA = DIA / 24;
 
 function carregar(id: string) {
   return db.jornadaConviteApp.findUnique({ where: { conversaId: id }, include: {
-    abertura: { select: { erro: true, lidaEm: true } }, link: { select: { erro: true, lidaEm: true, criadoEm: true } },
+    abertura: { select: { erro: true, lidaEm: true, criadoEm: true } }, link: { select: { erro: true, lidaEm: true, criadoEm: true } },
     conversa: { select: { telefone: true, waId: true, estado: true, recusaAutomaticas: true, ultimaEntradaEm: true, conviteApp: true,
       cliente: { select: { id: true, telefone: true, nome: true, aceitaMensagens: true, excluidoEm: true } } } },
   } });
@@ -67,13 +67,19 @@ async function retomar(id: string, agora: number) {
   // Dá tempo de concluir a etapa recém-aberta no navegador antes de oferecer ajuda.
   const roleta = ehJornadaComRoleta(j.token);
   const envio = roleta ? await db.campanhaEnvio.findUnique({ where: { token: j.token },
-    select: { status: true, jogada: { select: { criadoEm: true } } },
+    select: { status: true, clicouEm: true, jogada: { select: { criadoEm: true } } },
   }) : null;
   if (roleta && envio?.status !== "ENVIADO") return false;
-  const atividades = [j.clicouEm, j.loginEm, j.entrouEm, j.agendaEm, j.instalouEm];
-  if (novo) atividades.push(j.link?.criadoEm ?? null, c.ultimaEntradaEm, envio?.jogada?.criadoEm ?? null);
+  const clique = j.clicouEm ?? envio?.clicouEm ?? null;
+  const atividades = [clique, j.loginEm, j.entrouEm, j.agendaEm, j.instalouEm, envio?.jogada?.criadoEm ?? null];
+  const aguardandoLink = novo && j.link && atividades.every(d => !d);
+  const respondeu = j.respostaEm || (c.ultimaEntradaEm && +c.ultimaEntradaEm >= +j.abertura.criadoEm);
+  if (aguardandoLink && (respondeu || (j.link?.lidaEm && j.retomadas > 0))) { await parar(); return false; }
+  const posLeitura = aguardandoLink && j.link?.lidaEm ? j.link : null;
+  if (novo) atividades.push(j.link?.criadoEm ?? null, c.ultimaEntradaEm);
   const ultimaVisita = Math.max(...atividades.map(d => d?.getTime() ?? 0));
-  const proxima = novo ? instanteDeRetomada(ultimaVisita) : new Date(ultimaVisita + 4 * HORA);
+  const proxima = posLeitura?.lidaEm ? instanteDeAjudaAposLeitura(posLeitura.criadoEm, posLeitura.lidaEm)
+    : novo ? instanteDeRetomada(ultimaVisita) : new Date(ultimaVisita + 4 * HORA);
   if ((novo || !j.agendaEm) && +proxima > agora) {
     await db.jornadaConviteApp.updateMany({ where: { conversaId: id, proximaEm: j.proximaEm }, data: { proximaEm: proxima } });
     return false;
@@ -87,9 +93,9 @@ async function retomar(id: string, agora: number) {
   if (!reservaEnvio.count) return false;
   const etapa = j.entrouEm || j.agendaEm ? "agenda"
     : j.loginEm || envio?.jogada ? "cadastro"
-    : (j.clicouEm && roleta ? "roleta" : j.clicouEm ? "cadastro" : "link");
+    : (clique && roleta ? "roleta" : clique ? "cadastro" : "link");
   const link = etapa === "cadastro" ? enderecoDoConvite(j.token) : destinoDaJornada(j.token);
-  const texto = novo ? mensagemDaRetomada(cliente.nome, etapa, link) : textoAjuda(j);
+  const texto = posLeitura ? AJUDA_APOS_LEITURA : novo ? mensagemDaRetomada(cliente.nome, etapa, link) : textoAjuda(j);
   const r = await enviarNaConversa(id, texto, "BOT", { pararSeHumano: true, conviteIndividual: true });
   if (!r.ok || (!r.wamid && provedorWhatsApp() !== "simulador")) return false;
   if (!j.agendaEm && j.retomadas < 2) await db.jornadaConviteApp.updateMany({ where: { conversaId: id, parouEm: null, respostaEm: j.respostaEm, proximaEm: null },

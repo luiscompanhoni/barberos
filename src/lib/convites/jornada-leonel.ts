@@ -20,12 +20,19 @@ export function aberturaDaJornada(segmento: SegmentoLeonel, nome: string, link: 
     "Testa e me dá um feedback? Abre o link, entra com teu número e confirma o código no app.",
     link,
   ] as const;
+  if (segmento === "frio" || segmento === "muitoFrio") return [saudacao, mensagens[segmento], link] as const;
   return [saudacao, `${mensagens[segmento]}\n\n${link}`] as const;
 }
 
 export function instanteDeRetomada(ultimaAtividade: Date | number) {
   return new Date(+ultimaAtividade + 5 * 3_600_000);
 }
+
+export function instanteDeAjudaAposLeitura(envio: Date, leitura: Date) {
+  return new Date(Math.max(+envio, +leitura) + 3_600_000);
+}
+
+export const AJUDA_APOS_LEITURA = "Opa! Conseguiu abrir o link que te mandei? Se precisar de ajuda, me chama por aqui.";
 
 export function mensagemDaRetomada(nome: string, etapa: EtapaJornadaLeonel, link: string) {
   const primeiro = primeiroNome(nome);

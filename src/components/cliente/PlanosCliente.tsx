@@ -24,14 +24,14 @@ type Atual = {
   pausada: boolean; pausadaAte: string | null; valeAte: string | null; desconto: { pct: number; ate: string } | null;
   cobrancaEmAberto: { valorCentavos: number; vencimento: string; status: string; link: string | null } | null;
 } | null;
-type Dados = { atual: Atual; planos: Plano[]; cpfCadastrado: string | null; emailCadastrado: string | null; whatsappContato: string | null; cobrancasBloqueadas: boolean };
+type Dados = { atual: Atual; planos: Plano[]; cpfCadastrado: string | null; emailCadastrado: string | null; whatsappContato: string | null; cobrancasBloqueadas: boolean; checkoutLeonelPlanoId: string | null };
 
 const FORMAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão de crédito", BOLETO: "Boleto" };
 const FORMAS_CURTAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão", BOLETO: "Boleto" };
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
 
 /** Planos para o cliente: assinar, pagar mensalidade em aberto, lista de espera e cancelar. */
-export function PlanosCliente({ planoId }: { planoId: string | null }) {
+export function PlanosCliente({ planoId, conviteLeonel = null }: { planoId: string | null; conviteLeonel?: string | null }) {
   const [d, setD] = useState<Dados | null>(null);
   const [formaPreferida, setForma] = useState("PIX");
   const [cpf, setCpf] = useState("");
@@ -40,21 +40,27 @@ export function PlanosCliente({ planoId }: { planoId: string | null }) {
   const [enviando, setEnviando] = useState(false);
 
   const escolhido = planoId ? d?.planos.find((p) => p.id === planoId) : undefined;
-  const forma = escolhido?.formasPagamento.includes(formaPreferida) ? formaPreferida : escolhido?.formasPagamento[0];
-  const carregar = useCallback(() => api<Dados>("/api/cliente/assinatura").then(setD).catch((e) => setMsg({ texto: e.message, erro: true })), []);
+  const checkoutLeonel = !!conviteLeonel && !!planoId && d?.checkoutLeonelPlanoId === planoId;
+  const bloqueado = conviteLeonel ? !checkoutLeonel : d?.cobrancasBloqueadas;
+  const formas = checkoutLeonel ? ["CARTAO"] : escolhido?.formasPagamento ?? [];
+  const forma = formas.includes(formaPreferida) ? formaPreferida : formas[0];
+  const carregar = useCallback(() => {
+    const busca = conviteLeonel && planoId ? "?" + new URLSearchParams({ plano: planoId, leonel: conviteLeonel }) : "";
+    return api<Dados>("/api/cliente/assinatura" + busca).then(setD).catch((e) => setMsg({ texto: e.message, erro: true }));
+  }, [conviteLeonel, planoId]);
   useEffect(() => { void carregar(); }, [carregar]);
 
   async function assinar(e: React.FormEvent) {
     e.preventDefault();
-    if (!d || d.cobrancasBloqueadas || d.atual || !escolhido?.compravel || escolhido.vagasRestantes === 0 || !forma || enviando) return;
+    if (!d || bloqueado || d.atual || !escolhido?.compravel || escolhido.vagasRestantes === 0 || !forma || enviando) return;
     setMsg(null);
     setEnviando(true);
     try {
       const r = await api<{ link: string | null }>("/api/cliente/assinatura", {
         method: "POST",
-        body: { planoId: escolhido.id, forma, cpf: cpf || undefined, email: email || undefined },
+        body: { planoId: escolhido.id, forma, cpf: cpf || undefined, email: email || undefined, ...(checkoutLeonel ? { leonel: conviteLeonel } : {}) },
       });
-      if (r.link) window.location.href = r.link; // fatura do meio de pagamento
+      if (r.link) window.location.assign(r.link);
       else await carregar();
     } catch (e) {
       setMsg({ texto: (e as Error).message, erro: true });
@@ -189,13 +195,15 @@ export function PlanosCliente({ planoId }: { planoId: string | null }) {
                     <fieldset>
                       <legend className="rotulo">Forma de pagamento</legend>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        {p.formasPagamento.map((f) => (
+                        {formas.map((f) => (
                           <button type="button" key={f} aria-pressed={forma === f} onClick={() => setForma(f)}
                             className={forma === f ? "btn-primario px-3 py-2" : "btn px-3 py-2"}>{FORMAS_CURTAS[f] ?? f}</button>
                         ))}
                       </div>
                     </fieldset>
-                    {d.cobrancasBloqueadas ? <p role="status" className="text-sm text-zinc-500">Os pagamentos online estão temporariamente indisponíveis. Fale com a equipe da Black para saber como assinar.</p>
+                    {bloqueado ? <p role="status" className="text-sm text-zinc-500">{conviteLeonel
+                      ? "Entre com o número que recebeu o convite ou peça um link atualizado ao Leonel."
+                      : "Os pagamentos online estão temporariamente indisponíveis. Fale com a equipe da Black para saber como assinar."}</p>
                       : !forma ? <p role="status" className="text-sm text-zinc-500">Este plano está sem formas de pagamento online. Consulte a equipe.</p>
                       : <><div>
                       <label className="rotulo" htmlFor={`cpf-${p.id}`}>CPF {d.cpfCadastrado && `(cadastrado: ${d.cpfCadastrado})`}</label>

@@ -10,7 +10,7 @@ import { configuracao, servicoDoBarbeiro } from "@/lib/agenda/carregar";
 import { travarClienteAgenda, type TitularAgenda } from "@/lib/agenda/cliente-identidade";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { gateway, gatewayPorId, provedorPorId } from "@/lib/pagamentos/gateway";
-import { exigirEmissaoDeCobranca } from "@/lib/pagamentos/bloqueio-cobranca";
+import { exigirEmissaoDeCobranca, naEmissaoDeAdesaoLeonel } from "@/lib/pagamentos/bloqueio-cobranca";
 import { notificarEmSegundoPlano } from "@/lib/whatsapp/conversas";
 import { cobrancaEmAberto, linkAbsoluto, novoTokenPublico, sincronizarAssinatura } from "./cobrancas";
 import { gerarPixDoMes } from "./cartao-pix";
@@ -20,6 +20,7 @@ import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, cancelarOperacaoInicial } from "./operacao-inicial";
 import { fimDoCicloManual } from "./registro-manual-regras";
 import { assinaturaTesteUnico, autorizaOfertaTeste, planoReservadoParaTeste } from "./teste-venda";
+import { adesaoLeonelDisponivel, ehCheckoutLeonel, novoTokenCheckoutLeonel } from "./adesao-leonel";
 
 /** Assinaturas que ocupam vaga: ativas, atrasadas e pendentes recentes (link ainda valendo). */
 const PENDENTE_SEGURA_VAGA_MS = 3 * 86_400_000;
@@ -98,6 +99,7 @@ export async function assinar(p: {
   origem: OrigemAgendamento;
   usuarioId?: string | null;
   titular?: TitularAgenda;
+  adesaoLeonel?: { telefone: string; precoCentavos: number };
 }) {
   const cfg = await configuracao();
   const cliente = await db.cliente.findUnique({ where: { id: p.clienteId } });
@@ -109,9 +111,18 @@ export async function assinar(p: {
   const plano = await db.plano.findUnique({ where: { id: p.planoId } });
   if (!plano || !plano.ativo) throw naoEncontrado("Plano");
   if (!plano.formasPagamento.includes(p.forma)) throw new ErroNegocio("Essa forma de pagamento não está disponível para esse plano.");
+  const adesao = p.adesaoLeonel;
+  if (adesao && (!adesaoLeonelDisponivel() || !p.titular || p.origem !== "BOT" || p.forma !== "CARTAO" ||
+    cliente.telefone !== adesao.telefone || plano.precoCentavos !== adesao.precoCentavos)) {
+    throw new ErroNegocio("O convite não está disponível. Peça um link atualizado para o Leonel.", 409, "convite_adesao");
+  }
 
   const atual = await situacaoDoCliente(cliente.id);
   if (atual) {
+    if (adesao && (atual.assinatura.status !== "PENDENTE" || atual.assinatura.gatewayId ||
+      atual.assinatura.precoCentavos !== adesao.precoCentavos || !ehCheckoutLeonel(atual.assinatura.tokenPublico ?? ""))) {
+      throw new ErroNegocio("Já existe uma assinatura em andamento. Confira seu plano no app.", 409, "assinatura_existente");
+    }
     if (atual.assinatura.operacaoInicial) throw new ErroNegocio("A operação anterior está em conferência. Aguarde a confirmação antes de tentar outra forma de pagamento.", 409, "assinatura_operacao_revisao");
     if (atual.assinatura.status === "PENDENTE" && await db.emissaoPixMensal.findFirst({ where: { assinaturaId: atual.assinatura.id, estado: { in: ["EMITINDO", "INCERTA"] } }, select: { id: true } })) {
       throw new ErroNegocio("A emissão do Pix precisa ser conferida pela equipe antes de tentar novamente.", 409, "pix_revisao");
@@ -138,7 +149,9 @@ export async function assinar(p: {
 
   const g = await gateway();
   if (planoReservadoParaTeste(plano.id) && g.nome !== "pagarme") throw new ErroNegocio("O teste de adesão exige Pagar.me.", 409);
-  exigirEmissaoDeCobranca(g.nome);
+  if (adesao) {
+    if (g.nome !== "pagarme" || g.cartao !== "token") throw new ErroNegocio("Checkout do Leonel indisponível.", 503);
+  } else exigirEmissaoDeCobranca(g.nome);
   const { assinatura, clienteConfirmado, cpf, email } = await db.$transaction(async (tx) => {
     // Exclusão e revogação de sessão ganham ou perdem antes de qualquer adesão.
     try { await travarClienteAgenda(tx, cliente.id, p.titular); }
@@ -148,6 +161,7 @@ export async function assinar(p: {
     }
     await tx.$queryRaw`SELECT id FROM clientes WHERE id = ${cliente.id} FOR UPDATE`;
     const clienteConfirmado = await tx.cliente.findUniqueOrThrow({ where: { id: cliente.id } });
+    if (adesao && clienteConfirmado.telefone !== adesao.telefone) throw new ErroNegocio("Seu telefone mudou. Peça um novo convite.", 409);
     if (!clienteConfirmado.nome.trim()) throw new ErroNegocio("Informe o nome do cliente antes de assinar.");
     const email = (p.email ?? clienteConfirmado.email ?? "").trim().toLowerCase();
     if (g.exigeEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) throw new ErroNegocio("Para assinar precisamos de um e-mail válido (exigência do meio de pagamento).", 422, "email");
@@ -177,7 +191,7 @@ export async function assinar(p: {
     }
     const assinatura = await tx.assinatura.create({ data: {
       clienteId: cliente.id, planoId: plano.id, formaPagamento: p.forma, precoCentavos: plano.precoCentavos,
-      origem: p.origem, tokenPublico: novoTokenPublico(), operacaoInicial: "CRIANDO",
+      origem: p.origem, tokenPublico: adesao ? novoTokenCheckoutLeonel() : novoTokenPublico(), operacaoInicial: "CRIANDO",
     } });
     return { assinatura, clienteConfirmado, cpf, email };
   });
@@ -191,9 +205,10 @@ export async function assinar(p: {
     });
     // So reaproveita o cadastro do mesmo gateway (cliente antigo da Celcash vira cliente novo na Pagar.me).
     const anterior = anteriores.find((x) => provedorPorId(x.gatewayClienteId!) === g.nome);
-    const gatewayClienteId =
-      anterior?.gatewayClienteId ??
-      (await g.criarCliente({ nome: clienteConfirmado.nome, cpf, telefone: clienteConfirmado.telefone, email: email || null, referencia: cliente.id }));
+    const criarCliente = () => g.criarCliente({ nome: clienteConfirmado.nome, cpf,
+      telefone: clienteConfirmado.telefone, email: email || null, referencia: cliente.id });
+    const gatewayClienteId = anterior?.gatewayClienteId ??
+      (await (adesao ? naEmissaoDeAdesaoLeonel("cadastro", criarCliente) : criarCliente()));
     if (p.forma === "CARTAO" && g.cartao === "token") {
       // O cliente digita o cartao na pagina do BarberOS; a assinatura no gateway nasce la.
       await db.assinatura.update({ where: { id: assinatura.id }, data: { gatewayClienteId } });

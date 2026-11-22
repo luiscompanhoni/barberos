@@ -8,6 +8,8 @@ import { db } from "@/lib/db";
 import { chavePublicaPagarme, modoCartaoCheckout } from "@/lib/pagamentos/checkout";
 import { provedorPagamento } from "@/lib/pagamentos/gateway";
 import { assinaturaTesteUnico } from "@/lib/assinaturas/teste-venda";
+import { checkoutLeonelDoTitular, ehCheckoutLeonel } from "@/lib/assinaturas/adesao-leonel";
+import { sessaoAtual } from "@/lib/auth/sessao";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,12 @@ export const dynamic = "force-dynamic";
 export default async function AssinarPlano(props: PageProps<"/c/assinar/[token]">) {
   if (provedorPagamento() !== "pagarme") notFound();
   const { token } = await props.params;
+  const leonel = ehCheckoutLeonel(token);
+  if (leonel) {
+    const s = await sessaoAtual();
+    if (!s) redirect(`/c/entrar?voltar=${encodeURIComponent(`/c/assinar/${token}`)}`);
+    if (s.papel !== "CLIENTE" || !s.clienteId || !await checkoutLeonelDoTitular(token, { usuarioId: s.usuarioId, clienteId: s.clienteId })) notFound();
+  }
   const a = await db.assinatura.findUnique({
     where: { tokenPublico: token },
     include: { plano: { select: { nome: true, formasPagamento: true } }, cliente: { select: { nome: true } } },
@@ -31,9 +39,9 @@ export default async function AssinarPlano(props: PageProps<"/c/assinar/[token]"
   }
   const cfg = await configuracao();
   const teste = assinaturaTesteUnico(a);
-  const troca = a.formaPagamento === "CARTAO" && !!a.gatewayId && (a.status === "ATIVA" || a.status === "ATRASADA");
+  const troca = !leonel && a.formaPagamento === "CARTAO" && !!a.gatewayId && (a.status === "ATIVA" || a.status === "ATRASADA");
   const inicial = troca ? { status: "PENDENTE" as const, forma: null, pix: null, link: null } : await checkoutDaAssinatura(token);
-  const formas = troca ? (["CARTAO"] as const) : (["CARTAO", "PIX"] as const).filter((f) => a.plano.formasPagamento.includes(f));
+  const formas = troca || leonel ? (["CARTAO"] as const) : (["CARTAO", "PIX"] as const).filter((f) => a.plano.formasPagamento.includes(f));
 
   return (
     <main className="flex flex-1 items-center justify-center px-5 py-12">

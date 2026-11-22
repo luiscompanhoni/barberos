@@ -39,7 +39,7 @@ export class ErroPagarme extends Error {
 }
 
 async function chamar<T>(metodo: string, caminho: string, corpo?: unknown, idempotencia?: string, opcoes?: { serviceRefererName?: string; timeoutMs: number }): Promise<T> {
-  if (metodo === "POST" || (metodo === "PATCH" && caminho.endsWith("/card"))) exigirEmissaoDeCobranca("pagarme");
+  if (metodo === "POST" || (metodo === "PATCH" && caminho.endsWith("/card"))) exigirEmissaoDeCobranca("pagarme", { metodo, caminho });
   if (ehHomologacao()) throw new ErroPagarme(503, "Homologação não acessa a API real de pagamentos.");
   const r = await fetchImpl(`${BASE}${caminho}`, {
     method: metodo,

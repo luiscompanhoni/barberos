@@ -47,6 +47,13 @@ export async function landingDaCampanha(token: string) {
 }
 export type Landing = NonNullable<Awaited<ReturnType<typeof landingDaCampanha>>>;
 
+/** O provedor busca o cartão do link enquanto o envio individual ainda está reservado. */
+export async function roletaComEnvioReservado(token: string) {
+  return !!await db.campanhaEnvio.findFirst({ where: { token, lote: 0, status: "PULADO", erro: null, mensagemId: null,
+    liberadoEm: { gte: new Date(Date.now() - 2 * 60_000) }, campanha: { jogo: { tipo: "ROLETA", ativo: true } } },
+  select: { id: true } });
+}
+
 /** A pagina abriu num navegador (chamado pelo JavaScript da pagina: robo de previa de link nao conta). */
 export async function registrarClique(token: string) {
   await db.campanhaEnvio.updateMany({ where: { token, status: "ENVIADO", clicouEm: null }, data: { clicouEm: new Date() } });

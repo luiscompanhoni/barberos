@@ -4,7 +4,7 @@ import { auditar } from "@/lib/auditoria";
 import { publicar } from "@/lib/eventos";
 import { aberturaReativacao } from "@/lib/automacoes/regras";
 import { canalConviteAtivo } from "@/lib/convites/canal";
-import { aberturaDaJornada, instanteDeRetomada } from "@/lib/convites/jornada-leonel";
+import { aberturaDaJornada, instanteDeAjudaAposLeitura, instanteDeRetomada } from "@/lib/convites/jornada-leonel";
 import { destinoDaJornada, ehJornadaComRoleta, tokenDaJornada } from "@/lib/convites/link";
 import { reservarRoletaLeonel } from "@/lib/convites/roleta-leonel";
 import { temperaturaDoCliente } from "@/lib/clientes/segmentos";
@@ -76,11 +76,15 @@ export async function iniciarConviteApp(id: string, usuarioId: string, personali
         if (!i) aberturaId = envio.mensagemId;
         if (i === baloes.length - 1) await db.$transaction(async tx => {
           const agora = new Date();
+          // Serializa a associação do link ao convite com o primeiro recibo de leitura.
+          const [link] = segmento ? await tx.$queryRaw<{ criadoEm: Date; lidaEm: Date | null }[]>`
+            SELECT "criadoEm", "lidaEm" FROM mensagens WHERE id = ${envio.mensagemId} FOR UPDATE` : [];
           if (roleta) await tx.campanhaEnvio.update({ where: { token }, data: {
             mensagemId: envio.mensagemId, enviadoEm: agora, status: "ENVIADO",
           } });
           await tx.jornadaConviteApp.updateMany({ where: { conversaId: id, parouEm: null }, data: segmento ? {
-            aberturaId, linkId: envio.mensagemId, proximaEm: instanteDeRetomada(agora),
+            aberturaId, linkId: envio.mensagemId, proximaEm: link?.lidaEm
+              ? instanteDeAjudaAposLeitura(link.criadoEm, link.lidaEm) : instanteDeRetomada(agora),
           } : { aberturaId: envio.mensagemId, proximaEm: new Date(+agora + 86_400_000) } });
         });
       }
