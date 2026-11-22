@@ -8,6 +8,7 @@ import {
 import { Marca } from "@/components/Marca";
 import { ConviteInstalacao } from "@/components/notificacoes/ConviteInstalacao";
 import { itensDoPlano, planoEmDestaque, porDia } from "@/lib/assinaturas/itens";
+import { CAMINHO_MEUS_HORARIOS } from "@/lib/auth/destino";
 import { reais } from "@/lib/cliente-api";
 import { COOKIE_INDICACAO, donoDoCodigo } from "@/lib/crescimento/indicacao";
 import { dadosDaVitrine } from "@/lib/vitrine";
@@ -211,7 +212,7 @@ export default async function Assine() {
         </ol>
         <div className="mt-12 flex flex-wrap items-center gap-4">
           <a href="#planos" className="btn-primario px-6 py-3">Ver planos <ArrowRight size={16} /></a>
-          <Link href="/c" className="text-sm font-semibold text-zinc-500 hover:text-zinc-900">Já sou cliente · entrar</Link>
+          <Link href={CAMINHO_MEUS_HORARIOS} className="text-sm font-semibold text-zinc-500 hover:text-zinc-900">Já sou cliente · entrar</Link>
         </div>
       </section>
 
