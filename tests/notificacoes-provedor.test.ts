@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import webPush from "web-push";
 const mock = vi.hoisted(() => ({ enviar: vi.fn() }));
 vi.mock("web-push", async (importOriginal) => {
-  const { default: original } = await importOriginal<typeof import("web-push")>();
+  const { default: original } = await importOriginal<{ default: typeof webPush }>();
   return { default: { ...original, sendNotification: mock.enviar } };
 });
 import { configuracaoPush, configuracaoPushPublica } from "@/lib/notificacoes/configuracao";
