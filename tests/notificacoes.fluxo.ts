@@ -1,6 +1,6 @@
 /** Banco local exclusivo; transporte substituído antes de qualquer teste em modo real. */
 import assert from "node:assert/strict";
-import { createECDH, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import webPush from "web-push";
 import { db } from "@/lib/db";
 import type { Sessao } from "@/lib/auth/sessao";
@@ -15,9 +15,9 @@ async function main() {
   const url = new URL(process.env.DATABASE_URL ?? "");
   assert.equal(url.pathname, "/barberos_test_notificacoes");
   assert(["localhost", "127.0.0.1"].includes(url.hostname));
-  const ec = createECDH("prime256v1"); ec.generateKeys();
-  process.env.VAPID_PUBLIC_KEY = ec.getPublicKey().toString("base64url");
-  process.env.VAPID_PRIVATE_KEY = ec.getPrivateKey().toString("base64url");
+  const { publicKey, privateKey } = webPush.generateVAPIDKeys();
+  process.env.VAPID_PUBLIC_KEY = publicKey;
+  process.env.VAPID_PRIVATE_KEY = privateKey;
   process.env.VAPID_SUBJECT = "mailto:teste@example.test";
   process.env.PUSH_PROVIDER = "webpush"; process.env.AMBIENTE = "homologacao";
   const origemSite = "https://cliente.example.test", origemPainel = "https://painel.example.test";

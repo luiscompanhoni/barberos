@@ -6,7 +6,7 @@ describe("parâmetro de modelo do WhatsApp oficial", () => {
   it("troca quebras de linha por separador e não deixa tab nem espaços repetidos", () => {
     const campanha = montarMensagem("Oi, {nome}!\nTrocamos de app.\n\nEntre aqui: {link}", { nome: "Ana Souza", barbearia: "Black", link: "https://x/c/r/abc" });
     const p = textoParametroTemplate(campanha);
-    expect(p).toBe("Oi, Ana! · Trocamos de app. · Entre aqui: https://x/c/r/abc · Se preferir que eu pare de mandar esses recados, é só responder SAIR.");
+    expect(p).toBe("Oi, Ana! · Trocamos de app. · Entre aqui: https://x/c/r/abc");
     expect(p).not.toMatch(/[\r\n\t]| {2,}/);
   });
   it("mantém texto de uma linha igual", () => {

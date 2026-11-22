@@ -3,6 +3,7 @@
  * So avanca: lida implica entregue; a primeira data vale.
  */
 import { db } from "@/lib/db";
+import { instanteDeAjudaAposLeitura } from "@/lib/convites/jornada-leonel";
 import type { StatusMensagem } from "./webhook";
 
 export async function registrarStatus(lista: StatusMensagem[]) {
@@ -13,6 +14,17 @@ export async function registrarStatus(lista: StatusMensagem[]) {
       continue;
     }
     await db.mensagem.updateMany({ where: { wamid: s.wamid, entregueEm: null }, data: { entregueEm: quando } });
-    if (s.status === "LIDA") await db.mensagem.updateMany({ where: { wamid: s.wamid, lidaEm: null }, data: { lidaEm: quando } });
+    if (s.status === "LIDA") await db.$transaction(async tx => {
+      const leitura = await tx.mensagem.updateMany({ where: { wamid: s.wamid, lidaEm: null }, data: { lidaEm: quando } });
+      if (!leitura.count) return;
+      const mensagem = await tx.mensagem.findUniqueOrThrow({ where: { wamid: s.wamid }, select: { id: true, criadoEm: true, erro: true } });
+      if (mensagem.erro) return;
+      await tx.jornadaConviteApp.updateMany({
+        where: { linkId: mensagem.id, OR: ["appq", "appm", "rotf", "rotm"].map(prefixo => ({ token: { startsWith: prefixo } })), parouEm: null,
+          retomadas: 0, proximaEm: { not: null }, respostaEm: null, clicouEm: null, loginEm: null, entrouEm: null,
+          conversa: { estado: "BOT", recusaAutomaticas: false } },
+        data: { proximaEm: instanteDeAjudaAposLeitura(mensagem.criadoEm, quando) },
+      });
+    });
   }
 }

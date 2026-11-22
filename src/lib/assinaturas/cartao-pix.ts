@@ -12,13 +12,15 @@ import { dataLocal } from "@/lib/agenda/tempo";
 import type { EstadoCheckout } from "@/lib/pagamentos/checkout-regras";
 import { pixVencido } from "@/lib/pagamentos/checkout-regras";
 import { gateway, gatewayPorId } from "@/lib/pagamentos/gateway";
-import { exigirEmissaoDeCobranca, exigirEmissaoDeCobrancaPorId } from "@/lib/pagamentos/bloqueio-cobranca";
+import { exigirEmissaoDeCobranca, exigirEmissaoDeCobrancaPorId, naEmissaoDeAdesaoLeonel } from "@/lib/pagamentos/bloqueio-cobranca";
 import { ErroPagarme, PREFIXO_PIX } from "@/lib/pagamentos/pagarme";
 import { cobrancaEmAberto, sincronizarAssinatura, sincronizarCobranca } from "./cobrancas";
 import { valorComRetencao } from "./retencao-regras";
 import { creditoDoCicloParaPix } from "@/lib/crescimento/credito-assinatura";
 import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, reservarPagamentoInicial } from "./operacao-inicial";
 import { assinaturaTesteUnico } from "./teste-venda";
+import { adesaoLeonelDisponivel, ehCheckoutLeonel, telefoneDoTitularLeonel } from "./adesao-leonel";
+import type { TitularAgenda } from "@/lib/agenda/cliente-identidade";
 
 /** Gera (e salva) a cobranca Pix de um mes da assinatura. */
 export async function gerarPixDoMes(assinaturaId: string, vencimento: string) {
@@ -120,20 +122,36 @@ async function conferirPixEmAberto(assinaturaId: string) {
  * gerado no navegador. Outra operação só é permitida depois de confirmar o
  * cancelamento da anterior, evitando cobrar um Pix ainda válido e um cartão.
  */
-export async function ativarComCartao(tokenPublico: string, cartaoToken: string) {
+export async function ativarComCartao(tokenPublico: string, cartaoToken: string, titular?: TitularAgenda & { clienteId: string }) {
   const inicial = await assinaturaPorToken(tokenPublico);
+  const leonel = ehCheckoutLeonel(tokenPublico);
+  if (leonel) {
+    if (!titular || inicial.clienteId !== titular.clienteId || inicial.origem !== "BOT" || !await telefoneDoTitularLeonel(titular)) {
+      throw naoEncontrado("Assinatura");
+    }
+    if (!adesaoLeonelDisponivel()) throw new ErroNegocio("O checkout do Leonel está indisponível.", 503);
+    if (!inicial.plano.ativo || !inicial.plano.visivel || !inicial.plano.compravel || inicial.plano.vendaSomenteEquipe ||
+        !inicial.plano.formasPagamento.includes("CARTAO")) {
+      throw new ErroNegocio("O plano deixou de estar disponível neste convite. Consulte os planos no app.", 409);
+    }
+    if (inicial.status !== "PENDENTE" || inicial.ativadaEm || Date.now() - +inicial.criadaEm >= 3 * 86_400_000) {
+      throw new ErroNegocio("Esta adesão já foi concluída ou expirou. Confira a assinatura no app.", 409);
+    }
+  }
   if (inicial.status !== "PENDENTE") {
     if (inicial.status === "CANCELADA") throw new ErroNegocio("Essa assinatura foi cancelada.");
     return trocarCartao(tokenPublico, cartaoToken);
   }
   if (inicial.gatewayId) throw new ErroNegocio("Cancele a operação inicial e aguarde a confirmação antes de escolher outro pagamento.", 409, "assinatura_operacao_revisao");
   const g = await gateway();
-  exigirEmissaoDeCobranca(g.nome);
+  if (leonel) {
+    if (g.nome !== "pagarme" || g.cartao !== "token") throw new ErroNegocio("Checkout do Leonel indisponível.", 503);
+  } else exigirEmissaoDeCobranca(g.nome);
   const cfg = await configuracao();
-  const a = await reservarPagamentoInicial(inicial.id, "CARTAO");
+  const a = await reservarPagamentoInicial(inicial.id, "CARTAO", leonel ? titular : undefined);
   let gatewayId: string;
   try {
-    gatewayId = await g.criarAssinatura({
+    const contratar = () => g.criarAssinatura({
       clienteGatewayId: a.gatewayClienteId!,
       valorCentavos: a.precoCentavos,
       forma: "CARTAO",
@@ -143,6 +161,7 @@ export async function ativarComCartao(tokenPublico: string, cartaoToken: string)
       cartaoToken,
       ...(assinaturaTesteUnico(a) ? { ciclos: 1 as const } : {}),
     });
+    gatewayId = await (leonel ? naEmissaoDeAdesaoLeonel("primeiroCartao", contratar) : contratar());
     // Uma resposta sem a identidade do contrato não comprova que a criação falhou.
     if (typeof gatewayId !== "string" || !gatewayId.trim() || (g.nome === "pagarme" && !/^sub_\S+$/.test(gatewayId))) {
       throw new Error("Contrato de assinatura não identificado.");
@@ -183,6 +202,7 @@ export async function trocarCartao(tokenPublico: string, cartaoToken: string) {
  * BarberOS gera o Pix do 1o mes. Ja era Pix: devolve o Pix em aberto (renova se venceu).
  */
 export async function pagarPlanoComPix(tokenPublico: string) {
+  if (ehCheckoutLeonel(tokenPublico)) throw new ErroNegocio("Este convite usa cartão de crédito no checkout.", 409);
   const a = await assinaturaPorToken(tokenPublico);
   if (a.status === "CANCELADA") throw new ErroNegocio("Essa assinatura foi cancelada.");
   if (a.status !== "PENDENTE") throw new ErroNegocio("Essa assinatura já está paga. ✅", 409, "ja_pago");

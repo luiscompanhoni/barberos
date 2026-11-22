@@ -12,6 +12,16 @@ Em **Conversas → Jornada dos convites**, a equipe acompanha as aberturas, os r
 
 Sem resposta, Leonel pode retomar nos dias 1, 3 e 7, entre 9h e 18h da barbearia. O limite é de três retomadas por convite. Depois do clique ou da tela de login, ele espera pelo menos quatro horas para oferecer ajuda. Na agenda, o cliente pode pedir um lembrete após duas horas de inatividade. Uma recusa, a intervenção da equipe, um pedido de horário pendente ou uma reserva interrompem as retomadas. Os lembretes da reserva usam o horário efetivamente marcado, na véspera e 90 minutos antes. O cliente pode confirmar pelo WhatsApp. A recepção registra o comparecimento.
 
+## Convite individual por temperatura
+
+Em Conversas, **Enviar convite do Leonel** usa a última visita concluída para escolher o texto. No quente, são quatro balões com pausas: apresentação, novidade do app, pedido de feedback com instruções de acesso e o link individual sozinho. No morno, a apresentação e o convite com link seguem em dois balões. Frio e muito frio recebem o link que abre a roleta em um balão próprio, com a arte da roleta na prévia do WhatsApp. Associe uma roleta elegível ao card do respectivo segmento em Campanhas. A jogada do link é única e o número do cliente vincula o prêmio ao acesso.
+
+Quando o WhatsApp confirma a leitura do último balão e o cliente ainda não respondeu nem avançou no app, o Leonel oferece ajuda uma hora depois, uma única vez. Os demais lembretes seguem a etapa registrada, em geral depois de cinco horas da última atividade. A rotina verifica os lembretes a cada cinco minutos na janela de contato de 9h a 18h. O fluxo respeita a recusa, a equipe assumindo e a reserva concluída. O titular confirma o código de acesso no app. Uma reserva feita no app durante a jornada gera confirmação no WhatsApp e lembrete quando a regra de antecedência permitir.
+
+Na mensalidade, o Leonel reenvia a fatura vigente quando o sistema confirma o link do titular. Se houver plano ativo sem fatura em aberto no BarberOS, oferece a área do plano. Para uma nova adesão elegível, envia o checkout pessoal do plano escolhido. A pessoa entra com o mesmo número, termina o cadastro e confirma o pagamento recorrente no cartão pelo app. O convite vale 24 horas e a liberação exige `LEONEL_CHECKOUT_ADESAO_ATIVO=true`.
+
+A agenda aceita confirmação coloquial como “Pode, mano” para uma única vaga conferida. A escolha explícita de um horário oferecido pode seguir após um comentário breve, desde que os dados da reserva ainda coincidam com a consulta. O histórico de convites anteriores segue seu fluxo de abertura.
+
 ## Conversa do Leonel em 17/11
 
 A reativação começa com “Fala, {nome}!” e “Aqui é o Leonel da Black.”, em dois balões. Leonel aguarda a resposta antes de oferecer ajuda para marcar. Pedidos para parar mensagens continuam registrados, inclusive quando os envios estão bloqueados.

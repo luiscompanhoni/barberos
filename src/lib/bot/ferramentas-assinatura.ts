@@ -14,6 +14,7 @@ import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { urlSite } from "@/lib/dominios";
 import { confirmouTrocaNoWhatsApp } from "./confirmacao-plano";
 import { ofertaTesteVenda, assinaturaTesteUnico } from "@/lib/assinaturas/teste-venda";
+import { adesaoLeonelDisponivel, linkDeAdesaoLeonel } from "@/lib/assinaturas/adesao-leonel";
 
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
@@ -39,8 +40,13 @@ export const FERRAMENTAS_ASSINATURA: Anthropic.Beta.BetaTool[] = [
   },
   {
     name: "link_pagamento_assinatura",
-    description: "Quando o titular pedir para pagar a assinatura, devolve link vigente ou encaminha à área autenticada. Informe PIX se o titular pedir Pix. Não gera cobrança nem desativa cartão recorrente.",
+    description: "Use no pedido de link de uma assinatura existente. Distingue fatura vigente, plano ativo sem fatura em aberto e cobrança em conferência. Informe PIX se solicitado. Não gera outra mensalidade.",
     input_schema: { type: "object", properties: { forma: { type: "string", enum: ["PIX", "CARTAO", "BOLETO"] } }, additionalProperties: false },
+  },
+  {
+    name: "link_adesao_plano",
+    description: "Cria o link de checkout de uma nova adesão para o número desta conversa. Use depois que o cliente escolher um plano e aceitar o valor mensal e o cartão no app. O cliente faz cadastro e confirma o pagamento no próprio app.",
+    input_schema: { type: "object", properties: { plano_id: { type: "string" } }, required: ["plano_id"], additionalProperties: false },
   },
   {
     name: "solicitar_troca_plano",
@@ -52,7 +58,7 @@ export const FERRAMENTAS_ASSINATURA: Anthropic.Beta.BetaTool[] = [
   {
     name: "assinar_plano",
     description:
-      "Gera a assinatura e devolve o link de pagamento para o cliente. Só chame depois que ele escolher o plano e a forma de pagamento e informar o CPF (exigido pelo meio de pagamento).",
+      "Ferramenta legada de adesão. Para venda pelo Leonel use link_adesao_plano e deixe cadastro e pagamento no app.",
     input_schema: {
       type: "object",
       properties: {
@@ -210,7 +216,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
       const e = z.object({ forma: z.enum(["PIX", "CARTAO", "BOLETO"]).optional() }).strict().parse(entrada);
       const c = await db.cliente.findUnique({ where: { telefone: ctx.telefone } });
       const sit = c && !c.excluidoEm ? await situacaoDoCliente(c.id) : null;
-      if (!sit || !c) return { texto: "Não encontrei uma assinatura deste titular no BarberOS. Se houver plano no CashBarber, peça à equipe para localizar o contrato e conferir antes de orientar pagamento.", erro: true };
+      if (!sit || !c) return { texto: JSON.stringify({ assinatura_local: false, orientar: "Se a pessoa já paga um plano, confira o vínculo na equipe. Se quer contratar, apresente os planos atuais e ofereça o checkout depois da escolha." }) };
       const a = sit.assinatura;
       if (ehCashbarber(a.gatewayId)) return { texto: JSON.stringify(CONFERIR_CASHBARBER), erro: true };
       const aberta = sit.cobrancaEmAberto;
@@ -218,6 +224,10 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
         ? await linkDaMensalidadeParaAtendimento(c.id, aberta.id) : null;
       const portal = `${urlSite()}/c/planos`;
       if (pagamento?.link) return { texto: JSON.stringify({ link: pagamento.link, forma: aberta?.forma, cobranca_existente: true }) };
+      if (!aberta && a.status === "ATIVA" && sit.valida && !sit.pausada && !a.encerraEm && !a.operacaoInicial) {
+        return { texto: JSON.stringify({ cobranca_aberta_encontrada: false, forma_atual: a.formaPagamento, link_area_do_plano: portal,
+          orientar: "Explique que o BarberOS não encontrou mensalidade em aberto. Se for cartão, diga que a forma atual é recorrente. Pode enviar a área do plano. Se o titular viu uma pendência, pergunte de qual mês. Não transfira só por estar no cartão e não declare quitação." }) };
+      }
       if (a.status === "PENDENTE" && a.tokenPublico && !a.operacaoInicial && (!e.forma || a.plano.formasPagamento.includes(e.forma))) {
         return { texto: JSON.stringify({ link: portal, orientar: "Abra a assinatura pendente no app e confira as opções de pagamento disponíveis." }) };
       }
@@ -225,6 +235,19 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
         return { texto: JSON.stringify({ link: portal, em_conferencia: true, orientar: "Confira com a equipe a cobrança e as tentativas do cartão antes de gerar outro Pix. Não diga que o cartão foi trocado ou suspenso." }), erro: true };
       }
       return { texto: JSON.stringify({ link: portal, orientar: "Não há um link vigente confirmado. Confira a assinatura no app." }) };
+    }
+    case "link_adesao_plano": {
+      const e = z.object({ plano_id: z.string().min(1).max(40) }).strict().parse(entrada);
+      const c = await db.cliente.findUnique({ where: { telefone: ctx.telefone }, select: { id: true, excluidoEm: true } });
+      if (c?.excluidoEm) return { texto: "A recepção precisa conferir o cadastro antes de contratar.", erro: true };
+      if (c && await situacaoDoCliente(c.id)) return { texto: "Já existe uma assinatura em andamento. Use link_pagamento_assinatura para conferir a situação antes de orientar pagamento.", erro: true };
+      const plano = await db.plano.findFirst({ where: { id: e.plano_id, ativo: true, visivel: true, compravel: true, vendaSomenteEquipe: false,
+        formasPagamento: { has: "CARTAO" } } });
+      if (!plano || await vagasRestantes(plano) === 0) return { texto: "Esse plano não está disponível para adesão por cartão. Confira o catálogo antes de oferecer outra opção.", erro: true };
+      const link = linkDeAdesaoLeonel(ctx.telefone, plano);
+      if (!link) return { texto: "O checkout de novas adesões ainda não está disponível. Informe isso sem prometer nova cobrança.", erro: true };
+      return { texto: JSON.stringify({ link, plano: plano.nome, valor_mensal: reais(plano.precoCentavos), forma: "CARTAO",
+        orientar: "Envie o link ao cliente. Ele entra com o número desta conversa, completa o cadastro se necessário, confere as condições e confirma com cartão no app." }) };
     }
     case "solicitar_troca_plano": {
       const e = z.object({ plano_id: z.string().min(1).max(40), nome_conferido: z.string().trim().min(2).max(100),
@@ -246,6 +269,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
         a_partir_da_renovacao: dataBr(p.efetivaEm), valorCentavos: p.precoNovoCentavos, orientacao: "Pedido registrado. O plano atual permanece até a troca ser aplicada." }) };
     }
     case "assinar_plano": {
+      if (adesaoLeonelDisponivel()) return { texto: "Use link_adesao_plano. O cliente faz o cadastro e dá o aceite no checkout.", erro: true };
       const e = ENTRADAS.assinar_plano.parse(entrada);
       if (!await db.cliente.findUnique({ where: { telefone: ctx.telefone }, select: { id: true } })) await verificarNovaAdesao(e.plano_id, "BOT");
       const c = await clienteGarantido(ctx, e.nome_cliente);

@@ -4,6 +4,10 @@ import { auditar } from "@/lib/auditoria";
 import { publicar } from "@/lib/eventos";
 import { aberturaReativacao } from "@/lib/automacoes/regras";
 import { canalConviteAtivo } from "@/lib/convites/canal";
+import { aberturaDaJornada, instanteDeAjudaAposLeitura, instanteDeRetomada } from "@/lib/convites/jornada-leonel";
+import { destinoDaJornada, ehJornadaComRoleta, tokenDaJornada } from "@/lib/convites/link";
+import { reservarRoletaLeonel } from "@/lib/convites/roleta-leonel";
+import { temperaturaDoCliente } from "@/lib/clientes/segmentos";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { provedorWhatsApp, temJanela24h } from "./canal";
@@ -32,20 +36,34 @@ async function conferirContato(id: string) {
   return { clienteId: c.cliente.id, telefone: c.telefone, nome: c.cliente.nome, etapa: c.conviteApp, equipe };
 }
 
-export async function iniciarConviteApp(id: string, usuarioId: string) {
+export async function iniciarConviteApp(id: string, usuarioId: string, personalizar = false) {
   const contato = await conferirContato(id);
   return naFila(contato.telefone, async () => {
+    const ultima = personalizar && await db.agendamento.findFirst({
+      where: { clienteId: contato.clienteId, status: "CONCLUIDO", inicio: { lte: new Date() } },
+      orderBy: { inicio: "desc" }, select: { inicio: true },
+    });
+    const segmento = personalizar ? temperaturaDoCliente(ultima ? +ultima.inicio : null, Date.now()) : null;
+    if (segmento === "semVisitaRegistrada" || segmento === "historicoIncompleto") {
+      throw new ErroNegocio("O cliente precisa ter uma visita concluída para identificar o segmento do convite.", 409);
+    }
+    const sufixo = randomBytes(16).toString("hex");
+    const token = segmento ? tokenDaJornada(segmento, sufixo) : "app_" + sufixo;
+    const roleta = ehJornadaComRoleta(token);
+    const baloes = segmento ? aberturaDaJornada(segmento, contato.nome, destinoDaJornada(token)) : aberturaReativacao(contato.nome);
     await db.$transaction(async tx => {
       const reserva = await tx.conversa.updateMany({
         where: { id, telefone: contato.telefone, estado: "BOT", recusaAutomaticas: false, conviteApp: null },
         data: { conviteApp: "ABRINDO" },
       });
       if (!reserva.count) throw new ErroNegocio("Esse convite já foi iniciado ou a conversa mudou. Confira o histórico.", 409);
-      await tx.jornadaConviteApp.create({ data: { conversaId: id, clienteId: contato.clienteId, token: "app_" + randomBytes(16).toString("hex") } });
-      await auditar(tx, usuarioId, "iniciar_convite_app", "conversa", id);
+      if (segmento && roleta) await reservarRoletaLeonel(tx, segmento, contato.clienteId, token);
+      await tx.jornadaConviteApp.create({ data: { conversaId: id, clienteId: contato.clienteId, token } });
+      await auditar(tx, usuarioId, "iniciar_convite_app", "conversa", id, segmento ? { segmento } : undefined);
     });
     try {
-      for (const [i, texto] of aberturaReativacao(contato.nome).entries()) {
+      let aberturaId: string | undefined;
+      for (const [i, texto] of baloes.entries()) {
         if (i && provedorWhatsApp() !== "simulador") await esperar(2000);
         const atual = await conferirContato(id);
         if (atual.telefone !== contato.telefone || atual.etapa !== "ABRINDO") throw new ErroNegocio("O convite foi interrompido. Confira o histórico.", 409);
@@ -55,16 +73,31 @@ export async function iniciarConviteApp(id: string, usuarioId: string) {
         if (!envio.ok || (!envio.wamid && provedorWhatsApp() !== "simulador")) {
           throw new ErroNegocio(`O canal não confirmou o balão ${i + 1}. Confira o histórico.`, 502);
         }
-        if (i === 1) await db.jornadaConviteApp.updateMany({ where: { conversaId: id, parouEm: null }, data: {
-          aberturaId: envio.mensagemId, proximaEm: new Date(Date.now() + 86_400_000),
-        } });
+        if (!i) aberturaId = envio.mensagemId;
+        if (i === baloes.length - 1) await db.$transaction(async tx => {
+          const agora = new Date();
+          // Serializa a associação do link ao convite com o primeiro recibo de leitura.
+          const [link] = segmento ? await tx.$queryRaw<{ criadoEm: Date; lidaEm: Date | null }[]>`
+            SELECT "criadoEm", "lidaEm" FROM mensagens WHERE id = ${envio.mensagemId} FOR UPDATE` : [];
+          if (roleta) await tx.campanhaEnvio.update({ where: { token }, data: {
+            mensagemId: envio.mensagemId, enviadoEm: agora, status: "ENVIADO",
+          } });
+          await tx.jornadaConviteApp.updateMany({ where: { conversaId: id, parouEm: null }, data: segmento ? {
+            aberturaId, linkId: envio.mensagemId, proximaEm: link?.lidaEm
+              ? instanteDeAjudaAposLeitura(link.criadoEm, link.lidaEm) : instanteDeRetomada(agora),
+          } : { aberturaId: envio.mensagemId, proximaEm: new Date(+agora + 86_400_000) } });
+        });
       }
-      await db.conversa.updateMany({ where: { id, conviteApp: "ABRINDO" }, data: { conviteApp: "AGUARDANDO" } });
+      await db.conversa.updateMany({ where: { id, conviteApp: "ABRINDO" }, data: { conviteApp: segmento ? "ENCERRADO" : "AGUARDANDO" } });
     } catch (e) {
+      if (roleta) await db.campanhaEnvio.updateMany({ where: { token, status: "PULADO" }, data: {
+        status: "FALHOU", erro: "O envio do convite individual não foi confirmado.",
+      } });
       await db.conversa.updateMany({ where: { id, conviteApp: "ABRINDO" }, data: { conviteApp: "ENCERRADO" } });
       throw e;
     } finally {
       publicar({ tipo: "conversa", conversaId: id });
     }
+    return { segmento };
   });
 }

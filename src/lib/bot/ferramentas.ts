@@ -1,3 +1,4 @@
+import { jornadaAceitaLembrete } from "@/lib/convites/confirmar";
 import type Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -258,7 +259,8 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
       });
       return {
         texto: `Agendado. id=${det.id}; ${[det, ...det.adicionais].map(a => a.servico.nome).join(" + ")} com ${det.barbeiro.nome}, ${descreverData(e.data)} às ${e.horario}; total a pagar: ${reais([det, ...det.adicionais].reduce((n, a) => n + (a.assinaturaId ? 0 : a.precoCentavos), 0))}.` +
-          descreverLembrete(det, cfg.lembreteMinutosAntes, !!cliente?.aceitaMensagens),
+          descreverLembrete(det, cfg.lembreteMinutosAntes, !!cliente?.aceitaMensagens,
+            !!cliente?.aceitaMensagens && await jornadaAceitaLembrete(ctx.conversaId, det).catch(() => false)),
       };
     }
     case "meus_agendamentos": {

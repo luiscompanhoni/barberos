@@ -13,9 +13,10 @@ import { cancelarOperacaoInicial, manterOperacaoInicial } from "@/lib/assinatura
 import { corpoAssinatura } from "@/lib/assinaturas/http";
 import { cobrancasReaisBloqueadas } from "@/lib/pagamentos/bloqueio-cobranca";
 import { zId } from "@/lib/validacao";
+import { conviteDeAdesaoLeonelValido, telefoneDoTitularLeonel } from "@/lib/assinaturas/adesao-leonel";
 
 /** Planos disponiveis e a assinatura atual do cliente. */
-export const GET = rota(async () => {
+export const GET = rota(async (req: Request) => {
   const s = await exigirCliente();
   const [sit, planos, cliente, espera] = await Promise.all([
     situacaoDoCliente(s.clienteId),
@@ -27,8 +28,14 @@ export const GET = rota(async () => {
     db.cliente.findUniqueOrThrow({ where: { id: s.clienteId }, select: { cpf: true, email: true } }),
     db.listaEsperaPlano.findMany({ where: { clienteId: s.clienteId }, select: { planoId: true } }),
   ]);
+  const busca = new URL(req.url).searchParams;
+  const convite = busca.get("leonel");
+  const plano = convite && planos.find(p => p.id === busca.get("plano") && p.compravel &&
+    !p.vendaSomenteEquipe && p.formasPagamento.includes("CARTAO"));
+  const telefone = plano ? await telefoneDoTitularLeonel(s) : null;
   return NextResponse.json({
     cobrancasBloqueadas: cobrancasReaisBloqueadas(),
+    checkoutLeonelPlanoId: convite && plano && telefone && !sit && conviteDeAdesaoLeonelValido(convite, telefone, plano) ? plano.id : null,
     atual: sit && {
       id: sit.assinatura.id,
       status: sit.assinatura.status,
@@ -84,6 +91,7 @@ export const POST = rota(async (req: Request) => {
       cpf: z.string().max(20).optional(),
       email: z.string().trim().max(120).optional(),
       listaDeEspera: z.boolean().optional(),
+      leonel: z.string().max(70).optional(),
     }).strict(),
   );
   if (b.listaDeEspera) {
@@ -91,7 +99,20 @@ export const POST = rota(async (req: Request) => {
     return NextResponse.json({ listaDeEspera: true, posicao });
   }
   if (!b.forma) throw new ErroNegocio("Escolha a forma de pagamento.", 400);
-  const r = await assinar({ clienteId: s.clienteId, planoId: b.planoId, forma: b.forma, cpf: b.cpf, email: b.email || undefined, origem: "SITE", usuarioId: s.usuarioId, titular: { usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0 } });
+  let adesaoLeonel;
+  if (b.leonel) {
+    const [telefone, plano] = await Promise.all([
+      telefoneDoTitularLeonel(s),
+      db.plano.findFirst({ where: { id: b.planoId, ativo: true, visivel: true, compravel: true, vendaSomenteEquipe: false, formasPagamento: { has: "CARTAO" } },
+        select: { id: true, precoCentavos: true } }),
+    ]);
+    if (b.forma !== "CARTAO" || !telefone || !plano || !conviteDeAdesaoLeonelValido(b.leonel, telefone, plano)) {
+      throw new ErroNegocio("Entre com o número que recebeu o convite ou peça um link atualizado ao Leonel.", 409, "convite_adesao");
+    }
+    adesaoLeonel = { telefone, precoCentavos: plano.precoCentavos };
+  }
+  const r = await assinar({ clienteId: s.clienteId, planoId: b.planoId, forma: b.forma, cpf: b.cpf, email: b.email || undefined,
+    origem: adesaoLeonel ? "BOT" : "SITE", adesaoLeonel, usuarioId: s.usuarioId, titular: { usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0 } });
   return NextResponse.json({ link: r.link }, { status: 201 });
 });
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { exigirOrigemCliente } from "@/lib/auth/http-cliente";
 import { sessaoAtual } from "@/lib/auth/sessao";
-import { tokenDeConvite } from "@/lib/convites/link";
+import { ehJornadaLeonel, tokenDeConvite } from "@/lib/convites/link";
 import { db } from "@/lib/db";
 import { cookieSeguro } from "@/lib/dominios";
 import { rota } from "@/lib/erros";
@@ -36,7 +36,8 @@ export const POST = rota(async (req: NextRequest) => {
       await tx.jornadaConviteApp.updateMany({ where: { token, clicouEm: null }, data: { clicouEm: new Date() } });
     }
     if (primeiro.count && ["clique", "login", "entrou"].includes(evento)) {
-      await tx.$executeRaw`UPDATE jornadas_convite_app SET "proximaEm"=GREATEST(now()+interval '4 hours',"ultimaRetomadaEm"+interval '24 hours')
+      const horas = ehJornadaLeonel(token) ? 5 : 4;
+      await tx.$executeRaw`UPDATE jornadas_convite_app SET "proximaEm"=GREATEST(now()+${horas}*interval '1 hour',"ultimaRetomadaEm"+interval '24 hours')
         WHERE token=${token} AND "parouEm" IS NULL AND "proximaEm" IS NOT NULL AND retomadas<3 AND "agendaEm" IS NULL`;
     }
   });

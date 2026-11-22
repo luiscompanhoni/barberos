@@ -132,7 +132,7 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
                     setIniciandoConvite(true);
                     try { await acao(() => api(`/api/conversas/${detalhe.id}/convite-app`, { method: "POST" })); }
                     finally { setIniciandoConvite(false); }
-                  }}>Convidar para o novo app</button>
+                  }}>Enviar convite do Leonel</button>
                 )}
                 {detalhe.conviteApp === "ABRINDO" && <span className="text-xs">Enviando abertura do convite…</span>}
                 {detalhe.conviteApp === "AGUARDANDO" && <span className="text-xs">Convite ao app aguarda resposta</span>}

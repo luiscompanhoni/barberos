@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-export type EtapaVisita = "login" | "entrou" | "agenda" | "instalou";
+export type EtapaVisita = "clique" | "login" | "entrou" | "agenda" | "instalou";
 
 export function VisitaConvite({ etapa, token }: { etapa: EtapaVisita; token?: string }) {
   useEffect(() => {

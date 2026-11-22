@@ -3,7 +3,6 @@
  * tests/campanhas.test.ts).
  */
 import { diasDesde, LIMITE_VISITA, ROTULO_TEMPERATURA, TEMPERATURAS, temperaturaDoCliente } from "@/lib/clientes/segmentos";
-import { SAIDA_MENSAGENS } from "@/lib/automacoes/regras";
 
 export const SEGMENTOS = [
   ...TEMPERATURAS.map(chave => ({ chave, rotulo: ROTULO_TEMPERATURA[chave] })),
@@ -74,12 +73,12 @@ export function loteSugerido(p: { vagas: number; taxaRespostaBps: number; limite
   return Math.max(0, Math.min(pelaAgenda, p.limiteDiario, p.elegiveis));
 }
 
-/** Texto final: troca {nome} (primeiro nome), {barbearia} e {link}; sempre termina com como parar de receber. */
+/** Troca as variáveis e remove o aviso de recusa dos modelos antigos. */
 export function montarMensagem(modelo: string, v: { nome: string; barbearia: string; link: string }) {
   const primeiro = v.nome.trim().split(/\s+/)[0] || "tudo bem";
-  const texto = modelo.replaceAll("{nome}", primeiro).replaceAll("{barbearia}", v.barbearia).replaceAll("{link}", v.link)
-    .replaceAll("Para não receber mais, responda PARAR.", SAIDA_MENSAGENS).trim();
-  return /\b(?:PARAR|SAIR)\b/.test(texto) ? texto : `${texto}\n\n${SAIDA_MENSAGENS}`;
+  return modelo
+    .replace(/(?:\(\s*)?(?:para n[aã]o receber mais|se preferir n[aã]o receber lembretes|se n[aã]o quiser esse lembrete),?\s+responda\s+parar[.!]?\)?|responda\s+parar\s+para sair[.!]?/gi, "")
+    .replaceAll("{nome}", primeiro).replaceAll("{barbearia}", v.barbearia).replaceAll("{link}", v.link).trim();
 }
 
 const ABERTURAS_ANTIGAS = /^(?:Oi, \{nome\}! (?:Aqui é da \{barbearia\}\. |É da \{barbearia\}\. ))/;

@@ -9,7 +9,7 @@ export function descreverData(data: string) {
   return `${semana} ${data.slice(8, 10)}/${data.slice(5, 7)}`;
 }
 
-export function descreverLembrete(ag: { inicio: Date; criadoEm: Date; status: string }, minutos: number, aceitaMensagens: boolean) {
-  const podeAvisar = aceitaMensagens && process.env.WHATSAPP_ENVIOS_BLOQUEADOS !== "true" && !recursoPiloto() && !temJanela24h();
-  return avisoAoReservar({ inicio: +ag.inicio, criadoEm: +ag.criadoEm, status: ag.status }, Date.now(), minutos, podeAvisar);
+export function descreverLembrete(ag: { inicio: Date; criadoEm: Date; status: string }, minutos: number, aceitaMensagens: boolean, jornada = false) {
+  const podeAvisar = aceitaMensagens && process.env.WHATSAPP_ENVIOS_BLOQUEADOS !== "true" && (!recursoPiloto() || jornada) && !temJanela24h();
+  return avisoAoReservar({ inicio: +ag.inicio, criadoEm: +ag.criadoEm, status: ag.status }, Date.now(), jornada ? 90 : minutos, podeAvisar);
 }
