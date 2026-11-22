@@ -1,14 +1,16 @@
-import { createECDH, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import webPush from "web-push";
 const mock = vi.hoisted(() => ({ enviar: vi.fn() }));
-vi.mock("web-push", () => ({ default: { sendNotification: mock.enviar } }));
+vi.mock("web-push", async (importOriginal) => {
+  const { default: original } = await importOriginal<typeof import("web-push")>();
+  return { default: { ...original, sendNotification: mock.enviar } };
+});
 import { configuracaoPush, configuracaoPushPublica } from "@/lib/notificacoes/configuracao";
 import { enviarPush } from "@/lib/notificacoes/provedor";
 import { hashPush } from "@/lib/notificacoes/regras";
 
-const ec = createECDH("prime256v1"); ec.generateKeys();
-const publica = ec.getPublicKey().toString("base64url");
-const privada = ec.getPrivateKey().toString("base64url");
+const { publicKey: publica, privateKey: privada } = webPush.generateVAPIDKeys();
 const destino = { endpoint: "https://fcm.googleapis.com/fcm/send/teste", p256dh: publica, auth: randomBytes(16).toString("base64url"), vapidHash: hashPush(publica) };
 const aviso = { id: "aviso-sem-dados", href: "/notificacoes", expiraEm: new Date(Date.now() + 60_000) };
 beforeEach(() => { mock.enviar.mockReset(); vi.stubEnv("VAPID_PUBLIC_KEY", publica); vi.stubEnv("VAPID_PRIVATE_KEY", privada); vi.stubEnv("VAPID_SUBJECT", "mailto:suporte@example.test"); vi.stubEnv("AMBIENTE", "teste"); vi.stubEnv("PUSH_PROVIDER", "webpush"); });
