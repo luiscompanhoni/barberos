@@ -110,7 +110,7 @@ async function main() {
     ok((await processarCampanhas(agora + 60_000, { clienteIds: todos })) === 0, "no mesmo dia não sai mais nenhuma");
     const conversaA = await db.conversa.findFirst({ where: { telefone: TELS[0] }, include: { mensagens: true } });
     const texto = conversaA?.mensagens[0]?.texto ?? "";
-    ok(texto.startsWith("Oi, Ana!") && /\/c\/r\/[\w-]{16}/.test(texto) && texto.includes("responda PARAR"), "mensagem com o primeiro nome, o link rastreado e como parar");
+    ok(texto.startsWith("Oi, Ana!") && /\/c\/r\/[\w-]{16}/.test(texto) && !texto.includes("responda PARAR"), "mensagem com o primeiro nome e o link rastreado, sem rodapé automático");
 
     await db.cliente.update({ where: { id: b.id }, data: { aceitaMensagens: false } });
     ok((await processarCampanhas(agora + D, { clienteIds: todos })) === 0, "no dia seguinte: quem pediu PARAR depois do lote é pulado");
