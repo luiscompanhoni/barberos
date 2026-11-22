@@ -42,7 +42,7 @@ describe("campanha reavalia o contato antes de despachar", () => {
     });
     expect(await processarCampanhas()).toBe(1); expect(m.enviar).toHaveBeenCalledTimes(1);
     expect(m.reservar.mock.calls[0][0].data.enviadoEm).toEqual(reserva);
-    expect(m.enviar.mock.calls[0][1]).toContain("PARAR");
+    expect(m.enviar.mock.calls[0][1]).toBe("Oi Teste, https://cliente.example.test/c/r/teste");
     expect(m.salvar).toHaveBeenCalledWith({ where: { id: "e" }, data: { mensagemId: "m", enviadoEm: sucesso } });
   });
   it("aguarda 48 horas entre campanhas sem descartar o destinatário", async () => {
