@@ -499,6 +499,7 @@ model Cliente {
   criadoEm           DateTime              @default(now()) @db.Timestamptz(3)
   agendamentos       Agendamento[]
   conversa           Conversa?
+  conversasInstagram Conversa[]            @relation("ConversasInstagram")
   assinaturas        Assinatura[]
   listaEspera        ListaEsperaPlano[]
   comandas           Comanda[]
@@ -616,7 +617,7 @@ enum AutorMensagem {
   NOTA
 }
 
-/// Uma conversa de WhatsApp por telefone.
+/// Uma conversa por telefone no WhatsApp ou por IGSID no Instagram.
 model Conversa {
   jornadaApp       JornadaConviteApp?
   conviteApp      EtapaConviteApp?
@@ -627,10 +628,14 @@ model Conversa {
   /// Numero como o WhatsApp identifica (celular BR antigo pode vir sem o 9).
   waId            String?
   nomePerfil      String?
+  instagramIgsid  String?        @unique
+  /// Vínculo ao cadastro pela informação do contato, sem prova de titularidade.
+  instagramClienteId String?
+  instagramCliente   Cliente?    @relation("ConversasInstagram", fields: [instagramClienteId], references: [id], onDelete: SetNull)
   clienteId       String?        @unique
   cliente         Cliente?       @relation(fields: [clienteId], references: [id])
   estado          EstadoConversa @default(BOT)
-  /// Ultima mensagem do cliente: abre a janela de 24h do WhatsApp.
+  /// Última entrada do cliente que abre a janela de atendimento do canal.
   ultimaEntradaEm DateTime?      @db.Timestamptz(3)
   naoLidas        Int            @default(0)
   /// Historico da sessao atual com o Claude (append-only; reinicia apos inatividade).
@@ -640,6 +645,7 @@ model Conversa {
   mensagens       Mensagem[]
 
   @@index([atualizadoEm])
+  @@index([instagramClienteId])
   @@map("conversas")
 }
 
@@ -777,6 +783,7 @@ model PlanoBarbeiro {
 }
 
 model Assinatura {
+  ofertaDezembro      OfertaDezembroAdesao?
   migracao            MigracaoAssinatura?
   reservasCredito     ReservaCreditoAssinatura[]
   operacaoInicial     String?
@@ -820,6 +827,22 @@ model Assinatura {
   @@index([clienteId, status])
   @@index([planoId, status])
   @@map("assinaturas")
+}
+
+model OfertaDezembroAdesao {
+  assinaturaId String @id
+  assinatura Assinatura @relation(fields: [assinaturaId], references: [id], onDelete: Restrict)
+  chaveIdempotencia String @unique
+  termosVersao String
+  precoCentavos Int
+  limiteUsos Int
+  aceitaEm DateTime @db.Timestamptz(3)
+  ip String?
+  agenteUsuario String?
+  cancelamentoSolicitadoEm DateTime? @db.Timestamptz(3)
+  multaSimuladaCentavos Int?
+
+  @@map("oferta_dezembro_adesoes")
 }
 
 model Cobranca {
