@@ -6,14 +6,22 @@ describe("jornadas de campanha do Leonel", () => {
   const site = "http://localhost:3000";
   const agora = new Date("2026-11-22T12:00:00Z");
   const cincoHoras = new Date("2026-11-22T17:00:00Z");
-  it("usa os dois balões e abre o login do app para o quente e o morno", () => {
+  it("divide o quente em quatro balões e envia o link sozinho no último", () => {
     const quente = tokenDaJornada("quente", "a".repeat(32));
     const morno = tokenDaJornada("morno", "b".repeat(32));
     const link = destinoDaJornada(quente);
     const abertura = aberturaDaJornada("quente", "João Carlos", link);
-    expect(abertura).toEqual(["Fala, João, tudo bem? Aqui é o Leonel da Black.", expect.stringContaining(link)]);
-    expect(abertura[1]).toContain("feedback");
-    expect(aberturaDaJornada("morno", "João Carlos", destinoDaJornada(morno))[1]).not.toBe(abertura[1]);
+    expect(abertura).toEqual([
+      "Fala, João, tudo bem? Aqui é o Leonel da Black.",
+      expect.stringMatching(/^Tem uma notícia boa pra ti!/),
+      expect.stringContaining("feedback"),
+      link,
+    ]);
+    expect(abertura.slice(0, -1).every(fala => !fala.includes(link))).toBe(true);
+    expect(abertura.join(" ")).not.toMatch(/responda parar/i);
+    const aberturaMorno = aberturaDaJornada("morno", "João Carlos", destinoDaJornada(morno));
+    expect(aberturaMorno[1]).not.toBe(abertura[1]);
+    expect(aberturaMorno.join(" ")).not.toMatch(/responda parar/i);
     expect(new URL(link, site).pathname).toBe("/c/entrar");
     expect(new URL(link, site).searchParams.get("convite")).toBe(quente);
     expect(tokenDeConvite(quente)).toBe(true);
@@ -23,7 +31,9 @@ describe("jornadas de campanha do Leonel", () => {
     expect(ehJornadaComRoleta(token)).toBe(true);
     expect(tokenDeConvite(token)).toBe(true);
     expect(new URL(destinoDaJornada(token), site).pathname).toBe(`/c/r/${token}`);
-    expect(aberturaDaJornada(segmento, "João", destinoDaJornada(token))[1]).toMatch(/gira a roleta/i);
+    const falas = aberturaDaJornada(segmento, "João", destinoDaJornada(token));
+    expect(falas[1]).toMatch(/gira a roleta/i);
+    expect(falas.join(" ")).not.toMatch(/responda parar/i);
   });
   it("espera cinco horas da última atividade e oferece ajuda adequada à etapa", () => {
     expect(instanteDeRetomada(agora)).toEqual(cincoHoras);

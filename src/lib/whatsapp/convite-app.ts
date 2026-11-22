@@ -74,7 +74,7 @@ export async function iniciarConviteApp(id: string, usuarioId: string, personali
           throw new ErroNegocio(`O canal não confirmou o balão ${i + 1}. Confira o histórico.`, 502);
         }
         if (!i) aberturaId = envio.mensagemId;
-        if (i === 1) await db.$transaction(async tx => {
+        if (i === baloes.length - 1) await db.$transaction(async tx => {
           const agora = new Date();
           if (roleta) await tx.campanhaEnvio.update({ where: { token }, data: {
             mensagemId: envio.mensagemId, enviadoEm: agora, status: "ENVIADO",

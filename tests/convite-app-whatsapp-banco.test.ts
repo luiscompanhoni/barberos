@@ -169,7 +169,7 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
     expect((await relatorioConvites(1)).linhas.find(l => l.conversaId === id)).toMatchObject({ marcou: true, compareceu: true });
   });
 
-  it("envia o link no segundo balão e oferece ajuda cinco horas após a abertura", async () => {
+  it("envia o link sozinho no quarto balão e oferece ajuda após cinco horas", async () => {
     const { id, clienteId } = await contato();
     await visitaConcluida(clienteId!, 10);
     const inicio = new Date(); inicio.setUTCHours(13, 0, 0, 0);
@@ -179,7 +179,12 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
       const j = await db.jornadaConviteApp.findUniqueOrThrow({ where: { conversaId: id } });
       expect(j).toMatchObject({ aberturaId: expect.any(String), linkId: expect.any(String),
         proximaEm: new Date(+inicio + 5 * 3_600_000) });
-      expect(await falas(id)).toEqual(["Fala, João, tudo bem? Aqui é o Leonel da Black.", expect.stringContaining(j.token)]);
+      const convite = await falas(id);
+      expect(convite).toEqual(["Fala, João, tudo bem? Aqui é o Leonel da Black.",
+        expect.stringMatching(/^Tem uma notícia boa pra ti!/), expect.stringContaining("feedback"),
+        `${site}/c/entrar?convite=${j.token}`]);
+      const link = await db.mensagem.findUniqueOrThrow({ where: { id: j.linkId! } });
+      expect(link.texto).toBe(convite[3]);
       // O relógio do PostgreSQL é independente do relógio simulado do Vitest.
       await db.mensagem.update({ where: { id: j.linkId! }, data: { criadoEm: inicio } });
       const rodar = (t: number) => rodarRetomadas(t, "America/Sao_Paulo", [clienteId!]);
@@ -234,7 +239,7 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
       fim: new Date(+inicio + 1_800_000), precoCentavos: 6000, origem: "SITE" } });
     await Promise.all([avisarReservaPeloApp(ag.id, clienteId!), avisarReservaPeloApp(ag.id, clienteId!)]);
     const mensagens = await falas(id);
-    expect(mensagens).toHaveLength(3);
+    expect(mensagens).toHaveLength(5);
     expect(mensagens.at(-1)).toContain("Vou te mandar um lembrete");
     expect((await db.jornadaConviteApp.findUniqueOrThrow({ where: { conversaId: id } })).proximaEm).toBeNull();
   });

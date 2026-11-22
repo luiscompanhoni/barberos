@@ -69,8 +69,7 @@ export const TEXTOS = {
     `Quer? É só responder com o horário que eu marco (vale para quem responder primeiro).`,
   RETORNO: (p: { nome: string; dias: number; servico: string; opcoes: string[]; peloPlano: boolean }) =>
     `Oi, ${primeiro(p.nome)}! Já faz ${p.dias} dias do seu último ${p.servico.toLowerCase()}, tá chegando a hora do trato. ✂️ ` +
-    (p.opcoes.length ? `Separei: ${p.opcoes.join(" ou ")}${p.peloPlano ? " (pelo plano)" : ""}. Quer que eu marque? ` : "Quer que eu veja um horário? ") +
-    `(Se não quiser esse lembrete, responda PARAR.)`,
+    (p.opcoes.length ? `Separei: ${p.opcoes.join(" ou ")}${p.peloPlano ? " (pelo plano)" : ""}. Quer que eu marque?` : "Quer que eu veja um horário?"),
   INDICACAO_CONVERTIDA: (p: { nome: string; amigo: string; premio: number; assinatura?: boolean }) =>
     p.assinatura
       ? `Oi, ${primeiro(p.nome)}! O primeiro pagamento do plano de ${primeiro(p.amigo)} foi confirmado. Você ganhou ${reais(p.premio)} em crédito na Black, válido por 30 dias. Consulte o saldo e as condições no app. Não é dinheiro para saque.`

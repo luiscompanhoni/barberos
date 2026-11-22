@@ -74,7 +74,7 @@ export async function processarRecompras(agora = Date.now(), opts: { clienteIds?
       await db.recompraAviso.update({ where: { id: aviso.id }, data: { estado: "CANCELADO", erro: "Cliente suspendeu as mensagens." } });
       continue;
     }
-    const texto = `Olá, ${cliente.nome.split(" ")[0]}! Já está no período de repetir: ${ciclos.map(c => c.nome).join(", ")}. Quer ver um horário na ${cfg.nomeBarbearia}? Se preferir não receber lembretes, responda PARAR.`;
+    const texto = `Olá, ${cliente.nome.split(" ")[0]}! Já está no período de repetir: ${ciclos.map(c => c.nome).join(", ")}. Quer ver um horário na ${cfg.nomeBarbearia}?`;
     try {
       const r = await notificarCliente(cliente.telefone, texto);
       await db.recompraAviso.update({ where: { id: aviso.id }, data: { estado: r.ok ? "ENVIADO" : "INCERTO", enviadoEm: r.ok ? new Date(agora) : null, mensagemId: r.mensagemId, erro: r.ok ? null : "Não foi possível confirmar a entrega. Confira o histórico da conversa antes de encerrar o aviso." } });

@@ -44,10 +44,11 @@ describe("campanhas: capacidade", () => {
 });
 
 describe("campanhas: mensagem", () => {
-  it("troca as variaveis e sempre diz como parar", () => {
+  it("troca as variáveis e limpa o aviso automático dos textos antigos", () => {
     const m = montarMensagem("Oi, {nome}! Aqui é da {barbearia}: {link}", { nome: "João da Silva", barbearia: "Black Barber", link: "https://x/c/agendar" });
-    expect(m).toBe("Oi, João! Aqui é da Black Barber: https://x/c/agendar\n\nPara não receber mais, responda PARAR.");
-    expect(montarMensagem("Responda PARAR para sair. {nome}", { nome: "Ana", barbearia: "B", link: "" })).toBe("Responda PARAR para sair. Ana");
+    expect(m).toBe("Oi, João! Aqui é da Black Barber: https://x/c/agendar");
+    expect(montarMensagem("{nome}, confira: {link}\n\nPara não receber mais, responda PARAR.", { nome: "Ana", barbearia: "B", link: "https://x" })).toBe("Ana, confira: https://x");
+    expect(montarMensagem("Responda PARAR para sair. {nome}", { nome: "Ana", barbearia: "B", link: "" })).toBe("Ana");
   });
 });
 

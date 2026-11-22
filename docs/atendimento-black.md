@@ -14,7 +14,7 @@ Sem resposta, Leonel pode retomar nos dias 1, 3 e 7, entre 9h e 18h da barbearia
 
 ## Convite individual por temperatura
 
-Em Conversas, **Enviar convite do Leonel** usa a última visita concluída para escolher o texto. Quente e morno recebem a apresentação e o link pessoal para o login em dois balões. Frio e muito frio recebem o link que abre a roleta, com o acesso ao app após jogar. Associe uma roleta elegível ao card do respectivo segmento em Campanhas. A jogada do link é única e o número do cliente vincula o prêmio ao acesso.
+Em Conversas, **Enviar convite do Leonel** usa a última visita concluída para escolher o texto. No quente, são quatro balões com pausas: apresentação, novidade do app, pedido de feedback com instruções de acesso e o link individual sozinho. No morno, a apresentação e o convite com link seguem em dois balões. Frio e muito frio recebem o link que abre a roleta, com o acesso ao app após jogar. Associe uma roleta elegível ao card do respectivo segmento em Campanhas. A jogada do link é única e o número do cliente vincula o prêmio ao acesso.
 
 A primeira retomada da jornada nova fica elegível depois de cinco horas da última atividade registrada, na janela de contato de 9h a 18h. A mensagem acompanha a etapa de link, roleta, cadastro ou agenda. O fluxo respeita a recusa, a equipe assumindo e a reserva concluída. O código de acesso é confirmado pelo titular no app. Uma reserva feita no app durante a jornada gera confirmação no WhatsApp e lembrete quando a regra de antecedência permitir.
 

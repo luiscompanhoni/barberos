@@ -3,8 +3,7 @@ import type { TEMPERATURAS } from "@/lib/clientes/segmentos";
 export type SegmentoLeonel = (typeof TEMPERATURAS)[number];
 export type EtapaJornadaLeonel = "link" | "roleta" | "cadastro" | "agenda";
 
-const mensagens: Record<SegmentoLeonel, string> = {
-  quente: "Tenho uma notícia boa pra ti. A Black tá mudando pro nosso próprio app, pra tu conseguir marcar e acompanhar teus horários pelo celular. Queria muito que tu testasse e desse um feedback pra gente. Abre o link, entra com teu número e confirma o código no app.",
+const mensagens: Record<Exclude<SegmentoLeonel, "quente">, string> = {
   morno: "A Black tá com um app novo. Quando quiser voltar, por lá tu consegue escolher teu barbeiro e ver os horários. Entra com teu número e confirma o código no app. Se precisar, te ajudo por aqui.",
   frio: "Faz um tempo desde tua última visita e a Black tem um presente pra ti no app novo. Abre o link e gira a roleta da Black. Depois tu entra com teu número pra agendar e usar o que sair.",
   muitoFrio: "Já faz um bom tempo desde tua última visita e a gente quer te convidar pra voltar. Preparamos uma jogada de presente pra ti. Abre o link e gira a roleta da Black. Depois tu entra com teu número pra agendar e usar o que sair.",
@@ -14,10 +13,14 @@ const primeiroNome = (nome: string) => nome.trim().split(/\s+/)[0];
 
 export function aberturaDaJornada(segmento: SegmentoLeonel, nome: string, link: string) {
   const primeiro = primeiroNome(nome);
-  return [
-    primeiro ? `Fala, ${primeiro}, tudo bem? Aqui é o Leonel da Black.` : "Fala, tudo bem? Aqui é o Leonel da Black.",
-    `${mensagens[segmento]}\n\n${link}\n\nPara não receber mais, responda PARAR.`,
+  const saudacao = primeiro ? `Fala, ${primeiro}, tudo bem? Aqui é o Leonel da Black.` : "Fala, tudo bem? Aqui é o Leonel da Black.";
+  if (segmento === "quente") return [
+    saudacao,
+    "Tem uma notícia boa pra ti! A Black tá mudando pro próprio app. Por lá tu marca e acompanha teus horários.",
+    "Testa e me dá um feedback? Abre o link, entra com teu número e confirma o código no app.",
+    link,
   ] as const;
+  return [saudacao, `${mensagens[segmento]}\n\n${link}`] as const;
 }
 
 export function instanteDeRetomada(ultimaAtividade: Date | number) {

@@ -222,7 +222,7 @@ function NovaCampanha({ dados, onFechar }: { dados: Dados; onFechar: (criou: boo
       <div>
         <label className="rotulo">Mensagem</label>
         <textarea className="campo min-h-28" value={f.mensagem} onChange={(e) => setF({ ...f, mensagem: e.target.value })} />
-        <p className="text-xs text-zinc-500">Use {"{nome}"} (primeiro nome), {"{barbearia}"} e {"{link}"} ({f.jogoId ? "abre o jogo" : "abre a agenda"}; cada cliente recebe o seu, para o funil saber quem clicou). O “responda PARAR” entra sozinho no fim.</p>
+        <p className="text-xs text-zinc-500">Use {"{nome}"} (primeiro nome), {"{barbearia}"} e {"{link}"} ({f.jogoId ? "abre o jogo" : "abre a agenda"}; cada cliente recebe o seu, para o funil saber quem clicou).</p>
       </div>
       <div className="flex flex-wrap gap-3">
         <div><label className="rotulo">Limite por dia</label><input className="campo w-28" inputMode="numeric" value={f.limiteDiario} onChange={(e) => setF({ ...f, limiteDiario: e.target.value.replace(/\D/g, "") })} /></div>
