@@ -1,6 +1,6 @@
-import { createElement, type ChangeEvent, type ClipboardEvent, type InputHTMLAttributes, type KeyboardEvent, type ReactElement, type ReactNode } from "react";
+import { Children, createElement, isValidElement, type ChangeEvent, type ClipboardEvent, type FormEvent, type InputHTMLAttributes, type KeyboardEvent, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({
   states: [] as unknown[], cursor: 0, busca: new URLSearchParams(), replace: vi.fn(), refresh: vi.fn(),
   social: null as null | { entrarComSenha: () => void; voltarAoLogin: () => void },
@@ -22,14 +22,26 @@ import { CaixasCodigo } from "@/components/login/CaixasCodigo";
 import { FormularioLogin } from "@/components/login/FormularioLogin";
 
 beforeEach(() => { vi.clearAllMocks(); m.states = []; m.cursor = 0; m.busca = new URLSearchParams(); m.social = null; });
+afterEach(() => vi.unstubAllGlobals());
 function caixas(valor: string) {
   const mudar = vi.fn();
   const elemento = CaixasCodigo({ valor, onChange: mudar }) as ReactElement<{ children: ReactElement<InputHTMLAttributes<HTMLInputElement>>[] }>;
   return { mudar, inputs: elemento.props.children.map(e => e.props) };
 }
-function renderLogin(codigoDisponivel = true) {
+function elementoLogin(codigoDisponivel = true) {
   m.cursor = 0;
-  return renderToStaticMarkup(createElement(FormularioLogin, { area: "cliente", titulo: "Black teste", subtitulo: "Cliente", destinoPadrao: "/c", codigoDisponivel }));
+  return FormularioLogin({ area: "cliente", titulo: "Black teste", subtitulo: "Cliente", destinoPadrao: "/c", codigoDisponivel });
+}
+function renderLogin(codigoDisponivel = true) {
+  return renderToStaticMarkup(elementoLogin(codigoDisponivel));
+}
+function encontrarElemento<P>(raiz: ReactNode, tipo: ReactElement["type"]): ReactElement<P> | undefined {
+  for (const filho of Children.toArray(raiz)) {
+    if (!isValidElement<{ children?: ReactNode }>(filho)) continue;
+    if (filho.type === tipo) return filho as ReactElement<P>;
+    const encontrado = encontrarElemento<P>(filho.props.children, tipo);
+    if (encontrado) return encontrado;
+  }
 }
 describe("modo inicial vindo da área do cliente (confirmar=1)", () => {
   it("orienta a usar o cadastro de cliente quando a sessão anterior é da equipe", () => {
@@ -46,6 +58,34 @@ describe("modo inicial vindo da área do cliente (confirmar=1)", () => {
     const html = renderLogin(false);
     expect(html).toContain('id="senha"'); expect(html).not.toContain("Receber código");
   });
+});
+it("reabre Meus horários em uma nova navegação após validar o código", async () => {
+  m.busca = new URLSearchParams({ confirmar: "1", voltar: "/c?aba=horarios" });
+  const navegar = vi.fn();
+  vi.stubGlobal("window", { location: { origin: "http://localhost", replace: navegar } });
+  vi.stubGlobal("fetch", vi.fn()
+    .mockResolvedValueOnce(Response.json({ codigoTeste: "123456" }))
+    .mockResolvedValueOnce(Response.json({ papel: "CLIENTE", base: "http://localhost" })));
+
+  function tela(): ReactNode {
+    const formulario = elementoLogin().props.children[1];
+    return formulario.type(formulario.props);
+  }
+  function enviar() {
+    const form = encontrarElemento<{ onSubmit: (evento: FormEvent) => void }>(tela(), "form");
+    form!.props.onSubmit({ preventDefault() {} } as FormEvent);
+  }
+
+  const telefone = encontrarElemento<InputHTMLAttributes<HTMLInputElement>>(tela(), "input");
+  telefone!.props.onChange!({ target: { value: "47999990000" } } as ChangeEvent<HTMLInputElement>);
+  enviar();
+  const otp = () => encontrarElemento<Parameters<typeof CaixasCodigo>[0]>(tela(), CaixasCodigo);
+  await vi.waitFor(() => expect(otp()).toBeDefined());
+  otp()!.props.onChange("123456");
+  enviar();
+  await vi.waitFor(() => expect(navegar.mock.calls.length + m.replace.mock.calls.length).toBe(1));
+  expect(navegar).toHaveBeenCalledWith("/c?aba=horarios");
+  expect(m.refresh).not.toHaveBeenCalled();
 });
 describe("código de acesso no celular", () => {
   it.each(["", "12", "654321"])("aceita autofill de seis dígitos sobre '%s'", atual => {

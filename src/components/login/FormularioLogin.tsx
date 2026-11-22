@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Smartphone, UserRound } from "lucide-react";
 import { api, ErroApi } from "@/lib/cliente-api";
-import { destinoAposLogin, destinoDoPerfil } from "@/lib/auth/destino";
+import { CAMINHO_MEUS_HORARIOS, destinoAposLogin, destinoDoPerfil } from "@/lib/auth/destino";
 import { Marca } from "@/components/Marca";
 import { ConviteInstalacao } from "@/components/notificacoes/ConviteInstalacao";
 import { AcessosSociais } from "./AcessosSociais";
@@ -75,7 +75,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigo
       : !cliente && r.definirSenha ? "/conta"
       : destinoDoPerfil(r.papel ?? "CLIENTE", voltar);
     if (r.base && new URL(r.base).origin !== window.location.origin) { window.location.assign(new URL(destino, r.base).href); return; }
-    if (pediuAgenda || destino.startsWith("/c/planos?plano=")) {
+    if (pediuAgenda || destino === CAMINHO_MEUS_HORARIOS || destino.startsWith("/c/planos?plano=")) {
       // A primeira visita sem sessão foi redirecionada para o login.
       // A nova navegação lê o cookie que a API de login acabou de gravar.
       window.location.replace(destino);
