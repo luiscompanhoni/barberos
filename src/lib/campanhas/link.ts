@@ -6,6 +6,7 @@ import { configuracao } from "@/lib/agenda/carregar";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { db } from "@/lib/db";
 import { noAr, paraCliente, premiosExibiveis } from "@/lib/jogos/motor";
+import { CAMPANHA_TESTE_FRIO, ehTokenTesteFrio, permiteRoletaTeste, PREFIXO_TESTE_FRIO } from "@/lib/convites/link";
 import { multiplicador } from "@/lib/jogos/regras";
 import { envioComLinkLiberado, inicioDaValidadeDoLink } from "./link-acesso";
 
@@ -24,6 +25,8 @@ export async function landingDaCampanha(token: string) {
     },
   });
   if (!envio) return null;
+  const testeFrio = permiteRoletaTeste(token, envio.campanha, envio.lote);
+  if (token.startsWith(PREFIXO_TESTE_FRIO) && !testeFrio) return null;
   const cfg = await configuracao();
   const base = { nome: envio.cliente.nome.trim().split(/\s+/)[0] || "", barbearia: cfg.nomeBarbearia };
   const j = envio.campanha.jogo;
@@ -36,7 +39,7 @@ export async function landingDaCampanha(token: string) {
     ...base,
     jogo: {
       id: j.id, tipo: j.tipo, nome: j.nome, raridade: j.raridade, premiosPorJogada: j.premiosPorJogada,
-      ativo: noAr(j),
+      ativo: noAr(j) || testeFrio,
       vencido: !envio.jogada && vencido,
       multiplicador: multiplicador(!!sit?.valida, j.bonusAssinantePct),
       fatias: j.tipo === "ROLETA" ? premios.map((p) => ({ id: p.id, rotulo: p.rotulo, cor: p.cor, icone: p.icone, tipo: p.tipo, raridade: p.raridade })) : [],
@@ -50,8 +53,12 @@ export type Landing = NonNullable<Awaited<ReturnType<typeof landingDaCampanha>>>
 
 /** O provedor busca o cartão do link enquanto o envio individual ainda está reservado. */
 export async function roletaComEnvioReservado(token: string) {
+  if (token.startsWith(PREFIXO_TESTE_FRIO) && !ehTokenTesteFrio(token)) return false;
   return !!await db.campanhaEnvio.findFirst({ where: { token, lote: 0, status: "PULADO", erro: null, mensagemId: null,
-    liberadoEm: { gte: new Date(Date.now() - 2 * 60_000) }, campanha: { jogo: { tipo: "ROLETA", ativo: true } } },
+    liberadoEm: { gte: new Date(Date.now() - 2 * 60_000) },
+    campanha: ehTokenTesteFrio(token)
+      ? { id: CAMPANHA_TESTE_FRIO, status: "PAUSADA", jogo: { tipo: "ROLETA" } }
+      : { jogo: { tipo: "ROLETA", ativo: true } } },
   select: { id: true } });
 }
 

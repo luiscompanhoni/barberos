@@ -26,6 +26,11 @@ describe("piloto de WhatsApp fechado por destinatário e finalidade",()=>{
  it("templates não atravessam o piloto",async()=>{
   await expect(enviarTemplate(telefone,{nome:"fixture",parametros:[]})).rejects.toMatchObject({status:403});expect(m.evolution).not.toHaveBeenCalled();
  });
+ it("bloqueia convite com prévia durante o piloto", async () => {
+  await expect(enviarTexto(telefone, "https://black.example", 0, "CONVITE_APP", true)).rejects.toMatchObject({ status: 403 });
+  expect(m.evolution).not.toHaveBeenCalled();
+  expect(m.update).not.toHaveBeenCalled();
+ });
  it.each([{...ativo(),expiraEm:new Date(0)},{...ativo(),expiraEm:null},{...ativo(),enviados:40},{...ativo(),telefone:null},{...ativo(),ativo:false},null])("não envia com estado inelegível %#",async(p)=>{
   m.find.mockResolvedValue(p);await expect(enviarTexto(telefone,"fixture",0,"ENTREVISTA_PILOTO")).rejects.toMatchObject({status:403});expect(m.evolution).not.toHaveBeenCalled();
  });

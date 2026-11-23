@@ -10,7 +10,12 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).parent))
 import deploy_vps as deploy
+import protecao_operacao as protecao
 from deploy_vps_comum import CONTROLES_PUBLICACAO
+
+
+TAG_EVOLUTION_TESTE = "barberos-evolution:2.3.7-previa-clicavel"
+ID_IMAGEM_EVOLUTION_TESTE = "sha256:" + "e" * 64
 
 
 class RecuperacaoTest(unittest.TestCase):
@@ -31,7 +36,8 @@ class RecuperacaoTest(unittest.TestCase):
             executar.assert_not_called()
             self.assertFalse((codigo.parent / "operacao.json").exists())
 
-    def executar_cenario(self, falha, backup_sem_imagem=False, com_migracao=False, simular_concorrencia_backup=False, legado_sem_bloqueio=False):
+    def executar_cenario(self, falha, backup_sem_imagem=False, com_migracao=False, simular_concorrencia_backup=False, legado_sem_bloqueio=False,
+                        imagem_evolution=None, evolution_ativa=True):
         with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
             base = Path(d)
             commit = "a" * 40
@@ -51,6 +57,9 @@ class RecuperacaoTest(unittest.TestCase):
             chamadas = []
             lock_backup = base / ".backup-fixture.lock"
             concorrencia = {"daemonIniciado": 0, "manualDepoisConferido": False}
+            evolution = {"Id": "evolution-original", "Image": ID_IMAGEM_EVOLUTION_TESTE,
+                         "Config": {"Image": imagem_evolution, "Labels": {"com.docker.compose.service": "evolution"}},
+                         "State": {"Running": evolution_ativa}}
 
             def comando(args, **_kw):
                 chamadas.append(args)
@@ -60,6 +69,17 @@ class RecuperacaoTest(unittest.TestCase):
                     concorrencia["daemonIniciado"] += 1
                 if falha == "migracao" and "migrate" in args:
                     raise RuntimeError("Falha sintética após iniciar a migração")
+                if args == ["docker", "image", "inspect", TAG_EVOLUTION_TESTE]:
+                    if falha == "evolution_tag_ausente":
+                        raise RuntimeError("Imagem local ausente")
+                    return json.dumps([{"Id": novo["Image"] if falha == "evolution_tag_divergente" else ID_IMAGEM_EVOLUTION_TESTE}]).encode()
+                if args == ["docker", "start", "evolution-original"]:
+                    if falha != "evolution_parada":
+                        evolution["State"]["Running"] = True
+                    if falha == "evolution_substituida":
+                        evolution["Id"] = "evolution-substituta"
+                    if falha == "evolution_imagem_alterada":
+                        evolution["Image"] = novo["Image"]
                 if args[:3] == ["docker", "image", "inspect"]:
                     if backup_sem_imagem and args[-1] == antigo["Image"]:
                         raise RuntimeError("Imagem antiga de backup ausente")
@@ -77,14 +97,25 @@ class RecuperacaoTest(unittest.TestCase):
             simular("conferir_pacote", return_value=codigo)
             simular("container", side_effect=[antigo, antigo, antigo, novo])
             simular("executar", side_effect=comando)
+            pilha.enter_context(patch.object(protecao, "executar", side_effect=comando))
+            simular("containers_projeto",
+                    side_effect=lambda _projeto: [antigo, evolution] if imagem_evolution else [antigo])
             simular("migracoes", return_value=[])
             simular("conferir_migracoes", side_effect=[["20261104224500_versao_sessao"] if com_migracao else [], []])
             simular("consultar_banco", return_value="1")
             simular("aguardar_saude", side_effect=[antigo, recuperado] if falha in ("backup", "agenda_pre_migracao") else [antigo, novo, recuperado])
             simular("conferir_capacidade", return_value={"estimativaConservadora": True, "volumePostgres": "pg-ficticio"})
             simular("exigir_banco_isolavel")
-            parar = simular("parar_escritores", return_value=[{"id": "caddy", "servico": "caddy"}])
-            retomar = simular("retomar_auxiliares")
+            parados = [{"id": "caddy", "servico": "caddy"}]
+            if imagem_evolution and evolution_ativa:
+                parados.append({"id": "evolution-original", "servico": "evolution"})
+
+            def parar_escritores(*_args):
+                evolution["State"]["Running"] = False
+                return parados
+
+            parar = simular("parar_escritores", side_effect=parar_escritores)
+            retomar = simular("retomar_auxiliares", wraps=protecao.retomar_auxiliares)
             agenda = simular("exigir_agenda_equipe", return_value=True)
             pix = simular("exigir_contrato_pix_imagem", return_value=True)
             simular("conferir_central_desligada", return_value={"habilitada": True, "execucaoAtiva": False, "metaTokenConfigurado": False})
@@ -107,6 +138,12 @@ class RecuperacaoTest(unittest.TestCase):
                     lock_backup.unlink()
             backup = simular("backup_verificado", side_effect=copiar_backup)
             https = simular("conferir_https")
+            if falha in ("evolution_tag_ausente", "evolution_tag_divergente"):
+                with self.assertRaisesRegex(RuntimeError, "Evolution"):
+                    deploy.publicar(base, "barberos", commit, antigo["Image"])
+                parar.assert_not_called()
+                self.assertFalse((base / deploy.MARCADOR).exists())
+                return
             if falha in ("agenda_antes", "pix"):
                 (agenda if falha == "agenda_antes" else pix).side_effect = RuntimeError("Controle recusado")
                 with self.assertRaisesRegex(RuntimeError, "Controle recusado"):
@@ -128,7 +165,7 @@ class RecuperacaoTest(unittest.TestCase):
             else:
                 resultado = deploy.publicar(base, "barberos", commit, antigo["Image"])
                 self.assertTrue(resultado["concluido"])
-                retomar.assert_any_call(parar.return_value, {"evolution", "atendimento"})
+                retomar.assert_any_call(parados, {"evolution", "atendimento"})
             registro = json.loads((codigo.parent / "operacao.json").read_text())
             if simular_concorrencia_backup:
                 self.assertEqual(concorrencia["daemonIniciado"], 0 if falha else 1)
@@ -179,6 +216,16 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertEqual(registro["backupAnteriorPreservado"], not backup_sem_imagem)
                 override = json.loads((codigo / "deploy/versao.json").read_text())
                 self.assertEqual(override["services"]["app"]["environment"], CONTROLES_PUBLICACAO)
+                if imagem_evolution == TAG_EVOLUTION_TESTE:
+                    self.assertEqual(override["services"].get("evolution"),
+                                     {"image": TAG_EVOLUTION_TESTE, "pull_policy": "never"})
+                    self.assertEqual(registro["evolutionPreservada"],
+                                     {"id": "evolution-original", "imagem": ID_IMAGEM_EVOLUTION_TESTE, "ativa": evolution_ativa})
+                    self.assertEqual(evolution["State"]["Running"], evolution_ativa)
+                    self.assertEqual(["docker", "start", "evolution-original"] in chamadas, evolution_ativa)
+                    self.assertFalse(any("up" in args and "evolution" in args for args in chamadas))
+                else:
+                    self.assertNotIn("evolution", override["services"])
                 self.assertFalse(registro["centralAgentes"]["execucaoAtiva"])
                 self.assertTrue(registro["agendaEquipeAntes"])
                 self.assertEqual(agenda.call_count, 4)
@@ -213,6 +260,24 @@ class RecuperacaoTest(unittest.TestCase):
 
     def test_sucesso_exige_ensaio_e_backups_antes_e_depois(self):
         self.executar_cenario(None)
+
+    def test_publicacao_fixa_imagem_local_e_preserva_estado_do_container_original(self):
+        for ativa in (True, False):
+            with self.subTest(ativa=ativa):
+                self.executar_cenario(None, imagem_evolution=TAG_EVOLUTION_TESTE, evolution_ativa=ativa)
+
+    def test_evolution_upstream_continua_sem_override(self):
+        self.executar_cenario(None, imagem_evolution="evoapicloud/evolution-api:v2.3.7")
+
+    def test_tag_local_ausente_ou_divergente_impede_isolamento(self):
+        for falha in ("evolution_tag_ausente", "evolution_tag_divergente"):
+            with self.subTest(falha=falha):
+                self.executar_cenario(falha, imagem_evolution=TAG_EVOLUTION_TESTE)
+
+    def test_retomada_incorreta_da_evolution_mantem_quarentena(self):
+        for falha in ("evolution_parada", "evolution_substituida", "evolution_imagem_alterada"):
+            with self.subTest(falha=falha):
+                self.executar_cenario(falha, imagem_evolution=TAG_EVOLUTION_TESTE, com_migracao=True)
 
     def test_backup_legado_sem_imagem_so_e_substituido_apos_restauracao_nova(self):
         self.executar_cenario(None, backup_sem_imagem=True)
@@ -250,6 +315,34 @@ class RecuperacaoTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "Agenda alterada"):
                 deploy.publicar(base, "barberos", commit, "imagem-anterior")
             pix.assert_called_once()
+
+    def test_reutilizar_publicacao_recusa_evolution_substituida(self):
+        commit = "a" * 40
+        with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
+            base = Path(d)
+            pasta = base / "releases" / commit
+            pasta.mkdir(parents=True)
+            (base / ".env").write_text("fixture")
+            (pasta / "operacao.json").write_text(json.dumps({
+                "concluido": True, "imagemNova": "imagem-teste",
+                "evolutionPreservada": {"id": "evolution-original", "imagem": ID_IMAGEM_EVOLUTION_TESTE, "ativa": True},
+            }))
+            app = {"Image": "imagem-teste", "Config": {"Env": [k + "=" + v for k, v in CONTROLES_PUBLICACAO.items()]}}
+            evolution = {"Id": "evolution-original", "Image": ID_IMAGEM_EVOLUTION_TESTE,
+                         "Config": {"Image": TAG_EVOLUTION_TESTE, "Labels": {"com.docker.compose.service": "evolution"}},
+                         "State": {"Running": True}}
+            pilha.enter_context(patch.object(deploy.os, "geteuid", return_value=0, create=True))
+            for nome, retorno in {
+                "conferir_pacote": pasta / "barberos", "aguardar_saude": app, "container": {"Id": "db"},
+                "conferir_https": None, "exigir_contrato_pix_imagem": None, "exigir_agenda_equipe": True,
+                "containers_projeto": [evolution],
+                "executar": json.dumps([{"Id": ID_IMAGEM_EVOLUTION_TESTE}]).encode(),
+            }.items():
+                pilha.enter_context(patch.object(deploy, nome, return_value=retorno))
+            self.assertTrue(deploy.publicar(base, "barberos", commit, "imagem-anterior")["reutilizado"])
+            evolution["Id"] = "evolution-substituta"
+            with self.assertRaisesRegex(RuntimeError, "Evolution"):
+                deploy.publicar(base, "barberos", commit, "imagem-anterior")
 
 if __name__ == "__main__":
     unittest.main()

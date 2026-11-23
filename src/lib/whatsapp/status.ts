@@ -20,7 +20,7 @@ export async function registrarStatus(lista: StatusMensagem[]) {
       const mensagem = await tx.mensagem.findUniqueOrThrow({ where: { wamid: s.wamid }, select: { id: true, criadoEm: true, erro: true } });
       if (mensagem.erro) return;
       await tx.jornadaConviteApp.updateMany({
-        where: { linkId: mensagem.id, OR: ["appq", "appm", "rotf", "rotm"].map(prefixo => ({ token: { startsWith: prefixo } })), parouEm: null,
+        where: { linkId: mensagem.id, OR: ["appq_", "appm_", "rotf_", "rotm_", "rott_"].map(prefixo => ({ token: { startsWith: prefixo } })), parouEm: null,
           retomadas: 0, proximaEm: { not: null }, respostaEm: null, clicouEm: null, loginEm: null, entrouEm: null,
           conversa: { estado: "BOT", recusaAutomaticas: false } },
         data: { proximaEm: instanteDeAjudaAposLeitura(mensagem.criadoEm, quando) },

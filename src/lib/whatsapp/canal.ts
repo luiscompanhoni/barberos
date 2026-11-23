@@ -70,17 +70,19 @@ async function postarCloud(corpo: Record<string, unknown>): Promise<ResultadoEnv
  * `digitandoMs`: pausa antes de entregar (resposta do bot em bolhas). Na Evolution aparece
  * "digitando..."; na API oficial so espera; no simulador nao espera (testes rapidos).
  */
-export async function enviarTexto(para: string, texto: string, digitandoMs = 0, origem = "PADRAO"): Promise<ResultadoEnvio> {
+export async function enviarTexto(para: string, texto: string, digitandoMs = 0, origem = "PADRAO", previaRoleta = false): Promise<ResultadoEnvio> {
   const teste = await envioTesteEquipe(para, origem);
   if ((testeEquipeAtivo() || process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") && !teste) throw new Error("Envios de mensagens bloqueados nesta publicação.");
   await reservarEnvioPiloto(para, origem);
-  return entregarTexto(para, texto, digitandoMs);
+  return entregarTexto(para, texto, digitandoMs, previaRoleta);
 }
 
-async function entregarTexto(para: string, texto: string, digitandoMs = 0): Promise<ResultadoEnvio> {
+async function entregarTexto(para: string, texto: string, digitandoMs = 0, previaRoleta = false): Promise<ResultadoEnvio> {
   const p = provedorWhatsApp();
   if (p === "simulador") return { wamid: null };
-  if (p === "evolution") return enviarTextoEvolution(para, texto, digitandoMs);
+  if (p === "evolution") return previaRoleta
+    ? enviarTextoEvolution(para, texto, digitandoMs, true)
+    : enviarTextoEvolution(para, texto, digitandoMs);
   if (digitandoMs > 0) await new Promise((r) => setTimeout(r, digitandoMs));
   return postarCloud({ to: para, type: "text", text: { preview_url: linkPublicoApp(texto), body: texto.slice(0, 4096) } });
 }

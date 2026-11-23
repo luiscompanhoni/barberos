@@ -54,10 +54,11 @@ function erroDe(json: unknown) {
 }
 
 /** `digitandoMs`: a Evolution mostra "digitando..." por esse tempo antes de entregar a mensagem. */
-export async function enviarTextoEvolution(para: string, texto: string, digitandoMs = 0) {
+export async function enviarTextoEvolution(para: string, texto: string, digitandoMs = 0, previaRoleta = false) {
   const { status, json } = await chamar<{ key?: { id?: string } }>("POST", `/message/sendText/${instancia()}`, {
     number: para.replace(/\D/g, ""),
     text: texto.slice(0, 4096),
+    ...(previaRoleta ? { linkPreview: true } : {}),
     ...(digitandoMs > 0 ? { delay: digitandoMs } : {}),
   });
   if (status >= 300) throw new Error(`WhatsApp (Evolution) ${status}: ${erroDe(json)}`);

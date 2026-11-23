@@ -12,8 +12,10 @@ from pathlib import Path
 from deploy_vps_comum import (COMANDO_MIGRACAO, CONTROLES_PUBLICACAO, aguardar_saude, ambiente_container, arquivo_ambiente, backup_verificado,
     conferir_https, conferir_migracoes, conferir_pacote, conferir_central_desligada, consultar_banco, container, ensaiar_schema,
     escrever_privado, executar, exigir_agenda_equipe, exigir_contrato_pix_imagem, exigir_migracoes_da_publicacao, migracoes)
-from protecao_operacao import (MARCADOR, ambiente_rollback, conferir_capacidade, exigir_banco_isolavel,
+from protecao_operacao import (MARCADOR, ambiente_rollback, conferir_capacidade, containers_projeto, exigir_banco_isolavel,
     exigir_sem_recuperacao, parar_escritores, registrar_quarentena, retomar_auxiliares)
+
+TAG_EVOLUTION_PREVIA = "barberos-evolution:2.3.7-previa-clicavel"
 
 
 def interrompido(_sinal, _frame):
@@ -38,6 +40,23 @@ def conferir_controles_cliente(app, banco, imagem_com_contrato_verificado):
             "cobrancasReaisBloqueadasContainer": True}
 
 
+def conferir_evolution(projeto):
+    servicos = [c for c in containers_projeto(projeto)
+                if c["Config"].get("Labels", {}).get("com.docker.compose.service") == "evolution"]
+    adaptada = next((c for c in servicos if c["Config"].get("Image") == TAG_EVOLUTION_PREVIA), None)
+    if adaptada is None:
+        return None
+    if len(servicos) != 1:
+        raise RuntimeError("Serviço Evolution adaptado aparece mais de uma vez na instalação.")
+    try:
+        imagem = json.loads(executar(["docker", "image", "inspect", TAG_EVOLUTION_PREVIA]))[0]["Id"]
+    except RuntimeError:
+        raise RuntimeError("A tag da Evolution adaptada não está disponível localmente.") from None
+    if imagem != adaptada["Image"]:
+        raise RuntimeError("A tag local da Evolution adaptada diverge da imagem do container.")
+    return {"id": adaptada["Id"], "imagem": imagem, "ativa": adaptada["State"]["Running"]}
+
+
 def publicar(base, projeto, commit, imagem_esperada):
     if os.geteuid() != 0 or base.is_symlink() or not (base / ".env").is_file():
         raise RuntimeError("Instalação existente não confirmada.")
@@ -56,6 +75,9 @@ def publicar(base, projeto, commit, imagem_esperada):
             conferir_central_desligada(app)
             exigir_contrato_pix_imagem(app["Image"])
             controles = conferir_controles_cliente(app, banco["Id"], app["Image"])
+            evolution_anterior = anterior.get("evolutionPreservada")
+            if evolution_anterior and conferir_evolution(projeto) != evolution_anterior:
+                raise RuntimeError("A Evolution adaptada mudou desde o registro da publicação.")
             conferir_https(commit)
             return {"concluido": True, "revisao": commit, "reutilizado": True, "controlesCliente": controles}
         raise RuntimeError("Execução anterior requer conferência do registro privado antes de continuar.")
@@ -99,6 +121,7 @@ def publicar(base, projeto, commit, imagem_esperada):
     for p in configs_antigos:
         if not Path(p).is_relative_to(base) or not Path(p).is_file() or Path(p).is_symlink():
             raise RuntimeError("Configuração anterior não pode ser preservada automaticamente.")
+    evolution = conferir_evolution(projeto)
     estado.update(imagemAnterior=app["Image"], backupAnterior=backup_anterior["Image"], composeAnterior=configs_antigos, migracoesPendentes=pendentes)
     etapa("preservar")
     executar(["docker", "tag", app["Image"], "barberos-app:antes-" + commit])
@@ -150,11 +173,14 @@ def publicar(base, projeto, commit, imagem_esperada):
         envs = ["--env-file", str(base / ".env"), "--env-file", str(privado)]
         (codigo / ".env").symlink_to(base / ".env")
         override = codigo / "deploy/versao.json"
-        escrever_privado(override, json.dumps({"services": {
-            "app": {"image": novas["app"], "command": ["node", "server.js"], "environment": {
-                **CONTROLES_PUBLICACAO}},
+        servicos = {
+            "app": {"image": novas["app"], "command": ["node", "server.js"], "environment": CONTROLES_PUBLICACAO},
             "backup": {"image": novas["backup"], "volumes": [str(base / "backups") + ":/backups"]},
-            "video-worker": {"image": novas["video-worker"]}}}))
+            "video-worker": {"image": novas["video-worker"]},
+        }
+        if evolution:
+            servicos["evolution"] = {"image": TAG_EVOLUTION_PREVIA, "pull_policy": "never"}
+        escrever_privado(override, json.dumps({"services": servicos}))
         arquivos = [codigo / "deploy/docker-compose.yml", codigo / "deploy/docker-compose.estudio.producao.yml", override]
         compose = ["docker", "compose", "-p", projeto, *envs]
         for arquivo in arquivos:
@@ -195,6 +221,10 @@ def publicar(base, projeto, commit, imagem_esperada):
         executar([*compose, "up", "-d", "--no-build", "--no-deps", "backup"], prazo=180)
         # Transcrição local (compose próprio) também é parada no isolamento; volta com a Evolution.
         retomar_auxiliares(servicos_parados, {"evolution", "atendimento"})
+        if evolution:
+            if conferir_evolution(projeto) != evolution:
+                raise RuntimeError("A Evolution adaptada não voltou com o container, a imagem e o estado originais.")
+            estado["evolutionPreservada"] = evolution
         estado.update(concluido=True, imagemNova=novo["Image"], composeAtual=[str(p) for p in arquivos], workerAtivo=True)
         etapa("concluido")
         ativa = base / "versao-ativa.json"

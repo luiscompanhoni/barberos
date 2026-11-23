@@ -5,7 +5,7 @@ export type EtapaJornadaLeonel = "link" | "roleta" | "cadastro" | "agenda";
 
 const mensagens: Record<Exclude<SegmentoLeonel, "quente">, string> = {
   morno: "A Black tá com um app novo. Quando quiser voltar, por lá tu consegue escolher teu barbeiro e ver os horários. Entra com teu número e confirma o código no app. Se precisar, te ajudo por aqui.",
-  frio: "Faz um tempo desde tua última visita e a Black tem um presente pra ti no app novo. Abre o link e gira a roleta da Black. Depois tu entra com teu número pra agendar e usar o que sair.",
+  frio: "Faz tempo que tu não passa por aqui! Tem um presente pra tua volta. Abre o link e gira a roleta da Black. 🎁",
   muitoFrio: "Já faz um bom tempo desde tua última visita e a gente quer te convidar pra voltar. Preparamos uma jogada de presente pra ti. Abre o link e gira a roleta da Black. Depois tu entra com teu número pra agendar e usar o que sair.",
 };
 

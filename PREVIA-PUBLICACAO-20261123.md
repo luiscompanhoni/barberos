@@ -2,7 +2,7 @@
 
 23 de novembro de 2026 · horário de São Paulo · ensaio local com uma cópia do banco de produção.
 
-**A atualização passou no ensaio local. Antes de marcar a publicação, compare a correção de WhatsApp que está no ar com a versão proposta.** O registro geral da VPS aponta para a release `6437737`, mas o app em execução usa a imagem `e434997`. O banco da cópia corresponde a `6437737`. A diferença de aplicativo precisa ser resolvida para preservar o que já funciona no WhatsApp.
+**A atualização mantém o cartão clicável da roleta no WhatsApp.** Quando os envios estiverem liberados, o último balão do convite mostra a arte da Black Barber e abre a roleta ao tocar. Se o WhatsApp não aceitar a imagem em alta resolução, a Evolution tenta usar uma versão menor da miniatura. A publicação reaproveita a Evolution instalada para manter esse comportamento.
 
 ## O que muda
 
@@ -18,6 +18,7 @@
 
 - **Dezembro Grátis continua desligada.** A oferta fica fora da vitrine, da agenda e das assinaturas. As páginas exclusivas e a API da oferta ficam fechadas.
 - **Envios automáticos de WhatsApp, Direct e push seguem bloqueados no estado previsto para a publicação.** IA paga, acompanhamentos da roleta e cobranças automáticas ficam desligados. A exceção existente para códigos de login pedidos pelo próprio cliente depende de como o OTP estiver configurado. A maquininha segue no modo manual. Na leitura da configuração-base da VPS, as flags novas de oferta, Direct e acompanhamento da roleta estavam ausentes e caem nos padrões fechados do app. Confirme os valores efetivos no dia da publicação.
+- O teste interno de convite de retorno continua restrito ao número do dono ativo. O contato normal pelo WhatsApp continua sujeito às preferências do cliente e às travas de envio.
 - No ensaio, o aplicativo e o navegador ficaram isolados de serviços externos. A sessão usou uma conta temporária local e o teste não enviou mensagens.
 
 ## Tempo de parada
@@ -34,7 +35,7 @@
 
 ## Checklist do dia da publicação
 
-- [ ] Conferir a imagem e a configuração **realmente em uso**. Comparar com a atualização as correções do WhatsApp e da prévia clicável instaladas à parte. Validar qual imagem seria usada no retorno.
+- [ ] Conferir a imagem e a configuração **realmente em uso**, a tag local `barberos-evolution:2.3.7-previa-clicavel` e a imagem prevista para o retorno.
 - [ ] Confirmar a revisão autorizada, o CI aprovado dessa revisão e a janela com o responsável pela operação. Conferir reserva de disco e memória e ausência de recuperação pendente.
 - [ ] Confirmar oferta desligada, travas do WhatsApp e Instagram, push e IA paga desligados, cobrança automática bloqueada e maquininha manual. Conferir a configuração do código de login.
 - [ ] Com os serviços parados, o publicador deve gerar backup de banco e mídia, verificar a restauração e testar a compatibilidade da imagem ativa antes de migrar o banco principal. Interromper se houver histórico divergente, lock que expire ou falha de restauração.
@@ -53,6 +54,20 @@ A mudança acrescenta à lista somente `20261121010000_jornadas_leonel`, `202611
 O fluxo preserva o backup restaurado antes de iniciar a migração e a recuperação em caso de falha. A versão-base já limitava o comando de migração a **180 s**. A alteração também aplica **`lock_timeout=5s`** na conexão do Prisma, tanto no ensaio do publicador quanto na aplicação real. Esse limite vale para a espera de cada lock e pode falhar antes do prazo do comando. A configuração é específica da conexão e a URL fica no ambiente do subprocesso.
 
 [Workflow](.github/workflows/publicar.yml) · [Transporte](scripts/publicacao/publicar-vps.mjs) · [Lista e checksums](scripts/publicacao/deploy_vps_comum.py) · [Ordem das etapas e recuperação](scripts/publicacao/deploy_vps.py)
+
+### Correção do WhatsApp recuperada
+
+- O registro geral da VPS apontava para `6437737`. O Docker identificou a imagem em execução como `barberos-app:e434997`. O pacote `testes-leonel/card-publicacao-20261123/ajustes.tgz` contém as quatro fontes do WhatsApp e o Dockerfile da Evolution. A revisão do pacote e o `BUILD_ID` da pasta `standalone` conferem com o app ativo. A imagem não continha as fontes TypeScript nem mapas de código nos chunks lidos.
+- O diff contra `6437737` acrescenta `previaRoleta` em `convite-app.ts`, `conversas.ts`, `canal.ts` e `evolution.ts`. Os chunks do app ativo confirmam que a Evolution recebe `linkPreview: true` em `sendText` no último balão da roleta. A branch já tinha a página de prévia, a janela para o provedor buscar o cartão e o envio pela Cloud. O porte aproveita essas regras e mantém as autorizações mais novas de conversas e campanhas.
+- O pacote anterior `testes-leonel/leonel-frio-automatico-20261123/ajustes-final.tgz` esclarece as dependências ainda presentes no compilado ativo. O modo interno usa o token `rott_`, a campanha de teste pausada e o lote individual. O app ativo usa a arte `previa-roleta-ygor-v1.jpg`, com os mesmos bytes do pacote anterior. A lógica também reconhece a leitura do cartão e permite a primeira ajuda fora do horário apenas nesse teste, quando o acompanhamento estiver habilitado. A rota de gestão continua iniciando o convite comum. A instrução ao Leonel para resolver ou encaminhar pedidos pendentes também está preservada.
+- A leitura de `link-preview.js` no container Evolution confirmou a tentativa de gerar a miniatura compacta quando o upload em alta resolução falha. O publicador retoma o container pelo ID e grava no Compose da release a tag local com `pull_policy: never`. A tag precisa apontar para o mesmo ID de imagem instalado. O Dockerfile recuperado registra como reconstruir a adaptação. [Dockerfile da Evolution](deploy/evolution.Dockerfile)
+
+| Comportamento | Situação na branch antes do porte |
+| --- | --- |
+| Página pública da roleta e prévia na Cloud | Já cobria o link, a arte genérica e o intervalo para montar o cartão antes da confirmação de envio. |
+| Cartão na Evolution e arte publicada | Faltavam o pedido de prévia no último balão e a imagem usada em produção. |
+| Teste frio interno | Já tinha a jornada comum e os recibos. Faltavam a autorização do dono, a campanha de teste pausada e o tratamento do seu token no link, no giro e no acompanhamento. |
+| Imagem da Evolution | O publicador já retomava o container instalado pelo ID. Faltava levar a referência da imagem local para o Compose da nova release. |
 
 <details>
 <summary>Lista nominal anterior (50 nomes)</summary>
@@ -118,7 +133,6 @@ O fluxo preserva o backup restaurado antes de iniciar a migração e a recupera�
 - Restauração local em PostgreSQL **16.16**, mesma versão principal da produção, com `pg_restore --exit-on-error` em cerca de **5 s**. Banco em memória em container Docker dedicado, em rede interna, com acesso do Mac por uma ponte em loopback. O ensaio restaurou o banco. O backup completo de publicação também verifica as mídias e o manifesto.
 - Foram conferidos os hashes das **96 migrações** já aplicadas. Só os quatro nomes esperados ficaram pendentes. Após `migrate deploy` e o smoke, as **126 tabelas de negócio preexistentes em `public`** conservaram suas contagens. O schema `public` passou de 127 para 129 tabelas, incluindo o histórico Prisma de 96 para 100 entradas. O schema da Evolution tinha 37 tabelas. As duas tabelas novas ficaram vazias e as colunas novas ficaram nulas nas linhas antigas.
 - O cliente Prisma gerado a partir de `6437737` leu os campos escalares dos **126 modelos** com o schema migrado. Essa verificação cobre a referência do banco. Na publicação real, o ensaio do publicador precisa executar a mesma prova com a imagem efetivamente instalada.
-- O inventário identificou `barberos-app:e434997` e a Evolution `2.3.7-previa-clicavel`. O pacote da correção separado na VPS contém versões diferentes de quatro arquivos do WhatsApp (`evolution.ts`, `canal.ts`, `conversas.ts` e `convite-app.ts`) e uma imagem adaptada da Evolution. Os hashes dos quatro arquivos divergem em relação à branch. A cobertura funcional dessas correções pela branch ainda precisa ser conferida antes da troca.
 
 | Dados conferidos | Antes | Depois |
 | --- | ---: | ---: |
@@ -160,3 +174,11 @@ Em outra cópia, mantive o lock de escrita em `campanha_envios` e executei o com
 - `npm run check:publicacao:servidor` passou com **102 testes Node e 192 Python**. A regressão cobre os 16 subconjuntos dos quatro nomes (incluindo a lista vazia), rejeição de nomes extras e propagação do prazo via ambiente.
 
 A cópia do backup, os arquivos temporários e o container do ensaio foram removidos. O diretório privado ficou só com este relatório.
+
+### Validação do porte do WhatsApp
+
+- `npm run check` passou no Linux isolado, incluindo lint, regras locais, TypeScript, **2.547 testes Vitest** e build standalone. Os **158 testes condicionais** passaram em bancos sintéticos dedicados. Essa rodada executou **160 testes** porque repetiu dois da suíte padrão.
+- `npm run teste:todos` passou com **28 fluxos e 773 verificações**. Também passaram as verificações de segurança financeira, duração do agendamento e os **10 testes** do worker de vídeo.
+- `npm run check:publicacao:servidor` passou com **102 testes Node e 197 Python**. O Docker Compose resolveu o perfil `evolution` com a tag local e `pull_policy: never`. A prova do código de miniaturas reproduziu o arquivo em execução e passou em cinco cenários com tráfego simulado.
+- O app compilado respondeu HTTP 200 para o link reservado, para o link confirmado e para o JPEG. Os metadados Open Graph apontaram para a arte com o mesmo SHA-256 do arquivo em uso na VPS. Abrir as páginas deixou a contagem de jogadas em zero.
+- As regressões cobrem o último balão da roleta, a preservação do identificador de entrega, as travas do WhatsApp e do Direct, a elegibilidade do teste do dono, a corrida entre giro e mudança de status da campanha e a retirada de um convite vencido da fila. A validação do cartão usa a leitura do compilado ativo, a aplicação local e transporte simulado. A VPS serviu somente como fonte de leitura.

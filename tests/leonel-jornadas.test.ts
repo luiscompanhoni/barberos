@@ -35,7 +35,7 @@ describe("jornadas de campanha do Leonel", () => {
     expect(falas[1]).toMatch(/gira a roleta/i);
     expect(falas[2]).toBe(destinoDaJornada(token));
     expect(previaDaRoleta(token).openGraph).toMatchObject({ url: destinoDaJornada(token),
-      images: [{ url: expect.stringContaining("/previa-roleta-v1.jpg"), width: 1200, height: 630 }] });
+      images: [{ url: expect.stringContaining("/previa-roleta-ygor-v1.jpg"), width: 1200, height: 630 }] });
     expect(falas.join(" ")).not.toMatch(/responda parar/i);
   });
   it("espera cinco horas da última atividade e oferece ajuda adequada à etapa", () => {

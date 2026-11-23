@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { indicarDigitacaoEvolution } from "@/lib/whatsapp/evolution";
+import { enviarTextoEvolution, indicarDigitacaoEvolution } from "@/lib/whatsapp/evolution";
 import { sincronizarDisponibilidadeAtendimento } from "@/lib/whatsapp/disponibilidade-atendimento";
 
 const m = vi.hoisted(() => ({ cfg: vi.fn(), piloto: vi.fn(), transporte: vi.fn() }));
@@ -25,6 +25,21 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
+});
+
+it("solicita prévia no texto da roleta sem perder o atraso nem o identificador da mensagem", async () => {
+  const texto = "https://black.example/c/r/rotf_chave";
+  m.transporte.mockResolvedValueOnce(new Response(JSON.stringify({ key: { id: "enviado" } }), { status: 201 }));
+  await expect(enviarTextoEvolution("5547999990000@s.whatsapp.net", texto, 1200, true)).resolves.toEqual({ wamid: "enviado" });
+  const [url, req] = m.transporte.mock.calls[0];
+  expect(url).toBe("https://evolution.invalid/message/sendText/teste");
+  expect(JSON.parse(req.body)).toEqual({ number: "5547999990000", text: texto, delay: 1200, linkPreview: true });
+});
+
+it("mantém o texto comum sem o campo de prévia", async () => {
+  await enviarTextoEvolution("5547999990000", "https://black.example");
+  const [, req] = m.transporte.mock.calls[0];
+  expect(JSON.parse(req.body)).toEqual({ number: "5547999990000", text: "https://black.example" });
 });
 
 it("indica digitação no chat sem mandar mensagem nem agendar uma entrega", async () => {

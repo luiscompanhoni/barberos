@@ -88,7 +88,7 @@ export async function encaminharEntradaBloqueada(conversaId: string, texto: stri
 export async function enviarNaConversa(conversaId: string, texto: string, autor: AutorMensagem, opts: {
   conviteIndividual?: boolean; digitandoMs?: number; entrevistaPiloto?: boolean; respostaAtendimento?: boolean;
   aberturaLote?: { envioId: string; etapa: 0 | 1 }; aberturaTeste?: boolean; pararSeHumano?: boolean;
-  campanha?: boolean; templateAberturaCampanha?: TemplateWhatsApp; pagamentoConfirmado?: true;
+  campanha?: boolean; templateAberturaCampanha?: TemplateWhatsApp; pagamentoConfirmado?: true; previaRoleta?: boolean;
 } = {}) {
   const conversa = await db.conversa.findUniqueOrThrow({ where: { id: conversaId } });
   if (conversa.instagramIgsid) throw new ErroNegocio("Use o canal Instagram Direct para esta conversa.");
@@ -112,7 +112,9 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
       ? await enviarTextoLoteAutorizado(opts.aberturaLote.envioId, conversa, texto, opts.aberturaLote.etapa)
       : opts.templateAberturaCampanha && opts.campanha && autor === "SISTEMA" && temJanela24h()
         ? await enviarTemplate(destino, opts.templateAberturaCampanha, "CAMPANHA")
-        : await enviarTexto(destino, texto, opts.digitandoMs, origem);
+        : opts.previaRoleta
+          ? await enviarTexto(destino, texto, opts.digitandoMs, origem, true)
+          : await enviarTexto(destino, texto, opts.digitandoMs, origem);
     wamid = resultado.wamid;
   } catch (e) {
     erro = (e as Error).message;

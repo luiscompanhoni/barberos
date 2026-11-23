@@ -43,6 +43,11 @@ describe("publicação com envios e gastos desativados", () => {
     expect(mocks.piloto).not.toHaveBeenCalled();
     expect(mocks.transporte).not.toHaveBeenCalled();
   });
+  it("não envia convite com prévia enquanto a publicação bloqueia envios", async () => {
+    await expect(enviarTexto(telefone, "https://black.example", 0, "CONVITE_APP", true)).rejects.toThrow("bloqueados");
+    expect(mocks.piloto).not.toHaveBeenCalled();
+    expect(mocks.transporte).not.toHaveBeenCalled();
+  });
   it("preserva código de acesso solicitado sem permitir conteúdo arbitrário", async () => {
     await enviarCodigoAcesso(telefone, "123456");
     expect(mocks.transporte).toHaveBeenCalledTimes(1);

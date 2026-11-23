@@ -4,9 +4,16 @@ import type { SegmentoLeonel } from "./jornada-leonel";
 
 const prefixos = { quente: "appq", morno: "appm", frio: "rotf", muitoFrio: "rotm" } as const;
 export const tokenDaJornada = (segmento: SegmentoLeonel, sufixo: string) => `${prefixos[segmento]}_${sufixo}`;
-export const tokenDeConvite = (token: string) => /^(?:app|appq|appm|rotf|rotm)_[a-f0-9]{32}$/.test(token);
-export const ehJornadaComRoleta = (token: string) => /^rot[fm]_[a-f0-9]{32}$/.test(token);
+export const CAMPANHA_TESTE_FRIO = "teste-automatico-leonel-frio";
+export const PREFIXO_TESTE_FRIO = "rott_";
+export const ehTokenTesteFrio = (token: string) => /^rott_[a-f0-9]{32}$/.test(token);
+export const tokenDeConvite = (token: string) => /^(?:app|appq|appm|rotf|rotm|rott)_[a-f0-9]{32}$/.test(token);
+export const ehJornadaComRoleta = (token: string) => /^rot[fmt]_[a-f0-9]{32}$/.test(token);
 export const ehJornadaLeonel = (token: string) => tokenDeConvite(token) && !token.startsWith("app_");
+
+export function permiteRoletaTeste(token: string, campanha: { id: string; status: string; jogo: { tipo: string } | null }, lote: number) {
+  return ehTokenTesteFrio(token) && campanha.id === CAMPANHA_TESTE_FRIO && campanha.status === "PAUSADA" && lote === 0 && campanha.jogo?.tipo === "ROLETA";
+}
 
 export function destinoDaJornada(token: string) {
   return ehJornadaComRoleta(token) ? new URL(`/c/r/${token}`, urlSite()).href : enderecoDoConvite(token);
@@ -41,6 +48,6 @@ export function previaDaRoleta(token: string): Metadata {
   const description = "Abre o teu convite e gira a roleta da Black.";
   return { title, description, robots: { index: false, follow: false }, alternates: { canonical: url }, openGraph: {
     url, title, description,
-    images: [{ url: urlSite() + "/brand/black/previa-roleta-v1.jpg", width: 1200, height: 630, type: "image/jpeg", alt: "Roleta dourada da Black Barber" }],
+    images: [{ url: urlSite() + "/brand/black/previa-roleta-ygor-v1.jpg", width: 1200, height: 630, type: "image/jpeg", alt: "Ygor apoiado na roleta da Black Barber" }],
   } };
 }

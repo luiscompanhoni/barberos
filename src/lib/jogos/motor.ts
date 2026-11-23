@@ -10,6 +10,7 @@ import type { Jogada, Jogo, JogoPremio, PremioGanho, Prisma } from "@prisma/clie
 import { auditar, origemDaRequisicao } from "@/lib/auditoria";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { envioComLinkLiberado, inicioDaValidadeDoLink } from "@/lib/campanhas/link-acesso";
+import { CAMPANHA_TESTE_FRIO, permiteRoletaTeste, PREFIXO_TESTE_FRIO } from "@/lib/convites/link";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { comoGanhar, contarFichas, fichasLivres, sincronizarFichas } from "./fichas";
@@ -73,13 +74,17 @@ const CHAVE = /^[\w:-]{8,120}$/;
 
 /** Joga. Repetir a mesma `chave` devolve a jogada ja feita (nunca joga duas vezes). */
 export async function jogar(clienteId: string, jogoId: string, chave: string, o: OpcoesJogada = {}): Promise<JogadaCliente> {
+  return executarJogada(clienteId, jogoId, chave, o);
+}
+
+async function executarJogada(clienteId: string, jogoId: string, chave: string, o: OpcoesJogada, testeFrio?: { token: string; envioId: string }): Promise<JogadaCliente> {
   if (!CHAVE.test(chave)) throw new ErroNegocio("Jogada inválida. Atualize a página.", 400, "chave");
-  const ja = await db.jogada.findUnique({ where: { chave }, include: { premios: { include: { agendamento: true } } } });
+  const ja = !testeFrio && await db.jogada.findUnique({ where: { chave }, include: { premios: { include: { agendamento: true } } } });
   if (ja) return repetida(ja, clienteId);
 
   const jogo = await db.jogo.findUnique({ where: { id: jogoId } });
   if (!jogo) throw naoEncontrado("Jogo");
-  if (!noAr(jogo)) throw new ErroNegocio(`${jogo.nome} está fora do ar no momento.`, 409, "desligado");
+  if (!noAr(jogo) && !(testeFrio && jogo.tipo === "ROLETA")) throw new ErroNegocio(`${jogo.nome} está fora do ar no momento.`, 409, "desligado");
   const sit = await situacaoDoCliente(clienteId);
   if (jogo.soAssinante && !sit?.valida) throw new ErroNegocio(`${jogo.nome} é exclusiva para assinantes em dia.`, 403, "so_assinante");
   const mult = multiplicador(!!sit?.valida, jogo.bonusAssinantePct);
@@ -87,13 +92,24 @@ export async function jogar(clienteId: string, jogoId: string, chave: string, o:
 
   const jogada = await db.$transaction(async (tx) => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`jogos:${clienteId}`}))`;
+    let validadeTeste: Date | undefined;
+    if (testeFrio) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`campanha:${CAMPANHA_TESTE_FRIO}`}))`;
+      const envio = await tx.campanhaEnvio.findUnique({
+        where: { id: testeFrio.envioId, token: testeFrio.token, clienteId, campanha: { jogoId }, ...envioComLinkLiberado },
+        include: { campanha: { include: { jogo: true } } },
+      });
+      if (!envio?.campanha.jogo || !permiteRoletaTeste(testeFrio.token, envio.campanha, envio.lote)) throw naoEncontrado("Link");
+      validadeTeste = validadeDoPresente(envio, envio.campanha.jogo.validadeDias);
+    }
     // Outra requisicao com a mesma chave pode ter terminado enquanto esta esperava a trava.
     const dentro = await tx.jogada.findUnique({ where: { chave } });
     if (dentro) return dentro.id;
 
-    if (!o.fichaId) await sincronizarFichas(tx, clienteId, jogo);
-    const ficha = o.fichaId
-      ? await tx.fichaJogo.findFirst({ where: { id: o.fichaId, ...fichasLivres(clienteId, jogoId) } })
+    const fichaId = testeFrio && validadeTeste ? await fichaDoEnvio(tx, jogoId, clienteId, testeFrio.envioId, validadeTeste) : o.fichaId;
+    if (!fichaId) await sincronizarFichas(tx, clienteId, jogo);
+    const ficha = fichaId
+      ? await tx.fichaJogo.findFirst({ where: { id: fichaId, ...fichasLivres(clienteId, jogoId) } })
       : await tx.fichaJogo.findFirst({ where: fichasLivres(clienteId, jogoId), orderBy: [{ expiraEm: { sort: "asc", nulls: "last" } }, { criadoEm: "asc" }] });
     if (!ficha) throw new ErroNegocio("Você não tem jogadas agora. Cada atendimento concluído libera mais! 💈", 409, "sem_jogadas");
     if (jogo.limitePorPessoaMes !== null) {
@@ -284,6 +300,19 @@ export async function jogoDoCliente(clienteId: string, jogoId: string) {
 
 // ---------------- campanha (link sem login)
 
+function validadeDoPresente(envio: Parameters<typeof inicioDaValidadeDoLink>[0], dias: number) {
+  const expiraEm = new Date(+inicioDaValidadeDoLink(envio) + dias * DIA);
+  if (expiraEm < new Date()) throw new ErroNegocio("Esse presente venceu.", 410, "vencido");
+  return expiraEm;
+}
+
+async function fichaDoEnvio(tx: Tx, jogoId: string, clienteId: string, envioId: string, expiraEm: Date) {
+  const chave = { jogoId, clienteId, origem: "CAMPANHA" as const, referencia: `envio:${envioId}` };
+  await tx.fichaJogo.createMany({ data: [{ ...chave, expiraEm }], skipDuplicates: true });
+  const ficha = await tx.fichaJogo.findUniqueOrThrow({ where: { jogoId_clienteId_origem_referencia: chave }, select: { id: true } });
+  return ficha.id;
+}
+
 /**
  * Jogada de presente da campanha: uma por mensagem enviada, valida pelos dias de validade do jogo.
  * Abrir de novo devolve a mesma jogada.
@@ -292,18 +321,16 @@ export async function jogarPelaCampanha(token: string, o: OpcoesJogada = {}) {
   const envio = await db.campanhaEnvio.findUnique({ where: { token, ...envioComLinkLiberado }, include: { campanha: { include: { jogo: true } } } });
   const jogo = envio?.campanha.jogo;
   if (!envio || !jogo || envio.status !== "ENVIADO") throw naoEncontrado("Link");
+  const testeFrio = permiteRoletaTeste(token, envio.campanha, envio.lote);
+  if (token.startsWith(PREFIXO_TESTE_FRIO) && !testeFrio) throw naoEncontrado("Link");
   if (envio.jogadaId) {
     const j = await db.jogada.findUniqueOrThrow({ where: { id: envio.jogadaId }, include: { premios: { include: { agendamento: true } } } });
     return { jogada: paraCliente(j), jaJogou: true };
   }
-  const expiraEm = new Date(+inicioDaValidadeDoLink(envio) + jogo.validadeDias * DIA);
-  if (expiraEm < new Date()) throw new ErroNegocio("Esse presente venceu.", 410, "vencido");
-  // createMany + skipDuplicates e atomico no banco (dois cliques ao mesmo tempo nao brigam pela ficha).
-  const chaveFicha = { jogoId: jogo.id, clienteId: envio.clienteId, origem: "CAMPANHA" as const, referencia: `envio:${envio.id}` };
-  await db.fichaJogo.createMany({ data: [{ ...chaveFicha, expiraEm }], skipDuplicates: true });
-  const ficha = await db.fichaJogo.findUniqueOrThrow({ where: { jogoId_clienteId_origem_referencia: chaveFicha } });
-  // A chave do presente e fixa por envio: dois cliques simultaneos (ou uma queda no meio) caem na mesma jogada.
-  const jogada = await jogar(envio.clienteId, jogo.id, `campanha:${envio.id}`, { ...o, fichaId: ficha.id });
+  const fichaId = testeFrio ? undefined : await fichaDoEnvio(db, jogo.id, envio.clienteId, envio.id, validadeDoPresente(envio, jogo.validadeDias));
+  // O teste cria e consome sua ficha somente depois de revalidar a campanha dentro da transação.
+  const jogada = await executarJogada(envio.clienteId, jogo.id, `campanha:${envio.id}`, { ...o, fichaId },
+    testeFrio ? { token, envioId: envio.id } : undefined);
   await db.campanhaEnvio.updateMany({ where: { id: envio.id, jogadaId: null }, data: { jogadaId: jogada.id, clicouEm: envio.clicouEm ?? new Date() } });
   return { jogada, jaJogou: false };
 }

@@ -1,12 +1,13 @@
 import { lembreteAgendamentoDevido } from "@/lib/agenda/abandono-regras";
 import { minutosLocal } from "@/lib/agenda/tempo";
+import { envioComLinkLiberado, inicioDaValidadeDoLink } from "@/lib/campanhas/link-acesso";
 import { db } from "@/lib/db";
 import { enviarNaConversa } from "@/lib/whatsapp/conversas";
 import { naFila } from "@/lib/whatsapp/fila-conversa";
 import { temJanela24h, provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { telefoneCanonico } from "@/lib/whatsapp/webhook";
 import { canalConviteAtivo } from "./canal";
-import { destinoDaJornada, ehJornadaComRoleta, ehJornadaLeonel, enderecoDoConvite } from "./link";
+import { destinoDaJornada, ehJornadaComRoleta, ehJornadaLeonel, enderecoDoConvite, permiteRoletaTeste, PREFIXO_TESTE_FRIO } from "./link";
 import { AJUDA_APOS_LEITURA, instanteDeAjudaAposLeitura, instanteDeRetomada, mensagemDaRetomada } from "./jornada-leonel";
 
 const DIA = 86_400_000;
@@ -39,7 +40,7 @@ function textoAjuda(j: Jornada) {
     : `Oi, ${nome}! Aqui é o Leonel. Quando puder, me dá um oi?`;
 }
 
-async function retomar(id: string, agora: number) {
+async function retomar(id: string, agora: number, foraDoHorario: boolean) {
   const j = await carregar(id);
   if (!j?.proximaEm || +j.proximaEm > agora || j.parouEm || j.retomadas >= 3) return false;
   const c = j.conversa, cliente = c.cliente;
@@ -66,16 +67,25 @@ async function retomar(id: string, agora: number) {
   if (reserva || pedido || (temJanela24h() && (!c.ultimaEntradaEm || agora - +c.ultimaEntradaEm >= DIA))) { await parar(); return false; }
   // Dá tempo de concluir a etapa recém-aberta no navegador antes de oferecer ajuda.
   const roleta = ehJornadaComRoleta(j.token);
-  const envio = roleta ? await db.campanhaEnvio.findUnique({ where: { token: j.token },
-    select: { status: true, clicouEm: true, jogada: { select: { criadoEm: true } } },
+  const envio = roleta ? await db.campanhaEnvio.findUnique({ where: { token: j.token, ...envioComLinkLiberado },
+    select: { status: true, clicouEm: true, lote: true, ofertaEnviadaEm: true, continuacaoReservadaEm: true, enviadoEm: true, liberadoEm: true,
+      campanha: { select: { id: true, status: true, jogo: { select: { tipo: true, validadeDias: true } } } },
+      jogada: { select: { criadoEm: true } } },
   }) : null;
   if (roleta && envio?.status !== "ENVIADO") return false;
+  const testeFrio = !!envio && permiteRoletaTeste(j.token, envio.campanha, envio.lote);
+  if (j.token.startsWith(PREFIXO_TESTE_FRIO) && !testeFrio) return false;
+  if (testeFrio && envio?.campanha.jogo && +inicioDaValidadeDoLink(envio) + envio.campanha.jogo.validadeDias * DIA < agora) {
+    await parar();
+    return false;
+  }
   const clique = j.clicouEm ?? envio?.clicouEm ?? null;
   const atividades = [clique, j.loginEm, j.entrouEm, j.agendaEm, j.instalouEm, envio?.jogada?.criadoEm ?? null];
   const aguardandoLink = novo && j.link && atividades.every(d => !d);
   const respondeu = j.respostaEm || (c.ultimaEntradaEm && +c.ultimaEntradaEm >= +j.abertura.criadoEm);
   if (aguardandoLink && (respondeu || (j.link?.lidaEm && j.retomadas > 0))) { await parar(); return false; }
   const posLeitura = aguardandoLink && j.link?.lidaEm ? j.link : null;
+  if (foraDoHorario && (!testeFrio || !posLeitura || j.retomadas !== 0)) return false;
   if (novo) atividades.push(j.link?.criadoEm ?? null, c.ultimaEntradaEm);
   const ultimaVisita = Math.max(...atividades.map(d => d?.getTime() ?? 0));
   const proxima = posLeitura?.lidaEm ? instanteDeAjudaAposLeitura(posLeitura.criadoEm, posLeitura.lidaEm)
@@ -105,11 +115,13 @@ async function retomar(id: string, agora: number) {
 
 export async function rodarRetomadas(agora: number, fuso: string, clienteIds?: string[]) {
   const minuto = minutosLocal(agora, fuso);
-  if (minuto < 9 * 60 || minuto >= 18 * 60 || !await canalConviteAtivo()) return 0;
+  const foraDoHorario = minuto < 9 * 60 || minuto >= 18 * 60;
+  if (!await canalConviteAtivo()) return 0;
   const devidos = await db.jornadaConviteApp.findMany({ where: { parouEm: null, proximaEm: { lte: new Date(agora) },
+    ...(foraDoHorario ? { token: { startsWith: PREFIXO_TESTE_FRIO }, retomadas: 0, respostaEm: null, link: { lidaEm: { not: null } } } : {}),
     ...(clienteIds ? { clienteId: { in: clienteIds } } : {}) }, orderBy: { proximaEm: "asc" }, take: 30,
     select: { conversaId: true, conversa: { select: { telefone: true } } } });
   let enviadas = 0;
-  for (const j of devidos) if (await naFila(j.conversa.telefone, () => retomar(j.conversaId, agora))) enviadas++;
+  for (const j of devidos) if (await naFila(j.conversa.telefone, () => retomar(j.conversaId, agora, foraDoHorario))) enviadas++;
   return enviadas;
 }
