@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { zClienteGestao, zConsultaClientes, zEditarClienteGestao, filtroClientes, cpfMascarado } from "@/lib/clientes/gestao-regras";
 const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), usuarioUpdate: vi.fn(), audit: vi.fn(), lock: vi.fn(),
@@ -13,6 +13,7 @@ import { cadastrarCliente, editarCliente } from "@/lib/clientes/gestao";
 const exemplo = { id: "cliente-teste", nome: "Cliente Demonstração", telefone: "5511999990000", email: null, cpf: "52998224725",
   endereco: null, dataNascimento: null, observacoes: null, usuarioId: null as string | null, criadoEm: new Date(), fotoVersao: 0, perfilCompletoEm: null };
 beforeEach(() => { vi.clearAllMocks(); mocks.findFirst.mockResolvedValue(exemplo); mocks.create.mockResolvedValue(exemplo); mocks.update.mockResolvedValue(exemplo); });
+afterEach(() => vi.unstubAllEnvs());
 
 describe("Gestão de clientes: filtros e validação", () => {
   it("exclui cadastros apagados e não busca telefone por fragmentos curtos", () => {
@@ -21,9 +22,10 @@ describe("Gestão de clientes: filtros e validação", () => {
     expect(f.OR).toHaveLength(2);
   });
   it("permite CPF exato sem pesquisa parcial indiscriminada", () => {
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
     const f = filtroClientes(zConsultaClientes.parse({ busca: "529.982.247-25", plano: "sem_plano" }));
     expect(f.OR).toContainEqual({ cpf: "52998224725" });
-    expect(f.assinaturas).toEqual({ none: { status: { in: ["ATIVA", "ATRASADA"] } } });
+    expect(f.assinaturas).toEqual({ none: { status: { in: ["ATIVA", "ATRASADA"] }, ofertaDezembro: { is: null } } });
     expect(cpfMascarado("52998224725")).not.toContain("52998224725");
   });
   it("recusa paginação inválida, campos privilegiados e CPF inválido", () => {

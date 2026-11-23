@@ -7,6 +7,7 @@ import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { corpoCobrancaEquipe } from "@/lib/pagamentos/http-equipe";
 import { atualizarCadastroAtendimento } from "@/lib/clientes/cadastro-atendimento";
 import { dataParaTexto, zPerfilCliente } from "@/lib/validacao-cliente";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 
 /** Resumo do cliente para a equipe: frequencia, faltas e ultimos atendimentos. */
 export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/clientes/[id]">) => {
@@ -25,7 +26,8 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/clientes/[
     db.agendamento.count({ where: { clienteId: id, status: "FALTOU" } }),
     situacaoDoCliente(id),
   ]);
-  const plano = sit && { nome: sit.assinatura.plano.nome, status: sit.assinatura.status, valida: sit.valida };
+  const plano = sit && (!sit.assinatura.ofertaDezembro || ofertaDezembroEmHomologacao())
+    ? { nome: sit.assinatura.plano.nome, status: sit.assinatura.status, valida: sit.valida } : null;
   return NextResponse.json({ cliente: { ...cliente, dataNascimento: dataParaTexto(cliente.dataNascimento) }, ultimos, atendidos, faltas, plano }, { headers: { "Cache-Control": "private, no-store" } });
 });
 

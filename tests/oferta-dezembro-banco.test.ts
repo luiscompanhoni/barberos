@@ -70,6 +70,7 @@ const proposta = (planoId: string) => ({
 describe.skipIf(!habilitado)("oferta de dezembro com PostgreSQL", () => {
   beforeEach(async () => {
     vi.stubEnv("AMBIENTE", "homologacao");
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "true");
     vi.stubEnv("OFERTA_DEZEMBRO_MODO", "homologacao");
     vi.stubEnv("OFERTA_DEZEMBRO_LIMITE_USOS", "1");
     vi.stubEnv("WHATSAPP_ENVIOS_BLOQUEADOS", "true");
@@ -187,7 +188,7 @@ describe.skipIf(!habilitado)("oferta de dezembro com PostgreSQL", () => {
     expect(await db.ofertaDezembroAdesao.count()).toBe(p.existentes + 1);
   });
 
-  it("fecha novas vendas e preserva os contratos da homologação com a chave desligada", async () => {
+  it("fecha novas vendas e preserva os contratos da homologação com o modo de adesão desligado", async () => {
     const p = await plano();
     const [t, outro] = await Promise.all([titular(), titular()]);
     const propostaAceita = proposta(p.id);

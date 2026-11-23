@@ -15,13 +15,14 @@ import { atrasarSimulada, gerarProximaSimulada, pagarSimulada } from "@/lib/paga
 import { alteracaoAtual, aplicarAlteracaoPlano, cancelarAlteracaoPlano, solicitarAlteracaoPlano } from "@/lib/assinaturas/alteracao-plano";
 import { cancelarOperacaoInicial, manterOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
 import { corpoAssinatura } from "@/lib/assinaturas/http";
+import { filtroDeContratosSimulados } from "@/lib/oferta-dezembro/config";
 import { erroUsarOfertaDezembro } from "@/lib/oferta-dezembro/regras";
 
 export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinaturas/[id]">) => {
   await exigirSessao(BALCAO);
   const { id } = await ctx.params;
   const a = await db.assinatura.findUnique({
-    where: { id },
+    where: { id, ...filtroDeContratosSimulados() },
     include: {
       cliente: { select: { id: true, nome: true, telefone: true, cpf: true } },
       plano: { select: { nome: true } },

@@ -3,7 +3,7 @@ import { AssinaturasTela } from "@/components/assinaturas/AssinaturasTela";
 import { pode } from "@/lib/auth/permissoes";
 import { BALCAO, sessaoAtual } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
-import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
+import { filtroDeContratosSimulados, ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 
 const idValido = (valor: unknown): valor is string => typeof valor === "string" && /^[a-zA-Z0-9_-]{1,40}$/.test(valor);
 
@@ -16,7 +16,7 @@ export default async function Assinaturas({ searchParams }: PageProps<"/assinatu
   const [podeCancelar, inicial] = await Promise.all([
     pode(s, "assinatura"),
     clienteId && idValido(assinatura)
-      ? db.assinatura.findFirst({ where: { id: assinatura, clienteId }, select: { id: true } })
+      ? db.assinatura.findFirst({ where: { id: assinatura, clienteId, ...filtroDeContratosSimulados() }, select: { id: true } })
       : null,
   ]);
   return <AssinaturasTela key={JSON.stringify([clienteId, busca, inicial?.id])} podeCancelar={podeCancelar}

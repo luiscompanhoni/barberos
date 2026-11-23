@@ -1,14 +1,16 @@
 import { exigirOrigemAssinatura } from "@/lib/assinaturas/http";
 import { exigirCliente } from "@/lib/auth/sessao";
-import { rota } from "@/lib/erros";
+import { naoEncontrado, rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 import { solicitarCancelamentoDezembro } from "@/lib/oferta-dezembro/cancelamento";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 import { schemaAdesaoDezembro, schemaCancelamentoDezembro } from "@/lib/oferta-dezembro/schemas";
 import { aderirOfertaDezembro } from "@/lib/oferta-dezembro/servico";
 
 const opcoes = { maxBytes: 2048, tipoJson: true };
 
 export const POST = rota(async (req: Request) => {
+  if (!ofertaDezembroEmHomologacao()) throw naoEncontrado();
   exigirOrigemAssinatura(req);
   const sessao = await exigirCliente();
   const adesao = await corpo(req, schemaAdesaoDezembro, opcoes);
@@ -17,6 +19,7 @@ export const POST = rota(async (req: Request) => {
 });
 
 export const PATCH = rota(async (req: Request) => {
+  if (!ofertaDezembroEmHomologacao()) throw naoEncontrado();
   exigirOrigemAssinatura(req);
   const sessao = await exigirCliente();
   const pedido = await corpo(req, schemaCancelamentoDezembro, opcoes);

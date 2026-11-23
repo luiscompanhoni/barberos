@@ -4,6 +4,7 @@ import { auditar } from "@/lib/auditoria";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { cadastroCompleto } from "./perfil-cadastro";
 import { travarMudancaTelefone } from "@/lib/whatsapp/preferencia";
+import { filtroDeContratosSimulados } from "@/lib/oferta-dezembro/config";
 import { cpfMascarado, filtroClientes, TAMANHO_PAGINA_CLIENTES, type ConsultaClientes, type DadosClienteGestao } from "./gestao-regras";
 
 const campos = { id: true, nome: true, telefone: true, email: true, cpf: true, endereco: true, dataNascimento: true,
@@ -25,7 +26,7 @@ export async function listarClientes(consulta: ConsultaClientes) {
   const [total, encontrados] = await db.$transaction([
     db.cliente.count({ where }),
     db.cliente.findMany({ where, select: { ...campos,
-      assinaturas: { where: { status: { not: "CANCELADA" } }, select: resumoPlano, orderBy: { criadaEm: "desc" }, take: 1 },
+      assinaturas: { where: { status: { not: "CANCELADA" }, ...filtroDeContratosSimulados() }, select: resumoPlano, orderBy: { criadaEm: "desc" }, take: 1 },
       agendamentos: { where: { status: "CONCLUIDO", adicionalDeId: null }, select: { inicio: true }, orderBy: { inicio: "desc" }, take: 1 },
     }, orderBy: [{ nome: "asc" }, { id: "asc" }], skip: (consulta.pagina - 1) * TAMANHO_PAGINA_CLIENTES, take: TAMANHO_PAGINA_CLIENTES }),
   ]);
@@ -38,7 +39,7 @@ export async function detalharCliente(id: string) {
   const cliente = await db.cliente.findFirst({ where: { id, excluidoEm: null }, select: campos });
   if (!cliente) throw naoEncontrado("Cliente");
   const [assinaturas, agendamentos, atendimentos, faltas] = await Promise.all([
-    db.assinatura.findMany({ where: { clienteId: id }, select: { ...resumoPlano, proximoVencimento: true }, orderBy: { criadaEm: "desc" }, take: 10 }),
+    db.assinatura.findMany({ where: { clienteId: id, ...filtroDeContratosSimulados() }, select: { ...resumoPlano, proximoVencimento: true }, orderBy: { criadaEm: "desc" }, take: 10 }),
     db.agendamento.findMany({ where: { clienteId: id, adicionalDeId: null }, select: resumoAgenda, orderBy: { inicio: "desc" }, take: 20 }),
     db.agendamento.count({ where: { clienteId: id, status: "CONCLUIDO", adicionalDeId: null } }),
     db.agendamento.count({ where: { clienteId: id, status: "FALTOU", adicionalDeId: null } }),

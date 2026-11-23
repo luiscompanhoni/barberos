@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { z } from "zod";
+import { filtroDeContratosSimulados } from "@/lib/oferta-dezembro/config";
 import { zCpfCadastro, zDadosCadastroCliente, zTelefoneCadastro } from "./perfil-cadastro";
 
 export const zConsultaClientes = z.object({
@@ -24,7 +25,7 @@ export const cpfMascarado = (cpf: string | null) => cpf ? `***.***.${cpf.replace
 
 export function filtroClientes({ busca, plano }: ConsultaClientes): Prisma.ClienteWhereInput {
   const digitos = busca.replace(/\D/g, "");
-  const assinatura: Prisma.AssinaturaWhereInput = { status: { in: ["ATIVA", "ATRASADA"] } };
+  const assinatura: Prisma.AssinaturaWhereInput = { status: { in: ["ATIVA", "ATRASADA"] }, ...filtroDeContratosSimulados() };
   return {
     excluidoEm: null,
     ...(plano === "com_plano" ? { assinaturas: { some: assinatura } } : {}),

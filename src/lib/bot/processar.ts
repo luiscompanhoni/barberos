@@ -22,6 +22,7 @@ import { entradaCloudSuperada, instanteDaEntradaCloud } from "@/lib/whatsapp/hor
 import { indicarDigitacaoEvolution } from "@/lib/whatsapp/evolution";
 import { telefoneCanonico } from "@/lib/whatsapp/webhook";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 import { APRESENTACAO_REATIVACAO, pediuParar } from "@/lib/automacoes/regras";
 import { executarTurno, type Modelo } from "./agente";
 import { dividirEmBolhas, tempoDigitando } from "./bolhas";
@@ -209,10 +210,9 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
   const historico = sessaoValida ? (conversa.sessao as unknown as Anthropic.Beta.BetaMessageParam[]) : [];
   const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { id: true, nome: true } });
   const sit = cliente && !testeIndividual && !respostaDireta ? await situacaoDoCliente(cliente.id) : null;
-  const plano = sit?.assinatura.ofertaDezembro ? "Dezembro Grátis (contrato de homologação; consulte as datas no app)" : sit
+  const plano = sit?.assinatura.ofertaDezembro ? (ofertaDezembroEmHomologacao() ? "Dezembro Grátis (contrato de homologação; consulte as datas no app)" : "precisa ser conferido pela equipe") : sit
     ? `${sit.assinatura.plano.nome} (${sit.assinatura.status === "PENDENTE" ? "aguardando o primeiro pagamento" : sit.valida ? (sit.assinatura.status === "ATRASADA" ? "ativo, com mensalidade atrasada" : "ativo e em dia") : "suspenso por mensalidade atrasada"}${sit.assinatura.plano.descontoExtrasPct ? `; ${sit.assinatura.plano.descontoExtrasPct}% de desconto em avulsos e serviços fora do plano` : ""})`
     : null;
-
   let resultado;
   try {
     const sistema = promptSistema(testeIndividual ? { ...cfg, agendaExternaAtiva: true } : cfg);

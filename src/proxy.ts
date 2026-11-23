@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { lerToken, tokenDoCookie } from "@/lib/auth/token";
 import { dominiosSeparados, ehHostPainel, ehPaginaDoSite, urlPainel, urlSite } from "@/lib/dominios";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 
 /**
  * 1) Site x painel (quando PAINEL_URL esta configurado): cada pagina so abre no seu endereco.
@@ -10,6 +11,13 @@ import { dominiosSeparados, ehHostPainel, ehPaginaDoSite, urlPainel, urlSite } f
  */
 export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
+  const apiOferta = path === "/api/cliente/oferta-dezembro";
+  if (apiOferta || path === "/c/dezembro-gratis" || path === "/assinaturas/dezembro-gratis") {
+    if (!ofertaDezembroEmHomologacao()) {
+      return new NextResponse(null, { status: 404, headers: { "Cache-Control": "no-store" } });
+    }
+    if (apiOferta) return NextResponse.next();
+  }
   const busca = req.nextUrl.search;
   const separados = dominiosSeparados();
 
@@ -48,5 +56,8 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|favicon.ico|sw\\.js$|offline\\.html$|.*\\.(?:png|jpg|webp|svg|ico|webmanifest)).*)"],
+  matcher: [
+    "/api/cliente/oferta-dezembro",
+    "/((?!api|_next|favicon.ico|sw\\.js$|offline\\.html$|.*\\.(?:png|jpg|webp|svg|ico|webmanifest)).*)",
+  ],
 };

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { sessaoAtual } from "@/lib/auth/sessao";
 import { reais } from "@/lib/cliente-api";
 import { db } from "@/lib/db";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 import {
   consultarContratoDezembro, consultarInelegibilidadeDezembro, consultarOfertaPublicaDezembro,
 } from "@/lib/oferta-dezembro/consulta";
@@ -23,6 +24,7 @@ function Condicoes({ mensalidade }: { mensalidade: number }) {
 }
 
 export default async function DezembroGratis() {
+  if (!ofertaDezembroEmHomologacao()) notFound();
   const sessao = await sessaoAtual();
   if (!sessao?.clienteId || sessao.papel !== "CLIENTE") redirect("/c/entrar?voltar=%2Fc%2Fdezembro-gratis&confirmar=1");
   const agora = new Date();

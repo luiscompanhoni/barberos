@@ -25,7 +25,10 @@ type Atual = {
   pausada: boolean; pausadaAte: string | null; valeAte: string | null; desconto: { pct: number; ate: string } | null;
   cobrancaEmAberto: { valorCentavos: number; vencimento: string; status: string; link: string | null } | null;
 } | null;
-type Dados = { atual: Atual; planos: Plano[]; cpfCadastrado: string | null; emailCadastrado: string | null; whatsappContato: string | null; cobrancasBloqueadas: boolean; checkoutLeonelPlanoId: string | null };
+type Dados = {
+  atual: Atual; assinaturaIndisponivel?: boolean; planos: Plano[]; cpfCadastrado: string | null; emailCadastrado: string | null;
+  whatsappContato: string | null; cobrancasBloqueadas: boolean; checkoutLeonelPlanoId: string | null;
+};
 
 const FORMAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão de crédito", BOLETO: "Boleto" };
 const FORMAS_CURTAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão", BOLETO: "Boleto" };
@@ -55,7 +58,7 @@ export function PlanosCliente({ planoId, conviteLeonel = null, mostrarOfertaDeze
 
   async function assinar(e: React.FormEvent) {
     e.preventDefault();
-    if (!d || bloqueado || d.atual || !escolhido?.compravel || escolhido.vagasRestantes === 0 || !forma || enviando) return;
+    if (!d || bloqueado || d.atual || d.assinaturaIndisponivel || !escolhido?.compravel || escolhido.vagasRestantes === 0 || !forma || enviando) return;
     setMsg(null);
     setEnviando(true);
     try {
@@ -83,10 +86,10 @@ export function PlanosCliente({ planoId, conviteLeonel = null, mostrarOfertaDeze
   }
 
   if (!d) return <p className="text-sm text-zinc-500">{msg?.texto ?? "Carregando..."}</p>;
-  const { atual } = d;
+  const { atual, assinaturaIndisponivel } = d;
   const destaque = planoEmDestaque(d.planos);
   const planosExibidos = planoId ? (escolhido ? [escolhido] : []) : d.planos;
-  const adesaoDisponivel = !!escolhido?.compravel && escolhido.vagasRestantes !== 0 && !atual;
+  const adesaoDisponivel = !!escolhido?.compravel && escolhido.vagasRestantes !== 0 && !atual && !assinaturaIndisponivel;
 
   return (
     <div className="entrar-suave space-y-8">
@@ -104,6 +107,7 @@ export function PlanosCliente({ planoId, conviteLeonel = null, mostrarOfertaDeze
       )}
       {msg && <p role={msg.erro ? "alert" : "status"} className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.texto}</p>}
       {planoId && !escolhido && <p className="cartao text-sm">Este plano não está disponível. Volte para ver as opções atuais.</p>}
+      {assinaturaIndisponivel && <p className="cartao text-sm">Fale com a recepção para conferir sua assinatura.</p>}
 
       {atual?.ofertaDezembro && (
         <section className="cartao space-y-3">
@@ -199,7 +203,7 @@ export function PlanosCliente({ planoId, conviteLeonel = null, mostrarOfertaDeze
                     : `Você já tem um pagamento em aberto para o ${atual.plano.nome}. Confira a assinatura acima antes de solicitar outra.`}</p>
                 ) : atual && atual.status !== "PENDENTE" ? (
                   <p className="mt-6 rounded-xl bg-zinc-100 p-3 text-sm">{atual.status === "ATIVA" && !atual.registroManual && !atual.pausada && !atual.valeAte ? "Use a opção de upgrade ou downgrade na sua assinatura acima." : "Confira a assinatura com a recepção antes de trocar de plano."}</p>
-                ) : p.vagasRestantes === 0 ? (
+                ) : assinaturaIndisponivel ? null : p.vagasRestantes === 0 ? (
                   p.naListaDeEspera
                     ? <p className="mt-6 rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Você está na lista de espera.</p>
                     : <button className="btn mt-6 w-full py-2.5" onClick={() => listaDeEspera(p)}>Esgotado: entrar na lista de espera</button>

@@ -1,8 +1,12 @@
 type AmbienteOferta = Readonly<Record<string, string | undefined>>;
 
-/** Contratos existentes continuam operáveis em homologação quando as adesões são suspensas. */
+/** A flag governa a oferta inteira. O modo de adesão pode ser suspenso separadamente. */
 export function ofertaDezembroEmHomologacao(env: AmbienteOferta = process.env) {
-  return env.AMBIENTE === "homologacao";
+  return env.OFERTA_DEZEMBRO_ATIVA === "true" && env.AMBIENTE === "homologacao";
+}
+
+export function filtroDeContratosSimulados() {
+  return ofertaDezembroEmHomologacao() ? {} : { ofertaDezembro: { is: null } };
 }
 
 export function planoBaseDezembroEmHomologacao(env: AmbienteOferta = process.env) {

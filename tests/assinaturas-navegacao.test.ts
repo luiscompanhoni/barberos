@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Assinaturas from "@/app/(app)/assinaturas/page";
 import { GET } from "@/app/api/assinaturas/route";
 
@@ -21,11 +21,14 @@ const abrir = (searchParams: Record<string, string> = {}) =>
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.stubEnv("AMBIENTE", "homologacao");
+  vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
   m.sessao.mockResolvedValue({ papel: "RECEPCAO" });
   m.pode.mockResolvedValue(false);
   m.localizar.mockResolvedValue(null);
   m.listar.mockResolvedValue([]);
 });
+afterEach(() => vi.unstubAllEnvs());
 
 describe("acesso da ficha ao módulo de assinaturas", () => {
   it.each([null, { papel: "BARBEIRO" }, { papel: "CLIENTE" }])("recusa sessão fora do balcão: %j", async sessao => {
@@ -39,7 +42,7 @@ describe("acesso da ficha ao módulo de assinaturas", () => {
     expect((await abrir({ clienteId: "cliente-a", assinatura: "a" })).props).toMatchObject({
       clienteId: "cliente-a", assinaturaInicial: "a", podeCancelar: false,
     });
-    expect(m.localizar).toHaveBeenCalledWith({ where: { id: "a", clienteId: "cliente-a" }, select: { id: true } });
+    expect(m.localizar).toHaveBeenCalledWith({ where: { id: "a", clienteId: "cliente-a", ofertaDezembro: { is: null } }, select: { id: true } });
     expect(m.pode).toHaveBeenCalledWith({ papel: "RECEPCAO" }, "assinatura");
   });
 

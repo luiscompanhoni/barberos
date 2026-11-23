@@ -9,12 +9,14 @@ import { schemaConfigRetencao } from "@/lib/assinaturas/schemas";
 import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
+import { filtroDeContratosSimulados } from "@/lib/oferta-dezembro/config";
 
 /** Indicador do mes (cancelamentos e retencoes por motivo), ultimos pedidos e as ofertas configuradas. */
 export const GET = rota(async () => {
   await exigirSessao(BALCAO);
   const cfg = await configuracao();
   const inicioMes = new Date(instanteLocal(`${dataLocal(Date.now(), cfg.fuso).slice(0, 8)}01`, 0, cfg.fuso));
+  const contratos = filtroDeContratosSimulados();
   const [linhas, recentes, ofertas, pausadas, encerrando] = await Promise.all([
     db.retencaoAssinatura.findMany({ where: { criadoEm: { gte: inicioMes } }, select: { motivo: true, desfecho: true } }),
     db.retencaoAssinatura.findMany({
@@ -23,8 +25,8 @@ export const GET = rota(async () => {
       include: { assinatura: { select: { id: true, cliente: { select: { nome: true, telefone: true } }, plano: { select: { nome: true } } } } },
     }),
     configRetencao(),
-    db.assinatura.count({ where: { pausadaEm: { not: null }, status: { not: "CANCELADA" } } }),
-    db.assinatura.count({ where: { encerraEm: { not: null }, status: { not: "CANCELADA" } } }),
+    db.assinatura.count({ where: { pausadaEm: { not: null }, status: { not: "CANCELADA" }, ...contratos } }),
+    db.assinatura.count({ where: { encerraEm: { not: null }, status: { not: "CANCELADA" }, ...contratos } }),
   ]);
   return NextResponse.json({
     mes: resumoPorMotivo(linhas),

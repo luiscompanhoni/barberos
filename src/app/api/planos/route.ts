@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { rota } from "@/lib/erros";
 import { corpo } from "@/lib/validacao";
 import { schemaPlano } from "@/lib/assinaturas/schemas";
+import { filtroDeContratosSimulados } from "@/lib/oferta-dezembro/config";
 
 export const GET = rota(async () => {
   await exigirSessao(EQUIPE);
@@ -13,7 +14,7 @@ export const GET = rota(async () => {
     include: {
       servicos: { include: { servico: { select: { id: true, nome: true, precoCentavos: true } } } },
       barbeiros: { select: { barbeiroId: true } },
-      _count: { select: { assinaturas: { where: { status: { in: ["ATIVA", "ATRASADA"] } } }, listaEspera: { where: { avisadoEm: null } } } },
+      _count: { select: { assinaturas: { where: { status: { in: ["ATIVA", "ATRASADA"] }, ...filtroDeContratosSimulados() } }, listaEspera: { where: { avisadoEm: null } } } },
     },
   });
   return NextResponse.json(await Promise.all(planos.map(async (p) => ({ ...p, vagasRestantes: await vagasRestantes(p) }))));

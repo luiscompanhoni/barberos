@@ -36,7 +36,7 @@ async function encerrarContrato(tx: Prisma.TransactionClient, assinaturaId: stri
 }
 
 export async function solicitarCancelamentoDezembro(titular: TitularOfertaDezembro, quando: "agora" | "fim_fidelidade", agora = new Date()) {
-  if (!ofertaDezembroEmHomologacao()) throw naoEncontrado("Oferta Dezembro Grátis");
+  if (!ofertaDezembroEmHomologacao()) throw naoEncontrado();
   const { clienteId, usuarioId } = titular;
   const { barbeiros, ...contrato } = await db.$transaction(async tx => {
     await travarClienteAgenda(tx, clienteId, titular);

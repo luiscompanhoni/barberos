@@ -12,6 +12,7 @@ const avulso = { assinaturaId: null, precoCentavos: 5000, nota: null };
 
 beforeEach(() => {
   vi.stubEnv("AMBIENTE", "homologacao");
+  vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "true");
   vi.stubEnv("OFERTA_DEZEMBRO_MODO", "homologacao");
   m.usos.mockReset().mockResolvedValue([]);
   m.situacao.mockReset().mockResolvedValue({
@@ -33,6 +34,9 @@ describe("precificação de uma adesão simulada", () => {
     expect(await precificar(p)).toMatchObject({ precoCentavos: 0, assinaturaId: "assinatura" });
     expect(await precificar({ ...p, inicio: Date.parse("2026-12-01T02:59:59Z") })).toEqual(avulso);
     expect(await precificar({ ...p, inicio: Date.parse("2027-01-01T03:00:00Z") })).toEqual(avulso);
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
+    expect(await precificar(p)).toEqual(avulso);
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "true");
     vi.stubEnv("AMBIENTE", "producao");
     expect(await precificar(p)).toEqual(avulso);
   });

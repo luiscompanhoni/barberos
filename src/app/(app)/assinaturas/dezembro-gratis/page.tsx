@@ -1,12 +1,14 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { BALCAO, sessaoAtual } from "@/lib/auth/sessao";
 import { reais } from "@/lib/cliente-api";
 import { consultarPainelDezembro } from "@/lib/oferta-dezembro/consulta";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 
 const dataHora = (d: Date) => d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" });
 
 export default async function GestaoDezembroGratis() {
+  if (!ofertaDezembroEmHomologacao()) notFound();
   const sessao = await sessaoAtual();
   if (!sessao || !BALCAO.includes(sessao.papel)) redirect("/");
   const painel = await consultarPainelDezembro();

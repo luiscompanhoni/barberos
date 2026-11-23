@@ -1,13 +1,14 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CRONOGRAMA_DEZEMBRO, TERMO_DEZEMBRO, adesaoNoPeriodo, calcularMultaSimulada,
-  dentroDoPeriodoGratis, motivoInelegibilidade, avaliarLimiteDezembro,
+  dentroDoPeriodoGratis, motivoInelegibilidade, avaliarLimiteDezembro, erroUsarOfertaDezembro,
 } from "@/lib/oferta-dezembro/regras";
 import { schemaAdesaoDezembro } from "@/lib/oferta-dezembro/schemas";
-import { lerConfigOfertaDezembro } from "@/lib/oferta-dezembro/config";
+import { lerConfigOfertaDezembro, ofertaDezembroEmHomologacao, planoBaseDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 
 const em = (iso: string) => new Date(iso);
 const aderiu = em("2026-11-22T21:00:00-03:00");
+afterEach(() => vi.unstubAllEnvs());
 
 describe("calendário da oferta de dezembro", () => {
   it("separa pré-adesão, benefício e as seis competências pagas", () => {
@@ -59,15 +60,30 @@ describe("adesão", () => {
 
   it("só aceita a configuração explícita, positiva e em homologação", () => {
     const env = {
-      AMBIENTE: "homologacao", OFERTA_DEZEMBRO_MODO: "homologacao",
+      AMBIENTE: "homologacao", OFERTA_DEZEMBRO_MODO: "homologacao", OFERTA_DEZEMBRO_ATIVA: "true",
       OFERTA_DEZEMBRO_PLANO_ID: "base", OFERTA_DEZEMBRO_VAGAS: "20", OFERTA_DEZEMBRO_LIMITE_USOS: "2",
     };
     expect(lerConfigOfertaDezembro(env)).toEqual({ planoId: "base", vagas: 20, limiteUsos: 2 });
+    for (const valor of [undefined, "false", "TRUE", "1"]) {
+      const fechada = { ...env, OFERTA_DEZEMBRO_ATIVA: valor };
+      expect(ofertaDezembroEmHomologacao(fechada)).toBe(false);
+      expect(planoBaseDezembroEmHomologacao(fechada)).toBeNull();
+      expect(lerConfigOfertaDezembro(fechada)).toBeNull();
+    }
     expect(lerConfigOfertaDezembro({ ...env, AMBIENTE: "producao" })).toBeNull();
+    expect(ofertaDezembroEmHomologacao({ ...env, OFERTA_DEZEMBRO_MODO: "" })).toBe(true);
     expect(lerConfigOfertaDezembro({ ...env, OFERTA_DEZEMBRO_MODO: "real" })).toBeNull();
     expect(lerConfigOfertaDezembro({ ...env, OFERTA_DEZEMBRO_VAGAS: "0" })).toBeNull();
     expect(lerConfigOfertaDezembro({ ...env, OFERTA_DEZEMBRO_LIMITE_USOS: "2.5" })).toBeNull();
     expect(lerConfigOfertaDezembro({ ...env, OFERTA_DEZEMBRO_PLANO_ID: undefined })).toBeNull();
+  });
+
+  it("não divulga contratos simulados pelas operações de assinaturas quando a oferta está fechada", () => {
+    vi.stubEnv("AMBIENTE", "homologacao");
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
+    const erro = erroUsarOfertaDezembro();
+    expect(erro).toMatchObject({ status: 404, codigo: "nao_encontrado" });
+    expect(erro.message).not.toMatch(/Dezembro|homologa/i);
   });
 });
 

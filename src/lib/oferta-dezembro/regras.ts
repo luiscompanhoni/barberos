@@ -1,5 +1,6 @@
 import { instanteLocal } from "@/lib/agenda/tempo";
-import { ErroNegocio } from "@/lib/erros";
+import { ErroNegocio, naoEncontrado } from "@/lib/erros";
+import { ofertaDezembroEmHomologacao } from "./config";
 
 const FUSO_OFERTA = "America/Sao_Paulo";
 const inicioDoDia = (data: string) => instanteLocal(data, 0, FUSO_OFERTA);
@@ -43,7 +44,10 @@ export function avaliarLimiteDezembro(usos: { inicio: number }[], limite: number
   return { usados, restantes: Math.max(0, limite - usados) };
 }
 
-export const erroUsarOfertaDezembro = () => new ErroNegocio(
-  "Confira o contrato e as opções de cancelamento na página Dezembro Grátis.",
-  409, "oferta_dezembro_contrato",
-);
+export function erroUsarOfertaDezembro() {
+  if (!ofertaDezembroEmHomologacao()) return naoEncontrado("Assinatura");
+  return new ErroNegocio(
+    "Confira o contrato e as opções de cancelamento na página Dezembro Grátis.",
+    409, "oferta_dezembro_contrato",
+  );
+}

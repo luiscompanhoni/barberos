@@ -14,6 +14,8 @@ import { corpoAssinatura } from "@/lib/assinaturas/http";
 import { cobrancasReaisBloqueadas } from "@/lib/pagamentos/bloqueio-cobranca";
 import { zId } from "@/lib/validacao";
 import { conviteDeAdesaoLeonelValido, telefoneDoTitularLeonel } from "@/lib/assinaturas/adesao-leonel";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
+import { erroUsarOfertaDezembro } from "@/lib/oferta-dezembro/regras";
 
 /** Planos disponiveis e a assinatura atual do cliente. */
 export const GET = rota(async (req: Request) => {
@@ -33,10 +35,12 @@ export const GET = rota(async (req: Request) => {
   const plano = convite && planos.find(p => p.id === busca.get("plano") && p.compravel &&
     !p.vendaSomenteEquipe && p.formasPagamento.includes("CARTAO"));
   const telefone = plano ? await telefoneDoTitularLeonel(s) : null;
+  const assinaturaIndisponivel = !!sit?.assinatura.ofertaDezembro && !ofertaDezembroEmHomologacao();
   return NextResponse.json({
     cobrancasBloqueadas: cobrancasReaisBloqueadas(),
     checkoutLeonelPlanoId: convite && plano && telefone && !sit && conviteDeAdesaoLeonelValido(convite, telefone, plano) ? plano.id : null,
-    atual: sit && {
+    ...(assinaturaIndisponivel && { assinaturaIndisponivel }),
+    atual: !assinaturaIndisponivel && sit ? {
       id: sit.assinatura.id,
       status: sit.assinatura.status,
       valida: sit.valida,
@@ -62,7 +66,7 @@ export const GET = rota(async (req: Request) => {
         status: sit.cobrancaEmAberto.status,
         link: sit.cobrancaEmAberto.link,
       },
-    },
+    } : null,
     planos: await Promise.all(
       planos.map(async (p) => ({
         id: p.id, nome: p.nome, descricao: p.descricao, precoCentavos: p.precoCentavos,
@@ -137,9 +141,13 @@ export const PATCH = rota(async (req: Request) => {
     z.object({ acao: z.literal("cancelar_operacao"), assinaturaId: zId }).strict(),
     z.object({ acao: z.literal("manter_operacao"), assinaturaId: zId }).strict(),
   ]));
-  const a = await db.assinatura.findFirst({ where: { clienteId: s.clienteId, status: { not: "CANCELADA" } }, orderBy: { criadaEm: "desc" } });
+  const a = await db.assinatura.findFirst({
+    where: { clienteId: s.clienteId, status: { not: "CANCELADA" } }, orderBy: { criadaEm: "desc" },
+    select: { id: true, ofertaDezembro: { select: { assinaturaId: true } } },
+  });
   if (!a) throw new ErroNegocio("Você não tem assinatura em andamento.", 404);
   if (a.id !== b.assinaturaId) throw new ErroNegocio("Sua assinatura mudou. Atualize a tela para conferir o plano atual.", 409);
+  if (a.ofertaDezembro) throw erroUsarOfertaDezembro();
   if (b.acao === "cancelar_operacao") return NextResponse.json(await cancelarOperacaoInicial(a.id, s.usuarioId));
   if (b.acao === "manter_operacao") return NextResponse.json(await manterOperacaoInicial(a.id, s.usuarioId));
   if (b.acao === "cancelar_troca") return NextResponse.json(await cancelarAlteracaoPlano(a.id, s.usuarioId, b.pedidoId));
