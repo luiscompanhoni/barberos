@@ -3,6 +3,7 @@ import { AssinaturasTela } from "@/components/assinaturas/AssinaturasTela";
 import { pode } from "@/lib/auth/permissoes";
 import { BALCAO, sessaoAtual } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 
 const idValido = (valor: unknown): valor is string => typeof valor === "string" && /^[a-zA-Z0-9_-]{1,40}$/.test(valor);
 
@@ -19,5 +20,6 @@ export default async function Assinaturas({ searchParams }: PageProps<"/assinatu
       : null,
   ]);
   return <AssinaturasTela key={JSON.stringify([clienteId, busca, inicial?.id])} podeCancelar={podeCancelar}
-    clienteId={clienteId} buscaInicial={busca} assinaturaInicial={inicial?.id} />;
+    clienteId={clienteId} buscaInicial={busca} assinaturaInicial={inicial?.id}
+    mostrarOfertaDezembro={ofertaDezembroEmHomologacao()} />;
 }

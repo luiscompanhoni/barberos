@@ -59,8 +59,8 @@ describe("modo inicial vindo da área do cliente (confirmar=1)", () => {
     expect(html).toContain('id="senha"'); expect(html).not.toContain("Receber código");
   });
 });
-it("reabre Meus horários em uma nova navegação após validar o código", async () => {
-  m.busca = new URLSearchParams({ confirmar: "1", voltar: "/c?aba=horarios" });
+it.each(["/c?aba=horarios", "/c/dezembro-gratis"])("reabre %s em uma nova navegação após validar o código", async (voltar) => {
+  m.busca = new URLSearchParams({ confirmar: "1", voltar });
   const navegar = vi.fn();
   vi.stubGlobal("window", { location: { origin: "http://localhost", replace: navegar } });
   vi.stubGlobal("fetch", vi.fn()
@@ -84,7 +84,7 @@ it("reabre Meus horários em uma nova navegação após validar o código", asyn
   otp()!.props.onChange("123456");
   enviar();
   await vi.waitFor(() => expect(navegar.mock.calls.length + m.replace.mock.calls.length).toBe(1));
-  expect(navegar).toHaveBeenCalledWith("/c?aba=horarios");
+  expect(navegar).toHaveBeenCalledWith(voltar);
   expect(m.refresh).not.toHaveBeenCalled();
 });
 describe("código de acesso no celular", () => {

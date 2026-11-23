@@ -20,6 +20,7 @@ type Atual = {
   id: string; status: string; valida: boolean; plano: { id: string; nome: string }; precoCentavos: number;
   formaPagamento: string; proximoVencimento: string | null; registroManual: boolean;
   linkPendente: string | null;
+  ofertaDezembro?: boolean;
   alteracaoPlano: AlteracaoPlano; operacaoEmConferencia: boolean;
   pausada: boolean; pausadaAte: string | null; valeAte: string | null; desconto: { pct: number; ate: string } | null;
   cobrancaEmAberto: { valorCentavos: number; vencimento: string; status: string; link: string | null } | null;
@@ -31,7 +32,9 @@ const FORMAS_CURTAS: Record<string, string> = { PIX: "Pix", CARTAO: "Cartão", B
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
 
 /** Planos para o cliente: assinar, pagar mensalidade em aberto, lista de espera e cancelar. */
-export function PlanosCliente({ planoId, conviteLeonel = null }: { planoId: string | null; conviteLeonel?: string | null }) {
+export function PlanosCliente({ planoId, conviteLeonel = null, mostrarOfertaDezembro = false }: {
+  planoId: string | null; conviteLeonel?: string | null; mostrarOfertaDezembro?: boolean;
+}) {
   const [d, setD] = useState<Dados | null>(null);
   const [formaPreferida, setForma] = useState("PIX");
   const [cpf, setCpf] = useState("");
@@ -96,10 +99,20 @@ export function PlanosCliente({ planoId, conviteLeonel = null }: { planoId: stri
             : planoId ? <>Plano <span className="text-ouro">escolhido.</span></> : <>Escolha sua <span className="text-ouro">rotina.</span></>}
         </h1>
       </div>
+      {mostrarOfertaDezembro && !planoId && !atual?.ofertaDezembro && (
+        <Link href="/c/dezembro-gratis" className="btn w-full">Dezembro Grátis <ArrowRight size={16} aria-hidden /></Link>
+      )}
       {msg && <p role={msg.erro ? "alert" : "status"} className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.texto}</p>}
       {planoId && !escolhido && <p className="cartao text-sm">Este plano não está disponível. Volte para ver as opções atuais.</p>}
 
-      {atual && (
+      {atual?.ofertaDezembro && (
+        <section className="cartao space-y-3">
+          <h2 className="text-xl font-bold">Dezembro Grátis</h2>
+          <p className="text-sm">Contrato de homologação</p>
+          <Link href="/c/dezembro-gratis" className="btn w-full">Ver contrato Dezembro Grátis <ArrowRight size={16} aria-hidden /></Link>
+        </section>
+      )}
+      {atual && !atual.ofertaDezembro && (
         <section className={atual.valida || atual.pausada ? "cartao-destaque space-y-3" : "cartao space-y-3 border-red-200"}>
           <div className="flex items-start justify-between gap-3">
             <div>

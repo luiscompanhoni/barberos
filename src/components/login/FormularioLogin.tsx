@@ -35,7 +35,8 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigo
   const router = useRouter();
   const busca = useSearchParams();
   const voltar = busca.get("voltar") ?? destinoPadrao;
-  const pediuAgenda = destinoAposLogin(voltar, "").split(/[?#]/)[0] === "/c/agendar";
+  const caminhoPedido = destinoAposLogin(voltar, "").split(/[?#]/)[0];
+  const pediuAgendaOuOferta = caminhoPedido === "/c/agendar" || caminhoPedido === "/c/dezembro-gratis";
   const precisaContaCliente = busca.get("conta") === "cliente";
   const contaExcluida = area === "cliente" && busca.get("excluida") === "1";
   const [modo, setModo] = useState<Modo>(area === "cliente" && codigoDisponivel && (conviteApp || busca.get("confirmar") === "1") ? "codigo-tel" : "senha");
@@ -64,7 +65,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigo
   /** Senha temporária exige troca; cliente que usa código pode criar senha no perfil depois. */
   function seguir(r: RespostaLogin) {
     const cliente = (r.papel ?? "CLIENTE") === "CLIENTE";
-    if (!cliente && (pediuAgenda || precisaContaCliente)) {
+    if (!cliente && (pediuAgendaOuOferta || precisaContaCliente)) {
       trocar(codigoDisponivel ? "codigo-tel" : "senha");
       setSenha(""); setIdentificador(""); setEnviando(false);
       setErro(AVISO_CONTA_CLIENTE);
@@ -75,7 +76,7 @@ function Formulario({ area, titulo, subtitulo, destinoPadrao, conviteApp, codigo
       : !cliente && r.definirSenha ? "/conta"
       : destinoDoPerfil(r.papel ?? "CLIENTE", voltar);
     if (r.base && new URL(r.base).origin !== window.location.origin) { window.location.assign(new URL(destino, r.base).href); return; }
-    if (pediuAgenda || destino === CAMINHO_MEUS_HORARIOS || destino.startsWith("/c/planos?plano=")) {
+    if (pediuAgendaOuOferta || destino === CAMINHO_MEUS_HORARIOS || destino.startsWith("/c/planos?plano=")) {
       // A primeira visita sem sessão foi redirecionada para o login.
       // A nova navegação lê o cookie que a API de login acabou de gravar.
       window.location.replace(destino);

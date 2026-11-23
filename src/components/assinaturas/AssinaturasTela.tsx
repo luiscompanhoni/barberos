@@ -42,8 +42,8 @@ export const ROTULO: Record<Status, { texto: string; cor: string }> = {
 export const FORMA: Record<string, string> = { CARTAO: "Cartão", PIX: "Pix", BOLETO: "Boleto" };
 const dataBr = (iso: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
 
-export function AssinaturasTela({ podeCancelar, clienteId, buscaInicial = "", assinaturaInicial }: {
-  podeCancelar: boolean; clienteId?: string; buscaInicial?: string; assinaturaInicial?: string;
+export function AssinaturasTela({ podeCancelar, clienteId, buscaInicial = "", assinaturaInicial, mostrarOfertaDezembro = false }: {
+  podeCancelar: boolean; clienteId?: string; buscaInicial?: string; assinaturaInicial?: string; mostrarOfertaDezembro?: boolean;
 }) {
   const [dados, setDados] = useState<Dados | null>(null);
   const [status, setStatus] = useState<Status | "TODAS">("TODAS");
@@ -72,6 +72,7 @@ export function AssinaturasTela({ podeCancelar, clienteId, buscaInicial = "", as
     <div className="mx-auto max-w-6xl space-y-4">
       <div className="crm-page-header flex flex-wrap items-center gap-2">
         <h1 className="titulo-marca text-3xl">Assinaturas</h1>
+        {mostrarOfertaDezembro && <Link className="btn" href="/assinaturas/dezembro-gratis">Dezembro Grátis</Link>}
         <button className="btn ml-auto" onClick={() => setRegistroManual(true)}>Registrar plano já pago</button>
         <button className="btn-primario" onClick={() => setNova(true)}>+ Vender plano</button>
       </div>

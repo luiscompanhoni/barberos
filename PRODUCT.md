@@ -105,6 +105,12 @@ A atualização de equipe acrescenta **Reuniões** (`/reunioes`), **Meu dia** (`
   horário. Modelo padrão `claude-opus-5-5` com effort baixo e fallback de recusa (troca com `BOT_MODELO`). Sem
   `ANTHROPIC_API_KEY`, passa a conversa para a equipe e avisa o cliente. Quando a equipe remarca, troca o barbeiro
   ou cancela, o cliente é avisado.
+- **Instagram Direct**: Leonel usa o mesmo motor para consultas públicas e encaminhamento. O painel de Conversas
+  identifica o canal e o vínculo informado. O Direct respeita a janela de 24 h, com envio bloqueado por padrão.
+  [Configuração e App Review](docs/instagram-direct-leonel.md).
+- **Dezembro Grátis**: checkout de homologação para a oferta no cartão, com vagas, limite de serviços em dezembro,
+  aceite do termo e fidelidade. O cronograma de janeiro em diante e a multa têm simulação local.
+  [Regras e requisitos para ativação](docs/oferta-dezembro-gratis.md).
 - **Comandas e estoque**: uma comanda por cliente, aberta pelo atendimento (serviço com o preço certo, zero pelo
   plano) ou avulsa no balcão. Produtos do bar/loja, item avulso e desconto (pela matriz), saldo do cliente como desconto, pagamento dividido (só dinheiro recebe a
   mais e mostra troco), estoque baixa no fechamento. Todo saldo de estoque muda por movimento (entrada, venda,
