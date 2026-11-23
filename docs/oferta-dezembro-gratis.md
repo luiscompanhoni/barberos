@@ -1,14 +1,15 @@
 # Dezembro Grátis
 
-A contratação e o cancelamento estão disponíveis em homologação. O cliente entra em `/c/dezembro-gratis` com a própria conta. Dono, gerente e recepção acompanham a oferta em `/assinaturas/dezembro-gratis`. O checkout usa cartões fictícios selecionáveis e o fluxo guarda o contrato e o aceite localmente.
+A oferta fica desativada por padrão. Quando habilitada em homologação, o cliente entra em `/c/dezembro-gratis` com a própria conta. Dono, gerente e recepção acompanham a oferta em `/assinaturas/dezembro-gratis`. O checkout usa cartões fictícios e guarda o contrato e o aceite localmente.
 
 ## Configuração de homologação
 
-Use um banco de testes local com as migrações aplicadas. Faça backup antes de usar um banco que já tenha dados. Configure o processo do app com:
+Use um banco de testes local com as migrações aplicadas. Configure o processo do app com os valores abaixo.
 
 | Variável | Valor |
 | --- | --- |
 | `AMBIENTE` | `homologacao` |
+| `OFERTA_DEZEMBRO_ATIVA` | `true` para habilitar a oferta apenas em homologação |
 | `OFERTA_DEZEMBRO_MODO` | `homologacao` |
 | `OFERTA_DEZEMBRO_PLANO_ID` | ID de um plano-base ativo, visível e comprável pelo cliente, com cartão e serviços ativos |
 | `OFERTA_DEZEMBRO_VAGAS` | Número inteiro positivo de adesões para toda a campanha |
@@ -16,7 +17,9 @@ Use um banco de testes local com as migrações aplicadas. Faça backup antes de
 
 Vagas e usos ficam sem valor padrão. A adesão do cliente respeita os planos de venda exclusiva da equipe, que ficam fora da oferta. O teto do plano-base também vale. A adesão precisa caber nos dois limites, sob travas transacionais compartilhadas com a venda regular. Em homologação, todas as pendências do plano-base ocupam vaga enquanto o link puder ser pago, inclusive as de mais de três dias. Uma vaga da campanha é consumida por adesão confirmada e permanece ocupada depois de cancelar. A oferta guarda o preço e o limite individual aceitos. Os serviços, profissionais, dias e limites operacionais são os do plano-base.
 
-Desligar `OFERTA_DEZEMBRO_MODO` suspende novas adesões. Em homologação, os contratos anteriores continuam disponíveis para consulta, uso nas datas previstas e cancelamento. A recepção consulta pelo painel e o titular solicita o cancelamento na própria conta.
+Com `OFERTA_DEZEMBRO_ATIVA` ausente, `false` ou com outro valor, os atalhos e cartões ficam ocultos, as URLs exclusivas retornam HTTP 404 e a operação da oferta fica suspensa. Em produção, a oferta permanece indisponível mesmo com `OFERTA_DEZEMBRO_ATIVA=true`. Reinicie o app depois de alterar a configuração.
+
+Com a oferta habilitada, limpar `OFERTA_DEZEMBRO_MODO` suspende novas adesões. Em homologação, os contratos anteriores continuam disponíveis para consulta, uso nas datas previstas e cancelamento. A recepção consulta pelo painel e o titular solicita o cancelamento na própria conta.
 
 A adesão abre em 22/11/2026 e encerra em 01/01/2027, às 00h, em America/Sao_Paulo. Entra quem tem cadastro ativo e nenhuma assinatura em andamento. Pendente, ativa, atrasada e pausada impedem adesão. Também impedem a adesão um cancelamento nos últimos 90 dias e adesão anterior à mesma campanha. O prazo de 90 dias considera a hora do cancelamento. Contrato histórico cancelado sem data precisa ter sido criado há mais de 90 dias para seguir.
 
