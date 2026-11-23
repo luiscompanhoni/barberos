@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({ assinatura: vi.fn(), plano: vi.fn(), pedido: vi.fn(), criar: vi.fn(), atualizar: vi.fn(), aplicar: vi.fn(), vagas: vi.fn(), agenda: vi.fn(), cobranca: vi.fn(), emissao: vi.fn(), tx: vi.fn(), audit: vi.fn(), gateway: vi.fn(), lista: vi.fn(), prova: vi.fn() }));
 vi.mock("@/lib/db", () => ({ db: { $transaction: m.tx, assinatura: { findUniqueOrThrow: m.assinatura }, alteracaoPlanoAssinatura: { findFirst: m.pedido } } }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: async () => ({ fuso: "America/Sao_Paulo" }) }));
@@ -18,6 +18,7 @@ beforeEach(() => {
   m.tx.mockImplementation(async cb => cb({ $executeRaw: vi.fn(), $queryRaw: vi.fn(), assinatura: { findUnique: m.assinatura, findUniqueOrThrow: m.assinatura, update: m.aplicar, count: m.vagas }, plano: { findUnique: m.plano }, alteracaoPlanoAssinatura: { findFirst: m.pedido, findUniqueOrThrow: m.pedido, create: m.criar, update: m.atualizar }, agendamento: { findFirst: m.agenda }, cobranca: { findFirst: m.cobranca }, emissaoPixMensal: { findFirst: m.emissao } }));
   m.gateway.mockResolvedValue({ cobrancasDaAssinatura: m.lista, buscarCobrancaAvulsa: m.prova });
 });
+afterEach(() => vi.unstubAllEnvs());
 
 describe("pedido de upgrade e downgrade", () => {
   it("mantém preço e benefícios atuais; registra valor e data da próxima renovação", async () => {
@@ -68,6 +69,17 @@ describe("pedido de upgrade e downgrade", () => {
 
 describe("aplicação da troca pela recepção", () => {
   beforeEach(() => { m.pedido.mockResolvedValue(pedido()); });
+  it("não perde a última vaga para contrato simulado quando a oferta está fechada", async () => {
+    vi.mocked(Date.now).mockReturnValue(+new Date("2030-02-01T12:00:00Z"));
+    vi.stubEnv("AMBIENTE", "homologacao");
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
+    m.plano.mockResolvedValue({ ...plano(), vagas: 1 });
+    m.vagas.mockImplementation(async ({ where }) => where.ofertaDezembro?.is === null ? 0 : 1);
+    await expect(aplicarAlteracaoPlano("a", "u")).resolves.toEqual({ aplicada: true });
+    expect(m.vagas).toHaveBeenCalledWith({ where: {
+      planoId: "novo", status: { in: ["ATIVA", "ATRASADA", "PENDENTE"] }, ofertaDezembro: { is: null },
+    } });
+  });
   it("rejeita pedido autônomo quando o plano passa a ser exclusivo da equipe", async () => {
     vi.mocked(Date.now).mockReturnValue(+new Date("2030-02-01T12:00:00Z"));
     m.pedido.mockResolvedValue({ ...pedido(), origem: "SITE" });

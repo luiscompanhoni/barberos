@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { configuracao } from "@/lib/agenda/carregar";
 import { vagasRestantes } from "@/lib/assinaturas/servico";
+import { filtroDeContratosSimulados } from "@/lib/oferta-dezembro/config";
 
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const hh = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}`;
@@ -32,7 +33,7 @@ export async function dadosDaVitrine() {
       orderBy: [{ ordem: "asc" }, { precoCentavos: "asc" }],
       include: { servicos: { include: { servico: { select: { nome: true } } } } },
     }),
-    db.assinatura.count({ where: { status: { in: ["ATIVA", "ATRASADA"] } } }),
+    db.assinatura.count({ where: { status: { in: ["ATIVA", "ATRASADA"] }, ...filtroDeContratosSimulados() } }),
     db.expedientePadrao.findMany({ where: { barbeiro: { ativo: true } }, select: { diaSemana: true, inicioMin: true, fimMin: true } }),
   ]);
 

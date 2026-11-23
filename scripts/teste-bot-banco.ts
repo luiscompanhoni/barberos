@@ -7,6 +7,7 @@ import { executarFerramenta, type ContextoBot } from "@/lib/bot/ferramentas";
 import { contextoDaMensagem } from "@/lib/bot/prompt";
 import { aberturaReativacao } from "@/lib/automacoes/regras";
 import { db } from "@/lib/db";
+import { urlSite } from "@/lib/dominios";
 import { criarLancamentoPessoal } from "@/lib/financeiro/pessoal";
 
 const banco = new URL(process.env.DATABASE_URL ?? "http://invalid");
@@ -127,8 +128,13 @@ async function main() {
     origem: "SITE", proximoVencimento: new Date(renovacao), gatewayId: `sim_${randomUUID()}`,
   } });
   const link = await executarFerramenta("link_pagamento_assinatura", { forma: "PIX" }, ctx);
-  assert.equal(link.erro, true);
-  assert.equal(JSON.parse(link.texto).em_conferencia, true);
+  assert.ok(!link.erro);
+  const orientacao = JSON.parse(link.texto);
+  assert.equal(orientacao.cobranca_aberta_encontrada, false);
+  assert.equal(orientacao.forma_atual, "CARTAO");
+  assert.equal(orientacao.link_area_do_plano, `${urlSite()}/c/planos`);
+  assert.equal(orientacao.link, undefined);
+  assert.equal(await db.cobranca.count({ where: { assinaturaId: assinatura.id } }), 0);
   for (const [tipo, valor] of [["UPGRADE", 15000], ["DOWNGRADE", 8000]] as const) {
     const nome = `Plano ${tipo} teste`;
     const novo = await db.plano.create({ data: { nome, precoCentavos: valor } });
@@ -145,7 +151,7 @@ async function main() {
   }
   assert.equal((await db.assinatura.findUniqueOrThrow({ where: { id: assinatura.id } })).planoId, atual.id);
   assert.equal(await db.cobranca.count({ where: { assinaturaId: assinatura.id } }), 0);
-  console.log("OK Assinaturas. Upgrade e downgrade idempotentes para a renovação, cartão em conferência e zero cobrança criada.");
+  console.log("OK Assinaturas. Upgrade e downgrade idempotentes, cartão sem mensalidade aberta e zero cobrança criada.");
 }
 
 main().catch(e => { console.error(e); process.exitCode = 1; }).finally(() => db.$disconnect());

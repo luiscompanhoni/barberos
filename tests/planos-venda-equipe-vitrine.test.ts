@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-const m = vi.hoisted(() => ({ planos: vi.fn(), cliente: vi.fn() }));
+const m = vi.hoisted(() => ({ planos: vi.fn(), cliente: vi.fn(), assinantes: vi.fn() }));
 vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => undefined }) }));
-vi.mock("@/lib/db", () => ({ db: { cliente: { findUnique: m.cliente }, plano: { findMany: m.planos }, assinatura: { count: async () => 0 }, expedientePadrao: { findMany: async () => [] } } }));
+vi.mock("@/lib/db", () => ({ db: { cliente: { findUnique: m.cliente }, plano: { findMany: m.planos }, assinatura: { count: m.assinantes }, expedientePadrao: { findMany: async () => [] } } }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: async () => ({ nomeBarbearia: "Black", fuso: "America/Sao_Paulo" }) }));
 vi.mock("@/lib/assinaturas/servico", () => ({ vagasRestantes: async () => null, assinar: vi.fn(), entrarNaListaDeEspera: vi.fn(), situacaoDoCliente: vi.fn(), verificarNovaAdesao: vi.fn() }));
 vi.mock("@/lib/bot/ferramentas-cancelamento", () => ({ executarCancelamento: vi.fn() }));
@@ -10,6 +10,7 @@ import Assine from "@/app/assine/page";
 import { dadosDaVitrine } from "@/lib/vitrine";
 import { executarAssinatura } from "@/lib/bot/ferramentas-assinatura";
 beforeEach(() => {
+  m.assinantes.mockReset().mockResolvedValue(0);
   vi.clearAllMocks(); m.planos.mockResolvedValue([{ id: "business", nome: "Business", precoCentavos: 9700, visivel: true, compravel: true, vendaSomenteEquipe: true, etiquetas: [], intervaloMinDias: null, diasSemana: [1, 2, 3], descontoExtrasPct: 10, formasPagamento: ["PIX"], vagas: null, maxAgendamentosAbertos: 1, servicos: [] }]);
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -18,6 +19,13 @@ it("aponta o link Já sou cliente para Meus horários", async () => {
   const html = renderToStaticMarkup(await Assine());
   const destino = html.match(/<a\b[^>]*\bhref="([^"]+)"[^>]*>Já sou cliente · entrar<\/a>/)?.[1];
   expect(destino).toBe("/c?aba=horarios");
+});
+
+it("um simulado não leva 19 assinantes regulares ao mínimo de exibição", async () => {
+  vi.stubEnv("AMBIENTE", "homologacao");
+  vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
+  m.assinantes.mockImplementation(async ({ where }) => where.ofertaDezembro?.is === null ? 19 : 20);
+  expect((await dadosDaVitrine()).assinantes).toBeNull();
 });
 
 describe("Business visível com contratação na recepção", () => {

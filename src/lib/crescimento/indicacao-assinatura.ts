@@ -2,6 +2,7 @@ import type { OrigemAgendamento } from "@prisma/client";
 import { auditar } from "@/lib/auditoria";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
+import { filtroDeContratosSimulados } from "@/lib/oferta-dezembro/config";
 import { gatewayPorId } from "@/lib/pagamentos/gateway";
 import { elegivelIndicacaoAssinatura, limiteIndicacaoAssinatura, PREMIO_INDICADO, PREMIO_INDICADOR, REGRA_INDICACAO_ASSINATURA, validadeIndicacao } from "./indicacao-assinatura-regras";
 
@@ -11,7 +12,10 @@ export async function registrarIndicacaoAssinatura(indicadoId: string, indicador
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('indicacao-assinatura-v2', 0))`;
     await tx.$queryRaw`SELECT 1 FROM clientes WHERE id = ${indicadoId} FOR UPDATE`;
     if (await tx.indicacao.findUnique({ where: { indicadoId } })) throw new ErroNegocio("Esse cliente já tem uma indicação registrada.");
-    const contratos = await tx.assinatura.findMany({ where: { clienteId: indicadoId }, select: { status: true, canceladaEm: true, encerraEm: true } });
+    const contratos = await tx.assinatura.findMany({
+      where: { clienteId: indicadoId, OR: [{ status: { not: "CANCELADA" } }, { status: "CANCELADA", ...filtroDeContratosSimulados() }] },
+      select: { status: true, canceladaEm: true, encerraEm: true },
+    });
     if (!elegivelIndicacaoAssinatura(contratos, new Date())) throw new ErroNegocio("A indicação vale para novos assinantes ou quem está há pelo menos 90 dias sem plano. A recepção pode conferir seu caso.");
     const comprometido = await tx.indicacao.aggregate({ where: { regra: REGRA_INDICACAO_ASSINATURA }, _sum: { premioIndicadorCentavos: true, premioIndicadoCentavos: true } });
     const total = (comprometido._sum.premioIndicadorCentavos ?? 0) + (comprometido._sum.premioIndicadoCentavos ?? 0);

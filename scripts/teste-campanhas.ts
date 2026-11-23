@@ -145,7 +145,7 @@ async function main() {
     const depois = agora + 5 * D;
     await db.jogo.update({ where: { id: JOGO }, data: { ativo: true } });
     ok((await falha(() => criarCampanha(s, { ...base, nome: `${TAG} roleta sem link`, segmentos: ["ate30"], mensagem: "Oi {nome}, gire a roleta!", jogoId: JOGO })))?.message.includes("{link}") === true, "campanha da roleta sem {link} é recusada");
-    const cRol = await criarCampanha(s, { ...base, limiteDiario: 50, nome: `${TAG} roleta`, segmentos: ["ate30", "d31a60"], mensagem: "Oi, {nome}! Gire: {link}", jogoId: JOGO });
+    const cRol = await criarCampanha(s, { ...base, limiteDiario: 50, nome: `${TAG} roleta`, segmentos: ["ate30", "d31a60"], mensagem: "Oi, {nome}! Gire: {link}. Para sair, basta responder SAIR.", jogoId: JOGO });
     await liberarLote(s, cRol.id, 10, depois, { clienteIds: [a.id, b.id] });
     const fila = await db.campanhaEnvio.findMany({ where: { campanhaId: cRol.id } });
     ok(fila.length === 2 && fila.every((e) => e.token && e.token.length >= 16) && new Set(fila.map((e) => e.token)).size === 2, "cada mensagem tem o seu link (token)");
@@ -165,7 +165,7 @@ async function main() {
     const confirmada = await db.campanhaEnvio.findUniqueOrThrow({ where: { id: envA.id } });
     const oferta = await db.mensagem.findFirst({ where: { conversaId: envA.mensagem?.conversaId, texto: { contains: `/c/r/${tokenA}` } } });
     ok(!!confirmada.respostaEm && !!confirmada.ofertaEnviadaEm && !!oferta?.texto.startsWith("Oi, Ana! Gire:") &&
-      oferta.texto.includes("responder SAIR"), "aceite envia a oferta original da roleta, com link individual e saída");
+      oferta.texto === confirmada.ofertaTexto && oferta.texto.includes("responder SAIR"), "aceite envia a oferta original da roleta, com link individual e saída");
     await noInstante(resposta + 1000, () => receberMensagem({ telefone: TELS[0], texto: "Pode mandar!", wamid: "simulacao-campanha-teste-0" }));
     ok(await db.mensagem.count({ where: { conversaId: envA.mensagem?.conversaId, texto: { contains: `/c/r/${tokenA}` } } }) === 1,
       "webhook repetido não duplica a oferta");

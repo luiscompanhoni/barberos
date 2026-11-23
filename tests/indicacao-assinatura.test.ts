@@ -45,6 +45,21 @@ describe("elegibilidade e teto de indicação", () => {
     expect(r.aguardandoPagamento).toBe(true); expect(r.premioCentavos).toBe(0); expect(m.beneficio.createMany).not.toHaveBeenCalled();
     expect(m.indicacao.create.mock.calls[0][0].data).toMatchObject({ regra: "ASSINATURA_V2", premioIndicadorCentavos: 2000, premioIndicadoCentavos: 1000 });
   });
+  it("desconsidera apenas o simulado cancelado com a oferta fechada", async () => {
+    vi.stubEnv("AMBIENTE", "homologacao");
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
+    vi.stubEnv("INDICACAO_ASSINATURA_LIMITE_CENTAVOS", "3000");
+    const cancelado = { status: "CANCELADA", canceladaEm: agora, encerraEm: null };
+    m.assinatura.findMany.mockImplementationOnce(async ({ where }) => where.OR?.[1]?.ofertaDezembro?.is === null ? [] : [cancelado]);
+    await expect(registrarIndicacaoAssinatura("amigo", dono, "SITE")).resolves.toMatchObject({ aguardandoPagamento: true });
+    expect(m.assinatura.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: {
+      clienteId: "amigo", OR: [{ status: { not: "CANCELADA" } }, { status: "CANCELADA", ofertaDezembro: { is: null } }],
+    } }));
+    m.assinatura.findMany.mockResolvedValueOnce([{ ...cancelado, status: "ATIVA" }]).mockResolvedValueOnce([cancelado]);
+    await expect(registrarIndicacaoAssinatura("outro", dono, "SITE")).rejects.toThrow(/90 dias/);
+    await expect(registrarIndicacaoAssinatura("terceiro", dono, "SITE")).rejects.toThrow(/90 dias/);
+    expect(m.indicacao.create).toHaveBeenCalledOnce();
+  });
   it("conta compromissos ainda não resgatados e bloqueia sem orçamento", async () => {
     vi.stubEnv("INDICACAO_ASSINATURA_LIMITE_CENTAVOS", "6000");
     m.indicacao.aggregate.mockResolvedValue({ _sum: { premioIndicadorCentavos: 4000, premioIndicadoCentavos: 2000 } });
