@@ -15,6 +15,7 @@ import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
 import { testeEquipeAtivo } from "@/lib/whatsapp/teste-equipe";
 import { travarPreferencia } from "@/lib/whatsapp/preferencia";
 import { ErroNegocio } from "@/lib/erros";
+import { filtroDeContratosSimulados } from "@/lib/oferta-dezembro/config";
 import { descreverOpcao, opcoesDoDia } from "./espera";
 import { converterIndicacoes } from "./indicacao";
 import { escolherSugestoes, noPeriodo, retornoDevido, ritmoDoCliente, TEXTOS } from "./regras";
@@ -150,7 +151,7 @@ export async function processarRetornos(agora: number, opts: { clienteIds?: stri
     const [futuro, espera, sit] = await Promise.all([
       db.agendamento.count({ where: { clienteId, status: { in: ["MARCADO", "CONFIRMADO"] }, inicio: { gt: new Date(agora) } } }),
       db.esperaHorario.count({ where: { clienteId, status: "ATIVA" } }),
-      db.assinatura.findFirst({ where: { clienteId, status: { in: ["ATIVA", "ATRASADA"] } }, select: { plano: { select: { intervaloMinDias: true } } } }),
+      db.assinatura.findFirst({ where: { clienteId, status: { in: ["ATIVA", "ATRASADA"] }, ...filtroDeContratosSimulados() }, select: { plano: { select: { intervaloMinDias: true } } } }),
     ]);
     if (futuro || espera) continue;
     // Assinante so pode voltar pelo plano depois do intervalo minimo.

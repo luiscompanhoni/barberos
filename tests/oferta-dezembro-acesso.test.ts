@@ -108,4 +108,14 @@ describe("acesso à oferta de dezembro", () => {
     await vagasRestantes({ id: "plano", vagas: 2 });
     expect(m.contarVagas.mock.lastCall?.[0].where).not.toHaveProperty("ofertaDezembro");
   });
+
+  it("mantém a pendência antiga do plano-base nas vagas regulares com a oferta desligada", async () => {
+    vi.stubEnv("OFERTA_DEZEMBRO_PLANO_ID", "base");
+    m.contarVagas.mockResolvedValue(1);
+    expect(await vagasRestantes({ id: "base", vagas: 1 })).toBe(0);
+    expect(m.contarVagas).toHaveBeenLastCalledWith({ where: {
+      planoId: "base", ofertaDezembro: { is: null },
+      OR: [{ status: { in: ["ATIVA", "ATRASADA"] } }, { status: "PENDENTE" }],
+    } });
+  });
 });

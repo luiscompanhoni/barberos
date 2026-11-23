@@ -4,13 +4,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Sessao } from "@/lib/auth/sessao";
 import type { AcaoMigracao } from "@/lib/migracao-assinaturas/schemas";
 
-const m = vi.hoisted(() => ({ buscar: vi.fn(), reler: vi.fn(), criar: vi.fn(), atualizar: vi.fn(), auditar: vi.fn(), query: vi.fn(), executar: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { $transaction: async (fn: (tx: unknown) => unknown) => fn({
+const m = vi.hoisted(() => ({ buscar: vi.fn(), reler: vi.fn(), criar: vi.fn(), atualizar: vi.fn(), auditar: vi.fn(), query: vi.fn(), executar: vi.fn(),
+  listar: vi.fn(), contar: vi.fn(), estados: vi.fn() }));
+vi.mock("@/lib/db", () => ({ db: { assinatura: { findMany: m.listar, count: m.contar }, migracaoAssinatura: { groupBy: m.estados },
+  usuario: { findMany: async () => [] }, $transaction: async (fn: (tx: unknown) => unknown) => fn({
   $executeRaw: m.executar, $queryRaw: m.query,
   assinatura: { findUnique: m.buscar, findUniqueOrThrow: m.reler }, migracaoAssinatura: { create: m.criar, updateMany: m.atualizar },
 }) } }));
 vi.mock("@/lib/auditoria", () => ({ auditar: m.auditar }));
-import { registrarMigracao } from "@/lib/migracao-assinaturas/servico";
+import { listarQuadroMigracao, registrarMigracao } from "@/lib/migracao-assinaturas/servico";
 
 const sessao: Sessao = { usuarioId: "gerente", nome: "Teste", papel: "GERENTE", barbeiroId: null, clienteId: null };
 function criarContrato() {
@@ -43,6 +45,21 @@ beforeEach(() => {
 });
 
 describe("controle de migração persistido", () => {
+  it("exclui contrato simulado do inventário, das contagens e da conferência por ID", async () => {
+    const simulado = { ...assinatura, id: "simulado", gatewayId: null };
+    const contratoReal = { ofertaDezembro: { is: null } };
+    m.listar.mockImplementation(async ({ where }) => where.AND.some((c: object) => "ofertaDezembro" in c) ? [assinatura] : [assinatura, simulado]);
+    m.contar.mockResolvedValue(1);
+    m.estados.mockResolvedValue([]);
+    const quadro = await listarQuadroMigracao();
+    expect(quadro.linhas.map(l => l.assinaturaId)).toEqual(["assinatura"]);
+    expect(m.contar).toHaveBeenCalledWith({ where: expect.objectContaining(contratoReal) });
+    expect(m.estados).toHaveBeenCalledWith(expect.objectContaining({ where: { assinatura: contratoReal } }));
+
+    m.buscar.mockImplementation(async ({ where }) => where.ofertaDezembro?.is === null ? null : simulado);
+    await expect(registrarMigracao(sessao, { acao: "iniciar", assinaturaId: simulado.id })).rejects.toMatchObject({ status: 404 });
+    expect(m.criar).not.toHaveBeenCalled(); expect(m.auditar).not.toHaveBeenCalled();
+  });
   it("recepção não pode registrar evidência gerencial", async () => {
     await expect(registrarMigracao({ ...sessao, papel: "RECEPCAO" }, { acao: "iniciar", assinaturaId: "assinatura" })).rejects.toMatchObject({ status: 403 });
     expect(m.buscar).not.toHaveBeenCalled();

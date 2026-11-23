@@ -11,6 +11,7 @@ import type { Sessao } from "@/lib/auth/sessao";
 import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { noAr } from "@/lib/jogos/motor";
+import { filtroDeContratosSimulados } from "@/lib/oferta-dezembro/config";
 import { CHAVES_SEGMENTO, segmentosDoCliente, SEGMENTOS, type Segmento } from "./regras";
 import { impedimentoCampanha } from "./contato";
 import { campanhaConferida, identificadorDoLote, loteAutorizadoConfirmado, loteAutorizadoDisponivel } from "./lote-autorizado";
@@ -35,7 +36,7 @@ async function base(agora: number): Promise<ClienteBase[]> {
   const [clientes, visitas, assinaturas, futuros] = await Promise.all([
     db.cliente.findMany({ select: { id: true, aceitaMensagens: true, excluidoEm: true, conversa: { select: { estado: true, recusaAutomaticas: true } }, assinaturas: migracaoDoCliente } }),
     db.agendamento.groupBy({ by: ["clienteId"], where: { status: "CONCLUIDO" }, _max: { inicio: true }, _min: { inicio: true } }),
-    db.assinatura.findMany({ select: { clienteId: true, status: true } }),
+    db.assinatura.findMany({ where: filtroDeContratosSimulados(), select: { clienteId: true, status: true } }),
     db.agendamento.findMany({ where: { status: { in: ["MARCADO", "CONFIRMADO"] }, inicio: { gt: new Date(agora) } }, select: { clienteId: true }, distinct: ["clienteId"] }),
   ]);
   const v = new Map(visitas.map((x) => [x.clienteId, x]));

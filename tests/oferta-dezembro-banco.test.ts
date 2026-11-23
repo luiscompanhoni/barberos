@@ -2,7 +2,9 @@ import { randomInt, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { criarAgendamento } from "@/lib/agenda/agendamentos";
 import { precificar } from "@/lib/assinaturas/agenda";
+import { registrarAssinaturaPaga } from "@/lib/assinaturas/registro-manual";
 import { assinar, cancelar, situacaoDoCliente } from "@/lib/assinaturas/servico";
+import { resumoSegmentos } from "@/lib/campanhas/servico";
 import { db } from "@/lib/db";
 import { indicadoresDeAssinaturas } from "@/lib/indicadores/assinaturas-bar";
 import { resolverPeriodo } from "@/lib/indicadores/periodo";
@@ -150,6 +152,27 @@ describe.skipIf(!habilitado)("oferta de dezembro com PostgreSQL", () => {
       data: { criadaEm: new Date(+agora - 4 * 86_400_000) },
     });
     await expect(aderirOfertaDezembro(oferta, proposta(p.id), agora)).rejects.toMatchObject({ codigo: "sem_vagas" });
+
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
+    const dono = await db.usuario.create({ data: { nome: "Gerente de teste", telefone: telefone(), papel: "GERENTE" } });
+    await expect(registrarAssinaturaPaga({
+      usuarioId: dono.id, nome: dono.nome, papel: "GERENTE", sessaoVersao: dono.sessaoVersao, barbeiroId: null, clienteId: null,
+    }, {
+      clienteId: oferta.clienteId, planoId: p.id, forma: "PIX", pagoEm: "2026-11-22", precoPlanoCentavos: p.precoCentavos,
+    })).rejects.toMatchObject({ codigo: "sem_vagas" });
+    expect(await db.assinatura.count({ where: { planoId: p.id } })).toBe(1);
+  });
+
+  it("segmentos de assinante e ex-assinante ignoram contrato simulado quando fechada", async () => {
+    const p = await plano();
+    const [simulado, regular] = await Promise.all([titular(), titular()]);
+    const totais = async () => Object.fromEntries((await resumoSegmentos(+agora)).segmentos.map(s => [s.chave, s.total]));
+    const { assinaturaId } = await aderirOfertaDezembro(simulado, proposta(p.id), agora);
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
+    const antes = await totais();
+    await db.assinatura.create({ data: { clienteId: regular.clienteId, planoId: p.id, formaPagamento: "CARTAO", status: "ATIVA", origem: "SITE", precoCentavos: p.precoCentavos } });
+    await db.assinatura.update({ where: { id: assinaturaId }, data: { status: "CANCELADA", canceladaEm: agora } });
+    expect(await totais()).toMatchObject({ assinante: antes.assinante + 1, exAssinante: antes.exAssinante });
   });
 
   it("bloqueia a reentrada imediata e aceita um ex-assinante após 90 dias", async () => {

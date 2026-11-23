@@ -54,6 +54,18 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe("cadência cancelável do atendimento", () => {
+  it.each([
+    ["false", "/c/dezembro-gratis", false], ["false", "/c/planos", true], ["true", "/c/dezembro-gratis", true],
+  ])("flag %s com histórico de %s preservado=%s", async (flag, caminho, preservar) => {
+    vi.stubEnv("AMBIENTE", "homologacao");
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", flag);
+    m.provedor.mockReturnValue("simulador");
+    const historico = [{ role: "assistant", content: [{ type: "text", text: `Confira em https://site.example${caminho}` }] }];
+    conversa.sessao = historico;
+    conversa.sessaoInicioEm = new Date(Date.now() - 60_000);
+    await receberMensagem(recebida());
+    expect(m.modelo.mock.calls[0][0].historico).toEqual(preservar ? historico : []);
+  });
   it("teste individual responde com bot geral e IA geral desligados, sem ferramentas de reserva ou cobrança", async () => {
     vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_EQUIPE", "true");
     vi.stubEnv("WHATSAPP_ATENDIMENTO_TESTE_NUMERO", telefone);

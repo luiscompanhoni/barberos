@@ -69,6 +69,26 @@ describe("reserva de crédito por competência", () => {
     await expect(reservarCreditoAssinatura("outra-pessoa", "a")).rejects.toMatchObject({ status: 404 });
     expect(beneficios[0].status).toBe("DISPONIVEL");
   });
+  it("extrato omite contrato simulado e sua reserva, preservando o histórico regular com créditos desligados", async () => {
+    const real = { ...a, plano: { nome: "Plano regular" } };
+    const simulado = { ...real, id: "simulado", plano: { nome: "Plano simulado" } };
+    const reservaReal = { id: "reserva-real", assinaturaId: real.id, vencimento: a.proximoVencimento };
+    const reservaSimulada = { ...reservaReal, id: "reserva-simulada", assinaturaId: simulado.id };
+    mocks.db.assinatura.findMany.mockImplementation(async ({ where }) => where.ofertaDezembro?.is === null ? [real] : [real, simulado]);
+    mocks.db.reservaCreditoAssinatura.findMany.mockImplementation(async ({ where }) => where.assinatura.ofertaDezembro?.is === null ? [reservaReal] : [reservaReal, reservaSimulada]);
+    vi.stubEnv("CREDITOS_MENSALIDADE_ATIVOS", "false");
+    const extrato = await extratoReservasCredito("cliente");
+    expect(extrato.ativa).toBe(false);
+    expect(extrato.assinaturas.map(a => a.id)).toEqual([real.id]);
+    expect(extrato.reservas.map(r => r.id)).toEqual([reservaReal.id]);
+  });
+  it("rejeita nova reserva para contrato simulado antes de iniciar transação ou gateway", async () => {
+    a.id = "simulado";
+    mocks.db.assinatura.findUnique.mockImplementation(async ({ where }) => where.ofertaDezembro?.is === null ? null : a);
+    await expect(reservarCreditoAssinatura("cliente", a.id)).rejects.toMatchObject({ status: 404 });
+    expect(mocks.db.$transaction).not.toHaveBeenCalled();
+    expect(mocks.antes).not.toHaveBeenCalled();
+  });
   it("duas solicitações concorrentes mantêm uma reserva e uma saída da carteira", async () => {
     const [r1, r2] = await Promise.all([reservarCreditoAssinatura("cliente", "a"), reservarCreditoAssinatura("cliente", "a")]);
     expect(r1.id).toBe(r2.id); expect(mocks.db.reservaCreditoAssinatura.create).toHaveBeenCalledTimes(1);

@@ -9,8 +9,9 @@ export function filtroDeContratosSimulados() {
   return ofertaDezembroEmHomologacao() ? {} : { ofertaDezembro: { is: null } };
 }
 
+/** Preserva as vagas dos links regulares no plano-base mesmo com a oferta fechada. */
 export function planoBaseDezembroEmHomologacao(env: AmbienteOferta = process.env) {
-  if (!ofertaDezembroEmHomologacao(env)) return null;
+  if (env.AMBIENTE !== "homologacao") return null;
   const id = env.OFERTA_DEZEMBRO_PLANO_ID?.trim();
   return id && /^[a-zA-Z0-9_-]{1,40}$/.test(id) ? id : null;
 }
@@ -22,7 +23,7 @@ function inteiroPositivo(texto?: string) {
 }
 
 export function lerConfigOfertaDezembro(env: AmbienteOferta = process.env) {
-  if (env.OFERTA_DEZEMBRO_MODO !== "homologacao") return null;
+  if (!ofertaDezembroEmHomologacao(env) || env.OFERTA_DEZEMBRO_MODO !== "homologacao") return null;
   const planoId = planoBaseDezembroEmHomologacao(env);
   const vagas = inteiroPositivo(env.OFERTA_DEZEMBRO_VAGAS);
   const limiteUsos = inteiroPositivo(env.OFERTA_DEZEMBRO_LIMITE_USOS);

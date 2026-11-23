@@ -8,17 +8,18 @@ import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
 import { ehOrigemLegada, META_MIGRACAO, validarTransicaoMigracao } from "./regras";
 import { ESTADOS_MIGRACAO, zAcaoMigracao, type AcaoMigracao, type ConsultaMigracao } from "./schemas";
 
+const assinaturaRegular = { ofertaDezembro: { is: null } } as const;
 const selecao = {
   id: true, planoId: true, precoCentavos: true, cicloInicio: true, proximoVencimento: true, gatewayId: true, status: true,
   plano: { select: { nome: true } }, migracao: true,
   cliente: { select: {
     id: true, nome: true, aceitaMensagens: true, excluidoEm: true,
     conversa: { select: { estado: true, recusaAutomaticas: true } },
-    _count: { select: { assinaturas: { where: { status: { not: "CANCELADA" as const } } } } },
+    _count: { select: { assinaturas: { where: { status: { not: "CANCELADA" as const }, ...assinaturaRegular } } } },
   } },
 } as const satisfies Prisma.AssinaturaSelect;
 type Contrato = Prisma.AssinaturaGetPayload<{ select: typeof selecao }>;
-const base: Prisma.AssinaturaWhereInput = { OR: [
+const base: Prisma.AssinaturaWhereInput = { ...assinaturaRegular, OR: [
   { gatewayId: { startsWith: "cashbarber:" } }, { gatewayId: { startsWith: "celsub_" } },
   { gatewayId: null }, { migracao: { isNot: null } },
 ] };
@@ -55,7 +56,7 @@ export async function listarQuadroMigracao(filtro: ConsultaMigracao = {}) {
     db.assinatura.count({ where }), db.assinatura.count({ where: base }),
     db.assinatura.count({ where: { AND: [base, { status: "CANCELADA" }] } }),
     db.assinatura.count({ where: { AND: [base, { migracao: { is: null } }] } }),
-    db.migracaoAssinatura.groupBy({ by: ["estado"], _count: { _all: true } }),
+    db.migracaoAssinatura.groupBy({ by: ["estado"], where: { assinatura: assinaturaRegular }, _count: { _all: true } }),
     db.usuario.findMany({ where: { papel: { in: GESTAO }, ativo: true }, select: { id: true, nome: true }, orderBy: { nome: "asc" } }),
   ]);
   return {
@@ -75,7 +76,7 @@ export async function registrarMigracao(s: Sessao, entrada: AcaoMigracao) {
   return db.$transaction(async tx => {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`pix-mensal-assinatura:${p.assinaturaId}`}, 0))`;
     await tx.$queryRaw`SELECT id FROM assinaturas WHERE id = ${p.assinaturaId} FOR UPDATE`;
-    const a = await tx.assinatura.findUnique({ where: { id: p.assinaturaId }, select: selecao });
+    const a = await tx.assinatura.findUnique({ where: { id: p.assinaturaId, ...assinaturaRegular }, select: selecao });
     if (!a) throw naoEncontrado("Assinatura");
     if (p.acao === "iniciar") {
       if (a.migracao) return apresentar(a);
@@ -109,6 +110,6 @@ export async function registrarMigracao(s: Sessao, entrada: AcaoMigracao) {
       if (!mudou.count) throw new ErroNegocio("A conferência mudou. Atualize antes de continuar.", 409, "migracao_alterada");
       await auditar(tx, s.usuarioId, "migracao_conferencia", "assinatura", a.id, { antes: atual.estado, depois: p.estado, ...evidencias, fonteGatewayId: fonte, destinoGatewayId: p.destinoGatewayId });
     }
-    return apresentar(await tx.assinatura.findUniqueOrThrow({ where: { id: a.id }, select: selecao }));
+    return apresentar(await tx.assinatura.findUniqueOrThrow({ where: { id: a.id, ...assinaturaRegular }, select: selecao }));
   });
 }

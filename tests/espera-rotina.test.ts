@@ -1,15 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { processarEsperas } from "@/lib/crescimento/rotina";
+import { processarEsperas, processarRetornos } from "@/lib/crescimento/rotina";
 import { ErroNegocio } from "@/lib/erros";
 
 const m = vi.hoisted(() => ({ pedidos: vi.fn(), atualizar: vi.fn(), contar: vi.fn(), perto: vi.fn(), servicos: vi.fn(),
-  enviar: vi.fn(), opcoes: vi.fn(), auditar: vi.fn(), quarentena: vi.fn(), piloto: vi.fn(), teste: vi.fn(), travar: vi.fn(), cliente: vi.fn() }));
+  enviar: vi.fn(), opcoes: vi.fn(), auditar: vi.fn(), quarentena: vi.fn(), piloto: vi.fn(), teste: vi.fn(), travar: vi.fn(), cliente: vi.fn(), assinatura: vi.fn() }));
 vi.mock("@/lib/db", () => {
   const tx = { $executeRaw: m.travar, esperaHorario: { findMany: m.pedidos, updateMany: m.atualizar, count: m.contar },
-    agendamento: { findMany: m.perto }, servico: { findMany: m.servicos }, cliente: { findUnique: m.cliente } };
+    agendamento: { findMany: m.perto, count: async () => 0 }, assinatura: { findFirst: m.assinatura },
+    servico: { findMany: m.servicos, findUnique: async () => ({ nome: "Corte" }) },
+    cliente: { findUnique: m.cliente, findUniqueOrThrow: async () => pedido.cliente } };
   return { db: { ...tx, $transaction: async (f: (c: typeof tx) => unknown) => f(tx) } };
 });
-vi.mock("@/lib/agenda/carregar", () => ({ configuracao: async () => ({ fuso: "America/Sao_Paulo" }) }));
+vi.mock("@/lib/agenda/carregar", () => ({ configuracao: async () => ({ fuso: "America/Sao_Paulo", retornoAtivo: true }) }));
 vi.mock("@/lib/crescimento/espera", () => ({ opcoesDoDia: m.opcoes, descreverOpcao: () => "14:00 com Profissional" }));
 vi.mock("@/lib/crescimento/indicacao", () => ({ converterIndicacoes: vi.fn() }));
 vi.mock("@/lib/automacoes/enviar", () => ({ enviarAutomacao: m.enviar }));
@@ -122,5 +124,24 @@ describe("rotina dos pedidos de aviso", () => {
     m.enviar.mockResolvedValue(true);
     expect(await processarEsperas(agora)).toBe(1);
     expect(m.atualizar.mock.calls.some(([q]) => q.data.status === "ATENDIDA")).toBe(false);
+  });
+});
+
+describe("rotina de retorno com a oferta desligada", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("contrato simulado com intervalo de 60 dias não suprime retorno avulso", async () => {
+    vi.clearAllMocks();
+    vi.stubEnv("AMBIENTE", "homologacao");
+    vi.stubEnv("OFERTA_DEZEMBRO_ATIVA", "false");
+    m.perto.mockResolvedValue([39, 19].map(dias => ({
+      clienteId: "cliente", barbeiroId: "b", servicoId: "corte", inicio: new Date(agora - dias * 86_400_000),
+    })));
+    m.contar.mockResolvedValue(0);
+    m.assinatura.mockImplementation(async ({ where }) => where.ofertaDezembro?.is === null ? null : { plano: { intervaloMinDias: 60 } });
+    m.opcoes.mockResolvedValue([{ barbeiroId: "b", nome: "Profissional", inicio: "2026-11-11T17:00:00Z", minutos: 840 }]);
+    m.enviar.mockResolvedValue(true);
+    expect(await processarRetornos(agora)).toBe(1);
+    expect(m.enviar.mock.calls[0][0].texto).not.toContain("pelo plano");
   });
 });

@@ -200,12 +200,12 @@ async function processar(e: Entrada, opts: { modelo?: Modelo }, conversa: Conver
 
   const agora = Date.now();
   const sessaoValida =
-    conversa.sessao &&
     conversa.sessaoInicioEm &&
     (!testeIndividual || +conversa.sessaoInicioEm >= Date.parse(process.env.WHATSAPP_ATENDIMENTO_TESTE_ATE ?? "") - 2 * 3_600_000) &&
     conversa.ultimaEntradaEm &&
     Array.isArray(conversa.sessao) &&
     conversa.sessao.length < SESSAO_MAX_MENSAGENS &&
+    (ofertaDezembroEmHomologacao() || !JSON.stringify(conversa.sessao).includes("/c/dezembro-gratis")) &&
     agora - (await ultimaAtividade(conversa.id)) < SESSAO_INATIVA_MS;
   const historico = sessaoValida ? (conversa.sessao as unknown as Anthropic.Beta.BetaMessageParam[]) : [];
   const cliente = await db.cliente.findUnique({ where: { telefone: conversa.telefone }, select: { id: true, nome: true } });

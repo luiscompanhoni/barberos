@@ -10,6 +10,7 @@ import { ordemDeUso, planoDeUso } from "./saldo";
 export type TxCreditoAssinatura = Prisma.TransactionClient;
 export type { ProvaCobrancaCredito } from "./credito-assinatura-regras";
 
+const assinaturaRegular = { ofertaDezembro: { is: null } } as const;
 const elegiveis = (clienteId: string, agora = new Date()): Prisma.BeneficioWhereInput => ({
   clienteId, status: "DISPONIVEL", reservaCreditoId: null, valorCentavos: { gt: 0 },
   motivo: { in: ["INDICOU", "INDICADO"] }, expiraEm: { gt: agora },
@@ -48,7 +49,7 @@ function publico(r: ReservaCreditoAssinatura) {
 /** Solicitar dentro da validade separa o crédito para uma única próxima competência. */
 export async function reservarCreditoAssinatura(clienteId: string, assinaturaId: string, valorSolicitadoCentavos?: number) {
   if (!creditosMensalidadeAtivos()) throw new ErroNegocio("O uso de crédito na mensalidade ainda não está disponível. Fale com a recepção.", 409, "credito_desativado");
-  const antes = await db.assinatura.findUnique({ where: { id: assinaturaId } });
+  const antes = await db.assinatura.findUnique({ where: { id: assinaturaId, ...assinaturaRegular } });
   if (!antes || antes.clienteId !== clienteId) throw naoEncontrado("Assinatura");
   conferirAssinaturaCredito(antes);
   const aplicacao = comoAplicar(antes.gatewayId);
@@ -59,7 +60,7 @@ export async function reservarCreditoAssinatura(clienteId: string, assinaturaId:
   if (aplicacao === "gateway") await conferirGatewayAntesDoCredito(antes);
   const resultado = await db.$transaction(async (tx) => {
     await travar(tx, clienteId, assinaturaId, diaCredito(antes.proximoVencimento!));
-    const a = await tx.assinatura.findUnique({ where: { id: assinaturaId } });
+    const a = await tx.assinatura.findUnique({ where: { id: assinaturaId, ...assinaturaRegular } });
     if (!a || a.clienteId !== clienteId) throw naoEncontrado("Assinatura");
     const valorMensalidadeCentavos = conferirAssinaturaCredito(a);
     if (a.gatewayId !== antes.gatewayId || a.gatewayClienteId !== antes.gatewayClienteId || a.precoCentavos !== antes.precoCentavos || a.proximoVencimento?.getTime() !== antes.proximoVencimento?.getTime()) throw revisaoCredito();
@@ -95,7 +96,7 @@ export async function reservarCreditoAssinatura(clienteId: string, assinaturaId:
     return await db.$transaction(async (tx) => {
       await travar(tx, clienteId, assinaturaId, diaCredito(resultado.reserva.vencimento));
       await conferirOrigem(tx, resultado.reserva.id, resultado.reserva.valorCentavos);
-      const a = await tx.assinatura.findUniqueOrThrow({ where: { id: assinaturaId } });
+      const a = await tx.assinatura.findUniqueOrThrow({ where: { id: assinaturaId, ...assinaturaRegular } });
       if (conferirAssinaturaCredito(a) !== resultado.reserva.valorMensalidadeCentavos || a.gatewayId !== antes.gatewayId || diaCredito(a.proximoVencimento!) !== diaCredito(resultado.reserva.vencimento)) throw revisaoCredito();
       const atualizada = await tx.reservaCreditoAssinatura.updateMany({ where: { id: resultado.reserva.id, estado: "APLICANDO" }, data: { estado: "CONFIRMADA", gatewayDescontoId: descontoId } });
       if (atualizada.count !== 1) throw revisaoCredito();
@@ -156,9 +157,9 @@ export async function confirmarCreditoNaCobranca(cobranca: Cobranca, prova?: Pro
 /** Extrato sem gateway, tokens ou dados de outras pessoas; leitura permitida com flag desligada. */
 export async function extratoReservasCredito(clienteId: string) {
   const [reservas, saldo, assinaturas] = await Promise.all([
-    db.reservaCreditoAssinatura.findMany({ where: { assinatura: { clienteId } }, orderBy: { criadoEm: "desc" }, take: 30 }),
+    db.reservaCreditoAssinatura.findMany({ where: { assinatura: { clienteId, ...assinaturaRegular } }, orderBy: { criadoEm: "desc" }, take: 30 }),
     db.beneficio.aggregate({ where: elegiveis(clienteId), _sum: { valorCentavos: true } }),
-    db.assinatura.findMany({ where: { clienteId, status: "ATIVA" }, select: { id: true, precoCentavos: true, proximoVencimento: true, plano: { select: { nome: true } } } }),
+    db.assinatura.findMany({ where: { clienteId, status: "ATIVA", ...assinaturaRegular }, select: { id: true, precoCentavos: true, proximoVencimento: true, plano: { select: { nome: true } } } }),
   ]);
   return { ativa: creditosMensalidadeAtivos(), saldoElegivelCentavos: saldo._sum.valorCentavos ?? 0, reservas: reservas.map(publico), assinaturas: assinaturas.map((a) => ({ id: a.id, nome: a.plano.nome, precoCentavos: a.precoCentavos, proximoVencimento: a.proximoVencimento ? diaCredito(a.proximoVencimento) : null })) };
 }

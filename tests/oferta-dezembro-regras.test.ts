@@ -67,7 +67,7 @@ describe("adesão", () => {
     for (const valor of [undefined, "false", "TRUE", "1"]) {
       const fechada = { ...env, OFERTA_DEZEMBRO_ATIVA: valor };
       expect(ofertaDezembroEmHomologacao(fechada)).toBe(false);
-      expect(planoBaseDezembroEmHomologacao(fechada)).toBeNull();
+      expect(planoBaseDezembroEmHomologacao(fechada)).toBe("base");
       expect(lerConfigOfertaDezembro(fechada)).toBeNull();
     }
     expect(lerConfigOfertaDezembro({ ...env, AMBIENTE: "producao" })).toBeNull();
