@@ -25,7 +25,7 @@ export async function carregarMeuDia(s: Sessao, entrada: unknown) {
   const data = q.data ?? dataLocal(Date.now(), cfg.fuso), dia = limitesDoDia(data, cfg.fuso);
   const [ags, regras, extras, adicionais, encaixes, custos, acoes, recompras] = await Promise.all([
     db.agendamento.findMany({ where: { barbeiroId: id, inicio: { gte: new Date(dia.inicio), lt: new Date(dia.fim) }, status: { notIn: ["CANCELADO", "FALTOU"] } }, orderBy: { inicio: "asc" },
-      select: { id: true, clienteId: true, inicio: true, fim: true, status: true, assinaturaId: true, precoCentavos: true, servicoId: true, cliente: { select: { nome: true } }, servico: { select: { nome: true, precoCentavos: true } } } }),
+      select: { id: true, clienteId: true, inicio: true, fim: true, status: true, assinaturaId: true, assinatura: { select: { ofertaDezembro: { select: { assinaturaId: true } } } }, precoCentavos: true, servicoId: true, cliente: { select: { nome: true } }, servico: { select: { nome: true, precoCentavos: true } } } }),
     regrasServicosNaCompetencia(data.slice(0, 7)), extrasNaCompetencia(data.slice(0, 7)), adicionaisDoCalculo(), encaixesDoDia({ data, barbeiroId: id }, s),
     db.servico.findMany({ select: { id: true, custoCentavos: true } }),
     id === s.barbeiroId || (permissoes.lucro && permissoes.comissoes_equipe) ? acoesDoBarbeiro(id, data) : Promise.resolve([]), oportunidadesDoDia(id, data),
@@ -33,10 +33,12 @@ export async function carregarMeuDia(s: Sessao, entrada: unknown) {
   const adicional = adicionalNoDia(adicionais, id, "AVULSO", data);
   const podeVerComissao = id === s.barbeiroId || permissoes.comissoes_equipe;
   let semRegra = 0, planoPendente = false;
+  const idsDaOferta = new Set(ags.filter(a => a.assinatura?.ofertaDezembro).map(a => a.id));
   const atendimentos = ags.map((a) => {
-    const regra = escolherRegra(regras, a.servicoId, id);
-    if (!regra && !(a.assinaturaId && extras.assinaturas.ativo)) semRegra++;
-    const pote = !!a.assinaturaId && extras.assinaturas.ativo;
+    const ofertaSimulada = idsDaOferta.has(a.id);
+    const regra = ofertaSimulada ? null : escolherRegra(regras, a.servicoId, id);
+    const pote = !ofertaSimulada && !!a.assinaturaId && extras.assinaturas.ativo;
+    if (!ofertaSimulada && !regra && !pote) semRegra++;
     if (pote) planoPendente = true;
     const com = !regra || pote ? null : calcularComissao(regra, { modalidade: a.assinaturaId ? "PLANO" : "AVULSO", preco: a.precoCentavos, precoTabela: a.servico.precoCentavos }, a.assinaturaId ? adicionalNoDia(adicionais, id, "ASSINATURA", data) : adicional).comissao;
     return { id: a.id, inicio: a.inicio.toISOString(), fim: a.fim.toISOString(), status: a.status, cliente: a.cliente.nome, servico: a.servico.nome,
@@ -49,7 +51,8 @@ export async function carregarMeuDia(s: Sessao, entrada: unknown) {
       comissaoCentavos: podeVerComissao && regra ? calcularComissao(regra, { modalidade: "AVULSO", preco: sv.precoCentavos, precoTabela: sv.precoCentavos }, adicional).comissao : null,
       quantidadeMaxima: sv.quantidade, janelas: sv.janelas.map((j) => ({ inicio: j.inicio, fim: j.fim })) };
   });
-  const avulsos = atendimentos.filter((a) => !a.assinante), assinantes = atendimentos.filter((a) => a.assinante);
+  const avulsos = atendimentos.filter((a) => !a.assinante);
+  const assinantes = atendimentos.filter((a) => a.assinante && !idsDaOferta.has(a.id));
   const clientes = new Set(ags.map((a) => a.clienteId)), clientesPlanos = new Set(ags.filter((a) => a.assinaturaId).map((a) => a.clienteId));
   const somarComissao = (lista: typeof atendimentos) => podeVerComissao && lista.every((a) => a.comissaoCentavos !== null) ? lista.reduce((s, a) => s + (a.comissaoCentavos ?? 0), 0) : null;
   return { data, fuso: cfg.fuso, barbeiro, profissionais, podeVerComissao, atendimentos, servicos, acoes,

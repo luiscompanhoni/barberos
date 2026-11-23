@@ -12,6 +12,7 @@ import type { GrupoReuniao, IndicadoresReuniao } from "./tipos";
 // vendasFora/comissaoFora: o que não tem par no período (venda sem atendimento concluído nele, ou atendimento sem venda).
 // pareados/fora contam o que entrou ou ficou fora da margem; margemPendente só olha o que entra nela.
 type Grupo = GrupoReuniao & { custo: number; comissaoPendente: boolean; margemPendente: boolean; vendasForaCentavos: number; comissaoForaCentavos: number; pareados: number; fora: number };
+const assinatura = { select: { ofertaDezembro: { select: { assinaturaId: true } } } } as const;
 const novo = (id: string, nome: string): Grupo => ({ id, nome, atendimentos: 0, avulsos: 0, assinantes: 0, vendasCentavos: 0, receitaAssinaturasCentavos: 0, comissaoCentavos: 0, margemCentavos: null, custosPendentes: 0, faltas: 0, cancelamentos: 0, custo: 0, comissaoPendente: false, margemPendente: false, vendasForaCentavos: 0, comissaoForaCentavos: 0, pareados: 0, fora: 0 });
 const linha = (m: Map<string, Grupo>, id: string, nome: string) => {
   if (!m.has(id)) m.set(id, novo(id, nome));
@@ -35,11 +36,11 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
   for (let d = inicio; d <= fim; d = somarDias(d, 1)) dias.push(d);
   const [ags, comandas, recebidas, estornos, ocupacao, comissoes] = await Promise.all([
     db.agendamento.findMany({ where: { inicio: janela }, select: { id: true, clienteId: true, barbeiroId: true, servicoId: true, cadeiraId: true,
-      status: true, assinaturaId: true, precoCentavos: true, inicio: true, barbeiro: { select: { nome: true } }, cadeira: { select: { nome: true } },
+      status: true, assinaturaId: true, assinatura, precoCentavos: true, inicio: true, barbeiro: { select: { nome: true } }, cadeira: { select: { nome: true } },
       servico: { select: { nome: true, custoCentavos: true } }, itemComanda: { select: { comanda: { select: { status: true, fechadaEm: true } } } } } }),
     db.comanda.findMany({ where: { status: "FECHADA", fechadaEm: janela }, include: { pagamentos: true,
       itens: { include: { produto: { select: { custoCentavos: true, categoria: true } },
-        agendamento: { select: { id: true, inicio: true, barbeiroId: true, cadeiraId: true, servicoId: true, assinaturaId: true, cadeira: { select: { nome: true } }, servico: { select: { nome: true } }, barbeiro: { select: { nome: true } } } } } } } }),
+        agendamento: { select: { id: true, inicio: true, barbeiroId: true, cadeiraId: true, servicoId: true, assinaturaId: true, assinatura, cadeira: { select: { nome: true } }, servico: { select: { nome: true } }, barbeiro: { select: { nome: true } } } } } } } }),
     recebimentosMensalidades(janela),
     db.pedidoEstorno.findMany({ where: { status: { in: STATUS_EFETIVOS }, executadoEm: janela }, select: { tipo: true, valorCentavos: true } }),
     ocupacaoDosDias(dias), relatorioComissoes(inicio, fim),
@@ -57,6 +58,7 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
   if (rateioAssinaturasPendente) { total.comissaoPendente = true; total.margemPendente = true; }
   let semFechamento = 0;
   for (const a of ags) {
+    const ofertaSimulada = !!a.assinatura?.ofertaDezembro;
     const semVenda = a.status === "CONCLUIDO" && !a.assinaturaId && !vendidoNoPeriodo(a.itemComanda?.comanda);
     if (semVenda) semFechamento++;
     const grupos = [total, linha(bs, a.barbeiroId, a.barbeiro.nome), linha(ss, a.servicoId, a.servico.nome), linha(cs, a.cadeiraId ?? "sem-cadeira", a.cadeira?.nome ?? "Cadeira não informada")];
@@ -66,6 +68,7 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
       if (a.status !== "CONCLUIDO") continue;
       g.atendimentos++;
       if (a.assinaturaId) g.assinantes++; else g.avulsos++;
+      if (ofertaSimulada) continue;
       if (a.assinaturaId && rateioAssinaturasPendente) { g.comissaoPendente = true; g.margemPendente = true; }
       const com = comPorAg.get(a.id);
       // Fora da margem (a comissão continua aparecendo): avulso ainda sem venda no período; e, com o pote desligado,
@@ -84,6 +87,7 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
     const valores = ratearCentavos(Math.max(0, r.total - r.estornado), c.itens.map((i) => i.quantidade * i.precoUnitCentavos));
     c.itens.forEach((i, ix) => {
       const a = i.agendamento;
+      if (a?.assinatura?.ofertaDezembro) return;
       const barbeiroId = a?.barbeiroId ?? i.barbeiroId;
       const nome = a?.barbeiro.nome ?? comissoes.barbeiros.find((b) => b.barbeiroId === barbeiroId)?.nome ?? "Sem profissional";
       const grupos = [total, linha(bs, barbeiroId ?? "sem-profissional", nome),
@@ -112,7 +116,7 @@ export async function dadosDoPeriodo(inicio: string, fim: string) {
     g.comissaoCentavos! += extras; total.comissaoCentavos! += extras;
     const atribuida = b.assinaturas?.receitaAtribuida ?? 0;
     g.receitaAssinaturasCentavos += atribuida;
-    const atendidos = feitos.filter((a) => a.barbeiroId === b.barbeiroId && a.assinaturaId);
+    const atendidos = feitos.filter((a) => a.barbeiroId === b.barbeiroId && a.assinaturaId && !a.assinatura?.ofertaDezembro);
     const pesos = atendidos.map((a) => fichas.get(a.servicoId) ?? 0);
     const receita = ratearCentavos(atribuida, pesos), com = ratearCentavos(comissaoAssinaturas, pesos);
     atendidos.forEach((a, ix) => {

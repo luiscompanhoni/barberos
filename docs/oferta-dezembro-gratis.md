@@ -10,7 +10,7 @@ Use um banco de testes local com as migrações aplicadas. Faça backup antes de
 | --- | --- |
 | `AMBIENTE` | `homologacao` |
 | `OFERTA_DEZEMBRO_MODO` | `homologacao` |
-| `OFERTA_DEZEMBRO_PLANO_ID` | ID de um plano-base ativo, comprável pelo cliente, com cartão e serviços ativos |
+| `OFERTA_DEZEMBRO_PLANO_ID` | ID de um plano-base ativo, visível e comprável pelo cliente, com cartão e serviços ativos |
 | `OFERTA_DEZEMBRO_VAGAS` | Número inteiro positivo de adesões para toda a campanha |
 | `OFERTA_DEZEMBRO_LIMITE_USOS` | Número inteiro positivo de serviços por adesão, somados entre todos os serviços |
 
@@ -41,6 +41,6 @@ Os testes de regras e precificação rodam com `npm test`. Para executar os test
 
 - Definir o plano, o limite de vagas e o limite de usos, considerando a capacidade da agenda e o custo dos atendimentos.
 - Habilitar credenciais de sandbox da Pagar.me e validar a criação de assinatura com cartão tokenizado e `start_at` futuro. Confirmar no provedor o primeiro débito em 01/01/2027, a ausência de cobrança em dezembro, as seis competências, as falhas de cobrança e o encerramento. A Pagar.me é o caminho das novas recorrências em cartão, Celcash mantém o legado e Stone POS atende cobranças presenciais. [Pagar.me — Criar assinatura avulsa](https://docs.pagar.me/reference/criar-assinatura-avulsa)
-- Definir o custo e o repasse aos profissionais durante o período grátis. Os atendimentos de homologação ficam fora dos indicadores de assinaturas reais e da apuração de comissão.
+- Definir o custo e o repasse aos profissionais durante o período grátis. Os atendimentos de homologação ficam fora dos indicadores de assinaturas reais e da apuração de comissão. Reuniões e Meu dia mantêm esses horários na produção e na agenda, sem atribuir receita ou comissão.
 - Implementar a integração real após validar o sandbox, com idempotência no provedor, confirmação de pagamentos, conciliação e separação dos contratos de homologação.
 - Revisar juridicamente o termo, o direito de arrependimento, a metodologia de proporcionalidade, a base de cálculo e o processo de cancelamento eletrônico antes de aprovar multa ou cobrança. [Código de Defesa do Consumidor, arts. 49 e 51](https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm)

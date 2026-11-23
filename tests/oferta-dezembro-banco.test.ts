@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { indicadoresDeAssinaturas } from "@/lib/indicadores/assinaturas-bar";
 import { resolverPeriodo } from "@/lib/indicadores/periodo";
 import { consultarContratoDezembro, consultarOfertaPublicaDezembro, consultarPainelDezembro } from "@/lib/oferta-dezembro/consulta";
+import { dadosDoPeriodo } from "@/lib/reunioes/dados";
+import { carregarMeuDia } from "@/lib/reunioes/meu-dia";
 import { relatorioComissoes } from "@/lib/rh/comissoes";
 import { encerrarOfertasDezembroAgendadas, solicitarCancelamentoDezembro } from "@/lib/oferta-dezembro/cancelamento";
 import { aderirOfertaDezembro } from "@/lib/oferta-dezembro/servico";
@@ -117,10 +119,11 @@ describe.skipIf(!habilitado)("oferta de dezembro com PostgreSQL", () => {
     await expect(aderirOfertaDezembro(cliente, pedido, agora)).rejects.toMatchObject({ codigo: "sem_vagas" });
   });
 
-  it("bloqueia a adesão do cliente a plano de venda exclusiva da equipe", async () => {
+  it.each([{ vendaSomenteEquipe: true }, { visivel: false }])("oculta a oferta e bloqueia a adesão para plano %j", async (restricao) => {
     const p = await plano();
     const t = await titular();
-    await db.plano.update({ where: { id: p.id }, data: { vendaSomenteEquipe: true } });
+    await db.plano.update({ where: { id: p.id }, data: restricao });
+    expect(await consultarOfertaPublicaDezembro(agora)).toBeNull();
     await expect(aderirOfertaDezembro(t, proposta(p.id), agora)).rejects.toMatchObject({ codigo: "oferta_indisponivel" });
     expect(await db.ofertaDezembroAdesao.count()).toBe(p.existentes);
   });
@@ -226,13 +229,25 @@ describe.skipIf(!habilitado)("oferta de dezembro com PostgreSQL", () => {
     const periodo = resolverPeriodo("mes", "America/Sao_Paulo", +inicio);
     const antes = await indicadoresDeAssinaturas(periodo);
     const { assinaturaId } = await aderirOfertaDezembro(t, proposta(p.id), agora);
-    await db.agendamento.create({
+    const atendimento = await db.agendamento.create({
       data: {
         assinaturaId, barbeiroId: barbeiro.id, clienteId: t.clienteId, servicoId: p.servicos[0].id, inicio,
         fim: new Date(+inicio + 20 * 60_000), origem: "SITE", precoCentavos: 0, status: "CONCLUIDO",
       },
     });
     expect.soft(await indicadoresDeAssinaturas(periodo)).toEqual(antes);
+    await db.comissaoServico.create({
+      data: { servicoId: atendimento.servicoId, avulsoTipo: "PERCENTUAL", avulsoValor: 4000, planoTipo: "FIXO", planoValor: 1500 },
+    });
+    const reuniao = await dadosDoPeriodo("2026-12-04", "2026-12-04");
+    expect.soft(reuniao.barbeiros.find(b => b.id === barbeiro.id)).toMatchObject({
+      atendimentos: 1, receitaAssinaturasCentavos: 0, comissaoCentavos: 0, custosPendentes: 0, margemCentavos: 0,
+    });
+    const meuDia = await carregarMeuDia({
+      usuarioId: barbeiro.usuarioId, papel: "BARBEIRO", nome: barbeiro.nome, barbeiroId: barbeiro.id, clienteId: null,
+    }, { data: "2026-12-04" });
+    expect.soft(meuDia.atendimentos).toMatchObject([{ id: atendimento.id, receitaCentavos: 0, comissaoCentavos: null }]);
+    expect.soft(meuDia.resumo).toMatchObject({ servicos: 1, comissaoPlanoCentavos: 0, planoPendente: false, semRegra: 0 });
     const fimDaSimulacao = Symbol("reverter regras da fixture");
     await expect(db.$transaction(async tx => {
       await tx.poteConfig.upsert({ where: { id: "pote" }, create: { id: "pote", ativo: true }, update: { ativo: true } });

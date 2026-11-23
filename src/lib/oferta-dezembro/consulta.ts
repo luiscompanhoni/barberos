@@ -12,7 +12,7 @@ import {
 export async function consultarPlanoBaseDezembro(c: Prisma.TransactionClient, planoId: string) {
   const plano = await c.plano.findFirst({
     where: {
-      id: planoId, ativo: true, compravel: true, vendaSomenteEquipe: false,
+      id: planoId, ativo: true, visivel: true, compravel: true, vendaSomenteEquipe: false,
       precoCentavos: { gt: 0 }, formasPagamento: { has: "CARTAO" },
       servicos: { some: { servico: { ativo: true } } },
     },

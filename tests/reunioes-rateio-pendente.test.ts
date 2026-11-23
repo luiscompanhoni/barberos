@@ -101,6 +101,31 @@ describe("Reuniões respeitam o rateio pendente sem revelar detalhes do RH", () 
     semDiagnosticoPrivado(r);
   });
 
+  it("reserva o rateio para atendimentos regulares e mantém a oferta na produção", async () => {
+    m.pendentes.clear();
+    m.agendamentos.mockImplementation(async ({ where }: { where: { clienteId?: unknown; inicio: { gte: Date } } }) => {
+      if (where.clienteId) return [];
+      const [plano, avulso] = agendamentos(where.inicio.gte);
+      return [plano, avulso, {
+        ...plano, id: "at-oferta", servicoId: "s-oferta", cadeiraId: "c-oferta", assinaturaId: "simulada",
+        servico: { nome: "Serviço da oferta", custoCentavos: null },
+        assinatura: { ofertaDezembro: { assinaturaId: "simulada" } },
+      }];
+    });
+    m.comissoes.mockImplementation(async () => {
+      const r = relatorio(false);
+      return { ...r, assinaturas: { ...r.assinaturas, creditosPorServico: { "s-plano": 40, "s-oferta": 40 } } };
+    });
+    const r = await dadosDoPeriodo(data, data);
+    expect(r.atual).toMatchObject({ atendimentos: 3, ocupadoMin: 60, comissaoCentavos: 5500, margemCentavos: 9200 });
+    for (const grupos of [r.servicos, r.cadeiras]) {
+      expect(grupos.find(g => g.id.endsWith("oferta"))).toMatchObject({
+        atendimentos: 1, comissaoCentavos: 0, receitaAssinaturasCentavos: 0, custosPendentes: 0, margemCentavos: 0,
+      });
+      expect(grupos.find(g => g.id.endsWith("plano"))).toMatchObject({ comissaoCentavos: 3500, receitaAssinaturasCentavos: 10000 });
+    }
+  });
+
   it("publica apenas aviso genérico no snapshot e sinaliza separadamente o período anterior", async () => {
     const atual = await montarSnapshot(data, data, "SEMANAL", dono);
     expect(atual.atual.comissaoCentavos).toBeNull();
