@@ -8,6 +8,9 @@ const TELEFONE = /(?<![\p{L}\p{N}_+./-])(?:\+?55[ .-]?)?(?:\([1-9]\d\)|[1-9]\d)[
 const CREDENCIAL = /\b(?:senhas?|passwords?|passcode|tokens?|pin|otp)\b|\bc[oó]digo\b(?:\s+(?:tempor[aá]rio|novo|secreto)\b|\s+de\s+(?:acesso|verifica[cç][aã]o|login|autentica[cç][aã]o|seguran[cç]a|confirma[cç][aã]o)\b|\s+\d{4,}|\s+é(?:\s|$)|\s*[=:])/iu;
 const CREDENCIAL_OMITIDA = "[credencial omitida]";
 const temCredencial = (texto: string) => CREDENCIAL.test(texto.normalize("NFC"));
+const normalizarTexto = (texto: string) => texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+const ASSUNTO_PESSOAL = /\b(?:me[us]s?|minhas?)\s+(?:agendamentos?|planos?|horarios?|reservas?|comandas?|compras?|assinaturas?|pagamentos?|cobrancas?|dados|cadastro|perfil|conta|beneficios?|presentes?)\b/;
+const OPERACAO_NA_CONTA = /\b(?:remarc(?:ar|a|acao|e)|cancel(?:ar|a|amento|e)|pag(?:ar|ue)|pix|boleto|cobranca|reembolso|status|segunda via|excluir conta|senha|codigo de acesso)\b/;
 
 export function telefoneDoDirect(texto: string) {
   if (temCredencial(texto)) return null;
@@ -46,14 +49,20 @@ export function textoDaEquipeNoDirect(texto: string) {
 
 export function pedidoPrivadoNoDirect(texto: string) {
   if (texto === CREDENCIAL_OMITIDA) return true;
-  const simples = texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  return /\b(?:me[us]s?|minhas?)\s+(?:agendamentos?|planos?|horarios?|reservas?|comandas?|compras?|assinaturas?|pagamentos?|cobrancas?|dados|cadastro|perfil|conta|beneficios?|presentes?)\b/.test(simples) ||
-    /\b(?:agend(?:e|a|ar)|reserv(?:e|a|ar)|remarc(?:ar|a|a[r]?cao|e)|cancel(?:ar|a|amento|e)|pag(?:ar|ue)|pix|boleto|cobranca|reembolso|status|segunda via|excluir conta|senha|codigo de acesso)\b/.test(simples);
+  const simples = normalizarTexto(texto);
+  return ASSUNTO_PESSOAL.test(simples) || OPERACAO_NA_CONTA.test(simples) || /\b(?:agend(?:e|a|ar)|reserv(?:e|a|ar))\b/.test(simples);
+}
+
+export function pedidoDeNovaReservaDirect(texto: string) {
+  const simples = normalizarTexto(texto);
+  if (ASSUNTO_PESSOAL.test(simples) || OPERACAO_NA_CONTA.test(simples) || /\b(?:reagend\w*|confirm\w*)\b/.test(simples)) return false;
+  return /\b(?:quero|queria|gostaria de|preciso|posso|consigo|como faco (?:pra|para))\s+(?:agendar|marcar|reservar)\b/.test(simples) ||
+    /^\s*(?:agende|marque|reserve)\s+(?:um|uma)\b/.test(simples);
 }
 
 export function respostaModeloExigeEquipe(texto: string) {
   if (texto.search(LINK) >= 0 || temCredencial(texto) || /\[\w+\]/u.test(texto)) return true;
-  const simples = texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const simples = normalizarTexto(texto);
   return /\b(?:agendei|agendamos|reservei|reservamos|remarquei|reagendei|cancelei|cancelamos|cobrei|paguei|estornei|reembolsei|cadastrei)\b/.test(simples) ||
     /\b(?:confirmei|confirmamos|efetuei|realizei|atualizei|alterei|ativei|troquei|conclui)\s+(?:o|a|seu|sua)\s+(?:horario|reserva|agendamento|assinatura|pagamento|cadastro|conta)\b/.test(simples) ||
     /\b(?:horario|reserva|agendamento|pagamento|assinatura)\s+(?:ja )?(?:(?:esta|foi) )?(?:confirmad[oa]|marcad[oa]|reservad[oa]|cancelad[oa]|aprovad[oa]|efetuad[oa])\b/.test(simples);

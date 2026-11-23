@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { encaminharEntradaInstagram, registrarEntradaInstagram, type EntradaRegistradaInstagram } from "@/lib/instagram/persistencia";
+import { concluirEntradaInstagram, encaminharEntradaInstagram, registrarEntradaInstagram, type EntradaRegistradaInstagram } from "@/lib/instagram/persistencia";
 import { processarEntradaInstagram } from "@/lib/instagram/processar";
 import { assinaturaInstagramValida, desafioInstagram, lerEntradasInstagram, zIdInstagram } from "@/lib/instagram/protocolo";
 
@@ -54,11 +54,13 @@ export async function POST(req: Request) {
   if (registradas.length) after(async () => {
     for (const entrada of registradas) {
       try {
-        await processarEntradaInstagram(entrada);
+        await processarEntradaInstagram(entrada).catch(async () => {
+          console.error("[instagram] Falha no atendimento; mensagem já registrada na caixa.");
+          await encaminharEntradaInstagram(entrada, "O atendimento automático do Direct falhou. A equipe pode continuar por aqui.");
+        });
+        await concluirEntradaInstagram(entrada);
       } catch {
-        console.error("[instagram] Falha no atendimento; mensagem já registrada na caixa.");
-        await encaminharEntradaInstagram(entrada, "O atendimento automático do Direct falhou. A equipe pode continuar por aqui.")
-          .catch(() => console.error("[instagram] Falha ao registrar encaminhamento à equipe."));
+        console.error("[instagram] Falha ao concluir o turno. A entrada permanece na caixa.");
       }
     }
   });

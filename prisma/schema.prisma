@@ -657,6 +657,8 @@ model Mensagem {
   texto          String
   /// id da mensagem no WhatsApp (evita processar a mesma entrada duas vezes)
   wamid          String?         @unique
+  /// Entrada do Direct registrada, aguardando conclusão do turno.
+  instagramPendenteEm DateTime?  @db.Timestamptz(3)
   erro           String?
   /// Confirmacoes do WhatsApp para o que a barbearia mandou (API oficial e Evolution; o simulador nao informa).
   entregueEm     DateTime?       @db.Timestamptz(3)

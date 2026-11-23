@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { urlSite } from "@/lib/dominios";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { dentroJanelaInstagram } from "./canal";
-import { pedidoPrivadoNoDirect, respostaModeloExigeEquipe, textoSeguroDoDirect } from "./privacidade";
+import { pedidoDeNovaReservaDirect, pedidoPrivadoNoDirect, respostaModeloExigeEquipe, textoSeguroDoDirect } from "./privacidade";
 import { encaminharEntradaInstagram, enviarRespostaInstagram, lerConversaInstagram, turnoInstagramAtual, type EntradaRegistradaInstagram } from "./persistencia";
 
 const FERRAMENTAS_PUBLICAS = new Set(["listar_servicos", "consultar_horarios", "listar_planos", "consultar_produto", "chamar_atendente"]);
@@ -21,10 +21,13 @@ Não peça telefone, senha, código de acesso, documento, cartão ou e-mail. Nã
 Se a pessoa pedir atendimento humano, use chamar_atendente. Responda em português, em texto simples e breve.`;
 const ENCAMINHAMENTO = "A equipe pode continuar o atendimento pelo Direct.";
 
-function respostaDoApp() {
+function respostaDoApp(pagina: "/c/entrar" | "/c/agendar" = "/c/entrar") {
   const site = URL.parse(urlSite());
-  const destino = site?.protocol === "https:" && !site.username && !site.password ? new URL("/c/entrar", site).href : "Acesse o site oficial da Black Barber.";
-  return `Para verificar seus dados, pagamentos ou agendamentos, entre na área do cliente com seu próprio acesso. ${destino}`;
+  const destino = site?.protocol === "https:" && !site.username && !site.password ? new URL(pagina, site).href : "Acesse o site oficial da Black Barber.";
+  const orientacao = pagina === "/c/agendar"
+    ? "Escolha o serviço e o horário pelo app da Black. Entre com seu próprio acesso quando o app pedir."
+    : "Para verificar seus dados, pagamentos ou agendamentos, entre na área do cliente com seu próprio acesso.";
+  return `${orientacao} ${destino}`;
 }
 
 export async function processarEntradaInstagram(entrada: EntradaRegistradaInstagram, opts: { modelo?: Modelo } = {}) {
@@ -35,6 +38,7 @@ export async function processarEntradaInstagram(entrada: EntradaRegistradaInstag
   const cfg = await configuracao();
   if (!cfg.botAtivo) return encaminharEntradaInstagram(entrada, ENCAMINHAMENTO);
   const responder = (texto: string, encaminhar?: string) => enviarRespostaInstagram(entrada.conversaId, texto, { autor: "BOT", entrada, encaminhar });
+  if (pedidoDeNovaReservaDirect(entrada.texto)) return responder(respostaDoApp("/c/agendar"));
   if (pedidoPrivadoNoDirect(entrada.texto)) return responder(respostaDoApp());
 
   const permiteModeloReal = process.env.INSTAGRAM_ATENDIMENTO_IA_PAGA === "true" && process.env.NODE_ENV !== "test" && !ehHomologacao() && !quarentenaRestauracao();

@@ -17,9 +17,13 @@ const ordemEntrada = [{ criadoEm: "desc" }, { id: "desc" }] as const;
 const selecionarConversa = { id: true, instagramIgsid: true, estado: true, ultimaEntradaEm: true, sessaoInicioEm: true, recusaAutomaticas: true } as const;
 
 type ConversaInstagram = Prisma.ConversaGetPayload<{ select: typeof selecionarConversa }>;
-export type EntradaRegistradaInstagram = { conversaId: string; mid: string; timestamp: number; texto: string | null };
+type TurnoInstagram = { conversaId: string; mid: string; timestamp: number };
+type IdentificadorEntrada = Pick<TurnoInstagram, "conversaId" | "mid">;
+export type EntradaRegistradaInstagram = TurnoInstagram & { texto: string | null };
 type EnvioBot = { autor: "BOT"; entrada: EntradaRegistradaInstagram; encaminhar?: string };
 type EnvioEquipe = { autor: "EQUIPE"; envioId: string; usuarioId: string };
+
+const filtroDaEntrada = (entrada: IdentificadorEntrada) => ({ conversaId: entrada.conversaId, wamid: idExterno(entrada.mid), autor: "CLIENTE" as const });
 
 export async function travarInboxInstagram(tx: Prisma.TransactionClient, igsid: string) {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`inbox-instagram:${igsid}`}, 0))`;
@@ -50,6 +54,7 @@ export async function registrarEntradaInstagram(entrada: EntradaInstagram): Prom
         ? await tx.cliente.findUnique({ where: { telefone, excluidoEm: null }, select: { id: true } }) : null;
       await tx.mensagem.create({ data: {
         conversaId: conversa.id, autor: "CLIENTE", texto: texto ?? "[Mídia do Direct. Confira no Instagram.]", wamid, criadoEm: instante,
+        instagramPendenteEm: new Date(),
       } });
       await tx.conversa.update({ where: { id: conversa.id }, data: {
         naoLidas: { increment: 1 },
@@ -76,7 +81,7 @@ export async function lerConversaInstagram(id: string, acesso: Pick<Prisma.Trans
   return conversa?.instagramIgsid ? { ...conversa, instagramIgsid: conversa.instagramIgsid } : null;
 }
 
-export async function turnoInstagramAtual(conversa: ConversaInstagram | null, entrada: EntradaRegistradaInstagram, acesso: Pick<Prisma.TransactionClient, "mensagem"> = db) {
+export async function turnoInstagramAtual(conversa: ConversaInstagram | null, entrada: TurnoInstagram, acesso: Pick<Prisma.TransactionClient, "mensagem"> = db) {
   if (!conversa || conversa.estado !== "BOT" || conversa.ultimaEntradaEm?.getTime() !== entrada.timestamp ||
     (conversa.sessaoInicioEm && +conversa.sessaoInicioEm >= entrada.timestamp)) return false;
   // Empates no relógio da Meta têm um único turno, inclusive em lotes concorrentes.
@@ -110,6 +115,27 @@ export async function encaminharEntradaInstagram(entrada: EntradaRegistradaInsta
     return true;
   });
   if (mudou) publicar({ tipo: "conversa", conversaId: entrada.conversaId });
+}
+
+export async function concluirEntradaInstagram(entrada: IdentificadorEntrada, acesso: Pick<Prisma.TransactionClient, "mensagem"> = db) {
+  await acesso.mensagem.updateMany({
+    where: { ...filtroDaEntrada(entrada), instagramPendenteEm: { not: null } },
+    data: { instagramPendenteEm: null },
+  });
+}
+
+export async function recuperarEntradaInstagramPendente(entrada: TurnoInstagram, limite: Date) {
+  const encaminhou = await comInboxInstagram(entrada.conversaId, async (tx, atual) => {
+    const pendencia = await tx.mensagem.updateMany({
+      where: { ...filtroDaEntrada(entrada), instagramPendenteEm: { lte: limite } },
+      data: { instagramPendenteEm: null },
+    });
+    if (!pendencia.count || !await turnoInstagramAtual(atual, entrada, tx)) return false;
+    await transferirParaEquipe(tx, atual.id, "O atendimento automático do Direct ficou pendente. A equipe pode continuar por aqui.");
+    return true;
+  });
+  if (encaminhou) publicar({ tipo: "conversa", conversaId: entrada.conversaId });
+  return encaminhou;
 }
 
 export function enviarRespostaEquipeInstagram(conversaId: string, texto: string, usuarioId: string, envioId = crypto.randomUUID()) {
@@ -189,6 +215,7 @@ export async function enviarRespostaInstagram(conversaId: string, texto: string,
     } else {
       await tx.conversa.update({ where: { id: conversaId }, data: { atualizadoEm: new Date() } });
     }
+    if (envio.autor === "BOT") await concluirEntradaInstagram(envio.entrada, tx);
     return erroParte;
   });
   publicar({ tipo: "conversa", conversaId });

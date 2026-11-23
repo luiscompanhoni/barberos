@@ -2,8 +2,9 @@ import { randomInt, randomUUID } from "node:crypto";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import type { Modelo } from "@/lib/bot/agente";
-import { enviarRespostaEquipeInstagram, registrarEntradaInstagram } from "@/lib/instagram/persistencia";
+import { concluirEntradaInstagram, enviarRespostaEquipeInstagram, registrarEntradaInstagram } from "@/lib/instagram/persistencia";
 import { processarEntradaInstagram } from "@/lib/instagram/processar";
+import { recuperarEntradasInstagramPendentes } from "@/lib/instagram/recuperacao";
 import { excluirConta, exportarDados } from "@/lib/lgpd/titular";
 import { obterConversa } from "@/lib/whatsapp/conversas";
 import { GET as detalhes } from "@/app/api/conversas/[id]/route";
@@ -25,7 +26,7 @@ const igsid = () => `271${randomInt(100_000_000, 999_999_999)}`;
 const mensagem = (id: string, texto: string, timestamp = Date.now()) => ({ igsid: id, mid: randomUUID(), texto, timestamp });
 
 describe.skipIf(!habilitado)("conversas do Instagram Direct no banco", () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
   afterAll(() => db.$disconnect());
 
   it("deduplica o mesmo MID em requisições concorrentes e preserva a janela mais recente", async () => {
@@ -40,6 +41,50 @@ describe.skipIf(!habilitado)("conversas do Instagram Direct no banco", () => {
     expect(conversa.naoLidas).toBe(2);
     expect(+conversa.ultimaEntradaEm!).toBe(agora - 1_000);
     expect(conversa.mensagens.map(m => m.wamid)).toContain(`instagram:${entrada.mid}`);
+  });
+
+  it("encaminha uma entrada abandonada após cinco minutos uma única vez e sem resposta", async () => {
+    const agora = new Date();
+    const e = mensagem(igsid(), "Quero saber o preço de um corte", +agora - 9 * 60_000);
+    const entrada = (await registrarEntradaInstagram(e))!;
+    const where = { wamid: `instagram:${e.mid}` };
+    const antes = await db.mensagem.findUniqueOrThrow({ where });
+    expect(+antes.instagramPendenteEm!).toBeGreaterThanOrEqual(+agora);
+    expect(await registrarEntradaInstagram(e)).toBeNull();
+    expect(await db.mensagem.findUnique({ where })).toMatchObject({ instagramPendenteEm: antes.instagramPendenteEm });
+
+    const rede = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", rede);
+    await recuperarEntradasInstagramPendentes(agora);
+    expect(await db.conversa.findUnique({ where: { id: entrada.conversaId } })).toMatchObject({ estado: "BOT" });
+    await db.mensagem.update({ where, data: { instagramPendenteEm: new Date(+agora - 5 * 60_000) } });
+    await Promise.all([recuperarEntradasInstagramPendentes(agora), recuperarEntradasInstagramPendentes(agora)]);
+    await recuperarEntradasInstagramPendentes(agora);
+    expect(await registrarEntradaInstagram(e)).toBeNull();
+    const c = await db.conversa.findUniqueOrThrow({ where: { id: entrada.conversaId }, include: { mensagens: true } });
+    expect(c.estado).toBe("HUMANO");
+    expect(c.mensagens.map(m => m.autor).sort()).toEqual(["CLIENTE", "NOTA"]);
+    expect(c.mensagens.find(m => m.autor === "NOTA")?.texto).toContain("A equipe");
+    expect(c.mensagens.find(m => m.autor === "CLIENTE")?.instagramPendenteEm).toBeNull();
+    expect(rede).not.toHaveBeenCalled();
+  });
+
+  it("limpa por MID e deixa o turno mais recente sob controle do bot", async () => {
+    const id = igsid();
+    const agora = new Date();
+    const velha = (await registrarEntradaInstagram(mensagem(id, "primeira", +agora - 2_000)))!;
+    const pendente = (await registrarEntradaInstagram(mensagem(id, "segunda", +agora - 1_000)))!;
+    const recente = (await registrarEntradaInstagram(mensagem(id, "terceira", +agora)))!;
+    await concluirEntradaInstagram(velha);
+    const where = (mid: string) => ({ wamid: `instagram:${mid}` });
+    expect(await db.mensagem.findUnique({ where: where(recente.mid) })).toMatchObject({ instagramPendenteEm: expect.any(Date) });
+    await db.mensagem.update({ where: where(pendente.mid), data: { instagramPendenteEm: new Date(+agora - 6 * 60_000) } });
+    await recuperarEntradasInstagramPendentes(agora);
+    expect(await db.mensagem.findUnique({ where: where(velha.mid) })).toMatchObject({ instagramPendenteEm: null });
+    expect(await db.mensagem.findUnique({ where: where(pendente.mid) })).toMatchObject({ instagramPendenteEm: null });
+    expect(await db.mensagem.findUnique({ where: where(recente.mid) })).toMatchObject({ instagramPendenteEm: expect.any(Date) });
+    expect(await db.conversa.findUnique({ where: { id: recente.conversaId } })).toMatchObject({ estado: "BOT" });
+    await concluirEntradaInstagram(recente);
   });
 
   it("vincula só ao CRM, conserva WhatsApp e redireciona dados privados ao login sem modelo", async () => {
@@ -60,6 +105,7 @@ describe.skipIf(!habilitado)("conversas do Instagram Direct no banco", () => {
     expect(conversa.mensagens).toEqual(expect.arrayContaining([
       expect.objectContaining({ autor: "BOT", texto: expect.stringContaining("https://barbearia.exemplo.test/c/entrar"), wamid: null }),
     ]));
+    expect(conversa.mensagens.find(m => m.autor === "CLIENTE")?.instagramPendenteEm).toBeNull();
     expect(conversa.mensagens.map(m => m.texto).join(" ")).not.toContain(telefone);
     expect(conversa.mensagens.map(m => m.texto).join(" ")).not.toContain(cliente.nome);
     expect(criar).not.toHaveBeenCalled();
@@ -105,6 +151,20 @@ describe.skipIf(!habilitado)("conversas do Instagram Direct no banco", () => {
     await processarEntradaInstagram(entrada, { modelo: { criar } });
     const mensagens = await db.mensagem.findMany({ where: { conversaId: entrada.conversaId }, orderBy: { criadoEm: "asc" } });
     expect(mensagens.map(m => m.texto)).toEqual(["[credencial omitida]", expect.stringContaining("https://barbearia.exemplo.test/c/entrar")]);
+    expect(criar).not.toHaveBeenCalled();
+  });
+
+  it("orienta uma nova reserva pelo caminho oficial da agenda sem chamar o modelo ou reservar", async () => {
+    vi.stubEnv("SITE_URL", "https://barbearia.exemplo.test");
+    vi.stubEnv("INSTAGRAM_ENVIOS_BLOQUEADOS", "true");
+    await db.configuracao.upsert({ where: { id: 1 }, create: { id: 1, botAtivo: true }, update: { botAtivo: true } });
+    const criar = vi.fn<Modelo["criar"]>();
+    const entrada = (await registrarEntradaInstagram(mensagem(igsid(), "Quero agendar um corte")))!;
+    await processarEntradaInstagram(entrada, { modelo: { criar } });
+    const respostas = await db.mensagem.findMany({ where: { conversaId: entrada.conversaId, autor: "BOT" } });
+    expect(respostas).toHaveLength(1);
+    expect(respostas[0].texto).toContain("https://barbearia.exemplo.test/c/agendar");
+    expect(respostas[0].texto).not.toContain("/c/entrar");
     expect(criar).not.toHaveBeenCalled();
   });
 

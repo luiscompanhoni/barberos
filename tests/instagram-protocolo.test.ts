@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assinaturaInstagramValida, desafioInstagram, lerEntradasInstagram } from "@/lib/instagram/protocolo";
 import { dentroJanelaInstagram, enviarTextoInstagram, partesInstagram } from "@/lib/instagram/canal";
-import { pedidoPrivadoNoDirect, respostaModeloExigeEquipe, telefoneDoDirect, textoDaEquipeNoDirect, textoSeguroDoDirect } from "@/lib/instagram/privacidade";
+import { pedidoDeNovaReservaDirect, pedidoPrivadoNoDirect, respostaModeloExigeEquipe, telefoneDoDirect, textoDaEquipeNoDirect, textoSeguroDoDirect } from "@/lib/instagram/privacidade";
 
 const perfil = "17841400000001";
 const igsid = "1234567887654321";
@@ -148,5 +148,13 @@ describe("privacidade do Direct", () => {
       expect(respostaModeloExigeEquipe(resposta)).toBe(true);
     }
     expect(respostaModeloExigeEquipe("O corte custa R$ 60,00. Posso consultar a disponibilidade.")).toBe(false);
+  });
+
+  it("distingue uma nova reserva do pedido que envolve uma conta ou horário existente", () => {
+    expect(pedidoDeNovaReservaDirect("Quero agendar um corte")).toBe(true);
+    expect(pedidoDeNovaReservaDirect("Gostaria de marcar barba e cabelo.")).toBe(true);
+    expect(pedidoDeNovaReservaDirect("Quero agendar novamente meu horário")).toBe(false);
+    expect(pedidoDeNovaReservaDirect("Quero remarcar meu corte")).toBe(false);
+    expect(pedidoDeNovaReservaDirect("Quanto custa o corte?")).toBe(false);
   });
 });

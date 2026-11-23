@@ -27,6 +27,7 @@ export async function register() {
   (await import("@/lib/assinaturas/rotina")).agendarRotina();
   // Lembretes, pos-falta, pos-atendimento e reativacao (a cada 5 min).
   (await import("@/lib/automacoes/rotina")).agendarAutomacoes();
+  (await import("@/lib/instagram/recuperacao")).iniciarRecuperacaoInstagram();
   if (process.env.NODE_ENV !== "production") return;
 
   const faltando = ["DATABASE_URL", "SESSION_SECRET"].filter((k) => !process.env[k]);
