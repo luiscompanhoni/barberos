@@ -9,7 +9,7 @@ import signal
 import time
 from pathlib import Path
 
-from deploy_vps_comum import (CONTROLES_PUBLICACAO, aguardar_saude, ambiente_container, arquivo_ambiente, backup_verificado,
+from deploy_vps_comum import (COMANDO_MIGRACAO, CONTROLES_PUBLICACAO, aguardar_saude, ambiente_container, arquivo_ambiente, backup_verificado,
     conferir_https, conferir_migracoes, conferir_pacote, conferir_central_desligada, consultar_banco, container, ensaiar_schema,
     escrever_privado, executar, exigir_agenda_equipe, exigir_contrato_pix_imagem, exigir_migracoes_da_publicacao, migracoes)
 from protecao_operacao import (MARCADOR, ambiente_rollback, conferir_capacidade, exigir_banco_isolavel,
@@ -166,7 +166,7 @@ def publicar(base, projeto, commit, imagem_esperada):
             # Depois deste ponto não se declara rollback funcional baseado só em leitura.
             migracao_iniciada = True
             registrar_quarentena(base, {"revisao": commit, "etapa": "migracao_iniciada", "migracoes": pendentes})
-            executar([*compose, "run", "--rm", "--no-deps", "app", "prisma", "migrate", "deploy"], prazo=180)
+            executar([*compose, "run", "--rm", "--no-deps", "app", *COMANDO_MIGRACAO], prazo=180)
         if conferir_migracoes(migracoes(banco["Id"]), codigo / "prisma/migrations"):
             raise RuntimeError("Migrações não concluídas.")
         etapa("troca_aplicacao")
