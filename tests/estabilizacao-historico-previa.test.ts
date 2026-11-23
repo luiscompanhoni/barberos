@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/db", () => ({ db: {} }));
-import { apresentarPrevia } from "@/lib/conciliacao/historico/consulta";
+import { apresentarPrevia, contextoHistorico } from "@/lib/conciliacao/historico/consulta";
 import type { EscolhaHistorico } from "@/lib/conciliacao/historico/schemas";
 
 const p: EscolhaHistorico = { transacaoId: "91001", assinaturaId: "ass", operacao: "IMPORTAR", motivo: "Evidência sintética conferida", identidadeConfirmada: false };
@@ -15,6 +15,14 @@ function contexto() {
 }
 
 describe("prévia comunica a situação real da receita histórica", () => {
+  it("exclui a assinatura simulada da seleção por ID antes de avaliar recebimentos", async () => {
+    const findUnique = vi.fn().mockResolvedValue(null);
+    const tx = { assinatura: { findUnique } } as unknown as Parameters<typeof contextoHistorico>[0];
+    await expect(contextoHistorico(tx, contexto().fonte, "simulada")).rejects.toMatchObject({ status: 404 });
+    expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "simulada", ofertaDezembro: { is: null } },
+    }));
+  });
   it("bloqueia inclusão sem data efetiva antes do botão aplicar", () => {
     const r = apresentarPrevia(p, contexto());
     expect(r.podeAplicar).toBe(false); expect(r.bloqueios).toContainEqual(expect.stringContaining("Recebimento pendente"));

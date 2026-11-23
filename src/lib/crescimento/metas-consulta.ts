@@ -32,7 +32,7 @@ export async function consultarBaseMetas(agora = new Date()) {
   try {
     dados = await Promise.all([
       db.configuracao.findUnique({ where: { id: 1 }, select: { fuso: true } }),
-      db.assinatura.findMany({ where: { status: { not: "CANCELADA" } }, take: 10_001,
+      db.assinatura.findMany({ where: { status: { not: "CANCELADA" }, ofertaDezembro: { is: null } }, take: 10_001,
         select: { id: true, clienteId: true, planoId: true, status: true, precoCentavos: true, cicloInicio: true,
           proximoVencimento: true, ativadaEm: true, criadaEm: true, encerraEm: true, pausadaEm: true, operacaoInicial: true,
           plano: { select: { nome: true } }, cobrancas: { where: { status: "PAGA", pagaEm: { not: null }, vinculosExternos: { none: {} } },

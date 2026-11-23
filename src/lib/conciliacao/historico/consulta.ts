@@ -19,7 +19,7 @@ const cobrancaComProvaSelect = {
 const clienteSelect = { id: true, nome: true, telefone: true, cpf: true } as const;
 
 export async function contextoHistorico(tx: Prisma.TransactionClient, fonte: TransacaoHistorica, assinaturaId: string) {
-  const assinatura = await tx.assinatura.findUnique({ where: { id: assinaturaId }, select: {
+  const assinatura = await tx.assinatura.findUnique({ where: { id: assinaturaId, ofertaDezembro: { is: null } }, select: {
     id: true, clienteId: true, status: true, gatewayId: true, cliente: { select: clienteSelect },
   } });
   if (!assinatura) throw naoEncontrado("Assinatura");
@@ -114,7 +114,7 @@ export async function consultarHistorico(id: string, clienteId?: string) {
     ...(clienteId ? [{ id: clienteId }] : []),
   ] }, select: clienteSelect, take: 20, orderBy: { id: "asc" } });
   const [assinaturas, movimentos, vinculo] = await Promise.all([
-    db.assinatura.findMany({ where: { clienteId: { in: candidatos.map((x) => x.id) } }, orderBy: { criadaEm: "desc" }, select: {
+    db.assinatura.findMany({ where: { clienteId: { in: candidatos.map((x) => x.id) }, ofertaDezembro: { is: null } }, orderBy: { criadaEm: "desc" }, select: {
       id: true, clienteId: true, status: true, plano: { select: { nome: true } }, gatewayId: true,
       cobrancas: { orderBy: { vencimento: "desc" }, select: cobrancaSelect },
     } }),

@@ -19,6 +19,7 @@ import { adesaoLeonelDisponivel, linkDeAdesaoLeonel } from "@/lib/assinaturas/ad
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
 const dataBr = (d: Date | null) => (d ? d.toISOString().slice(0, 10).split("-").reverse().join("/") : null);
+const orientarOfertaDezembro = () => `Dezembro Grátis está em homologação. Consulte o contrato e as datas simuladas em ${urlSite()}/c/dezembro-gratis.`;
 const CONFERIR_CASHBARBER = {
   cobranca_externa: true,
   em_conferencia: true,
@@ -185,6 +186,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
       const sit = c && !c.excluidoEm ? await situacaoDoCliente(c.id) : null;
       if (!sit) return { texto: "Não encontrei um plano em andamento no BarberOS. Se o titular relata ter plano no sistema antigo, peça à equipe para conferir o vínculo no CashBarber antes de orientar pagamento ou adesão." };
       const a = sit.assinatura;
+      if (a.ofertaDezembro) return { texto: orientarOfertaDezembro() };
       if (ehCashbarber(a.gatewayId)) {
         return { texto: JSON.stringify({
           plano: a.plano.nome,
@@ -218,6 +220,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
       const sit = c && !c.excluidoEm ? await situacaoDoCliente(c.id) : null;
       if (!sit || !c) return { texto: JSON.stringify({ assinatura_local: false, orientar: "Se a pessoa já paga um plano, confira o vínculo na equipe. Se quer contratar, apresente os planos atuais e ofereça o checkout depois da escolha." }) };
       const a = sit.assinatura;
+      if (a.ofertaDezembro) return { texto: orientarOfertaDezembro(), erro: true };
       if (ehCashbarber(a.gatewayId)) return { texto: JSON.stringify(CONFERIR_CASHBARBER), erro: true };
       const aberta = sit.cobrancaEmAberto;
       const pagamento = aberta && (!e.forma || aberta.forma === e.forma)
