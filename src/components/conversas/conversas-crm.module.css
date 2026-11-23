@@ -10,5 +10,9 @@
 .telefone { min-width: 0; border-radius: 24px; }
 .balao[data-simulador][data-autor="CLIENTE"] { background: rgb(198 245 102 / 11%); border-color: rgb(198 245 102 / 24%); }
 @keyframes mensagem { from { opacity: .45; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-@media (max-width: 767px) { .grade { height: max(400px, calc(100dvh - 210px)); } .balao { max-width: 92%; } }
+@media (max-width: 1023px) {
+  /* Reserva espaço para o menu móvel fixo e a área segura. */
+  .grade { height: max(300px, calc(100dvh - 272px - env(safe-area-inset-bottom))); }
+}
+@media (max-width: 767px) { .balao { max-width: 92%; } }
 @media (prefers-reduced-motion: reduce) { .balao { animation: none; } .contato { transition: none; } }
