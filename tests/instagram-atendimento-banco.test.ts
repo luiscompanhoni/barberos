@@ -60,7 +60,7 @@ describe.skipIf(!habilitado)("conversas do Instagram Direct no banco", () => {
     ] }] });
     const assinatura = `sha256=${createHmac("sha256", segredoFicticio).update(corpo).digest("hex")}`;
     const requisicao = () => new Request("https://painel.exemplo.test/api/instagram/webhook", {
-      method: "POST", body: corpo, headers: { "x-hub-signature-256": assinatura },
+      method: "POST", body: corpo, headers: { "content-type": "application/json", "x-hub-signature-256": assinatura },
     });
 
     depoisDaResposta.mockClear();
