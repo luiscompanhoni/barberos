@@ -80,15 +80,16 @@ export async function resumoDoMes() {
     });
     return { centavos: r._sum.precoCentavos ?? 0, atendimentos: r._count };
   };
+  const semOfertaSimulada = { ofertaDezembro: { is: null } } as const;
   const [atual, anterior, novos, faltas, ativas, mrr, vendidas, canceladas] = await Promise.all([
     soma(inicioMes, fimHoje),
     soma(inicioPassado, fimPassado),
     db.cliente.count({ where: { criadoEm: { gte: new Date(inicioMes) } } }),
     db.agendamento.count({ where: { status: "FALTOU", inicio: { gte: new Date(inicioMes), lt: new Date(fimHoje) } } }),
-    db.assinatura.count({ where: { status: { in: ["ATIVA", "ATRASADA"] } } }),
-    db.assinatura.aggregate({ where: { status: { in: ["ATIVA", "ATRASADA"] }, ultimoPagamentoManualEm: null }, _sum: { precoCentavos: true } }),
-    db.assinatura.count({ where: { ativadaEm: { gte: new Date(inicioMes) }, ultimoPagamentoManualEm: null } }),
-    db.assinatura.count({ where: { canceladaEm: { gte: new Date(inicioMes) }, ativadaEm: { not: null }, ultimoPagamentoManualEm: null } }),
+    db.assinatura.count({ where: { ...semOfertaSimulada, status: { in: ["ATIVA", "ATRASADA"] } } }),
+    db.assinatura.aggregate({ where: { ...semOfertaSimulada, status: { in: ["ATIVA", "ATRASADA"] }, ultimoPagamentoManualEm: null }, _sum: { precoCentavos: true } }),
+    db.assinatura.count({ where: { ...semOfertaSimulada, ativadaEm: { gte: new Date(inicioMes) }, ultimoPagamentoManualEm: null } }),
+    db.assinatura.count({ where: { ...semOfertaSimulada, canceladaEm: { gte: new Date(inicioMes) }, ativadaEm: { not: null }, ultimoPagamentoManualEm: null } }),
   ]);
   return {
     atual, anterior, clientesNovos: novos, faltas,
@@ -116,7 +117,10 @@ export async function pendencias() {
       where: { estado: "HUMANO" },
       orderBy: { atualizadoEm: "desc" },
       take: 10,
-      select: { id: true, telefone: true, nomePerfil: true, naoLidas: true, atualizadoEm: true, cliente: { select: { nome: true } } },
+      select: {
+        id: true, telefone: true, nomePerfil: true, naoLidas: true, atualizadoEm: true, instagramIgsid: true,
+        cliente: { select: { nome: true } }, instagramCliente: { select: { nome: true } },
+      },
     }),
     db.barbeiro.findMany({ where: { ativo: true }, select: { id: true, nome: true } }),
     // Ultima visita concluida de cada cliente.
@@ -170,7 +174,12 @@ export async function pendencias() {
 
   return {
     semBaixa,
-    conversas,
+    conversas: conversas.map(({ instagramIgsid, instagramCliente, ...c }) => ({
+      ...c,
+      telefone: instagramIgsid ? null : c.telefone,
+      cliente: instagramIgsid ? instagramCliente : c.cliente,
+      canal: instagramIgsid ? "Instagram" as const : "WhatsApp" as const,
+    })),
     foraDoExpediente: foraDoExpediente.map((a) => ({
       id: a.id, inicio: a.inicio, barbeiroNome: a.barbeiroNome, cliente: a.cliente, servico: a.servico,
     })),

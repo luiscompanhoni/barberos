@@ -31,7 +31,7 @@ type Painel = {
   } | null;
   pendencias: {
     semBaixa: { id: string; inicio: string; cliente: { nome: string }; barbeiro: { nome: string }; servico: { nome: string } }[];
-    conversas: { id: string; telefone: string; nomePerfil: string | null; naoLidas: number; cliente: { nome: string } | null }[];
+    conversas: { id: string; telefone: string | null; nomePerfil: string | null; naoLidas: number; cliente: { nome: string } | null; canal: "WhatsApp" | "Instagram" }[];
     foraDoExpediente: { id: string; inicio: string; barbeiroNome: string; cliente: { nome: string; telefone: string }; servico: { nome: string } }[];
     sumidos: { id: string; nome: string; telefone: string; ultimaVisita: string }[];
     faltosos: { id: string; nome: string; telefone: string; faltas: number }[];
@@ -177,10 +177,11 @@ export function PainelTela({ nome, estudioHabilitado = false }: { nome: string; 
         )}
 
         {pe.conversas.length > 0 && (
-          <Bloco titulo="Clientes esperando resposta no WhatsApp" qtd={pe.conversas.length} acao={<Link className="text-sm underline" href="/conversas">abrir conversas</Link>}>
+          <Bloco titulo="Conversas para a equipe" qtd={pe.conversas.length} acao={<Link className="text-sm underline" href="/conversas">abrir conversas</Link>}>
             {pe.conversas.map((c) => (
               <li key={c.id} className="flex items-center gap-2">
-                <span>{c.cliente?.nome || c.nomePerfil || formatarTelefone(c.telefone)}</span>
+                <span>{c.cliente?.nome || c.nomePerfil || (c.telefone ? formatarTelefone(c.telefone) : "Contato do Direct")}</span>
+                <span className="text-xs text-zinc-500">{c.canal}{c.canal === "Instagram" && c.cliente ? " · vínculo não verificado" : ""}</span>
                 {c.naoLidas > 0 && <span className="rounded-full bg-emerald-600 px-1.5 text-[11px] text-white">{c.naoLidas}</span>}
               </li>
             ))}
