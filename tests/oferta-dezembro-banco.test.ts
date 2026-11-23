@@ -1,8 +1,13 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { criarAgendamento } from "@/lib/agenda/agendamentos";
-import { assinar, cancelar } from "@/lib/assinaturas/servico";
+import { precificar } from "@/lib/assinaturas/agenda";
+import { assinar, cancelar, situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { db } from "@/lib/db";
+import { indicadoresDeAssinaturas } from "@/lib/indicadores/assinaturas-bar";
+import { resolverPeriodo } from "@/lib/indicadores/periodo";
+import { consultarContratoDezembro, consultarOfertaPublicaDezembro, consultarPainelDezembro } from "@/lib/oferta-dezembro/consulta";
+import { relatorioComissoes } from "@/lib/rh/comissoes";
 import { encerrarOfertasDezembroAgendadas, solicitarCancelamentoDezembro } from "@/lib/oferta-dezembro/cancelamento";
 import { aderirOfertaDezembro } from "@/lib/oferta-dezembro/servico";
 import { TERMO_DEZEMBRO } from "@/lib/oferta-dezembro/regras";
@@ -43,6 +48,16 @@ async function plano({ vagasPlano = 4, vagasCampanha = 4 } = {}) {
   vi.stubEnv("OFERTA_DEZEMBRO_PLANO_ID", p.id);
   vi.stubEnv("OFERTA_DEZEMBRO_VAGAS", String(existentes + vagasCampanha));
   return { ...p, servicos, existentes };
+}
+
+async function profissional(servicos: { id: string }[]) {
+  return db.barbeiro.create({
+    data: {
+      nome: "Barbeiro fictício", usuario: { create: { nome: "Barbeiro fictício", papel: "BARBEIRO", telefone: telefone() } },
+      servicos: { create: servicos.map(({ id }) => ({ servicoId: id })) },
+      expediente: { create: { diaSemana: 5, inicioMin: 9 * 60, fimMin: 20 * 60 } },
+    },
+  });
 }
 
 const proposta = (planoId: string) => ({
@@ -152,13 +167,7 @@ describe.skipIf(!habilitado)("oferta de dezembro com PostgreSQL", () => {
     const p = await plano();
     const t = await titular();
     const { assinaturaId } = await aderirOfertaDezembro(t, proposta(p.id), agora);
-    const barbeiro = await db.barbeiro.create({
-      data: {
-        nome: "Barbeiro fictício", usuario: { create: { nome: "Barbeiro fictício", papel: "BARBEIRO", telefone: telefone() } },
-        servicos: { create: p.servicos.map(({ id }) => ({ servicoId: id })) },
-        expediente: { create: { diaSemana: 5, inicioMin: 9 * 60, fimMin: 20 * 60 } },
-      },
-    });
+    const barbeiro = await profissional(p.servicos);
     const entrada = {
       cliente: { id: t.clienteId }, titular: t, barbeiroId: barbeiro.id, servicoId: p.servicos[0].id,
       servicosAdicionais: [p.servicos[1].id], inicio: new Date("2026-12-04T15:00:00-03:00"), origem: "SITE" as const,
@@ -173,6 +182,66 @@ describe.skipIf(!habilitado)("oferta de dezembro com PostgreSQL", () => {
     await expect(solicitarCancelamentoDezembro(t, "agora", agora)).resolves.toMatchObject({ status: "CANCELADA", multaSimuladaCentavos: 0 });
     expect(await db.agendamento.findUniqueOrThrow({ where: { id: principal.id } })).toMatchObject({ precoCentavos: 4500, assinaturaId: null });
     expect(await db.ofertaDezembroAdesao.count()).toBe(p.existentes + 1);
+  });
+
+  it("fecha novas vendas e preserva os contratos da homologação com a chave desligada", async () => {
+    const p = await plano();
+    const [t, outro] = await Promise.all([titular(), titular()]);
+    const propostaAceita = proposta(p.id);
+    const { assinaturaId } = await aderirOfertaDezembro(t, propostaAceita, agora);
+    const barbeiro = await profissional(p.servicos);
+    const inicio = new Date("2026-12-04T15:00:00-03:00");
+    const entrada = {
+      clienteId: t.clienteId, servicoId: p.servicos[0].id, barbeiroId: barbeiro.id,
+      inicio: +inicio, precoBase: 4500, fuso: "America/Sao_Paulo",
+    };
+    vi.setSystemTime(inicio);
+    vi.stubEnv("OFERTA_DEZEMBRO_MODO", "");
+    expect(await consultarOfertaPublicaDezembro(inicio)).toBeNull();
+    await expect(aderirOfertaDezembro(outro, proposta(p.id), inicio)).rejects.toMatchObject({ codigo: "oferta_indisponivel" });
+    await expect(aderirOfertaDezembro(t, propostaAceita, inicio)).resolves.toEqual({ assinaturaId, repetida: true });
+    expect(await consultarContratoDezembro(t.clienteId, inicio)).toMatchObject({ status: "ATIVA" });
+    expect(await consultarPainelDezembro()).toMatchObject({ usadas: p.existentes + 1, recebendoAdesoes: false });
+    expect(await situacaoDoCliente(t.clienteId)).toMatchObject({ valida: true });
+    expect(await precificar(entrada)).toMatchObject({ assinaturaId, precoCentavos: 0 });
+
+    await expect(solicitarCancelamentoDezembro({ ...outro, clienteId: t.clienteId }, "agora", inicio)).rejects.toMatchObject({ codigo: "sessao_invalida" });
+    await expect(solicitarCancelamentoDezembro(t, "fim_fidelidade", inicio)).resolves.toMatchObject({ multaSimuladaCentavos: 0 });
+    const fim = new Date("2027-07-01T03:00:00Z");
+    vi.stubEnv("AMBIENTE", "producao");
+    expect(await consultarContratoDezembro(t.clienteId, inicio)).toBeNull();
+    expect(await precificar(entrada)).toMatchObject({ assinaturaId: null, precoCentavos: 4500 });
+    await expect(solicitarCancelamentoDezembro(t, "agora", inicio)).rejects.toMatchObject({ status: 404 });
+    expect(await encerrarOfertasDezembroAgendadas(fim)).toBe(0);
+    vi.stubEnv("AMBIENTE", "homologacao");
+    await encerrarOfertasDezembroAgendadas(fim);
+    expect(await consultarContratoDezembro(t.clienteId, fim)).toMatchObject({ status: "CANCELADA" });
+  });
+
+  it("exclui contrato e atendimento simulados dos indicadores reais e dos créditos de comissão", async () => {
+    const p = await plano();
+    const t = await titular();
+    const barbeiro = await profissional(p.servicos);
+    const inicio = new Date("2026-12-04T15:00:00-03:00");
+    const periodo = resolverPeriodo("mes", "America/Sao_Paulo", +inicio);
+    const antes = await indicadoresDeAssinaturas(periodo);
+    const { assinaturaId } = await aderirOfertaDezembro(t, proposta(p.id), agora);
+    await db.agendamento.create({
+      data: {
+        assinaturaId, barbeiroId: barbeiro.id, clienteId: t.clienteId, servicoId: p.servicos[0].id, inicio,
+        fim: new Date(+inicio + 20 * 60_000), origem: "SITE", precoCentavos: 0, status: "CONCLUIDO",
+      },
+    });
+    expect.soft(await indicadoresDeAssinaturas(periodo)).toEqual(antes);
+    const fimDaSimulacao = Symbol("reverter regras da fixture");
+    await expect(db.$transaction(async tx => {
+      await tx.poteConfig.upsert({ where: { id: "pote" }, create: { id: "pote", ativo: true }, update: { ativo: true } });
+      await tx.poteFicha.create({ data: { servicoId: p.servicos[0].id, fichas: 42 } });
+      const relatorio = await relatorioComissoes("2026-12-04", "2026-12-04", barbeiro.id, tx);
+      expect(relatorio.assinaturas?.creditosTotal).toBe(0);
+      expect(relatorio.barbeiros).toEqual([]);
+      throw fimDaSimulacao;
+    })).rejects.toBe(fimDaSimulacao);
   });
 
   it("mantém a opção ao fim da fidelidade e encerra apenas no dia combinado", async () => {

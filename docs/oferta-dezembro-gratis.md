@@ -16,6 +16,8 @@ Use um banco de testes local com as migrações aplicadas. Faça backup antes de
 
 Vagas e usos ficam sem valor padrão. A adesão do cliente respeita os planos de venda exclusiva da equipe, que ficam fora da oferta. O teto do plano-base também vale. A adesão precisa caber nos dois limites, sob travas transacionais compartilhadas com a venda regular. Em homologação, todas as pendências do plano-base ocupam vaga enquanto o link puder ser pago, inclusive as de mais de três dias. Uma vaga da campanha é consumida por adesão confirmada e permanece ocupada depois de cancelar. A oferta guarda o preço e o limite individual aceitos. Os serviços, profissionais, dias e limites operacionais são os do plano-base.
 
+Desligar `OFERTA_DEZEMBRO_MODO` suspende novas adesões. Em homologação, os contratos anteriores continuam disponíveis para consulta, uso nas datas previstas e cancelamento. A recepção consulta pelo painel e o titular solicita o cancelamento na própria conta.
+
 A adesão abre em 22/11/2026 e encerra em 01/01/2027, às 00h, em America/Sao_Paulo. Entra quem tem cadastro ativo e nenhuma assinatura em andamento. Pendente, ativa, atrasada e pausada impedem adesão. Também impedem a adesão um cancelamento nos últimos 90 dias e adesão anterior à mesma campanha. O prazo de 90 dias considera a hora do cancelamento. Contrato histórico cancelado sem data precisa ter sido criado há mais de 90 dias para seguir.
 
 ## Uso e recorrência
@@ -39,5 +41,6 @@ Os testes de regras e precificação rodam com `npm test`. Para executar os test
 
 - Definir o plano, o limite de vagas e o limite de usos, considerando a capacidade da agenda e o custo dos atendimentos.
 - Habilitar credenciais de sandbox da Pagar.me e validar a criação de assinatura com cartão tokenizado e `start_at` futuro. Confirmar no provedor o primeiro débito em 01/01/2027, a ausência de cobrança em dezembro, as seis competências, as falhas de cobrança e o encerramento. A Pagar.me é o caminho das novas recorrências em cartão, Celcash mantém o legado e Stone POS atende cobranças presenciais. [Pagar.me — Criar assinatura avulsa](https://docs.pagar.me/reference/criar-assinatura-avulsa)
+- Definir o custo e o repasse aos profissionais durante o período grátis. Os atendimentos de homologação ficam fora dos indicadores de assinaturas reais e da apuração de comissão.
 - Implementar a integração real após validar o sandbox, com idempotência no provedor, confirmação de pagamentos, conciliação e separação dos contratos de homologação.
 - Revisar juridicamente o termo, o direito de arrependimento, a metodologia de proporcionalidade, a base de cálculo e o processo de cancelamento eletrônico antes de aprovar multa ou cobrança. [Código de Defesa do Consumidor, arts. 49 e 51](https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm)

@@ -140,7 +140,10 @@ export async function relatorioComissoes(inicio: string, fim: string, barbeiroId
   const janela = { gte: new Date(instanteLocal(inicio, 0, fuso)), lt: new Date(instanteLocal(somarDias(fim, 1), 0, fuso)) };
   const [ags, regras, barbeiros, extras, adicionais, recebido, estornos, itens] = await Promise.all([
     c.agendamento.findMany({
-      where: { status: "CONCLUIDO", inicio: janela },
+      where: {
+        status: "CONCLUIDO", inicio: janela,
+        OR: [{ assinaturaId: null }, { assinatura: { is: { ofertaDezembro: { is: null } } } }],
+      },
       orderBy: { inicio: "asc" },
       select: {
         id: true, inicio: true, barbeiroId: true, servicoId: true, precoCentavos: true, assinaturaId: true,

@@ -6,18 +6,22 @@ import { recebimentosMensalidades } from "@/lib/financeiro/recebimentos";
 import { churnMensal, ltv } from "./calculos";
 import type { Periodo } from "./periodo";
 
+const assinaturaRegular = { ofertaDezembro: { is: null } };
 const intervalo = (de: number, ate: number) => ({ gte: new Date(de), lt: new Date(ate) });
 
 export async function indicadoresDeAssinaturas(p: Periodo) {
   const dias = (p.ate - p.de) / 86_400_000;
   const [ativas, atrasadas, novas, canceladas, ativasNoInicio, recebido, usos, planos] = await Promise.all([
-    db.assinatura.findMany({ where: { status: { in: ["ATIVA", "ATRASADA"] } }, select: { id: true, precoCentavos: true, planoId: true, ultimoPagamentoManualEm: true } }),
-    db.assinatura.count({ where: { status: "ATRASADA" } }),
-    db.assinatura.count({ where: { ativadaEm: intervalo(p.de, p.ate), ultimoPagamentoManualEm: null } }),
-    db.assinatura.findMany({ where: { canceladaEm: intervalo(p.de, p.ate), ativadaEm: { not: null }, ultimoPagamentoManualEm: null }, select: { motivoCancelamento: true } }),
-    db.assinatura.count({ where: { ativadaEm: { lt: new Date(p.de) }, ultimoPagamentoManualEm: null, OR: [{ canceladaEm: null }, { canceladaEm: { gte: new Date(p.de) } }] } }),
+    db.assinatura.findMany({ where: { ...assinaturaRegular, status: { in: ["ATIVA", "ATRASADA"] } }, select: { id: true, precoCentavos: true, planoId: true, ultimoPagamentoManualEm: true } }),
+    db.assinatura.count({ where: { ...assinaturaRegular, status: "ATRASADA" } }),
+    db.assinatura.count({ where: { ...assinaturaRegular, ativadaEm: intervalo(p.de, p.ate), ultimoPagamentoManualEm: null } }),
+    db.assinatura.findMany({ where: { ...assinaturaRegular, canceladaEm: intervalo(p.de, p.ate), ativadaEm: { not: null }, ultimoPagamentoManualEm: null }, select: { motivoCancelamento: true } }),
+    db.assinatura.count({ where: { ...assinaturaRegular, ativadaEm: { lt: new Date(p.de) }, ultimoPagamentoManualEm: null, OR: [{ canceladaEm: null }, { canceladaEm: { gte: new Date(p.de) } }] } }),
     recebimentosMensalidades(intervalo(p.de, p.ate)),
-    db.agendamento.findMany({ where: { status: "CONCLUIDO", assinaturaId: { not: null }, inicio: intervalo(p.de, p.ate) }, select: { assinaturaId: true, servico: { select: { precoCentavos: true } } } }),
+    db.agendamento.findMany({
+      where: { status: "CONCLUIDO", assinatura: { is: assinaturaRegular }, inicio: intervalo(p.de, p.ate) },
+      select: { assinaturaId: true, servico: { select: { precoCentavos: true } } },
+    }),
     db.plano.findMany({ select: { id: true, nome: true } }),
   ]);
   // O preço de catálogo em um registro manual não comprova mensalidade recorrente.

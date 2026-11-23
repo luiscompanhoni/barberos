@@ -1,10 +1,14 @@
-import { ehHomologacao } from "@/lib/ambiente";
-
 type AmbienteOferta = Readonly<Record<string, string | undefined>>;
 
-export function ofertaDezembroEmHomologacao(env?: AmbienteOferta) {
-  return (env ? env.AMBIENTE === "homologacao" : ehHomologacao()) &&
-    (env ?? process.env).OFERTA_DEZEMBRO_MODO === "homologacao";
+/** Contratos existentes continuam operáveis em homologação quando as adesões são suspensas. */
+export function ofertaDezembroEmHomologacao(env: AmbienteOferta = process.env) {
+  return env.AMBIENTE === "homologacao";
+}
+
+export function planoBaseDezembroEmHomologacao(env: AmbienteOferta = process.env) {
+  if (!ofertaDezembroEmHomologacao(env)) return null;
+  const id = env.OFERTA_DEZEMBRO_PLANO_ID?.trim();
+  return id && /^[a-zA-Z0-9_-]{1,40}$/.test(id) ? id : null;
 }
 
 function inteiroPositivo(texto?: string) {
@@ -14,10 +18,10 @@ function inteiroPositivo(texto?: string) {
 }
 
 export function lerConfigOfertaDezembro(env: AmbienteOferta = process.env) {
-  if (!ofertaDezembroEmHomologacao(env)) return null;
-  const planoId = env.OFERTA_DEZEMBRO_PLANO_ID?.trim();
+  if (env.OFERTA_DEZEMBRO_MODO !== "homologacao") return null;
+  const planoId = planoBaseDezembroEmHomologacao(env);
   const vagas = inteiroPositivo(env.OFERTA_DEZEMBRO_VAGAS);
   const limiteUsos = inteiroPositivo(env.OFERTA_DEZEMBRO_LIMITE_USOS);
-  if (!planoId || !/^[a-zA-Z0-9_-]{1,40}$/.test(planoId) || vagas === null || limiteUsos === null) return null;
+  if (!planoId || vagas === null || limiteUsos === null) return null;
   return { planoId, vagas, limiteUsos };
 }
