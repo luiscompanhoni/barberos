@@ -1,14 +1,21 @@
-import { randomInt, randomUUID } from "node:crypto";
+import { createHmac, randomInt, randomUUID } from "node:crypto";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import type { Modelo } from "@/lib/bot/agente";
 import { concluirEntradaInstagram, enviarRespostaEquipeInstagram, registrarEntradaInstagram } from "@/lib/instagram/persistencia";
 import { processarEntradaInstagram } from "@/lib/instagram/processar";
 import { recuperarEntradasInstagramPendentes } from "@/lib/instagram/recuperacao";
+import { ENVIO_INSTAGRAM_SIMULADO } from "@/lib/instagram/status";
 import { excluirConta, exportarDados } from "@/lib/lgpd/titular";
 import { obterConversa } from "@/lib/whatsapp/conversas";
 import { GET as detalhes } from "@/app/api/conversas/[id]/route";
+import { POST as receberDirect } from "@/app/api/instagram/webhook/route";
 
+const depoisDaResposta = vi.hoisted(() => vi.fn<(processar: () => Promise<void>) => void>());
+vi.mock("next/server", async importOriginal => ({
+  ...await importOriginal<typeof import("next/server")>(),
+  after: depoisDaResposta,
+}));
 vi.mock("@/lib/auth/sessao", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/auth/sessao")>(),
   exigirSessao: async () => ({ usuarioId: "recepcao-teste", papel: "RECEPCAO" }),
@@ -28,6 +35,53 @@ const mensagem = (id: string, texto: string, timestamp = Date.now()) => ({ igsid
 describe.skipIf(!habilitado)("conversas do Instagram Direct no banco", () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
   afterAll(() => db.$disconnect());
+
+  it("aceita a entrega concorrente pelo login do Facebook e processa uma entrada sem eco", async () => {
+    const perfil = "17841400000001";
+    const segredoFicticio = randomUUID();
+    vi.stubEnv("INSTAGRAM_PROVEDOR", "facebook_login");
+    vi.stubEnv("INSTAGRAM_PAGE_ID", "887766");
+    vi.stubEnv("INSTAGRAM_PROFESSIONAL_ACCOUNT_ID", perfil);
+    vi.stubEnv("INSTAGRAM_APP_SECRET", segredoFicticio);
+    vi.stubEnv("INSTAGRAM_ENVIOS_BLOQUEADOS", "true");
+    vi.stubEnv("INSTAGRAM_ATENDIMENTO_IA_PAGA", "false");
+    vi.stubEnv("SITE_URL", "https://barbearia.exemplo.test");
+    const rede = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", rede);
+    await db.configuracao.upsert({ where: { id: 1 }, create: { id: 1, botAtivo: true }, update: { botAtivo: true } });
+
+    const entrada = mensagem(igsid(), "Quero agendar um corte", Date.now() - 1_000);
+    const ecoMid = randomUUID();
+    const corpo = JSON.stringify({ object: "instagram", entry: [{ id: perfil, time: entrada.timestamp, messaging: [
+      { sender: { id: entrada.igsid }, recipient: { id: perfil }, timestamp: entrada.timestamp,
+        message: { mid: entrada.mid, text: entrada.texto } },
+      { sender: { id: perfil }, recipient: { id: entrada.igsid }, timestamp: entrada.timestamp,
+        message: { mid: ecoMid, text: "Resposta anterior da equipe", is_echo: true } },
+    ] }] });
+    const assinatura = `sha256=${createHmac("sha256", segredoFicticio).update(corpo).digest("hex")}`;
+    const requisicao = () => new Request("https://painel.exemplo.test/api/instagram/webhook", {
+      method: "POST", body: corpo, headers: { "x-hub-signature-256": assinatura },
+    });
+
+    depoisDaResposta.mockClear();
+    const respostas = await Promise.all([receberDirect(requisicao()), receberDirect(requisicao())]);
+    expect(respostas.map(resposta => resposta.status)).toEqual([200, 200]);
+    expect(depoisDaResposta).toHaveBeenCalledOnce();
+    const conversa = await db.conversa.findUniqueOrThrow({ where: { instagramIgsid: entrada.igsid }, include: { mensagens: true } });
+    expect(conversa.naoLidas).toBe(1);
+    expect(conversa.mensagens).toMatchObject([
+      { autor: "CLIENTE", wamid: `instagram:${entrada.mid}`, texto: entrada.texto, instagramPendenteEm: expect.any(Date) },
+    ]);
+    expect(await db.mensagem.findUnique({ where: { wamid: `instagram:${ecoMid}` } })).toBeNull();
+
+    await depoisDaResposta.mock.calls[0][0]();
+    const mensagens = await db.mensagem.findMany({ where: { conversaId: conversa.id }, orderBy: { criadoEm: "asc" } });
+    expect(mensagens).toMatchObject([
+      { autor: "CLIENTE", wamid: `instagram:${entrada.mid}`, instagramPendenteEm: null },
+      { autor: "BOT", wamid: null, erro: ENVIO_INSTAGRAM_SIMULADO, texto: expect.stringContaining("https://barbearia.exemplo.test/c/agendar") },
+    ]);
+    expect(rede).not.toHaveBeenCalled();
+  });
 
   it("deduplica o mesmo MID em requisições concorrentes e preserva a janela mais recente", async () => {
     const id = igsid();
