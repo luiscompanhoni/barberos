@@ -12,6 +12,7 @@ import { contarPendentes } from "@/lib/estornos/servico";
 import { TopoWorkspace } from "@/components/navegacao/TopoWorkspace";
 import { RegistroApp } from "@/components/notificacoes/RegistroApp";
 import { AberturaBlack } from "@/components/visual/AberturaBlack";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
 
 export async function generateMetadata() {
   const s = await sessaoAtual();
@@ -102,7 +103,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
       <div className="black-workspace-content">
         <TopoWorkspace links={links} nome={s.nome} />
       <main id="conteudo-principal" tabIndex={-1} className="black-workspace-main">
-        <AbasPainel links={links} chave={s.usuarioId} />
+        <AbasPainel links={links} chave={s.usuarioId} ofertaDezembroAtiva={ofertaDezembroEmHomologacao()} />
         {appBlack && <AberturaBlack area="barbeiro" />}
         {cfg.agendaExternaAtiva && <p className="cartao-destaque mb-5 text-sm" role="status">O app do cliente agenda diretamente no BarberOS. Durante a transição, confira também os horários do Cash Barber antes de oferecer uma reserva pelo atendimento; as duas agendas ainda não são sincronizadas.</p>}
         <AcessoProvider valor={{ papel: s.papel, permissoes }}>{appBlack ? children : <TransicaoCrm>{children}</TransicaoCrm>}</AcessoProvider>

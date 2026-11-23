@@ -46,7 +46,7 @@ function gravar(chave: string, abas: Aba[]) {
 }
 
 /** Barra de abas no topo do painel: troca de tela sem abrir abas do navegador. */
-export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
+export function AbasPainel({ links, chave, ofertaDezembroAtiva }: { links: Link[]; chave: string; ofertaDezembroAtiva: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const busca = useSearchParams().toString();
@@ -72,6 +72,9 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
     setAbas((prev) => {
       const salvas = carregado ? prev : ler(chaveLs);
       const lista = Array.from(new Map(salvas.map(a => {
+        if (!ofertaDezembroAtiva && a.base === "/assinaturas" && /^\/assinaturas\/dezembro-gratis\/?(?:[?#]|$)/.test(a.caminho)) {
+          return [a.base, { ...a, caminho: a.base, rolagem: 0 }] as const;
+        }
         const atual = a.base === "/meu-financeiro" ? { ...a, base: "/financeiro", caminho: "/financeiro?area=pessoal" } : a;
         return [atual.base, atual] as const;
       })).values());
@@ -86,8 +89,8 @@ export function AbasPainel({ links, chave }: { links: Link[]; chave: string }) {
       return nova;
     });
     setCarregado(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- so quando muda a rota
-  }, [pathname, busca, base, chaveLs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sincroniza quando muda a rota ou a disponibilidade
+  }, [pathname, busca, base, chaveLs, ofertaDezembroAtiva]);
 
   useEffect(() => {
     if (carregado) gravar(chaveLs, abas);
