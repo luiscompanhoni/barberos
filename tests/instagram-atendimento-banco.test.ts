@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import type { Modelo } from "@/lib/bot/agente";
 import { enviarRespostaEquipeInstagram, registrarEntradaInstagram } from "@/lib/instagram/persistencia";
 import { processarEntradaInstagram } from "@/lib/instagram/processar";
+import { excluirConta, exportarDados } from "@/lib/lgpd/titular";
 import { obterConversa } from "@/lib/whatsapp/conversas";
 
 const habilitado = process.env.TESTE_INSTAGRAM_LOCAL === "1";
@@ -85,5 +86,28 @@ describe.skipIf(!habilitado)("conversas do Instagram Direct no banco", () => {
     const antiga = (await registrarEntradaInstagram(mensagem(igsid(), "Olá", Date.now() - 24 * 3_600_000)))!;
     await expect(enviarRespostaEquipeInstagram(antiga.conversaId, "Oi", "teste-equipe")).rejects.toThrow("A janela de 24h do Instagram fechou");
     expect(await db.mensagem.count({ where: { conversaId: antiga.conversaId, autor: "EQUIPE" } })).toBe(0);
+  });
+
+  it("exporta o próprio aceite, desvincula o Direct e remove IP e navegador na exclusão", async () => {
+    const telefone = `55479${randomInt(10_000_000, 99_999_999)}`;
+    const usuario = await db.usuario.create({ data: { telefone, nome: "Titular de teste", papel: "CLIENTE" } });
+    const cliente = await db.cliente.create({ data: { telefone, nome: usuario.nome, usuarioId: usuario.id } });
+    const entrada = (await registrarEntradaInstagram(mensagem(igsid(), `Contato: ${telefone}. Mensagem do perfil que informou o número.`)))!;
+    const plano = await db.plano.create({ data: { nome: "Plano de teste LGPD", precoCentavos: 1_000, ativo: false } });
+    const assinatura = await db.assinatura.create({ data: {
+      clienteId: cliente.id, planoId: plano.id, precoCentavos: 1_000, origem: "SITE", formaPagamento: "CARTAO", status: "CANCELADA",
+      ofertaDezembro: { create: {
+        chaveIdempotencia: randomUUID(), termosVersao: "teste-lgpd", precoCentavos: 1_000, limiteUsos: 2, aceitaEm: new Date(), ip: "192.0.2.20", agenteUsuario: "Navegador fictício",
+      } },
+    } });
+    const exportacao = await exportarDados(cliente.id);
+    expect(exportacao.dados.assinaturas[0].ofertaDezembro).toMatchObject({ termosVersao: "teste-lgpd", ip: "192.0.2.20", agenteUsuario: "Navegador fictício" });
+    expect(JSON.stringify(exportacao)).not.toContain("chaveIdempotencia");
+    expect(JSON.stringify(exportacao)).not.toContain("Mensagem do perfil");
+    await excluirConta(cliente.id, usuario.id);
+    expect(await db.conversa.findUnique({ where: { id: entrada.conversaId } })).toMatchObject({ instagramClienteId: null });
+    expect(await db.ofertaDezembroAdesao.findUnique({ where: { assinaturaId: assinatura.id } })).toMatchObject({
+      termosVersao: "teste-lgpd", precoCentavos: 1_000, ip: null, agenteUsuario: null,
+    });
   });
 });

@@ -38,7 +38,7 @@ vi.mock("@/lib/db", () => {
   };
   const tabelas = {
     cliente, esperaHorario, usuario: { findUnique: async () => ({ id: "usuario", papel: "CLIENTE", ativo: true, sessaoVersao: 0 }), update: async () => ({}) },
-    conversa: vazio, assinatura: vazio, cobranca: vazio, pagamentoAntecipado: vazio, linkPagamento: vazio,
+    conversa: vazio, assinatura: vazio, cobranca: vazio, pagamentoAntecipado: vazio, linkPagamento: vazio, ofertaDezembroAdesao: vazio,
     comanda: vazio, codigoLogin: vazio, listaEsperaPlano: vazio, avaliacaoMensalElegibilidade: vazio,
     pedidoAgendamento: vazio, identidadeSocial: vazio, fluxoSocial: vazio,
     agendamento: { ...vazio, findMany: async () => [] }, servico: { findMany: async () => [{ nome: "Corte" }] },

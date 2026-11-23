@@ -5,7 +5,7 @@ vi.mock("@/lib/auditoria", () => ({ auditar: m.audit }));
 vi.mock("@/lib/db", () => {
   const tabela = { count: async () => 0, deleteMany: m.remover, updateMany: m.alterar, update: m.alterar };
   const db = { $executeRaw: m.trava, $queryRaw: vi.fn(), usuario: { findUnique: m.usuario, update: m.alterar },
-    cliente: { findUnique: m.cliente, update: m.alterar }, assinatura: tabela, cobranca: tabela,
+    cliente: { findUnique: m.cliente, update: m.alterar }, assinatura: tabela, cobranca: tabela, ofertaDezembroAdesao: tabela,
     pagamentoAntecipado: tabela, linkPagamento: tabela, comanda: tabela, agendamento: tabela, conversa: tabela,
     codigoLogin: tabela, esperaHorario: tabela, listaEsperaPlano: tabela, avaliacaoMensalElegibilidade: tabela,
     pedidoAgendamento: tabela, identidadeSocial: tabela, fluxoSocial: tabela,
@@ -40,6 +40,7 @@ describe("exclusão revalida a sessão antes de apagar", () => {
     const r = await POST(req({ acao: "excluir", confirmacao: "EXCLUIR" }));
     expect(r.status).toBe(200); expect(await r.json()).toEqual({ excluida: true });
     expect(m.remover).toHaveBeenCalled(); expect(m.encerrar).toHaveBeenCalledTimes(1);
+    expect(m.alterar).toHaveBeenCalledWith({ where: { assinatura: { clienteId: "cliente" } }, data: { ip: null, agenteUsuario: null } });
     expect(m.alterar).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "usuario" }, data: expect.objectContaining({ ativo: false, sessaoVersao: { increment: 1 } }) }));
   });
   it("chamada legada sem versão não equivale à versão recém-revogada", async () => {

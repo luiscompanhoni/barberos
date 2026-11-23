@@ -61,7 +61,11 @@ export async function exportarDados(clienteId: string) {
       pedidosAgendamento: { orderBy: { criadoEm: "desc" }, select: { dataPreferida: true, horaPreferida: true, servicoIds: true, observacao: true, status: true, criadoEm: true, decididoEm: true } },
       agendamentos: { orderBy: { inicio: "desc" }, select: { inicio: true, status: true, precoCentavos: true, observacao: true, servico: { select: { nome: true } }, barbeiro: { select: { nome: true } } } },
       comandas: { orderBy: { abertaEm: "desc" }, select: { numero: true, status: true, abertaEm: true, fechadaEm: true, itens: { select: { descricao: true, quantidade: true, precoUnitCentavos: true } }, pagamentos: { select: { forma: true, valorCentavos: true, status: true, pagoEm: true } } } },
-      assinaturas: { select: { status: true, criadaEm: true, plano: { select: { nome: true } }, cobrancas: { select: { valorCentavos: true, status: true, vencimento: true, pagaEm: true } } } },
+      assinaturas: { select: {
+        status: true, criadaEm: true, plano: { select: { nome: true } },
+        cobrancas: { select: { valorCentavos: true, status: true, vencimento: true, pagaEm: true } },
+        ofertaDezembro: { select: { termosVersao: true, aceitaEm: true, ip: true, agenteUsuario: true } },
+      } },
       beneficios: { select: { descricao: true, valorCentavos: true, status: true, motivo: true } },
       premiosGanhos: { select: { codigo: true, rotulo: true, status: true } },
       elegibilidadesMensais: { select: { competencia: true, pulouEm: true, criadoEm: true } },
@@ -111,6 +115,7 @@ export async function excluirConta(clienteId: string, usuarioId: string, sessaoV
     await tx.pedidoAgendamento.updateMany({ where: { clienteId }, data: { observacao: null } });
     await tx.pedidoAgendamento.updateMany({ where: { clienteId, status: "PENDENTE" }, data: { status: "CANCELADO", decididoPorId: usuarioId, decididoEm: new Date() } });
     await tx.comanda.updateMany({ where: { clienteId }, data: { observacao: null } });
+    await tx.ofertaDezembroAdesao.updateMany({ where: { assinatura: { clienteId } }, data: { ip: null, agenteUsuario: null } });
     await tx.linkPagamento.updateMany({ where: { clienteId }, data: { nome: NOME_EXCLUIDO, telefone: "", cpf: null, email: null } });
     await tx.cliente.update({
       where: { id: clienteId },
