@@ -10,11 +10,11 @@ Use um banco de testes local com as migrações aplicadas. Faça backup antes de
 | --- | --- |
 | `AMBIENTE` | `homologacao` |
 | `OFERTA_DEZEMBRO_MODO` | `homologacao` |
-| `OFERTA_DEZEMBRO_PLANO_ID` | ID de um plano-base ativo, comprável, com cartão e serviços ativos |
+| `OFERTA_DEZEMBRO_PLANO_ID` | ID de um plano-base ativo, comprável pelo cliente, com cartão e serviços ativos |
 | `OFERTA_DEZEMBRO_VAGAS` | Número inteiro positivo de adesões para toda a campanha |
 | `OFERTA_DEZEMBRO_LIMITE_USOS` | Número inteiro positivo de serviços por adesão, somados entre todos os serviços |
 
-Vagas e usos ficam sem valor padrão. O teto do plano-base também vale. A adesão precisa caber nos dois limites, sob travas transacionais compartilhadas com a venda regular. Em homologação, todas as pendências do plano-base ocupam vaga enquanto o link puder ser pago, inclusive as de mais de três dias. Uma vaga da campanha é consumida por adesão confirmada e permanece ocupada depois de cancelar. A oferta guarda o preço e o limite individual aceitos. Os serviços, profissionais, dias e limites operacionais são os do plano-base.
+Vagas e usos ficam sem valor padrão. A adesão do cliente respeita os planos de venda exclusiva da equipe, que ficam fora da oferta. O teto do plano-base também vale. A adesão precisa caber nos dois limites, sob travas transacionais compartilhadas com a venda regular. Em homologação, todas as pendências do plano-base ocupam vaga enquanto o link puder ser pago, inclusive as de mais de três dias. Uma vaga da campanha é consumida por adesão confirmada e permanece ocupada depois de cancelar. A oferta guarda o preço e o limite individual aceitos. Os serviços, profissionais, dias e limites operacionais são os do plano-base.
 
 A adesão abre em 22/11/2026 e encerra em 01/01/2027, às 00h, em America/Sao_Paulo. Entra quem tem cadastro ativo e nenhuma assinatura em andamento. Pendente, ativa, atrasada e pausada impedem adesão. Também impedem a adesão um cancelamento nos últimos 90 dias e adesão anterior à mesma campanha. O prazo de 90 dias considera a hora do cancelamento. Contrato histórico cancelado sem data precisa ter sido criado há mais de 90 dias para seguir.
 

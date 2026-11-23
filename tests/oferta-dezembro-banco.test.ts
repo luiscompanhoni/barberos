@@ -102,6 +102,14 @@ describe.skipIf(!habilitado)("oferta de dezembro com PostgreSQL", () => {
     await expect(aderirOfertaDezembro(cliente, pedido, agora)).rejects.toMatchObject({ codigo: "sem_vagas" });
   });
 
+  it("bloqueia a adesão do cliente a plano de venda exclusiva da equipe", async () => {
+    const p = await plano();
+    const t = await titular();
+    await db.plano.update({ where: { id: p.id }, data: { vendaSomenteEquipe: true } });
+    await expect(aderirOfertaDezembro(t, proposta(p.id), agora)).rejects.toMatchObject({ codigo: "oferta_indisponivel" });
+    expect(await db.ofertaDezembroAdesao.count()).toBe(p.existentes);
+  });
+
   it("serializa a última vaga do plano-base entre contratação regular e oferta", async () => {
     const p = await plano({ vagasPlano: 1 });
     const [oferta, regular] = await Promise.all([titular(), titular()]);
