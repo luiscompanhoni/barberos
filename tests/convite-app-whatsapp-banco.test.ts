@@ -191,7 +191,7 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
       const rodar = (t: number) => rodarRetomadas(t, "America/Sao_Paulo", [clienteId!]);
       expect(await rodar(+j.proximaEm! - 1)).toBe(0);
       expect((await Promise.all([rodar(+j.proximaEm!), rodar(+j.proximaEm!)])).sort()).toEqual([0, 1]);
-      expect((await falas(id)).at(-1)).toContain("Conseguiu abrir o link");
+      expect((await falas(id)).filter(texto => texto.includes("Conseguiu abrir o link"))).toHaveLength(1);
     } finally { vi.useRealTimers(); }
   });
 
@@ -236,21 +236,21 @@ describe.skipIf(!habilitado)("convite do Leonel pelo simulador do WhatsApp", () 
       expect(await rodar(prazo + 2 * 86_400_000)).toBe(0);
       const mensagens = await falas(id);
       expect(mensagens).toHaveLength(respondeu ? 4 : 5);
-      if (!respondeu) expect(mensagens.at(-1)).toContain("Opa! Conseguiu abrir o link");
+      if (!respondeu) expect(mensagens.filter(texto => texto.includes("Opa! Conseguiu abrir o link"))).toHaveLength(1);
     } finally { vi.useRealTimers(); }
   });
 
-  it("abre a roleta antes do cadastro e conserva um único resultado", async () => {
+  it.each([[120, "frio"], [200, "muitoFrio"]] as const)("abre a roleta antes do cadastro após %i dias no segmento %s", async (dias, segmento) => {
     const { id, clienteId } = await contato();
-    await visitaConcluida(clienteId!, 200);
+    await visitaConcluida(clienteId!, dias);
     const jogoId = `roleta-leonel-teste-${randomUUID()}`;
     await db.jogo.create({ data: { id: jogoId, tipo: "ROLETA", nome: "Roleta de teste", ativo: true,
       premios: { create: { tipo: "DESCONTO", rotulo: "Desconto teste", percentual: 10, cor: "#000000", chanceBps: 10000 } } } });
-    const campanhaId = idModeloSegmento("frio");
+    const campanhaId = idModeloSegmento(segmento);
     await db.campanha.upsert({ where: { id: campanhaId }, update: { jogoId }, create: {
-      id: campanhaId, segmentos: ["frio"], nome: "Frio teste", status: "PAUSADA", limiteDiario: 1, mensagem: "Veja {link}", jogoId,
+      id: campanhaId, segmentos: [segmento], nome: "Roleta de teste", status: "PAUSADA", limiteDiario: 1, mensagem: "Veja {link}", jogoId,
     } });
-    expect(await iniciarConviteApp(id, gestorId, true)).toEqual({ segmento: "frio" });
+    expect(await iniciarConviteApp(id, gestorId, true)).toEqual({ segmento });
     const j = await db.jornadaConviteApp.findUniqueOrThrow({ where: { conversaId: id } });
     const mensagens = await falas(id);
     expect(mensagens).toHaveLength(3);
