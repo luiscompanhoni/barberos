@@ -40,6 +40,7 @@ export const GET = rota(async (req: Request) => {
       id: sit.assinatura.id,
       status: sit.assinatura.status,
       valida: sit.valida,
+      ofertaDezembro: !!sit.assinatura.ofertaDezembro,
       plano: { id: sit.assinatura.plano.id, nome: sit.assinatura.plano.nome },
       precoCentavos: sit.assinatura.precoCentavos,
       formaPagamento: sit.assinatura.formaPagamento,

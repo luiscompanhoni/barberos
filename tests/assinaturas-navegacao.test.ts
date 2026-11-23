@@ -48,10 +48,10 @@ describe("acesso da ficha ao módulo de assinaturas", () => {
       .toMatchObject({ clienteId: "cliente-a", assinaturaInicial: undefined });
   });
 
-  it("filtra assinaturas pelo ID, inclusive quando a busca por nome poderia retornar homônimos", async () => {
+  it("filtra pelo cadastro e preserva os contratos da oferta na tela própria", async () => {
     const res = await GET(new Request("http://localhost/api/assinaturas?clienteId=cliente-a&busca=Joao"));
     expect(res.status).toBe(200);
-    expect(m.listar).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: { clienteId: "cliente-a" } }));
+    expect(m.listar).toHaveBeenNthCalledWith(1, expect.objectContaining({ where: { clienteId: "cliente-a", ofertaDezembro: { is: null } } }));
     expect(m.exigir).toHaveBeenCalledWith(["DONO", "GERENTE", "RECEPCAO"]);
   });
 });

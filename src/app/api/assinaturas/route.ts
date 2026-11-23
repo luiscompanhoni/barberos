@@ -25,6 +25,7 @@ export const GET = rota(async (req: Request) => {
   const [lista, contagem, mrr, vendidas, canceladas, motivos] = await Promise.all([
     db.assinatura.findMany({
       where: {
+        ofertaDezembro: { is: null },
         ...(status !== "TODAS" ? { status } : {}),
         ...(clienteId ? { clienteId } : busca ? { cliente: { OR: [{ nome: { contains: busca, mode: "insensitive" } }, { telefone: { contains: busca.replace(/\D/g, "") || busca } }] } } : {}),
       },
@@ -36,7 +37,7 @@ export const GET = rota(async (req: Request) => {
         cobrancas: { orderBy: { vencimento: "desc" }, take: 1 },
       },
     }),
-    db.assinatura.groupBy({ by: ["status"], _count: true }),
+    db.assinatura.groupBy({ by: ["status"], where: { ofertaDezembro: { is: null } }, _count: true }),
     db.assinatura.aggregate({ where: { status: { in: ["ATIVA", "ATRASADA"] }, ultimoPagamentoManualEm: null }, _sum: { precoCentavos: true } }),
     db.assinatura.count({ where: { ativadaEm: { gte: inicioMes }, ultimoPagamentoManualEm: null } }),
     db.assinatura.count({ where: { canceladaEm: { gte: inicioMes }, ativadaEm: { not: null }, ultimoPagamentoManualEm: null } }),

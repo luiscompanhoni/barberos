@@ -7,10 +7,12 @@ import { schemaPedidoCancelamento } from "@/lib/assinaturas/schemas";
 import { situacaoDoCliente } from "@/lib/assinaturas/servico";
 import { ErroNegocio, rota } from "@/lib/erros";
 import { corpo, parametros } from "@/lib/validacao";
+import { erroUsarOfertaDezembro } from "@/lib/oferta-dezembro/regras";
 
 async function assinaturaDoCliente(clienteId: string) {
   const sit = await situacaoDoCliente(clienteId);
   if (!sit) throw new ErroNegocio("Você não tem plano para cancelar.", 404, "sem_plano");
+  if (sit.assinatura.ofertaDezembro) throw erroUsarOfertaDezembro();
   return sit.assinatura.id;
 }
 

@@ -15,6 +15,7 @@ import { atrasarSimulada, gerarProximaSimulada, pagarSimulada } from "@/lib/paga
 import { alteracaoAtual, aplicarAlteracaoPlano, cancelarAlteracaoPlano, solicitarAlteracaoPlano } from "@/lib/assinaturas/alteracao-plano";
 import { cancelarOperacaoInicial, manterOperacaoInicial } from "@/lib/assinaturas/operacao-inicial";
 import { corpoAssinatura } from "@/lib/assinaturas/http";
+import { erroUsarOfertaDezembro } from "@/lib/oferta-dezembro/regras";
 
 export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/assinaturas/[id]">) => {
   await exigirSessao(BALCAO);
@@ -58,8 +59,9 @@ export const POST = rota(async (req: Request, ctx: RouteContext<"/api/assinatura
       pedidoId: z.string().min(1).max(40).optional(),
     }),
   );
-  const a = await db.assinatura.findUnique({ where: { id } });
+  const a = await db.assinatura.findUnique({ where: { id }, include: { ofertaDezembro: { select: { assinaturaId: true } } } });
   if (!a) throw naoEncontrado("Assinatura");
+  if (a.ofertaDezembro) throw erroUsarOfertaDezembro();
 
   switch (b.acao) {
     case "solicitar_troca":
