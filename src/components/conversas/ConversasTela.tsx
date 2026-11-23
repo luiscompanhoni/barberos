@@ -4,12 +4,16 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/cliente-api";
 import { formatarTelefone } from "@/lib/telefone";
+import { ENVIO_INSTAGRAM_SIMULADO } from "@/lib/instagram/status";
 import styles from "./conversas-crm.module.css";
 import { NovoContato } from "./NovoContato";
 
 type Resumo = {
   id: string;
-  telefone: string;
+  canal: "WHATSAPP" | "INSTAGRAM";
+  telefone: string | null;
+  nomeVinculado?: string | null;
+  referenciaDirect?: string;
   nomePerfil: string | null;
   estado: "BOT" | "HUMANO";
   naoLidas: number;
@@ -21,25 +25,31 @@ type Detalhe = {
   recusaAutomaticas: boolean;
   conviteApp: "ABRINDO" | "AGUARDANDO" | "ENCERRADO" | null;
   id: string;
-  telefone: string;
+  canal: "WHATSAPP" | "INSTAGRAM";
+  telefone: string | null;
+  nomeVinculado?: string | null;
+  referenciaDirect?: string;
+  janelaAberta?: boolean;
+  simulado?: boolean;
   nomePerfil: string | null;
   estado: "BOT" | "HUMANO";
   cliente: { id: string; nome: string; aceitaMensagens: boolean } | null;
   mensagens: { id: string; autor: "CLIENTE" | "BOT" | "EQUIPE" | "SISTEMA" | "NOTA"; texto: string; erro: string | null; entregueEm: string | null; lidaEm: string | null; criadoEm: string }[];
 };
 
-const nomeDe = (c: { cliente: { nome: string } | null; nomePerfil: string | null; telefone: string }) =>
-  c.cliente?.nome || c.nomePerfil || formatarTelefone(c.telefone);
+const nomeDe = (c: { cliente: { nome: string } | null; nomePerfil: string | null; telefone: string | null; nomeVinculado?: string | null; referenciaDirect?: string }) =>
+  c.cliente?.nome || c.nomeVinculado || c.nomePerfil || (c.telefone ? formatarTelefone(c.telefone) : `Contato do Instagram · ${c.referenciaDirect ?? ""}`);
 const hora = (iso: string) =>
   new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
 
-/** Conversas do WhatsApp: a equipe acompanha o bot e assume quando precisa. */
+/** A equipe acompanha o bot e assume conversas pelo canal de origem. */
 export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
   const [iniciandoConvite, setIniciandoConvite] = useState(false);
   const [lista, setLista] = useState<Resumo[]>([]);
   const [aberta, setAberta] = useState<string | null>(null);
   const [detalhe, setDetalhe] = useState<Detalhe | null>(null);
   const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
   const [consulta, setConsulta] = useState("");
@@ -48,6 +58,7 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
   const ultimaLista = useRef(0);
   const fim = useRef<HTMLDivElement>(null);
   const abertaRef = useRef<string | null>(null);
+  const idEnvio = useRef<string | null>(null);
 
   const carregarLista = useCallback(async () => {
     const pedido = ++ultimaLista.current;
@@ -56,7 +67,9 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
       if (pedido === ultimaLista.current) setLista(r);
     } catch (e) { if (pedido === ultimaLista.current) setErro((e as Error).message); }
   }, []);
-  const carregarDetalhe = useCallback((id: string) => api<Detalhe>(`/api/conversas/${id}`).then(setDetalhe).catch((e) => setErro(e.message)), []);
+  const carregarDetalhe = useCallback((id: string) => api<Detalhe>(`/api/conversas/${id}`).then(r => {
+    if (abertaRef.current === id) setDetalhe(r);
+  }).catch((e) => { if (abertaRef.current === id) setErro(e.message); }), []);
 
   useEffect(() => { const t = setTimeout(() => setConsulta(busca.trim()), 200); return () => clearTimeout(t); }, [busca]);
   useEffect(() => { consultaRef.current = consulta; carregarLista(); }, [consulta, carregarLista]);
@@ -85,26 +98,46 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
     try { await fn(); if (aberta) await carregarDetalhe(aberta); await carregarLista(); } catch (e) { setErro((e as Error).message); }
   }
 
-  const enviar = (e: React.FormEvent) => {
+  function selecionar(id: string | null) {
+    if (abertaRef.current === id) return;
+    abertaRef.current = id;
+    idEnvio.current = null;
+    setAberta(id);
+    setTexto("");
+    setErro("");
+  }
+
+  const enviar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!aberta || !texto.trim()) return;
-    acao(async () => { await api(`/api/conversas/${aberta}/mensagens`, { method: "POST", body: { texto } }); setTexto(""); });
+    if (!aberta || detalhe?.id !== aberta || !texto.trim() || enviando) return;
+    setEnviando(true);
+    const envioId = detalhe.canal === "INSTAGRAM" ? (idEnvio.current ??= crypto.randomUUID()) : undefined;
+    try {
+      await acao(async () => {
+        await api(`/api/conversas/${aberta}/mensagens`, { method: "POST", body: { texto, envioId } });
+        if (abertaRef.current === aberta) {
+          setTexto("");
+          idEnvio.current = null;
+        }
+      });
+    } finally { setEnviando(false); }
   };
 
   return (
     <div className={`${styles.grade} grid h-[calc(100vh-90px)] gap-3 md:grid-cols-[320px_1fr]`}>
-      {novo && <NovoContato fechar={() => setNovo(false)} criado={id => { setNovo(false); setBusca(""); setAberta(id); void carregarLista(); }} />}
+      {novo && <NovoContato fechar={() => setNovo(false)} criado={id => { setNovo(false); setBusca(""); selecionar(id); void carregarLista(); }} />}
       <aside aria-label="Lista de conversas" className={`cartao overflow-y-auto p-0 ${aberta ? "hidden md:block" : ""}`}>
         <header className={styles.titulo}><p className="eyebrow">Relacionamento</p><h1 className="titulo-marca text-xl">Conversas</h1></header>
-        <div className="space-y-2 p-3"><label className="sr-only" htmlFor="busca-conversa">Buscar por nome ou WhatsApp</label><input id="busca-conversa" type="search" className="campo" placeholder="Buscar nome ou WhatsApp" maxLength={100} value={busca} onChange={e => setBusca(e.target.value)} /><button className="btn w-full" onClick={() => setNovo(true)}>+ Adicionar cliente</button>{podeConvidar && <Link className="btn block text-center" href="/conversas/convites">Acompanhar convites ao app</Link>}</div>
+        <div className="space-y-2 p-3"><label className="sr-only" htmlFor="busca-conversa">Buscar por nome, telefone ou canal</label><input id="busca-conversa" type="search" className="campo" placeholder="Buscar nome, telefone ou canal" maxLength={100} value={busca} onChange={e => setBusca(e.target.value)} /><button className="btn w-full" onClick={() => setNovo(true)}>+ Adicionar cliente</button>{podeConvidar && <Link className="btn block text-center" href="/conversas/convites">Acompanhar convites ao app</Link>}</div>
         {lista.length === 0 && <p role="status" className="p-4 text-sm text-zinc-500">{consulta ? "Nenhuma conversa encontrada." : "Nenhuma conversa ainda."}</p>}
         {erro && <p role="alert" className="px-3 text-sm text-red-700">{erro}</p>}
         <ul className="divide-y divide-zinc-100">
           {lista.map((c) => (
             <li key={c.id}>
-              <button onClick={() => setAberta(c.id)} aria-pressed={aberta === c.id} className={`${styles.contato} w-full px-4 py-3 text-left hover:bg-zinc-50 ${aberta === c.id ? "bg-zinc-100" : ""}`}>
+              <button onClick={() => selecionar(c.id)} aria-pressed={aberta === c.id} className={`${styles.contato} w-full px-4 py-3 text-left hover:bg-zinc-50 ${aberta === c.id ? "bg-zinc-100" : ""}`}>
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-semibold">{nomeDe(c)}</span>
+                  {c.canal === "INSTAGRAM" && <span className="shrink-0 rounded bg-fuchsia-100 px-1.5 text-[11px] text-fuchsia-900">Instagram</span>}
                   {c.estado === "HUMANO" && <span className="rounded bg-amber-100 px-1.5 text-[11px] text-amber-900">Equipe</span>}
                   {c.naoLidas > 0 && <span className="ml-auto rounded-full bg-emerald-600 px-1.5 text-[11px] text-white">{c.naoLidas}</span>}
                 </div>
@@ -121,13 +154,14 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
         ) : (
           <>
             <header className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-2">
-              <button className="btn md:hidden" aria-label="Voltar à lista de conversas" onClick={() => setAberta(null)}>‹</button>
+              <button className="btn md:hidden" aria-label="Voltar à lista de conversas" onClick={() => selecionar(null)}>‹</button>
               <div>
                 <p className="text-sm font-semibold">{nomeDe(detalhe)}</p>
-                <p className="text-xs text-zinc-500">{formatarTelefone(detalhe.telefone)} · {detalhe.estado === "BOT" ? "Bot respondendo" : "Equipe respondendo"}</p>
+                <p className="text-xs text-zinc-500">{detalhe.canal === "INSTAGRAM" ? "Instagram Direct" : formatarTelefone(detalhe.telefone ?? "")} · {detalhe.estado === "BOT" ? "Bot respondendo" : "Equipe respondendo"}</p>
+                {detalhe.nomeVinculado && <p className="text-xs text-zinc-500">Telefone informado · vínculo não verificado</p>}
               </div>
               <div className="ml-auto flex flex-wrap items-center gap-2">
-                {podeConvidar && detalhe.cliente?.aceitaMensagens && !detalhe.recusaAutomaticas && detalhe.estado === "BOT" && !detalhe.conviteApp && (
+                {detalhe.canal === "WHATSAPP" && podeConvidar && detalhe.cliente?.aceitaMensagens && !detalhe.recusaAutomaticas && detalhe.estado === "BOT" && !detalhe.conviteApp && (
                   <button className="btn" disabled={iniciandoConvite} onClick={async () => {
                     setIniciandoConvite(true);
                     try { await acao(() => api(`/api/conversas/${detalhe.id}/convite-app`, { method: "POST" })); }
@@ -138,7 +172,7 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
                 {detalhe.conviteApp === "AGUARDANDO" && <span className="text-xs">Convite ao app aguarda resposta</span>}
                 {detalhe.estado === "BOT" ? (
                   <button className="btn" onClick={() => acao(() => api(`/api/conversas/${detalhe.id}`, { method: "PATCH", body: { estado: "HUMANO" } }))}>Assumir conversa</button>
-                ) : (
+                ) : (detalhe.canal === "WHATSAPP" || !detalhe.recusaAutomaticas) && (
                   <button className="btn" onClick={() => acao(() => api(`/api/conversas/${detalhe.id}`, { method: "PATCH", body: { estado: "BOT" } }))}>Devolver para o bot</button>
                 )}
               </div>
@@ -154,7 +188,7 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
                       <p className="mt-0.5 text-right text-[10px] text-zinc-500">
                         {m.autor === "BOT" ? "Bot" : m.autor === "EQUIPE" ? "Equipe" : m.autor === "SISTEMA" ? "Aviso automático" : ""} {hora(m.criadoEm)}
                         {m.autor !== "CLIENTE" && !m.erro && (m.lidaEm ? <span className="text-sky-400" title="Lida"> ✓✓</span> : m.entregueEm ? <span title="Entregue"> ✓✓</span> : null)}
-                        {m.erro && <span className="text-red-600"> · não enviado: {m.erro}</span>}
+                        {m.erro === ENVIO_INSTAGRAM_SIMULADO ? <span className="text-amber-700"> · simulado</span> : m.erro && <span className="text-red-600"> · {detalhe.canal === "WHATSAPP" ? "não enviado: " : ""}{m.erro}</span>}
                       </p>
                     </div>
                   </div>
@@ -162,9 +196,12 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
               )}
               <div ref={fim} />
             </div>
+            {detalhe.canal === "INSTAGRAM" && (!detalhe.janelaAberta || detalhe.simulado) && (
+              <p role="status" className="px-4 pt-2 text-xs text-zinc-600">{detalhe.janelaAberta ? "Envio simulado." : "A janela de 24h fechou. Aguarde uma mensagem pelo Instagram."}</p>
+            )}
             <form onSubmit={enviar} className="flex gap-2 border-t border-zinc-200 p-3">
-              <input className="campo" aria-label="Mensagem para a conversa selecionada" placeholder={detalhe.estado === "BOT" ? "Responder (assume a conversa)" : "Escreva uma mensagem"} value={texto} onChange={(e) => setTexto(e.target.value)} />
-              <button className="btn-primario">Enviar</button>
+              <input className="campo" aria-label="Mensagem para a conversa selecionada" placeholder={detalhe.estado === "BOT" ? "Responder (assume a conversa)" : "Escreva uma mensagem"} value={texto} disabled={enviando || detalhe.janelaAberta === false} onChange={(e) => { idEnvio.current = null; setTexto(e.target.value); }} />
+              <button className="btn-primario" disabled={enviando || detalhe.janelaAberta === false}>{enviando ? "Enviando…" : "Enviar"}</button>
             </form>
           </>
         )}

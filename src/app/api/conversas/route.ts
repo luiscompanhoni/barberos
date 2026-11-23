@@ -7,7 +7,7 @@ import { corpo, parametros } from "@/lib/validacao";
 import { exigirOrigemAutenticacao } from "@/lib/auth/http-cliente";
 import { cadastrarPelaConversa } from "@/lib/clientes/conversa";
 
-/** Lista de conversas do WhatsApp para a equipe (as que pedem atendente primeiro). */
+/** Lista de conversas para a equipe (as que pedem atendente primeiro). */
 export const GET = rota(async (req: Request) => {
   await exigirSessao(BALCAO);
   const { busca } = parametros(req, z.object({ busca: z.string().trim().max(100).default("") }));
@@ -15,23 +15,29 @@ export const GET = rota(async (req: Request) => {
   const conversas = await db.conversa.findMany({
     where: { AND: [{ OR: [{ clienteId: null }, { cliente: { is: { excluidoEm: null } } }] }, ...(busca ? [{ OR: [
       { nomePerfil: { contains: busca, mode: "insensitive" as const } }, { cliente: { nome: { contains: busca, mode: "insensitive" as const } } },
-      ...(digitos ? [{ telefone: { contains: digitos } }] : []),
+      { instagramCliente: { nome: { contains: busca, mode: "insensitive" as const } } },
+      ...(/^instagram(?: direct)?$/i.test(busca) ? [{ instagramIgsid: { not: null } }] : []),
+      ...(digitos ? [{ instagramIgsid: null, telefone: { contains: digitos } }, { instagramCliente: { telefone: { contains: digitos } } }] : []),
     ] }] : [])] },
     orderBy: [{ estado: "desc" }, { atualizadoEm: "desc" }, { id: "asc" }],
     take: 100,
     select: {
       id: true,
       telefone: true,
+      instagramIgsid: true,
       nomePerfil: true,
       estado: true,
       naoLidas: true,
       atualizadoEm: true,
       cliente: { select: { nome: true } },
+      instagramCliente: { select: { nome: true } },
       mensagens: { orderBy: { criadoEm: "desc" }, take: 1, select: { texto: true, autor: true, criadoEm: true } },
     },
   });
   conversas.sort((a, b) => Number(b.estado === "HUMANO") - Number(a.estado === "HUMANO"));
-  return NextResponse.json(conversas);
+  return NextResponse.json(conversas.map(({ instagramIgsid, instagramCliente, ...c }) => instagramIgsid
+    ? { ...c, canal: "INSTAGRAM", telefone: null, cliente: null, nomeVinculado: instagramCliente?.nome ?? null, referenciaDirect: instagramIgsid.slice(-6) }
+    : { ...c, canal: "WHATSAPP" }));
 });
 
 export const POST = rota(async (req: Request) => {

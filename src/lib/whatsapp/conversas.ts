@@ -1,7 +1,8 @@
 import { Prisma, type AutorMensagem } from "@prisma/client";
 import { db } from "@/lib/db";
-import { naoEncontrado } from "@/lib/erros";
+import { ErroNegocio, naoEncontrado } from "@/lib/erros";
 import { publicar } from "@/lib/eventos";
+import { travarInboxInstagram } from "@/lib/instagram/persistencia";
 import { dentroJanela24h, enviarTemplate, enviarTexto, enviarTextoLoteAutorizado, temJanela24h, type TemplateWhatsApp } from "./canal";
 import { instanteDaEntradaCloud } from "./horario-entrada";
 import { atualizarPreferencia, travarPreferencia } from "./preferencia";
@@ -9,6 +10,7 @@ import { telefoneCanonico } from "./webhook";
 
 /** Conversa do telefone (canonico), ligada ao cliente cadastrado se existir. */
 export async function obterConversa(telefone: string, extra: { waId?: string; nomePerfil?: string | null } = {}) {
+  if (telefone.startsWith("instagram:")) throw new ErroNegocio("Use o canal Instagram Direct para esta conversa.");
   const cliente = await db.cliente.findUnique({ where: { telefone }, select: { id: true } });
   return db.conversa.upsert({
     where: { telefone },
@@ -63,9 +65,10 @@ export async function registrarEntrada(p: { telefone: string; waId?: string; nom
 /** A mudança de responsável espera o envio automático em curso para este telefone. */
 export function comPreferenciaDaConversa<T>(id: string, executar: (tx: Prisma.TransactionClient) => Promise<T>) {
   return db.$transaction(async tx => {
-    const conversa = await tx.conversa.findUnique({ where: { id }, select: { telefone: true } });
+    const conversa = await tx.conversa.findUnique({ where: { id }, select: { telefone: true, instagramIgsid: true } });
     if (!conversa) throw naoEncontrado("Conversa");
-    await travarPreferencia(tx, conversa.telefone);
+    if (conversa.instagramIgsid) await travarInboxInstagram(tx, conversa.instagramIgsid);
+    else await travarPreferencia(tx, conversa.telefone);
     return executar(tx);
   }, { timeout: 60_000 });
 }
@@ -88,6 +91,7 @@ export async function enviarNaConversa(conversaId: string, texto: string, autor:
   campanha?: boolean; templateAberturaCampanha?: TemplateWhatsApp; pagamentoConfirmado?: true;
 } = {}) {
   const conversa = await db.conversa.findUniqueOrThrow({ where: { id: conversaId } });
+  if (conversa.instagramIgsid) throw new ErroNegocio("Use o canal Instagram Direct para esta conversa.");
   let erro: string | null = null;
   let wamid: string | null = null;
   try {

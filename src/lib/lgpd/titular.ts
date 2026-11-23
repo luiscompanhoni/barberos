@@ -101,6 +101,8 @@ export async function excluirConta(clienteId: string, usuarioId: string, sessaoV
     const impedimentosAtuais = await impedimentosDo(clienteId, tx);
     if (impedimentosAtuais.length) throw new ErroNegocio(impedimentosAtuais.join(" "), 409, "exclusao_bloqueada");
     await tx.conversa.deleteMany({ where: { OR: [{ clienteId }, { telefone: c.telefone }] } });
+    // A indicação do número no Direct não prova que o titular controla o IGSID.
+    await tx.conversa.updateMany({ where: { instagramClienteId: clienteId }, data: { instagramClienteId: null } });
     await tx.codigoLogin.deleteMany({ where: { telefone: c.telefone } });
     await tx.esperaHorario.deleteMany({ where: { clienteId } });
     await tx.listaEsperaPlano.deleteMany({ where: { clienteId } });
