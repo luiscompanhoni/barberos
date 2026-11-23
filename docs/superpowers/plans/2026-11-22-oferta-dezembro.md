@@ -30,8 +30,8 @@
 
 **Interface.** A página do cliente é `/c/dezembro-gratis`. A página da gestão é `/assinaturas/dezembro-gratis`. A lógica fica em torno da adesão ligada à assinatura e compartilha as travas já usadas para cliente e plano.
 
-- [ ] Escrever e rodar testes de calendário, elegibilidade, multa, recusas de forma/termo e limites.
-- [ ] Validar titular, cartão de homologação, elegibilidade e quota em uma transação; manter idempotência e gravar os termos aceitos. Expor cronograma e registrar cancelamento sem efeito financeiro externo.
-- [ ] Integrar limite grátis a agendamento e consumo. Preservar caminhos de cancelamento no fim da fidelidade e bloquear desvios por rotas regulares quando necessário.
-- [ ] Entregar checkout móvel, estado do contrato e visão de vagas/adesões da gestão.
-- [ ] Rodar testes, lint, tipos, migração local com backup e agent-browser em 390×844. Documentar as etapas que dependem de Ygor.
+- [x] Escrever e rodar testes de calendário, elegibilidade, multa, recusas de forma/termo e limites.
+- [x] Validar titular, cartão de homologação, elegibilidade e quota em uma transação; manter idempotência e gravar os termos aceitos. Expor cronograma e registrar cancelamento sem efeito financeiro externo.
+- [x] Integrar limite grátis a agendamento e consumo. Preservar caminhos de cancelamento no fim da fidelidade e bloquear desvios por rotas regulares quando necessário.
+- [x] Entregar checkout móvel, estado do contrato e visão de vagas/adesões da gestão.
+- [x] Rodar testes, lint, tipos, migração local com backup e agent-browser em 390×844. Documentar as etapas que dependem de Ygor.

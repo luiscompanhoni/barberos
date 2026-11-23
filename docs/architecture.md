@@ -159,11 +159,17 @@ validar novamente backup/restauração de produção e revisão instalada; o ens
 - **WhatsApp** (`WHATSAPP_PROVIDER`): `simulador` (nada sai), `cloud` (oficial da Meta; webhook assinado) ou
   `evolution` (não oficial, QR code; serviço `evolution` do compose, sem porta aberta, dados no mesmo Postgres em
   schema próprio). Envio separado em `src/lib/whatsapp/canal.ts`. Status entregue/lida gravado pelos dois.
+- **Instagram Direct** (`src/lib/instagram/`): webhook, resposta em texto e recuperação de entradas para a caixa
+  de Conversas. O canal compartilha o agente de atendimento e tem chave própria de bloqueio.
+  [Configuração e App Review](instagram-direct-leonel.md).
 - **Claude** (bot): `ANTHROPIC_API_KEY`, `BOT_MODELO`.
 - **Pagar.me (grupo Stone)**: meio escolhido. A API "Stone Online" só aceita cartão, não tem página de pagamento
   nem webhooks e exigiria PCI DSS. Cartão: tokenizado no navegador, cobrança mensal pela Pagar.me, recusado → link
   para trocar o cartão. Boleto: assinatura na Pagar.me, boleto em `/c/pagar/<código>`. Pix: a Pagar.me não faz Pix
   recorrente; o BarberOS gera o Pix 3 dias antes e manda no WhatsApp (QR + copia e cola, atualiza sozinho).
+- **Dezembro Grátis** (`src/lib/oferta-dezembro/`): oferta em homologação com adesão auditada e cronograma de
+  recorrência simulado. As assinaturas de teste ficam fora dos cálculos financeiros de produção.
+  [Regras e próximos passos](oferta-dezembro-gratis.md).
 - **Stone Connect 2.0** (via API da Pagar.me): `MAQUININHA` = `manual` (padrão em produção:
   digita na maquininha e registra a forma), `simulada` (padrão no computador: botão simula a aprovação) ou `stone`
   (pedido vai direto para a maquininha; o webhook confirma com NSU e bandeira; botão "Conferir" consulta na hora;

@@ -31,8 +31,8 @@
 
 **Interface.** `Conversa.instagramIgsid String? @unique`, `Conversa.instagramClienteId String?` e relação dedicada para `Cliente`. `Conversa.telefone` recebe valor interno `instagram:<igsid>` para manter índice e retrocompatibilidade. Mensagens com `wamid` namespaced `instagram:<mid>`. Papel de cliente vem da sessão do app, nunca do Direct.
 
-- [ ] Escrever e rodar testes para protocolo, rejeição de ecos/perfil divergente, janela, idempotência, vínculo e bloqueio.
-- [ ] Registrar recebimento e atualizar o identificador/horário da entrada sob trava de conversa. Manter processamento após reconhecimento do webhook e registrar falhas para a recepção.
-- [ ] Adaptar o agente existente e a entrega. Revalidar janela/estado antes do transporte, excluir operações privadas e rotas/ações WhatsApp do Direct.
-- [ ] Mostrar Instagram na caixa e documentar App Review, configuração, privacidade e ativação.
-- [ ] Rodar testes, lint, types e entregar commits em pt-BR.
+- [x] Escrever e rodar testes para protocolo, rejeição de ecos/perfil divergente, janela, idempotência, vínculo e bloqueio.
+- [x] Registrar recebimento e atualizar o identificador/horário da entrada sob trava de conversa. Manter processamento após reconhecimento do webhook e registrar falhas para a recepção.
+- [x] Adaptar o agente existente e a entrega. Revalidar janela/estado antes do transporte, excluir operações privadas e rotas/ações WhatsApp do Direct.
+- [x] Mostrar Instagram na caixa e documentar App Review, configuração, privacidade e ativação.
+- [x] Rodar testes, lint, types e entregar commits em pt-BR.
