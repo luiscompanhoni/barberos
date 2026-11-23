@@ -33,10 +33,11 @@ export async function consultarAuditoria(f: { de: string; ate: string; usuarioId
   return {
     itens: pagina.map((l) => {
       const u = l.usuarioId ? quem.get(l.usuarioId) : null;
+      const dados = l.acao === "instagram_resposta_equipe" ? null : l.dados;
       return {
         id: l.id, criadoEm: l.criadoEm, acao: l.acao, entidade: l.entidade, entidadeId: l.entidadeId,
         quem: u ? u.nome : l.usuarioId ? "(acesso removido)" : "Sistema", papel: u ? PAPEL[u.papel] : null,
-        descricao: descreverAcao(l.acao, l.entidade), mudancas: linhasDeMudanca(l.dados), dados: l.dados,
+        descricao: descreverAcao(l.acao, l.entidade), mudancas: linhasDeMudanca(dados), dados,
         ip: l.ip, aparelho: resumoAparelho(l.dispositivo),
       };
     }),

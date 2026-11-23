@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assinaturaInstagramValida, desafioInstagram, lerEntradasInstagram } from "@/lib/instagram/protocolo";
 import { dentroJanelaInstagram, enviarTextoInstagram, partesInstagram } from "@/lib/instagram/canal";
-import { telefoneDoDirect, textoDaEquipeNoDirect, textoSeguroDoDirect } from "@/lib/instagram/privacidade";
+import { pedidoPrivadoNoDirect, respostaModeloExigeEquipe, telefoneDoDirect, textoDaEquipeNoDirect, textoSeguroDoDirect } from "@/lib/instagram/privacidade";
 
 const perfil = "17841400000001";
 const igsid = "1234567887654321";
@@ -115,7 +115,7 @@ describe("privacidade do Direct", () => {
   });
 
   it("omite identificadores e links do texto de entrada", () => {
-    const privado = "Telefone +55 (47) 99999-8888, CPF 123.456.789-09, código 123456, ana@exemplo.com, https://example.invalid/pagar";
+    const privado = "Telefone +55 (47) 99999-8888, CPF 123.456.789-09, protocolo 123456, ana@exemplo.com, https://example.invalid/pagar";
     const resultado = textoSeguroDoDirect(privado);
     expect(resultado).toContain("Telefone");
     for (const segredo of ["99999", "123.456", "123456", "ana@", "example.invalid"]) expect(resultado).not.toContain(segredo);
@@ -128,5 +128,25 @@ describe("privacidade do Direct", () => {
     expect(textoDaEquipeNoDirect(`${login}?convite=particular`)).toBe("[link omitido]");
     expect(textoDaEquipeNoDirect(`${login}.externo.test`)).toBe("[link omitido]");
     expect(textoDaEquipeNoDirect(`https://barbearia.exemplo.test.externo.test/c/entrar`)).toBe("[link omitido]");
+  });
+
+  it.each([
+    "Minha senha nova é Black.Teste@2026",
+    "Meu código temporário de verificação é:\nABC.D123",
+    "A senha nova da minha conta seria\nPinDeBrinquedo",
+    "Código 123456",
+  ])("omite a mensagem de credencial %s e direciona ao acesso autenticado", texto => {
+    const guardado = textoSeguroDoDirect(texto);
+    expect(guardado).toBe("[credencial omitida]");
+    expect(pedidoPrivadoNoDirect(guardado)).toBe(true);
+  });
+
+  it("oculta endereço sem esquema e impede links ou confirmações fabricadas pelo modelo", () => {
+    expect(textoSeguroDoDirect("Veja loja.exemplo.test/confirmar?id=9")).toBe("Veja [link omitido]");
+    expect(textoDaEquipeNoDirect("www.fora.example/conta")).toBe("[link omitido]");
+    for (const resposta of ["Entre em loja.exemplo.test/pagar", "Já reservei um horário para você.", "Agendei seu corte.", "Cancelei sua assinatura.", "Cobrei o valor no seu cartão."]) {
+      expect(respostaModeloExigeEquipe(resposta)).toBe(true);
+    }
+    expect(respostaModeloExigeEquipe("O corte custa R$ 60,00. Posso consultar a disponibilidade.")).toBe(false);
   });
 });

@@ -59,6 +59,7 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
   const fim = useRef<HTMLDivElement>(null);
   const abertaRef = useRef<string | null>(null);
   const idEnvio = useRef<string | null>(null);
+  const ultimaMensagemId = detalhe?.mensagens.at(-1)?.id;
 
   const carregarLista = useCallback(async () => {
     const pedido = ++ultimaLista.current;
@@ -91,7 +92,7 @@ export function ConversasTela({ podeConvidar }: { podeConvidar: boolean }) {
   }, [aberta, carregarDetalhe]);
   useEffect(() => {
     fim.current?.scrollIntoView({ block: "end" });
-  }, [detalhe?.mensagens.length]);
+  }, [ultimaMensagemId]);
 
   async function acao(fn: () => Promise<unknown>) {
     setErro("");

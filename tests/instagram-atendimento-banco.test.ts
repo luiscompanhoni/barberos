@@ -6,6 +6,12 @@ import { enviarRespostaEquipeInstagram, registrarEntradaInstagram } from "@/lib/
 import { processarEntradaInstagram } from "@/lib/instagram/processar";
 import { excluirConta, exportarDados } from "@/lib/lgpd/titular";
 import { obterConversa } from "@/lib/whatsapp/conversas";
+import { GET as detalhes } from "@/app/api/conversas/[id]/route";
+
+vi.mock("@/lib/auth/sessao", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/auth/sessao")>(),
+  exigirSessao: async () => ({ usuarioId: "recepcao-teste", papel: "RECEPCAO" }),
+}));
 
 const habilitado = process.env.TESTE_INSTAGRAM_LOCAL === "1";
 if (habilitado) {
@@ -83,9 +89,38 @@ describe.skipIf(!habilitado)("conversas do Instagram Direct no banco", () => {
       enviarRespostaEquipeInstagram(entrada.conversaId, "Oi, aqui é da equipe.", "teste-equipe", envioId),
     ]);
     expect(await db.mensagem.count({ where: { conversaId: entrada.conversaId, autor: "EQUIPE" } })).toBe(1);
+    await expect(enviarRespostaEquipeInstagram(entrada.conversaId, "Uma resposta diferente.", "teste-equipe", envioId))
+      .rejects.toMatchObject({ status: 409 });
     const antiga = (await registrarEntradaInstagram(mensagem(igsid(), "Olá", Date.now() - 24 * 3_600_000)))!;
     await expect(enviarRespostaEquipeInstagram(antiga.conversaId, "Oi", "teste-equipe")).rejects.toThrow("A janela de 24h do Instagram fechou");
     expect(await db.mensagem.count({ where: { conversaId: antiga.conversaId, autor: "EQUIPE" } })).toBe(0);
+  });
+
+  it("redige credencial em várias linhas e usa o acesso autenticado sem chamar o modelo", async () => {
+    vi.stubEnv("SITE_URL", "https://barbearia.exemplo.test");
+    vi.stubEnv("INSTAGRAM_ENVIOS_BLOQUEADOS", "true");
+    await db.configuracao.upsert({ where: { id: 1 }, create: { id: 1, botAtivo: true }, update: { botAtivo: true } });
+    const criar = vi.fn<Modelo["criar"]>();
+    const entrada = (await registrarEntradaInstagram(mensagem(igsid(), "Minha senha nova é:\nBlack.Ficticia-ABC")))!;
+    await processarEntradaInstagram(entrada, { modelo: { criar } });
+    const mensagens = await db.mensagem.findMany({ where: { conversaId: entrada.conversaId }, orderBy: { criadoEm: "asc" } });
+    expect(mensagens.map(m => m.texto)).toEqual(["[credencial omitida]", expect.stringContaining("https://barbearia.exemplo.test/c/entrar")]);
+    expect(criar).not.toHaveBeenCalled();
+  });
+
+  it("exibe as 300 mensagens recentes em ordem cronológica antes de marcar como lido", async () => {
+    const base = Date.now() - 1_000;
+    const entrada = (await registrarEntradaInstagram(mensagem(igsid(), "primeira", base)))!;
+    await db.mensagem.createMany({ data: Array.from({ length: 305 }, (_, i) => ({
+      autor: "CLIENTE", texto: `mensagem ${i + 1}`, criadoEm: new Date(base + i + 1), conversaId: entrada.conversaId,
+    })) });
+    const resposta = await detalhes(new Request("http://localhost/api/conversas"), { params: Promise.resolve({ id: entrada.conversaId }) });
+    expect(resposta.status).toBe(200);
+    const { mensagens: recentes } = await resposta.json();
+    expect(recentes).toHaveLength(300);
+    expect(recentes[0].texto).toBe("mensagem 6");
+    expect(recentes.at(-1).texto).toBe("mensagem 305");
+    expect(await db.conversa.findUnique({ where: { id: entrada.conversaId } })).toMatchObject({ naoLidas: 0 });
   });
 
   it("exporta o próprio aceite, desvincula o Direct e remove IP e navegador na exclusão", async () => {

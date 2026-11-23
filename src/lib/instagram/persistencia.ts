@@ -121,15 +121,25 @@ export async function enviarRespostaInstagram(conversaId: string, texto: string,
   if (!partes.length) throw new ErroNegocio("Escreva uma mensagem para enviar pelo Direct.");
   const chave = envio.autor === "BOT" ? envio.entrada.mid : envio.envioId;
   const mensagemId = createHash("sha256").update(JSON.stringify([conversaId, envio.autor, chave])).digest("hex");
+  const hashTexto = createHash("sha256").update(texto).digest("hex");
   const reserva = await comInboxInstagram(conversaId, async (tx, atual) => {
     const anterior = await tx.mensagem.findUnique({ where: { id: mensagemId }, select: { erro: true } });
-    if (anterior) return { repetida: true, erro: anterior.erro } as const;
+    if (anterior) {
+      if (envio.autor === "EQUIPE") {
+        const mesmaMensagem = await tx.auditoria.findFirst({ where: {
+          acao: "instagram_resposta_equipe", entidade: "conversa", entidadeId: conversaId,
+          AND: [{ dados: { path: ["mensagemId"], equals: mensagemId } }, { dados: { path: ["hashTexto"], equals: hashTexto } }],
+        }, select: { id: true } });
+        if (!mesmaMensagem) throw new ErroNegocio("Este identificador de envio já foi usado. Confira no Direct antes de reenviar.", 409);
+      }
+      return { repetida: true, erro: anterior.erro } as const;
+    }
     if (envio.autor === "BOT") {
       if (atual.recusaAutomaticas || !await turnoInstagramAtual(atual, envio.entrada, tx) || !dentroJanelaInstagram(atual.ultimaEntradaEm)) return null;
     } else {
       if (!dentroJanelaInstagram(atual.ultimaEntradaEm)) throw new ErroNegocio("A janela de 24h do Instagram fechou. Aguarde uma nova mensagem pelo Direct.", 422);
       if (atual.estado !== "HUMANO") await transferirParaEquipe(tx, conversaId, "A equipe assumiu ao responder pelo Direct.");
-      await auditar(tx, envio.usuarioId, "instagram_resposta_equipe", "conversa", conversaId, { mensagemId });
+      await auditar(tx, envio.usuarioId, "instagram_resposta_equipe", "conversa", conversaId, { mensagemId, hashTexto });
     }
     // A reserva persistida impede reenvio automático se o processo cair após chamar a Meta.
     await tx.mensagem.create({ data: { id: mensagemId, conversaId, autor: envio.autor, texto, erro: ENVIO_PENDENTE } });

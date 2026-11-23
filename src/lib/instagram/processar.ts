@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { urlSite } from "@/lib/dominios";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { dentroJanelaInstagram } from "./canal";
-import { pedidoPrivadoNoDirect, textoSeguroDoDirect } from "./privacidade";
+import { pedidoPrivadoNoDirect, respostaModeloExigeEquipe, textoSeguroDoDirect } from "./privacidade";
 import { encaminharEntradaInstagram, enviarRespostaInstagram, lerConversaInstagram, turnoInstagramAtual, type EntradaRegistradaInstagram } from "./persistencia";
 
 const FERRAMENTAS_PUBLICAS = new Set(["listar_servicos", "consultar_horarios", "listar_planos", "consultar_produto", "chamar_atendente"]);
@@ -74,7 +74,7 @@ export async function processarEntradaInstagram(entrada: EntradaRegistradaInstag
   if (r.interrompido) return;
   if (r.ferramentas.some(nome => !FERRAMENTAS_PUBLICAS.has(nome)) || r.resposta.includes("[ACESSO_APP]")) return responder(respostaDoApp());
   if (r.passouParaHumano || r.recusado || !r.resposta) return responder("Vou pedir para a equipe te ajudar por aqui.", ENCAMINHAMENTO);
-  if (/(?:https?:\/\/|www\.|\[\w+\]|(?:seu|sua) (?:hor[aá]rio|reserva|pagamento|assinatura) (?:j[aá] )?(?:est[aá]|foi))/iu.test(r.resposta)) {
+  if (respostaModeloExigeEquipe(r.resposta)) {
     return responder("Vou pedir para a equipe te ajudar por aqui.", ENCAMINHAMENTO);
   }
   return responder(textoSeguroDoDirect(r.resposta.slice(0, 4_000)));

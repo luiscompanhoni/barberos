@@ -17,15 +17,16 @@ export const GET = rota(async (_req: Request, ctx: RouteContext<"/api/conversas/
   const c = await db.conversa.findUnique({
     where: { id },
     select: {
-      id: true, telefone: true, nomePerfil: true, estado: true, conviteApp: true, recusaAutomaticas: true, ultimaEntradaEm: true, instagramIgsid: true, atualizadoEm: true,
+      id: true, telefone: true, nomePerfil: true, estado: true, conviteApp: true, recusaAutomaticas: true, ultimaEntradaEm: true, instagramIgsid: true, atualizadoEm: true, naoLidas: true,
       cliente: { select: { id: true, nome: true, aceitaMensagens: true } },
       instagramCliente: { select: { nome: true } },
-      mensagens: { orderBy: { criadoEm: "asc" }, take: 300, select: { id: true, autor: true, texto: true, erro: true, entregueEm: true, lidaEm: true, criadoEm: true } },
+      mensagens: { orderBy: [{ criadoEm: "desc" }, { id: "desc" }], take: 300, select: { id: true, autor: true, texto: true, erro: true, entregueEm: true, lidaEm: true, criadoEm: true } },
     },
   });
   if (!c) throw naoEncontrado("Conversa");
-  const { instagramIgsid, instagramCliente, atualizadoEm, ...dados } = c;
-  await db.conversa.updateMany({ where: { id, ...(instagramIgsid ? { atualizadoEm } : {}) }, data: { naoLidas: 0 } });
+  const { instagramIgsid, instagramCliente, atualizadoEm, naoLidas, ...dados } = c;
+  if (naoLidas) await db.conversa.updateMany({ where: { id, atualizadoEm, naoLidas }, data: { naoLidas: 0 } });
+  dados.mensagens.reverse();
   return NextResponse.json(instagramIgsid ? {
     ...dados, canal: "INSTAGRAM", telefone: null, cliente: null, nomeVinculado: instagramCliente?.nome ?? null, referenciaDirect: instagramIgsid.slice(-6),
     janelaAberta: dentroJanelaInstagram(c.ultimaEntradaEm), simulado: instagramEmSimulacao(),
