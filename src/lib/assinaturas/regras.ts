@@ -20,7 +20,7 @@ export type UsoDoPlano = { id: string; inicio: number; servicoId: string; futuro
 
 export type Avaliacao =
   | { cobre: true }
-  | { cobre: false; motivo: string; codigo: "servico" | "barbeiro" | "dia" | "abertos" | "intervalo" | "limite_ciclo"; aPartirDe?: number };
+  | { cobre: false; motivo: string; codigo: "servico" | "barbeiro" | "dia" | "abertos" | "intervalo" | "limite_ciclo" | "limite_oferta"; aPartirDe?: number };
 
 const NOMES_DIA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 

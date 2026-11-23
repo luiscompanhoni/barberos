@@ -20,10 +20,12 @@ import { ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { concluirPagamentoInicial, marcarPagamentoInicialIncerto, cancelarOperacaoInicial } from "./operacao-inicial";
 import { fimDoCicloManual } from "./registro-manual-regras";
 import { assinaturaTesteUnico, autorizaOfertaTeste, planoReservadoParaTeste } from "./teste-venda";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
+import { dentroDoPeriodoGratis, erroUsarOfertaDezembro } from "@/lib/oferta-dezembro/regras";
+import { vagasRestantes } from "./vagas";
 import { adesaoLeonelDisponivel, ehCheckoutLeonel, novoTokenCheckoutLeonel } from "./adesao-leonel";
 
-/** Assinaturas que ocupam vaga: ativas, atrasadas e pendentes recentes (link ainda valendo). */
-const PENDENTE_SEGURA_VAGA_MS = 3 * 86_400_000;
+export { vagasRestantes } from "./vagas";
 
 function exigirVenda(plano: Pick<Plano, "id" | "precoCentavos" | "ativo" | "visivel" | "compravel" | "vendaSomenteEquipe"> | null, origem?: OrigemAgendamento, clienteId?: string) {
   const autorizado = autorizaOfertaTeste(plano, origem, clienteId);
@@ -40,27 +42,25 @@ export async function verificarNovaAdesao(planoId: string, origem: OrigemAgendam
   exigirVenda(plano, origem);
 }
 
-export async function vagasRestantes(plano: Pick<Plano, "id" | "vagas">) {
-  if (plano.vagas === null) return null;
-  const ocupadas = await db.assinatura.count({
-    where: {
-      planoId: plano.id,
-      OR: [{ status: { in: ["ATIVA", "ATRASADA"] } }, { status: "PENDENTE", criadaEm: { gt: new Date(Date.now() - PENDENTE_SEGURA_VAGA_MS) } }],
-    },
-  });
-  return Math.max(0, plano.vagas - ocupadas);
-}
-
 /** Assinatura atual do cliente (a mais recente que nao foi cancelada) e se ela vale agora. */
 export async function situacaoDoCliente(clienteId: string, c: typeof db | Prisma.TransactionClient = db) {
   const cfg = await configuracao(c);
   const a = await c.assinatura.findFirst({
     where: { clienteId, status: { not: "CANCELADA" } },
     orderBy: { criadaEm: "desc" },
-    include: { plano: { include: { servicos: { include: { servico: true } }, barbeiros: true } } },
+    include: {
+      plano: { include: { servicos: { include: { servico: true } }, barbeiros: true } },
+      ofertaDezembro: { select: { aceitaEm: true, limiteUsos: true } },
+    },
   });
   if (!a) return null;
   const agora = Date.now();
+  if (a.ofertaDezembro) {
+    return {
+      assinatura: a, pausada: false, cobrancaEmAberto: null,
+      valida: ofertaDezembroEmHomologacao() && a.status === "ATIVA" && dentroDoPeriodoGratis(agora),
+    };
+  }
   const hoje = dataLocal(agora, cfg.fuso);
   const aberta = await cobrancaEmAberto(a.id, c);
   const pausada = estaPausada({
@@ -179,12 +179,8 @@ export async function assinar(p: {
     if (await tx.assinatura.findFirst({ where: { clienteId: cliente.id, status: { not: "CANCELADA" } }, select: { id: true } })) {
       throw new ErroNegocio("Já existe uma assinatura para este cliente. Atualize a tela e consulte a equipe antes de continuar.", 409, "assinatura_existente");
     }
-    if (corrente.vagas !== null) {
-      const ocupadas = await tx.assinatura.count({ where: { planoId: corrente.id, OR: [
-        { status: { in: ["ATIVA", "ATRASADA"] } },
-        { status: "PENDENTE", criadaEm: { gt: new Date(Date.now() - PENDENTE_SEGURA_VAGA_MS) } },
-      ] } });
-      if (ocupadas >= corrente.vagas) throw new ErroNegocio(`As vagas do ${corrente.nome} estão esgotadas no momento.`, 409, "sem_vagas");
+    if (await vagasRestantes(corrente, tx) === 0) {
+      throw new ErroNegocio(`As vagas do ${corrente.nome} estão esgotadas no momento.`, 409, "sem_vagas");
     }
     if (cpf !== clienteConfirmado.cpf || (email && email !== clienteConfirmado.email)) {
       await tx.cliente.update({ where: { id: cliente.id }, data: { cpf, ...(email ? { email } : {}) } });
@@ -255,8 +251,9 @@ export async function cancelar(
   usuarioId: string | null,
   opts: { avisar?: boolean; semGateway?: boolean } = {},
 ) {
-  const a = await db.assinatura.findUnique({ where: { id: assinaturaId }, include: { cliente: true, plano: true } });
+  const a = await db.assinatura.findUnique({ where: { id: assinaturaId }, include: { cliente: true, plano: true, ofertaDezembro: { select: { assinaturaId: true } } } });
   if (!a) throw naoEncontrado("Assinatura");
+  if (a.ofertaDezembro) throw erroUsarOfertaDezembro();
   if (a.status === "CANCELADA") return a;
   if (a.status === "PENDENTE" && !a.ativadaEm) {
     const resultado = await cancelarOperacaoInicial(a.id, usuarioId);

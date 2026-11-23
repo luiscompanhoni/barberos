@@ -6,9 +6,11 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { ErroNegocio } from "@/lib/erros";
 import { diaSemana, dataLocal } from "@/lib/agenda/tempo";
-import { avaliarUso, precoComDesconto, type PlanoRegras } from "./regras";
+import { avaliarUso, precoComDesconto, type Avaliacao, type PlanoRegras } from "./regras";
 import { situacaoDoCliente } from "./servico";
 import { fimDoCicloManual } from "./registro-manual-regras";
+import { ofertaDezembroEmHomologacao } from "@/lib/oferta-dezembro/config";
+import { avaliarLimiteDezembro, dentroDoPeriodoGratis, FIM_GRATIS_DEZEMBRO, INICIO_GRATIS_DEZEMBRO } from "@/lib/oferta-dezembro/regras";
 
 type Cliente = typeof db | Prisma.TransactionClient;
 
@@ -34,22 +36,27 @@ export async function precificar(p: {
   usosExtras?: { id: string; inicio: number; servicoId: string; futuro: boolean }[];
   c?: Cliente;
 }): Promise<Precificacao> {
+  const avulso = { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
   const sit = await situacaoDoCliente(p.clienteId, p.c);
-  if (!sit || !sit.valida) return { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
-  // Cancelado com fim do ciclo: horario depois do fim nao entra no plano.
-  if (sit.assinatura.encerraEm && p.inicio >= sit.assinatura.encerraEm.getTime()) return { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
-
+  if (!sit) return avulso;
   const a = sit.assinatura;
+  const oferta = a.ofertaDezembro;
+  if (oferta) {
+    if (!ofertaDezembroEmHomologacao() || a.status !== "ATIVA" || p.inicio < +oferta.aceitaEm || !dentroDoPeriodoGratis(p.inicio)) return avulso;
+  } else if (!sit.valida) return avulso;
+  // Cancelado com fim do ciclo: horario depois do fim nao entra no plano.
+  if (a.encerraEm && p.inicio >= a.encerraEm.getTime()) return avulso;
+
   const fimManual = fimDoCicloManual(a);
   if (fimManual !== null && (!a.cicloInicio || p.inicio < a.cicloInicio.getTime() || dataLocal(p.inicio, p.fuso) > fimManual)) {
-    return { assinaturaId: null, precoCentavos: p.precoBase, nota: null };
+    return avulso;
   }
   const regras: PlanoRegras = {
     nome: a.plano.nome,
     intervaloMinDias: a.plano.intervaloMinDias,
     maxAgendamentosAbertos: a.plano.maxAgendamentosAbertos,
     diasSemana: a.plano.diasSemana,
-    descontoExtrasPct: a.plano.descontoExtrasPct,
+    descontoExtrasPct: oferta ? 0 : a.plano.descontoExtrasPct,
     servicos: a.plano.servicos.map((s) => ({ servicoId: s.servicoId, usosPorCiclo: s.usosPorCiclo })),
     barbeiroIds: a.plano.barbeiros.map((b) => b.barbeiroId),
   };
@@ -57,26 +64,31 @@ export async function precificar(p: {
   const usos = await (p.c ?? db).agendamento.findMany({
     where: {
       assinaturaId: a.id,
+      ...(oferta ? { inicio: { gte: new Date(INICIO_GRATIS_DEZEMBRO), lt: new Date(FIM_GRATIS_DEZEMBRO) } } : {}),
       status: { not: "CANCELADO" }, // falta conta como uso (evita marcar e nao vir)
       ...((p.ignorarAgendamentoId || p.ignorarAgendamentoIds?.length) ? { id: { notIn: [...(p.ignorarAgendamentoId ? [p.ignorarAgendamentoId] : []), ...(p.ignorarAgendamentoIds ?? [])] } } : {}),
     },
     select: { id: true, inicio: true, servicoId: true, status: true },
   });
 
-  const r = avaliarUso({
+  const usosConsiderados = [...usos.map((u) => ({
+    id: u.id,
+    inicio: u.inicio.getTime(),
+    servicoId: u.servicoId,
+    futuro: u.inicio.getTime() > agora && (u.status === "MARCADO" || u.status === "CONFIRMADO"),
+  })), ...(p.usosExtras ?? [])];
+  const avaliacao = avaliarUso({
     plano: regras,
     servicoId: p.servicoId,
     barbeiroId: p.barbeiroId,
     inicio: p.inicio,
     diaSemana: diaSemana(dataLocal(p.inicio, p.fuso)),
-    usos: [...usos.map((u) => ({
-      id: u.id,
-      inicio: u.inicio.getTime(),
-      servicoId: u.servicoId,
-      futuro: u.inicio.getTime() > agora && (u.status === "MARCADO" || u.status === "CONFIRMADO"),
-    })), ...(p.usosExtras ?? [])],
+    usos: usosConsiderados,
     cicloInicio: a.cicloInicio?.getTime() ?? null,
   });
+  const r: Avaliacao = avaliacao.cobre && oferta && avaliarLimiteDezembro(usosConsiderados, oferta.limiteUsos).restantes === 0
+    ? { cobre: false, codigo: "limite_oferta", motivo: `Os ${oferta.limiteUsos} usos de Dezembro Grátis já estão reservados ou foram utilizados.` }
+    : avaliacao;
 
   if (r.cobre) return { assinaturaId: a.id, precoCentavos: 0, nota: `Pelo ${a.plano.nome}` };
 

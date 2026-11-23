@@ -8,6 +8,8 @@ import { db } from "@/lib/db";
 import { ErroNegocio, naoEncontrado, proibido } from "@/lib/erros";
 import { fimDoCicloManual, vencimentoDoRegistro } from "./registro-manual-regras";
 import { schemaRegistroManual } from "./schemas";
+import { lerConfigOfertaDezembro } from "@/lib/oferta-dezembro/config";
+import { vagasRestantes } from "./vagas";
 
 /** Registra o período pago fora do sistema, sem criar recebimento ou fatura. */
 export async function registrarAssinaturaPaga(s: Sessao, entrada: z.infer<typeof schemaRegistroManual>) {
@@ -59,6 +61,9 @@ export async function registrarAssinaturaPaga(s: Sessao, entrada: z.infer<typeof
     const plano = await tx.plano.findUnique({ where: { id: p.planoId } });
     if (!plano?.ativo) throw naoEncontrado("Plano ativo");
     if (!atual && !plano.compravel) throw new ErroNegocio("Este plano é somente para consulta. A equipe de gestão precisa conferir o contrato.", 409, "plano_consulta");
+    if (!atual && lerConfigOfertaDezembro()?.planoId === plano.id && await vagasRestantes(plano, tx) === 0) {
+      throw new ErroNegocio("O plano ficou sem vagas. Confira a disponibilidade antes de registrar a assinatura.", 409, "sem_vagas");
+    }
     if (!atual && plano.precoCentavos !== p.precoPlanoCentavos) {
       throw new ErroNegocio("O preço de referência mudou. Reabra o formulário e confira o plano.", 409, "plano_alterado");
     }

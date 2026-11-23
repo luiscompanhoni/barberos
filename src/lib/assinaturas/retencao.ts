@@ -13,6 +13,7 @@ import { gatewayPorId } from "@/lib/pagamentos/gateway";
 import { adiarCobranca, aplicarDesconto, capacidades, ehCashbarber } from "@/lib/pagamentos/retencao-gateway";
 import { formatarTelefone } from "@/lib/telefone";
 import { cancelar } from "./servico";
+import { erroUsarOfertaDezembro } from "@/lib/oferta-dezembro/regras";
 import {
   CONFIG_PADRAO, DIAS_ENTRE_DESCONTOS, DIAS_ENTRE_PAUSAS, ROTULO_MOTIVO, estaPausada, fimDoAcesso, ofertaPara,
   ultimoDia, ultimoVencimentoComDesconto, valorComRetencao, type ConfigRetencao, type Motivo, type Oferta,
@@ -40,8 +41,9 @@ export async function salvarConfigRetencao(c: ConfigRetencao, usuarioId: string 
 
 /** Tudo que a decisao precisa: assinatura, oferta, ate quando vale se cancelar. */
 async function contexto(assinaturaId: string, motivo: Motivo) {
-  const a = await db.assinatura.findUnique({ where: { id: assinaturaId }, include: { cliente: true, plano: true } });
+  const a = await db.assinatura.findUnique({ where: { id: assinaturaId }, include: { cliente: true, plano: true, ofertaDezembro: { select: { assinaturaId: true } } } });
   if (!a) throw naoEncontrado("Assinatura");
+  if (a.ofertaDezembro) throw erroUsarOfertaDezembro();
   if (a.status === "CANCELADA") throw new ErroNegocio("Esse plano já está cancelado.", 409, "ja_cancelada");
   const cfg = await configuracao();
   const hoje = dataLocal(Date.now(), cfg.fuso);

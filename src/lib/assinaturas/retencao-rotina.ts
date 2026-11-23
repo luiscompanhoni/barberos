@@ -3,6 +3,7 @@
  * no fim do ciclo pago.
  */
 import { db } from "@/lib/db";
+import { encerrarOfertasDezembroAgendadas } from "@/lib/oferta-dezembro/cancelamento";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal } from "@/lib/agenda/tempo";
 import { aplicarPlanoAosFuturos } from "./agenda";
@@ -33,7 +34,7 @@ export async function encerrarCancelados() {
   const cfg = await configuracao();
   const hoje = new Date(`${dataLocal(Date.now(), cfg.fuso)}T00:00:00Z`);
   const lista = await db.assinatura.findMany({
-    where: { encerraEm: { lte: hoje }, status: { not: "CANCELADA" } },
+    where: { encerraEm: { lte: hoje }, status: { not: "CANCELADA" }, ofertaDezembro: { is: null } },
     include: { cliente: true, plano: true },
   });
   for (const a of lista) {
@@ -45,5 +46,5 @@ export async function encerrarCancelados() {
       console.error(`[rotina] encerrar assinatura ${a.id}:`, e);
     }
   }
-  return lista.length;
+  return lista.length + await encerrarOfertasDezembroAgendadas();
 }

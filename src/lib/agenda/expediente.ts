@@ -1,3 +1,4 @@
+import { revalidarCoberturaEquipe } from "./cobertura-equipe";
 import { aoCancelarHorario } from "./antecipado";
 import { Prisma, type TipoExcecao } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -239,6 +240,12 @@ export async function fecharAgenda(
           if (!destino.ativo) throw new ErroNegocio("O barbeiro de destino está inativo.");
           await validarHorarioCliente(tx, a.clienteId, { inicio: +a.inicio, fim: +a.fim }, [a.id]);
           await validarCadeira(tx, destino.cadeiraId, { inicio: +a.inicio, fim: +a.fim }, a.id, cfg.intervaloEntreClientes);
+          const vigente = vigentes.find(item => item.id === a.id)!;
+          if (vigente.assinaturaId && await tx.ofertaDezembroAdesao.findUnique({
+            where: { assinaturaId: vigente.assinaturaId }, select: { assinaturaId: true },
+          })) {
+            await revalidarCoberturaEquipe(tx, vigente, { barbeiroId: r.barbeiroDestinoId, inicio: +vigente.inicio, fuso: cfg.fuso });
+          }
           await tx.agendamento.update({ where: { id: a.id }, data: { barbeiroId: r.barbeiroDestinoId, cadeiraId: destino.cadeiraId } });
           await auditar(tx, ator.usuarioId, "transferir_por_fechamento", "agendamento", a.id, { para: r.barbeiroDestinoId });
           tocados.add(r.barbeiroDestinoId);
