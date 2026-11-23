@@ -2,6 +2,7 @@ import { z } from "zod";
 import { ehHomologacao } from "@/lib/ambiente";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { zIdInstagram, zMidInstagram } from "./protocolo";
+import { transporteInstagram } from "./provedor";
 
 const LIMITE_BYTES = 1_000;
 const zConfirmacao = z.object({ recipient_id: zIdInstagram, message_id: zMidInstagram });
@@ -41,19 +42,15 @@ export function instagramEmSimulacao() {
 
 export async function enviarTextoInstagram(p: { igsid: string; texto: string; sinal: AbortSignal }, rede = fetch) {
   if (instagramEmSimulacao()) return { simulado: true, mid: null } as const;
-  const perfil = zIdInstagram.safeParse(process.env.INSTAGRAM_PROFESSIONAL_ACCOUNT_ID);
-  const token = process.env.INSTAGRAM_ACCESS_TOKEN?.trim();
-  const versao = process.env.INSTAGRAM_GRAPH_API_VERSION?.trim();
-  if (!perfil.success || !token || !versao || !/^v[1-9]\d?\.0$/.test(versao)) {
-    throw new Error("Credenciais ou versão da API do Instagram indisponíveis.");
-  }
+  const transporte = transporteInstagram();
+  if (!transporte) throw new Error("Credenciais ou versão da API do Instagram indisponíveis.");
   if (!zIdInstagram.safeParse(p.igsid).success || !p.texto.trim() || Buffer.byteLength(p.texto) > LIMITE_BYTES) {
     throw new Error("Texto ou destinatário inválido para o Instagram.");
   }
   try {
-    const resposta = await rede(`https://graph.instagram.com/${versao}/${perfil.data}/messages`, {
+    const resposta = await rede(transporte.url, {
       method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${transporte.token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ recipient: { id: p.igsid }, message: { text: p.texto } }),
       redirect: "error",
       signal: p.sinal,

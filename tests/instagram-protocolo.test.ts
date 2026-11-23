@@ -1,10 +1,11 @@
 import { createHmac } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assinaturaInstagramValida, desafioInstagram, lerEntradasInstagram } from "@/lib/instagram/protocolo";
 import { dentroJanelaInstagram, enviarTextoInstagram, partesInstagram } from "@/lib/instagram/canal";
 import { pedidoDeNovaReservaDirect, pedidoPrivadoNoDirect, respostaModeloExigeEquipe, telefoneDoDirect, textoDaEquipeNoDirect, textoSeguroDoDirect } from "@/lib/instagram/privacidade";
 
 const perfil = "17841400000001";
+const pagina = "887766";
 const igsid = "1234567887654321";
 const agora = Date.UTC(2026, 10, 22, 14);
 const entrada = { sender: { id: igsid }, recipient: { id: perfil }, timestamp: agora, message: { mid: "aWdf:1_-=", text: "Olá!" } };
@@ -57,6 +58,18 @@ describe("webhook do Instagram", () => {
 });
 
 describe("transporte do Instagram", () => {
+  beforeEach(() => {
+    vi.stubEnv("AMBIENTE", "teste");
+    vi.stubEnv("BARBEROS_QUARENTENA_RESTAURACAO", undefined);
+    vi.stubEnv("INSTAGRAM_ENVIOS_BLOQUEADOS", "false");
+    vi.stubEnv("INSTAGRAM_PROVEDOR", undefined);
+    vi.stubEnv("INSTAGRAM_PROFESSIONAL_ACCOUNT_ID", perfil);
+    vi.stubEnv("INSTAGRAM_PAGE_ID", pagina);
+    vi.stubEnv("INSTAGRAM_PAGE_ACCESS_TOKEN", "pagina-ficticia");
+    vi.stubEnv("INSTAGRAM_ACCESS_TOKEN", "instagram-ficticio");
+    vi.stubEnv("INSTAGRAM_GRAPH_API_VERSION", undefined);
+  });
+
   it("a janela termina às 24 horas exatas e requer data real já ocorrida", () => {
     expect(dentroJanelaInstagram(new Date(agora - 86_400_000 + 1), agora)).toBe(true);
     expect(dentroJanelaInstagram(new Date(agora - 86_400_000), agora)).toBe(false);
@@ -74,32 +87,80 @@ describe("transporte do Instagram", () => {
     expect(partesInstagram(semEspacos)).toEqual([` ${"x".repeat(999)}`, "💈"]);
   });
 
-  it("registra simulação por padrão e bloqueia rede mesmo com liberação em homologação", async () => {
+  it("simula por padrão, com bloqueio explícito, em homologação ou em quarentena", async () => {
     const rede = vi.fn<typeof fetch>();
     const envio = { igsid, texto: "Olá", sinal: new AbortController().signal };
     vi.stubEnv("INSTAGRAM_ENVIOS_BLOQUEADOS", undefined);
     expect(await enviarTextoInstagram(envio, rede)).toEqual({ simulado: true, mid: null });
+    vi.stubEnv("INSTAGRAM_ENVIOS_BLOQUEADOS", "true");
+    expect(await enviarTextoInstagram(envio, rede)).toEqual({ simulado: true, mid: null });
     vi.stubEnv("INSTAGRAM_ENVIOS_BLOQUEADOS", "false");
     vi.stubEnv("AMBIENTE", "homologacao");
+    expect(await enviarTextoInstagram(envio, rede)).toEqual({ simulado: true, mid: null });
+    vi.stubEnv("AMBIENTE", "teste");
+    vi.stubEnv("BARBEROS_QUARENTENA_RESTAURACAO", "true");
     expect(await enviarTextoInstagram(envio, rede)).toEqual({ simulado: true, mid: null });
     expect(rede).not.toHaveBeenCalled();
   });
 
-  it("usa a conta profissional na URL, o IGSID no corpo e valida a confirmação sem expor erro da Meta", async () => {
-    vi.stubEnv("AMBIENTE", "teste");
-    vi.stubEnv("INSTAGRAM_ENVIOS_BLOQUEADOS", "false");
-    vi.stubEnv("INSTAGRAM_PROFESSIONAL_ACCOUNT_ID", perfil);
-    vi.stubEnv("INSTAGRAM_GRAPH_API_VERSION", "v27.0");
-    vi.stubEnv("INSTAGRAM_ACCESS_TOKEN", "token-ficticio");
+  it("usa a página, seu token e a versão padrão do Facebook com o IGSID no corpo", async () => {
     const rede = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(Response.json({ recipient_id: igsid, message_id: "ig:aceito" }))
-      .mockResolvedValueOnce(Response.json({ error: { message: "Credencial token-ficticio" } }, { status: 403 }));
+      .mockResolvedValueOnce(Response.json({ recipient_id: igsid, message_id: "ig:aceito" }));
+    const sinal = new AbortController().signal;
+    const dados = { igsid, texto: "Olá", sinal };
+    expect(await enviarTextoInstagram(dados, rede)).toEqual({ simulado: false, mid: "ig:aceito" });
+    expect(rede).toHaveBeenCalledExactlyOnceWith(`https://graph.facebook.com/v26.0/${pagina}/messages`, {
+      method: "POST",
+      headers: { Authorization: "Bearer pagina-ficticia", "Content-Type": "application/json" },
+      redirect: "error",
+      signal: sinal,
+      body: JSON.stringify({ recipient: { id: igsid }, message: { text: "Olá" } }),
+    });
+  });
+
+  it("usa o token e o ID profissionais no modo Instagram Login", async () => {
+    vi.stubEnv("INSTAGRAM_PROVEDOR", "instagram_login");
+    vi.stubEnv("INSTAGRAM_GRAPH_API_VERSION", "v27.0");
+    const rede = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ recipient_id: igsid, message_id: "ig:aceito" }));
     const dados = { igsid, texto: "Olá", sinal: new AbortController().signal };
     expect(await enviarTextoInstagram(dados, rede)).toEqual({ simulado: false, mid: "ig:aceito" });
-    expect(rede).toHaveBeenCalledWith(`https://graph.instagram.com/v27.0/${perfil}/messages`, expect.objectContaining({
-      method: "POST", redirect: "error", body: JSON.stringify({ recipient: { id: igsid }, message: { text: "Olá" } }),
+    expect(rede).toHaveBeenCalledExactlyOnceWith(`https://graph.instagram.com/v27.0/${perfil}/messages`, expect.objectContaining({
+      headers: { Authorization: "Bearer instagram-ficticio", "Content-Type": "application/json" },
     }));
-    await expect(enviarTextoInstagram(dados, rede)).rejects.toThrow("O Instagram não confirmou o envio.");
+  });
+
+  it.each([
+    ["facebook_login", "INSTAGRAM_PROFESSIONAL_ACCOUNT_ID", undefined],
+    ["facebook_login", "INSTAGRAM_PAGE_ID", undefined],
+    ["facebook_login", "INSTAGRAM_PAGE_ID", "../../me"],
+    ["facebook_login", "INSTAGRAM_PAGE_ACCESS_TOKEN", " "],
+    ["facebook_login", "INSTAGRAM_GRAPH_API_VERSION", "v26.0/hub"],
+    ["instagram_login", "INSTAGRAM_GRAPH_API_VERSION", undefined],
+    ["instagram_login", "INSTAGRAM_ACCESS_TOKEN", undefined],
+    ["desconhecido", "INSTAGRAM_GRAPH_API_VERSION", "v25.0"],
+  ])("recusa %s com %s=%s sem tentar outro transporte", async (provedor, variavel, valor) => {
+    vi.stubEnv("INSTAGRAM_PROVEDOR", provedor);
+    vi.stubEnv("INSTAGRAM_GRAPH_API_VERSION", "v25.0");
+    vi.stubEnv(variavel, valor);
+    const rede = vi.fn<typeof fetch>();
+    const dados = { igsid, texto: "Olá", sinal: new AbortController().signal };
+    await expect(enviarTextoInstagram(dados, rede)).rejects.toThrow("Credenciais ou versão da API do Instagram indisponíveis.");
+    expect(rede).not.toHaveBeenCalled();
+  });
+
+  it("respeita a versão configurada e não confirma um IGSID divergente nem expõe o erro da Meta", async () => {
+    vi.stubEnv("INSTAGRAM_PROVEDOR", "facebook_login");
+    vi.stubEnv("INSTAGRAM_GRAPH_API_VERSION", "v25.0");
+    const rede = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json({ recipient_id: "999", message_id: "ig:aceito" }))
+      .mockResolvedValueOnce(Response.json({ error: { message: "Credencial pagina-ficticia" } }, { status: 403 }));
+    const dados = { igsid, texto: "Olá", sinal: new AbortController().signal };
+    const erro = "O Instagram não confirmou o envio. Confira no Direct antes de reenviar.";
+    await expect(enviarTextoInstagram(dados, rede)).rejects.toThrow(new Error(erro));
+    await expect(enviarTextoInstagram(dados, rede)).rejects.toThrow(new Error(erro));
+    expect(rede).toHaveBeenCalledTimes(2);
+    expect(rede).toHaveBeenCalledWith(`https://graph.facebook.com/v25.0/${pagina}/messages`, expect.anything());
   });
 });
 

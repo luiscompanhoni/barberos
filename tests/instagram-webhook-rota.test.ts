@@ -10,10 +10,12 @@ vi.mock("@/lib/instagram/processar", () => ({ processarEntradaInstagram: mocks.p
 const url = "https://painel.exemplo.test/api/instagram/webhook";
 const segredo = "app-secret-ficticio";
 const perfil = "17841400000001";
+const pagina = "887766";
 
-function mensagemAssinada() {
-  const entrada = { sender: { id: "1234" }, recipient: { id: perfil }, timestamp: Date.now(), message: { mid: "m:1", text: "Olá" } };
-  const corpo = `\n ${JSON.stringify({ object: "instagram", entry: [{ id: perfil, messaging: [entrada] }] })}\n`;
+function mensagemAssinada({ objeto = "instagram", conta = perfil, destinatario = perfil, eco = false } = {}) {
+  const timestamp = Date.now();
+  const entrada = { sender: { id: "1234" }, recipient: { id: destinatario }, timestamp, message: { mid: "m:1", text: "Olá", is_echo: eco } };
+  const corpo = `\n ${JSON.stringify({ object: objeto, entry: [{ id: conta, time: timestamp, messaging: [entrada] }] })}\n`;
   const assinatura = `sha256=${createHmac("sha256", segredo).update(corpo).digest("hex")}`;
   return { corpo, assinatura };
 }
@@ -24,6 +26,8 @@ function requisicao(corpo: string, assinatura: string) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.stubEnv("INSTAGRAM_PROVEDOR", "facebook_login");
+  vi.stubEnv("INSTAGRAM_PAGE_ID", pagina);
   vi.stubEnv("INSTAGRAM_APP_SECRET", segredo);
   vi.stubEnv("INSTAGRAM_PROFESSIONAL_ACCOUNT_ID", perfil);
   vi.stubEnv("INSTAGRAM_WEBHOOK_VERIFY_TOKEN", "verificacao-ficticia");
@@ -46,6 +50,31 @@ describe("rota pública do Instagram", () => {
     expect((await POST(requisicao(corpo.trim(), assinatura))).status).toBe(401);
     expect(mocks.registrar).not.toHaveBeenCalled();
     expect(mocks.depois).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { objeto: "page" },
+    { conta: pagina },
+    { destinatario: pagina },
+    { eco: true },
+  ])("aceita e ignora a notificação %# sem gravar nem agendar turno", async opcoes => {
+    const { corpo, assinatura } = mensagemAssinada(opcoes);
+    expect((await POST(requisicao(corpo, assinatura))).status).toBe(200);
+    expect(mocks.registrar).not.toHaveBeenCalled();
+    expect(mocks.depois).not.toHaveBeenCalled();
+  });
+
+  it("agenda um único turno quando a persistência detecta a repetição do MID", async () => {
+    const { corpo, assinatura } = mensagemAssinada();
+    const registrada = { conversaId: "c-teste", mid: "m:1", timestamp: Date.now(), texto: "Olá" };
+    mocks.registrar.mockResolvedValueOnce(registrada).mockResolvedValueOnce(null);
+    expect((await POST(requisicao(corpo, assinatura))).status).toBe(200);
+    expect((await POST(requisicao(corpo, assinatura))).status).toBe(200);
+    expect(mocks.registrar).toHaveBeenCalledTimes(2);
+    expect(mocks.registrar).toHaveBeenCalledWith({ igsid: "1234", mid: "m:1", timestamp: expect.any(Number), texto: "Olá" });
+    expect(mocks.depois).toHaveBeenCalledOnce();
+    await mocks.depois.mock.calls[0][0]();
+    expect(mocks.processar).toHaveBeenCalledExactlyOnceWith(registrada);
   });
 
   it("espera a escrita antes do aceite e processa o turno apenas no callback", async () => {
