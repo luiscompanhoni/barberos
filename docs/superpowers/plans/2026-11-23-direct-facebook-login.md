@@ -32,19 +32,27 @@
 
 **Interface.** `transporteInstagram(): { url: string; token: string } | null`, sem I/O. A assinatura de `enviarTextoInstagram` e o formato do callback seguem iguais.
 
-- [ ] Fixar nos testes o envio padrão para `https://graph.facebook.com/v26.0/887766/messages`, com token de página fictício, o corpo com IGSID, sinal, ausência de tag e modo legado explícito. Cobrir configuração inválida, homologação, quarentena e confirmação divergente. Rodar e verificar as falhas antes da mudança.
-- [ ] Resolver `INSTAGRAM_PROVEDOR`, `INSTAGRAM_PAGE_ID`, `INSTAGRAM_PAGE_ACCESS_TOKEN`, `INSTAGRAM_ACCESS_TOKEN` e `INSTAGRAM_GRAPH_API_VERSION` com validação. Atualizar o exemplo de ambiente. Manter a trava antes de montar a requisição.
-- [ ] Cobrir no callback assinado os descartes e a ausência de turno extra ao repetir o `mid`. Rodar `npx --no-install vitest run tests/instagram-protocolo.test.ts tests/instagram-webhook-rota.test.ts`, conferir o diff e commitar.
+- [x] Fixar nos testes o envio padrão para `https://graph.facebook.com/v26.0/887766/messages`, com token de página fictício, o corpo com IGSID, sinal, ausência de tag e modo legado explícito. Cobrir configuração inválida, homologação, quarentena e confirmação divergente. Rodar e verificar as falhas antes da mudança.
+- [x] Resolver `INSTAGRAM_PROVEDOR`, `INSTAGRAM_PAGE_ID`, `INSTAGRAM_PAGE_ACCESS_TOKEN`, `INSTAGRAM_ACCESS_TOKEN` e `INSTAGRAM_GRAPH_API_VERSION` com validação. Atualizar o exemplo de ambiente. Manter a trava antes de montar a requisição.
+- [x] Cobrir no callback assinado os descartes e a ausência de turno extra ao repetir o `mid`. Rodar `npx --no-install vitest run tests/instagram-protocolo.test.ts tests/instagram-webhook-rota.test.ts`, conferir o diff e commitar.
 
 ### Task 2: Manual do app Meta
 
 **Arquivo.** `docs/instagram-direct-leonel.md`.
 
-- [ ] Documentar o app 2751816731904059, a configuração unificada, as permissões, o token de longa duração, a renovação, o callback oficial, inscrição da página, acesso às mensagens, testers, verificação, App Review e liberação. Citar as fontes oficiais junto das etapas e registrar limites de validação do painel. Conferir com a interface da tarefa 1 e commitar.
+- [x] Documentar o app 2751816731904059, a configuração unificada, as permissões, o token de longa duração, a renovação, o callback oficial, inscrição da página, acesso às mensagens, testers, verificação, App Review e liberação. Citar as fontes oficiais junto das etapas e registrar limites de validação do painel. Conferir com a interface da tarefa 1 e commitar.
 
 ### Task 3: Ensaios e entrega
 
 **Arquivos.** `tests/instagram-atendimento-banco.test.ts` e `RESULTADO-DIRECT-LOGIN-FACEBOOK.md`.
 
-- [ ] Testar duas requisições assinadas do mesmo `mid` com o provedor Facebook e PostgreSQL; conferir uma entrada e uma resposta simulada ou um único processamento, além de eco ignorado. Executar a suíte condicional do Direct.
-- [ ] Executar checks do repo, fluxos locais e o Vercel agent-browser. No navegador, abrir Conversas com sessão fictícia, conferir a entrada e responder em simulação. Registrar os resultados medidos e as etapas que dependem da Meta. Conferir o diff e commitar.
+- [x] Testar duas requisições assinadas do mesmo `mid` com o provedor Facebook e PostgreSQL; conferir uma entrada e uma resposta simulada ou um único processamento, além de eco ignorado. Executar a suíte condicional do Direct.
+- [x] Executar checks do repo, fluxos locais e o Vercel agent-browser. No navegador, abrir Conversas com sessão fictícia, conferir a entrada e responder em simulação. Registrar os resultados medidos e as etapas que dependem da Meta. Conferir o diff e commitar.
+
+### Task 4: Botão Enviar no celular
+
+**Arquivo.** `src/components/conversas/conversas-crm.module.css`.
+
+- [x] Reproduzir no Vercel agent-browser a sobreposição do botão Enviar pelo menu fixo em 390 × 844.
+- [x] Reservar espaço para o menu e a área segura na grade de Conversas até 1023 px. Preservar a regra de desktop.
+- [x] Clicar em Enviar no mesmo viewport, confirmar a mensagem da equipe com o rótulo `simulado` e verificar o botão em 320 × 568, 768 × 1024 e 1280 × 900.
