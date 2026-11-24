@@ -1,5 +1,7 @@
 "use client";
 
+import { ConferenciaPlanoCliente } from "@/components/agenda/ConferenciaPlanoCliente";
+
 import { useEffect, useRef, useState } from "react";
 import { api, reais } from "@/lib/cliente-api";
 import { instanteLocal } from "@/lib/agenda/tempo";
@@ -73,6 +75,7 @@ export function PedidosAgendamento() {
     </article>)}</div>}
     {selecionado && <form className="cartao-destaque space-y-4 p-4" onSubmit={e => { e.preventDefault(); void decidir("aprovar"); }}>
       <h3 className="font-semibold">Conferência de {selecionado.cliente?.nome}</h3>
+      {selecionado.cliente?.id && <ConferenciaPlanoCliente clienteId={selecionado.cliente.id} />}
       <p className="text-sm">Se ajustar a preferência, combine o novo horário com o cliente antes de confirmar. Registre também na agenda principal durante a transição.</p>
       <div className="grid gap-3 sm:grid-cols-3">
         <label><span className="rotulo">Profissional</span><select required disabled={ocupado} value={profissional} onChange={e => { setProfissional(e.target.value); setConferido(false); setAvulso(false); }} className="campo mt-2"><option value="">Selecione</option>{compativeis.map(b => <option key={b.id} value={b.id}>{b.nome}</option>)}</select></label>

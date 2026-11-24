@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { RhTela } from "@/components/rh/RhTela";
 import { permissoesDoUsuario } from "@/lib/auth/permissoes";
 import { sessaoAtual } from "@/lib/auth/sessao";
+import { demonstrativoDisponivel, podeVerDemonstrativo } from "@/lib/rh/demonstrativo";
 
 export const dynamic = "force-dynamic";
 
@@ -10,5 +11,6 @@ export default async function Rh() {
   const s = (await sessaoAtual())!;
   const p = await permissoesDoUsuario(s);
   if (!p.folha && !p.comissao) redirect("/");
-  return <RhTela />;
+  const exibirDemonstrativo = podeVerDemonstrativo(s.papel, p) && await demonstrativoDisponivel();
+  return <RhTela exibirDemonstrativo={exibirDemonstrativo} />;
 }

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Receipt } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { BotaoEstorno } from "@/components/estornos/BotaoEstorno";
+import { ConferenciaPlanoCliente } from "./ConferenciaPlanoCliente";
 import { AjustarHorario } from "./AjustarHorario";
 import { CadastroCliente } from "./CadastroCliente";
 import { api, reais } from "@/lib/cliente-api";
@@ -98,6 +99,8 @@ export function DetalheModal(p: {
         {ag.cliente.observacoes && (<><dt className="text-zinc-500">Preferências</dt><dd>{ag.cliente.observacoes}</dd></>)}
         {ag.observacao && (<><dt className="text-zinc-500">Obs.</dt><dd>{ag.observacao}</dd></>)}
       </dl>
+
+      <ConferenciaPlanoCliente clienteId={ag.cliente.id} />
 
       {resumo && (
         <div className="mt-4 rounded-lg bg-zinc-50 p-3 text-sm">

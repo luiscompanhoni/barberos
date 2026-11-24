@@ -18,7 +18,7 @@ const ABAS = [
 type Aba = (typeof ABAS)[number]["v"];
 
 /** RH: folha do mes, relatorio e regras de comissao, fichas dos funcionarios (cada aba conforme a permissao). */
-export function RhTela() {
+export function RhTela({ exibirDemonstrativo }: { exibirDemonstrativo: boolean }) {
   const acesso = useAcesso();
   const pode = acesso.permissoes;
   const abas = ABAS.filter((a) => (a.v === "relatorio" ? pode.folha || pode.comissao : a.v === "regras" ? pode.comissao : pode.folha));
@@ -34,6 +34,9 @@ export function RhTela() {
         {abas.map((a) => <button key={a.v} className={aba === a.v ? "btn-primario" : "btn"} aria-pressed={aba === a.v} onClick={() => setAba(a.v)}>{a.r}</button>)}
       </nav>
       {aba === "folha" && <FolhaTela />}
+      {aba === "relatorio" && exibirDemonstrativo && (
+        <a className="btn" href="/api/rh/demonstrativo" download>Baixar demonstrativo CashBarber e Celcoin (.xlsx)</a>
+      )}
       {aba === "relatorio" && <ComissoesRelatorio />}
       {aba === "regras" && <div className="space-y-6"><ComissoesConfig /><ComissoesExtras /></div>}
       {aba === "funcionarios" && <Funcionarios />}

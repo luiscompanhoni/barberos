@@ -16,6 +16,7 @@ from protecao_operacao import (MARCADOR, ambiente_rollback, conferir_capacidade,
     exigir_sem_recuperacao, parar_escritores, registrar_quarentena, retomar_auxiliares)
 
 TAG_EVOLUTION_PREVIA = "barberos-evolution:2.3.7-previa-clicavel"
+DESTINO_RELATORIOS = "/run/barberos-relatorios"
 
 
 def interrompido(_sinal, _frame):
@@ -57,6 +58,32 @@ def conferir_evolution(projeto):
     return {"id": adaptada["Id"], "imagem": imagem, "ativa": adaptada["State"]["Running"]}
 
 
+def montagem_demonstrativo(base, app, imagem):
+    anterior = next((m for m in app.get("Mounts", []) if m["Destination"] == DESTINO_RELATORIOS), None)
+    if anterior and (anterior["Type"] != "bind" or anterior["RW"]):
+        raise RuntimeError("Montagem anterior dos demonstrativos não é um bind somente leitura.")
+    pasta = Path(anterior["Source"]) if anterior else base / "relatorios-rh"
+    if not anterior and not pasta.exists() and not pasta.is_symlink():
+        return None
+    arquivo = pasta / "demonstrativo.xlsx"
+    if not pasta.is_absolute() or pasta.is_symlink() or not arquivo.is_file() or arquivo.is_symlink():
+        raise RuntimeError("Pasta privada ou demonstrativo XLSX indisponível.")
+    # Usa o usuário efetivo da imagem candidata, antes de parar qualquer serviço.
+    executar(["docker", "run", "--rm", "--network", "none", "--read-only", "--volume",
+              str(pasta) + ":" + DESTINO_RELATORIOS + ":ro", "--entrypoint", "node", imagem, "-e",
+              "const fs=require('node:fs'),f=fs.openSync('/run/barberos-relatorios/demonstrativo.xlsx','r');"
+              "const b=Buffer.alloc(4);if(fs.readSync(f,b)!==4||b.toString('hex')!=='504b0304')process.exit(1)"])
+    return {"type": "bind", "source": str(pasta), "target": DESTINO_RELATORIOS,
+            "read_only": True, "bind": {"create_host_path": False}}
+
+
+def conferir_demonstrativo_ativo(app, origem):
+    montada = any(m["Destination"] == DESTINO_RELATORIOS and m["Source"] == origem
+                  and m["Type"] == "bind" and not m["RW"] for m in app.get("Mounts", []))
+    if not montada or ambiente_container(app).get("DEMONSTRATIVO_RH_ARQUIVO") != DESTINO_RELATORIOS + "/demonstrativo.xlsx":
+        raise RuntimeError("O aplicativo não preservou a montagem privada do demonstrativo.")
+
+
 def publicar(base, projeto, commit, imagem_esperada):
     if os.geteuid() != 0 or base.is_symlink() or not (base / ".env").is_file():
         raise RuntimeError("Instalação existente não confirmada.")
@@ -75,6 +102,8 @@ def publicar(base, projeto, commit, imagem_esperada):
             conferir_central_desligada(app)
             exigir_contrato_pix_imagem(app["Image"])
             controles = conferir_controles_cliente(app, banco["Id"], app["Image"])
+            if anterior.get("origemDemonstrativoRh"):
+                conferir_demonstrativo_ativo(app, anterior["origemDemonstrativoRh"])
             evolution_anterior = anterior.get("evolutionPreservada")
             if evolution_anterior and conferir_evolution(projeto) != evolution_anterior:
                 raise RuntimeError("A Evolution adaptada mudou desde o registro da publicação.")
@@ -122,6 +151,7 @@ def publicar(base, projeto, commit, imagem_esperada):
         if not Path(p).is_relative_to(base) or not Path(p).is_file() or Path(p).is_symlink():
             raise RuntimeError("Configuração anterior não pode ser preservada automaticamente.")
     evolution = conferir_evolution(projeto)
+    relatorios = montagem_demonstrativo(base, app, novas["app"])
     estado.update(imagemAnterior=app["Image"], backupAnterior=backup_anterior["Image"], composeAnterior=configs_antigos, migracoesPendentes=pendentes)
     etapa("preservar")
     executar(["docker", "tag", app["Image"], "barberos-app:antes-" + commit])
@@ -178,6 +208,10 @@ def publicar(base, projeto, commit, imagem_esperada):
             "backup": {"image": novas["backup"], "volumes": [str(base / "backups") + ":/backups"]},
             "video-worker": {"image": novas["video-worker"]},
         }
+        if relatorios:
+            servicos["app"]["volumes"] = [relatorios]
+            servicos["app"]["environment"] = {**CONTROLES_PUBLICACAO,
+                                               "DEMONSTRATIVO_RH_ARQUIVO": DESTINO_RELATORIOS + "/demonstrativo.xlsx"}
         if evolution:
             servicos["evolution"] = {"image": TAG_EVOLUTION_PREVIA, "pull_policy": "never"}
         escrever_privado(override, json.dumps({"services": servicos}))
@@ -199,6 +233,9 @@ def publicar(base, projeto, commit, imagem_esperada):
         ativacao_iniciada = True
         executar([*compose, "up", "-d", "--no-build", "--no-deps", "app"], prazo=180)
         novo = aguardar_saude(projeto)
+        if relatorios:
+            conferir_demonstrativo_ativo(novo, relatorios["source"])
+            estado["origemDemonstrativoRh"] = relatorios["source"]
         estado["centralAgentes"] = conferir_central_desligada(novo)
         estado["controlesCliente"] = conferir_controles_cliente(novo, banco["Id"], imagem_nova)
         retomar_auxiliares(servicos_parados, {"caddy"})
