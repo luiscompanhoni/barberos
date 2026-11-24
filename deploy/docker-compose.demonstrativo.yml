@@ -1,0 +1,11 @@
+services:
+  app:
+    environment:
+      DEMONSTRATIVO_RH_ARQUIVO: /run/barberos-relatorios/demonstrativo.xlsx
+    volumes:
+      - type: bind
+        source: ${BARBEROS_RELATORIOS_DIR:?Informe a pasta privada dos demonstrativos}
+        target: /run/barberos-relatorios
+        read_only: true
+        bind:
+          create_host_path: false

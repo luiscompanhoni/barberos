@@ -1,4 +1,5 @@
 "use client";
+import { ConferenciaPlanoCliente } from "@/components/agenda/ConferenciaPlanoCliente";
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
@@ -32,6 +33,7 @@ export function ClienteDetalhe({ id, aoVoltar, aoSalvar }: { id: string; aoVolta
         {[ ["Telefone", formatarTelefone(c.telefone)], ["E-mail", c.email], ["CPF", c.cpfMascarado], ["Nascimento", c.dataNascimento ? dataCliente(`${c.dataNascimento}T12:00:00Z`) : null], ["Endereço", c.endereco], ["Observações", c.observacoes] ].map(([nome, valor]) => <div key={nome}><dt className="text-zinc-500">{nome}</dt><dd className="mt-1 break-words whitespace-pre-wrap">{valor || "Não informado"}</dd></div>)}
       </dl>
     </section>
+    <ConferenciaPlanoCliente clienteId={c.id} />
     <div className="grid gap-4 sm:grid-cols-2"><div className="cartao"><span className="text-sm text-zinc-500">Atendimentos concluídos</span><p className="numero-kpi">{dados.atendimentos}</p></div><div className="cartao"><span className="text-sm text-zinc-500">Faltas registradas</span><p className="numero-kpi">{dados.faltas}</p></div></div>
     <section className="cartao space-y-3"><div className="flex flex-wrap justify-between gap-2"><h3 className="font-semibold">Planos e assinaturas</h3><Link className="underline" href={`/assinaturas?${destinoAssinaturas}`}>Gerenciar assinaturas</Link></div>
       {dados.assinaturas.length ? dados.assinaturas.map(a => <p key={a.id} className="flex flex-wrap justify-between gap-2 border-t border-zinc-200 pt-3"><span>{a.plano.nome}</span><span className="text-sm text-zinc-500">{a.status.replaceAll("_", " ")}</span></p>) : <p className="text-sm text-zinc-500">Nenhuma assinatura registrada.</p>}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ConferenciaPlanoCliente } from "./ConferenciaPlanoCliente";
 import { useAcesso } from "@/components/AcessoContexto";
 import { Modal } from "@/components/Modal";
 import { api, ErroApi, reais } from "@/lib/cliente-api";
@@ -193,6 +194,7 @@ export function EncaixeModal(p: {
         <div>
           <label className="rotulo">Cliente</label>
           {cliente ? (
+            <>
             <div className="flex items-center justify-between rounded-lg border border-zinc-300 px-3 py-2 text-sm">
               <span>
                 <b>{cliente.nome}</b> · {formatarTelefone(cliente.telefone)}
@@ -204,6 +206,8 @@ export function EncaixeModal(p: {
               </span>
               <button type="button" className="text-zinc-500 underline" onClick={() => { invalidarAceite(); setCliente(null); setBusca(""); setPlanoCliente(null); }}>trocar</button>
             </div>
+            <ConferenciaPlanoCliente clienteId={cliente.id} />
+            </>
           ) : (
             <>
               <input className="campo" placeholder="Buscar por nome ou celular" value={busca} onChange={(e) => setBusca(e.target.value)} />

@@ -37,7 +37,7 @@ class RecuperacaoTest(unittest.TestCase):
             self.assertFalse((codigo.parent / "operacao.json").exists())
 
     def executar_cenario(self, falha, backup_sem_imagem=False, com_migracao=False, simular_concorrencia_backup=False, legado_sem_bloqueio=False,
-                        imagem_evolution=None, evolution_ativa=True):
+                        imagem_evolution=None, evolution_ativa=True, com_demonstrativo=False):
         with tempfile.TemporaryDirectory() as d, contextlib.ExitStack() as pilha:
             base = Path(d)
             commit = "a" * 40
@@ -54,6 +54,12 @@ class RecuperacaoTest(unittest.TestCase):
             novo = {**antigo, "Image": "sha256:" + "c" * 64, "Config": {"Env": ["MAQUININHA=" + ("stone" if falha == "stone" else "manual"),
                     "PAGAMENTOS_COBRANCAS_REAIS_BLOQUEADAS=true"]}}
             recuperado = {**antigo, "Config": {**antigo["Config"], "Env": [k + "=" + v for k, v in deploy.ambiente_rollback().items()]}}
+            if com_demonstrativo:
+                pasta_rh = base / "relatorios-rh"
+                pasta_rh.mkdir()
+                (pasta_rh / "demonstrativo.xlsx").write_bytes(b"PK\x03\x04")
+                novo["Mounts"] = [{"Type": "bind", "Source": str(pasta_rh), "Destination": deploy.DESTINO_RELATORIOS, "RW": False}]
+                novo["Config"]["Env"].append("DEMONSTRATIVO_RH_ARQUIVO=" + deploy.DESTINO_RELATORIOS + "/demonstrativo.xlsx")
             chamadas = []
             lock_backup = base / ".backup-fixture.lock"
             concorrencia = {"daemonIniciado": 0, "manualDepoisConferido": False}
@@ -205,6 +211,9 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertEqual(rollback["services"]["app"]["command"], ["node", "server.js"])
                 self.assertEqual(rollback["services"]["app"]["environment"]["MAQUININHA"], "manual")
                 self.assertEqual(rollback["services"]["app"]["environment"], deploy.ambiente_rollback())
+                if com_demonstrativo:
+                    self.assertNotIn("volumes", rollback["services"]["app"])
+                    self.assertEqual(registro["composeAnterior"], [str(base / "deploy/docker-compose.yml")])
                 self.assertGreaterEqual(parar.call_count, 2)
             else:
                 self.assertTrue(ensaio.called)
@@ -215,7 +224,13 @@ class RecuperacaoTest(unittest.TestCase):
                 self.assertEqual(resultado["rollbackAutomaticoPermitido"], not com_migracao)
                 self.assertEqual(registro["backupAnteriorPreservado"], not backup_sem_imagem)
                 override = json.loads((codigo / "deploy/versao.json").read_text())
-                self.assertEqual(override["services"]["app"]["environment"], CONTROLES_PUBLICACAO)
+                env_esperado = dict(CONTROLES_PUBLICACAO)
+                if com_demonstrativo:
+                    env_esperado["DEMONSTRATIVO_RH_ARQUIVO"] = deploy.DESTINO_RELATORIOS + "/demonstrativo.xlsx"
+                    self.assertEqual(registro["origemDemonstrativoRh"], str(pasta_rh))
+                    self.assertEqual(override["services"]["app"]["volumes"], [{"type": "bind", "source": str(pasta_rh),
+                                     "target": deploy.DESTINO_RELATORIOS, "read_only": True, "bind": {"create_host_path": False}}])
+                self.assertEqual(override["services"]["app"]["environment"], env_esperado)
                 if imagem_evolution == TAG_EVOLUTION_TESTE:
                     self.assertEqual(override["services"].get("evolution"),
                                      {"image": TAG_EVOLUTION_TESTE, "pull_policy": "never"})
@@ -260,6 +275,24 @@ class RecuperacaoTest(unittest.TestCase):
 
     def test_sucesso_exige_ensaio_e_backups_antes_e_depois(self):
         self.executar_cenario(None)
+
+    def test_demonstrativo_presente_entra_no_compose_e_rollback_preserva_config_anterior(self):
+        self.executar_cenario(None, com_demonstrativo=True)
+        self.executar_cenario("https", com_demonstrativo=True)
+
+    def test_demonstrativo_preserva_bind_privado_anterior_e_recusa_arquivo_ausente(self):
+        with tempfile.TemporaryDirectory() as d, patch.object(deploy, "executar") as executar:
+            base = Path(d)
+            pasta = base / "privado"
+            pasta.mkdir()
+            m = {"Source": str(pasta), "Type": "bind", "Destination": deploy.DESTINO_RELATORIOS, "RW": False}
+            with self.assertRaisesRegex(RuntimeError, "indisponível"):
+                deploy.montagem_demonstrativo(base, {"Mounts": [m]}, "imagem")
+            executar.assert_not_called()
+            (pasta / "demonstrativo.xlsx").write_bytes(b"PK\x03\x04")
+            self.assertEqual(deploy.montagem_demonstrativo(base, {"Mounts": [m]}, "imagem")["source"], str(pasta))
+            with self.assertRaisesRegex(RuntimeError, "somente leitura"):
+                deploy.montagem_demonstrativo(base, {"Mounts": [{**m, "RW": True}]}, "imagem")
 
     def test_publicacao_fixa_imagem_local_e_preserva_estado_do_container_original(self):
         for ativa in (True, False):
