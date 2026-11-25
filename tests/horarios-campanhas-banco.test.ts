@@ -67,13 +67,13 @@ describe.skipIf(!habilitado)("horários e campanhas no PostgreSQL descartável",
     expect(await db.bloqueio.count({ where: { barbeiroId } })).toBe(1);
   }, 30000);
 
-  it("adicional de comanda e aprovação de bloqueio simultâneos não coexistem no mesmo horário", async () => {
+  it("adicional com tempo reservado e aprovação de bloqueio simultâneos não coexistem no mesmo horário", async () => {
     const data = somarDias(dataLocal(Date.now(), "America/Sao_Paulo"), 8);
     const inicio = new Date(instanteLocal(data, 810, "America/Sao_Paulo"));
     const ag = await db.agendamento.create({ data: { barbeiroId, clienteId, servicoId, inicio, fim: new Date(+inicio + 1800000), status: "MARCADO", origem: "PAINEL", precoCentavos: 5000 } });
     const comanda = await db.comanda.create({ data: { clienteId, itens: { create: { agendamentoId: ag.id, descricao: "Corte", quantidade: 1, precoUnitCentavos: 5000, barbeiroId } } } });
     const pedido = await solicitarPeriodo(barbeiroId, "BLOQUEIO", { data, inicioMin: 840, fimMin: 870, motivo: "Teste" }, barber());
-    const resultados = await Promise.allSettled([decidirSemana(barbeiroId, pedido.id, "aprovar", undefined, dono()), adicionarServico(dono(), comanda.id, servicoId, barbeiroId)]);
+    const resultados = await Promise.allSettled([decidirSemana(barbeiroId, pedido.id, "aprovar", undefined, dono()), adicionarServico(dono(), comanda.id, servicoId, barbeiroId, undefined, true)]);
     expect(resultados.filter(r => r.status === "fulfilled")).toHaveLength(1);
     const adicional = await db.agendamento.count({ where: { adicionalDeId: ag.id } });
     const bloqueio = await db.bloqueio.count({ where: { barbeiroId, inicio: new Date(instanteLocal(data, 840, "America/Sao_Paulo")) } });
