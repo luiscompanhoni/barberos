@@ -99,7 +99,7 @@ async function main() {
   const ids = lote.map(x => x.u.id);
   for (let i = 0; i < 3; i++) await gerarNotificacoes(agora, { usuarioIds: ids, limite: 1 });
   ok(await db.notificacaoPreferencia.count({ where: { usuarioId: { in: ids }, ultimoProcessamentoEm: agora } }) === 3, "Lotes limitados alcançam todos os usuários sem starvation");
-  ok((await gerarNotificacoes(new Date("2027-07-12T02:00:00Z"), { usuarioIds: ids })).usuarios === 0, "Fuso comercial impede geração noturna");
+  ok((await gerarNotificacoes(new Date("2027-07-12T02:00:00Z"), { usuarioIds: ids })).criadas === 0, "Fora do horário comercial não gera avisos sem lembrete próximo devido");
   ok((await gerarNotificacoes(agora, { clienteIds: [] })).usuarios === 0, "Filtro vazio nunca vira consulta de todos");
   ok(await db.pushEntrega.count() === 0 && await db.mensagem.count() === 0, "Geração isolada não envia push nem WhatsApp");
   console.log(`PASS notificações geração: ${checks} verificações no banco isolado; nenhum envio externo.`);

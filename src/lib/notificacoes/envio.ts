@@ -8,7 +8,7 @@ import { configuracaoPush } from "./configuracao";
 import { notificacaoAindaRelevante } from "./geracao-relevancia";
 import { enviarPush } from "./provedor";
 import { categoriaPermitida, PREFERENCIAS_PADRAO } from "./regras";
-import { dadosNovoAgendamento } from "./geracao-regras";
+import { dadosAgenda, dadosNovoAgendamento } from "./geracao-regras";
 import { corpoAtualPush } from "./texto-atual";
 
 export type OpcoesProcessarPush = { usuarioId?: string; usuarioIds?: string[]; notificacaoIds?: string[]; limite?: number; simular?: boolean };
@@ -36,7 +36,9 @@ export async function processarPush(agoraEntrada: Date | number = new Date(), op
       resumo.cancelados += r.count; continue;
     }
     const novaReserva = p.notificacao.categoria === "EQUIPE" && dadosNovoAgendamento.safeParse(p.notificacao.dados).success;
-    if (p.notificacao.categoria !== "TESTE" && !novaReserva && cfgAgenda && !horarioComercial(+agora, cfgAgenda.fuso)) {
+    const agenda = p.notificacao.categoria === "AGENDA" ? dadosAgenda.safeParse(p.notificacao.dados) : null;
+    const lembreteProximo = agenda?.success && agenda.data.tipo === "LEMBRETE_PROXIMO";
+    if (p.notificacao.categoria !== "TESTE" && !novaReserva && !lembreteProximo && cfgAgenda && !horarioComercial(+agora, cfgAgenda.fuso)) {
       const dia = dataLocal(+agora, cfgAgenda.fuso);
       const proximoDia = minutosLocal(+agora, cfgAgenda.fuso) < 8 * 60 ? dia : somarDias(dia, 1);
       await db.pushEntrega.updateMany({ where: { id: p.id, estado: "PENDENTE" }, data: { proximaTentativaEm: new Date(instanteLocal(proximoDia, 8 * 60, cfgAgenda.fuso)) } });

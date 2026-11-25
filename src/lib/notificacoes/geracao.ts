@@ -22,7 +22,7 @@ type Alvo = {
 type Totais = { usuarios: number; criadas: number; agenda: number; avaliacoes: number; recompras: number; equipe: number; falhas: number };
 export type OpcoesGeracao = { clienteIds?: string[]; usuarioIds?: string[]; limite?: number };
 
-async function gerarAgenda(u: Alvo, agora: Date, cfg: Configuracao) {
+async function gerarAgenda(u: Alvo, agora: Date, cfg: Configuracao, comercial: boolean) {
   const horizonte = Math.max(cfg.lembreteHorasAntes * 60, cfg.lembreteMinutosAntes) * 60_000;
   if (!u.cliente || horizonte <= 0) return 0;
   const agendamentos = await db.agendamento.findMany({ where: {
@@ -34,7 +34,7 @@ async function gerarAgenda(u: Alvo, agora: Date, cfg: Configuracao) {
   let criadas = 0;
   for (const a of agendamentos) {
     const tipo = lembreteDevido({ inicio: +a.inicio, criadoEm: +a.criadoEm, status: a.status }, +agora, cfg);
-    if (!tipo) continue;
+    if (!tipo || (!comercial && tipo !== "LEMBRETE_PROXIMO")) continue;
     const r = await publicarNotificacao({ usuarioId: u.id, categoria: "AGENDA", chave: chaveAgenda(a.id, a.inicio, tipo),
       titulo: tipo === "LEMBRETE_PROXIMO" ? "Seu atendimento está próximo" : "Lembrete do seu atendimento",
       corpo: textoAtendimento({ inicio: a.inicio, barbeiro: a.barbeiro.nome, servicos: [a.servico.nome, ...a.adicionais.map(s => s.servico.nome)] }, cfg.fuso),
@@ -103,7 +103,7 @@ export async function gerarNotificacoes(agora = new Date(), opts: OpcoesGeracao 
   if (!Number.isFinite(+agora)) throw new Error("Data inválida para gerar notificações.");
   if (opts.clienteIds?.length === 0 || opts.usuarioIds?.length === 0) return totais;
   const cfg = await configuracao();
-  if (!horarioComercial(+agora, cfg.fuso)) return totais;
+  const comercial = horarioComercial(+agora, cfg.fuso);
   const usuarios = await db.usuario.findMany({ where: {
     ativo: true,
     ...(opts.usuarioIds ? { id: { in: opts.usuarioIds } } : {}),
@@ -114,10 +114,10 @@ export async function gerarNotificacoes(agora = new Date(), opts: OpcoesGeracao 
     const pref = u.notificacaoPreferencia;
     try {
       if (u.papel === "CLIENTE") {
-        if (pref?.agenda !== false) totais.agenda += await gerarAgenda(u, agora, cfg);
-        if (pref?.avaliacoes !== false) totais.avaliacoes += await gerarAvaliacao(u, agora);
-        if (pref?.recompra === true) totais.recompras += await gerarRecompra(u, agora, cfg);
-      } else if (!opts.clienteIds && pref?.equipe !== false) totais.equipe += await gerarEquipe(u, agora, cfg);
+        if (pref?.agenda !== false) totais.agenda += await gerarAgenda(u, agora, cfg, comercial);
+        if (comercial && pref?.avaliacoes !== false) totais.avaliacoes += await gerarAvaliacao(u, agora);
+        if (comercial && pref?.recompra === true) totais.recompras += await gerarRecompra(u, agora, cfg);
+      } else if (comercial && !opts.clienteIds && pref?.equipe !== false) totais.equipe += await gerarEquipe(u, agora, cfg);
     } catch (e) {
       totais.falhas++;
       console.error("[notificacoes] Falha ao gerar avisos de um usuário.", { codigo: e instanceof Prisma.PrismaClientKnownRequestError ? e.code : "interno" });
