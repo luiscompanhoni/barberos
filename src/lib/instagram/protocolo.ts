@@ -57,3 +57,27 @@ export function lerEntradasInstagram(payload: unknown, perfil: string, agora = D
   }
   return entradas;
 }
+
+export type RemocaoInstagram = { igsid: string; mid: string; timestamp: number };
+
+/** Eventos de mensagem desfeita pelo remetente. Não usa a janela de entrada: a remoção vale para mensagem já gravada. */
+export function lerRemocoesInstagram(payload: unknown, perfil: string, agora = Date.now()): RemocaoInstagram[] {
+  const remocoes: RemocaoInstagram[] = [];
+  for (const valor of Array.isArray(payload) ? payload : [payload]) {
+    const envelope = zEnvelope.safeParse(valor);
+    if (!envelope.success) continue;
+    for (const item of envelope.data.entry) {
+      const registro = zPerfil.safeParse(item);
+      if (!registro.success || registro.data.id !== perfil) continue;
+      for (const raw of registro.data.messaging) {
+        const evento = zEvento.safeParse(raw);
+        if (!evento.success) continue;
+        const { sender, recipient, timestamp, message, is_echo, is_self } = evento.data;
+        if (recipient.id !== perfil || sender.id === perfil || is_echo || is_self || message.is_echo || message.is_self || !message.is_deleted) continue;
+        if (timestamp - agora > 15 * 60_000) continue;
+        remocoes.push({ igsid: sender.id, mid: message.mid, timestamp });
+      }
+    }
+  }
+  return remocoes;
+}

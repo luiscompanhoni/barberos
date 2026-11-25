@@ -13,7 +13,7 @@ export default async function Privacidade() {
     <PaginaLegal titulo="Política de privacidade" versao={VERSAO_TERMOS} controlador={c}>
       <p>
         Esta política explica quais dados pessoais a barbearia trata quando você usa o site, o aplicativo, o WhatsApp de
-        atendimento e o balcão, para que servem, com quem são compartilhados e como você exerce seus direitos pela Lei Geral
+        atendimento, o Direct do Instagram e o balcão, para que servem, com quem são compartilhados e como você exerce seus direitos pela Lei Geral
         de Proteção de Dados (Lei 13.709/2018).
       </p>
       <Secao t="1. Quem é o responsável pelos seus dados">
@@ -25,7 +25,7 @@ export default async function Privacidade() {
         <ul className="list-disc space-y-1 pl-5">
           <li><b className="text-zinc-900">Cadastro:</b> nome, celular (WhatsApp) e senha (guardada criptografada). Quando você informa: e-mail, CPF (exigido para algumas cobranças), data de nascimento, como conheceu a barbearia e preferências de corte.</li>
           <li><b className="text-zinc-900">Atendimentos:</b> horários marcados, serviços, barbeiro, comandas, produtos, pagamentos, assinatura, saldo, indicações e prêmios dos jogos.</li>
-          <li><b className="text-zinc-900">Conversas:</b> as mensagens trocadas com o WhatsApp da barbearia, incluindo o atendimento automático.</li>
+          <li><b className="text-zinc-900">Conversas:</b> as mensagens trocadas com o WhatsApp e com o Direct do Instagram da barbearia, incluindo o atendimento automático.</li>
           <li><b className="text-zinc-900">Dados técnicos:</b> endereço IP e tipo de aparelho registrados nas ações feitas no site, para segurança.</li>
         </ul>
         <p>Não pedimos dados sensíveis (saúde, religião, biometria). Dados de cartão são digitados direto no ambiente do processador de pagamentos; a barbearia não guarda o número do cartão.</p>
@@ -42,7 +42,7 @@ export default async function Privacidade() {
         <p>Só com quem ajuda a prestar o serviço, e só o necessário:</p>
         <ul className="list-disc space-y-1 pl-5">
           <li>processadores de pagamento (Pix, cartão e assinatura), para cobrar;</li>
-          <li>o provedor de envio de mensagens do WhatsApp, para falar com você;</li>
+          <li>o provedor de envio de mensagens do WhatsApp e a Meta (Instagram), para falar com você no WhatsApp ou no Direct;</li>
           <li>o serviço de inteligência artificial que responde no atendimento automático do WhatsApp (Anthropic, com servidores nos Estados Unidos), que recebe o texto das conversas para responder, quando esse atendimento está ligado;</li>
           <li>o provedor de servidores onde o sistema e as cópias de segurança criptografadas ficam guardados.</li>
         </ul>
@@ -62,7 +62,7 @@ export default async function Privacidade() {
           Você pode confirmar se tratamos seus dados, acessar e baixar uma cópia, corrigir, pedir a exclusão, revogar o
           as mensagens de divulgação, saber com quem compartilhamos e se opor a um tratamento. No aplicativo,
           em <Link className="text-ouro underline" href="/c/privacidade">Meus dados</Link>, você baixa seus dados, liga ou desliga as
-          mensagens e exclui a conta sozinho. Pelos contatos do item 1, respondemos em até 15 dias. Você também pode
+          mensagens e exclui a conta sozinho. Se você só falou pelo Direct do Instagram ou não tem conta no aplicativo, use a página de <Link className="text-ouro underline" href="/exclusao-dados">exclusão de dados</Link> ou os contatos do item 1. Pelos contatos, respondemos em até 15 dias. Você também pode
           reclamar à Autoridade Nacional de Proteção de Dados (ANPD).
         </p>
       </Secao>

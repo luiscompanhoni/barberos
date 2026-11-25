@@ -2,7 +2,7 @@ import { createHmac, randomInt, randomUUID } from "node:crypto";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import type { Modelo } from "@/lib/bot/agente";
-import { concluirEntradaInstagram, enviarRespostaEquipeInstagram, registrarEntradaInstagram } from "@/lib/instagram/persistencia";
+import { concluirEntradaInstagram, enviarRespostaEquipeInstagram, MENSAGEM_APAGADA_DIRECT, registrarEntradaInstagram, registrarRemocaoInstagram } from "@/lib/instagram/persistencia";
 import { processarEntradaInstagram } from "@/lib/instagram/processar";
 import { recuperarEntradasInstagramPendentes } from "@/lib/instagram/recuperacao";
 import { ENVIO_INSTAGRAM_SIMULADO } from "@/lib/instagram/status";
@@ -235,6 +235,17 @@ describe.skipIf(!habilitado)("conversas do Instagram Direct no banco", () => {
     expect(recentes[0].texto).toBe("mensagem 6");
     expect(recentes.at(-1).texto).toBe("mensagem 305");
     expect(await db.conversa.findUnique({ where: { id: entrada.conversaId } })).toMatchObject({ naoLidas: 0 });
+  });
+
+  it("substitui no banco a mensagem já gravada quando o cliente a desfaz", async () => {
+    const id = igsid();
+    const entrada = (await registrarEntradaInstagram(mensagem(id, "Opa", Date.now())))!;
+    expect(await registrarRemocaoInstagram({ igsid: id, mid: entrada.mid, timestamp: entrada.timestamp })).toBe(entrada.conversaId);
+    const gravada = await db.mensagem.findFirst({ where: { conversaId: entrada.conversaId, autor: "CLIENTE" } });
+    expect(gravada?.texto).toBe(MENSAGEM_APAGADA_DIRECT);
+    expect(gravada?.instagramPendenteEm).toBeNull();
+    expect(await registrarRemocaoInstagram({ igsid: id, mid: entrada.mid, timestamp: entrada.timestamp })).toBeNull();
+    expect(await registrarRemocaoInstagram({ igsid: id, mid: "mid-inexistente", timestamp: Date.now() })).toBeNull();
   });
 
   it("exporta o próprio aceite, desvincula o Direct e remove IP e navegador na exclusão", async () => {

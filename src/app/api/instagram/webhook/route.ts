@@ -1,7 +1,7 @@
 import { after } from "next/server";
-import { concluirEntradaInstagram, encaminharEntradaInstagram, registrarEntradaInstagram, type EntradaRegistradaInstagram } from "@/lib/instagram/persistencia";
+import { concluirEntradaInstagram, encaminharEntradaInstagram, registrarEntradaInstagram, registrarRemocaoInstagram, type EntradaRegistradaInstagram } from "@/lib/instagram/persistencia";
 import { processarEntradaInstagram } from "@/lib/instagram/processar";
-import { assinaturaInstagramValida, desafioInstagram, lerEntradasInstagram, zIdInstagram } from "@/lib/instagram/protocolo";
+import { assinaturaInstagramValida, desafioInstagram, lerEntradasInstagram, lerRemocoesInstagram, zIdInstagram } from "@/lib/instagram/protocolo";
 
 export const runtime = "nodejs";
 
@@ -42,6 +42,14 @@ export async function POST(req: Request) {
   }
   const registradas: EntradaRegistradaInstagram[] = [];
   let falha = false;
+  for (const remocao of lerRemocoesInstagram(payload, perfil.data)) {
+    try {
+      await registrarRemocaoInstagram(remocao);
+    } catch {
+      falha = true;
+      console.error("[instagram] Falha ao registrar remoção de mensagem.");
+    }
+  }
   for (const entrada of lerEntradasInstagram(payload, perfil.data)) {
     try {
       const registrada = await registrarEntradaInstagram(entrada);

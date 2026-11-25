@@ -7,7 +7,7 @@ import { naFila } from "@/lib/whatsapp/fila-conversa";
 import { temJanela24h, provedorWhatsApp } from "@/lib/whatsapp/canal";
 import { telefoneCanonico } from "@/lib/whatsapp/webhook";
 import { canalConviteAtivo } from "./canal";
-import { destinoDaJornada, ehJornadaComRoleta, ehJornadaLeonel, enderecoDoConvite, permiteRoletaTeste, PREFIXO_TESTE_FRIO } from "./link";
+import { ehJornadaComRoleta, ehJornadaLeonel, permiteRoletaTeste, PREFIXO_TESTE_FRIO } from "./link";
 import { AJUDA_APOS_LEITURA, instanteDeAjudaAposLeitura, instanteDeRetomada, mensagemDaRetomada } from "./jornada-leonel";
 
 const DIA = 86_400_000;
@@ -104,10 +104,11 @@ async function retomar(id: string, agora: number, foraDoHorario: boolean) {
   const etapa = j.entrouEm || j.agendaEm ? "agenda"
     : j.loginEm || envio?.jogada ? "cadastro"
     : (clique && roleta ? "roleta" : clique ? "cadastro" : "link");
-  const link = etapa === "cadastro" ? enderecoDoConvite(j.token) : destinoDaJornada(j.token);
-  const texto = posLeitura ? AJUDA_APOS_LEITURA : novo ? mensagemDaRetomada(cliente.nome, etapa, link) : textoAjuda(j);
-  const r = await enviarNaConversa(id, texto, "BOT", { pararSeHumano: true, conviteIndividual: true });
-  if (!r.ok || (!r.wamid && provedorWhatsApp() !== "simulador")) return false;
+  const baloes = posLeitura ? AJUDA_APOS_LEITURA : novo ? mensagemDaRetomada(cliente.nome, etapa) : [textoAjuda(j)];
+  for (const texto of baloes) {
+    const r = await enviarNaConversa(id, texto, "BOT", { pararSeHumano: true, conviteIndividual: true });
+    if (!r.ok || (!r.wamid && provedorWhatsApp() !== "simulador")) return false;
+  }
   if (!j.agendaEm && j.retomadas < 2) await db.jornadaConviteApp.updateMany({ where: { conversaId: id, parouEm: null, respostaEm: j.respostaEm, proximaEm: null },
     data: { proximaEm: new Date(agora + (j.retomadas === 0 ? 2 : 4) * DIA) } });
   return true;

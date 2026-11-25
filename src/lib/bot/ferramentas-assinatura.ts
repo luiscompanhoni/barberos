@@ -198,6 +198,7 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
         }) };
       }
       const pagamento = sit.cobrancaEmAberto && c ? await linkDaMensalidadeParaAtendimento(c.id, sit.cobrancaEmAberto.id) : null;
+      const renovacao = a.encerraEm ? null : a.proximoVencimento;
       return {
         texto: JSON.stringify({
           plano: a.plano.nome,
@@ -206,8 +207,9 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
           mensalidade: reais(a.precoCentavos),
           ...(assinaturaTesteUnico(a) ? { teste_interno: true, cobranca_unica: true, sem_renovacao_automatica: true } : {}),
           forma_pagamento: a.formaPagamento,
-          proxima_mensalidade: dataBr(a.proximoVencimento),
-          proxima_mensalidade_iso: a.proximoVencimento?.toISOString().slice(0, 10) ?? null,
+          proxima_mensalidade: dataBr(renovacao),
+          proxima_mensalidade_iso: renovacao?.toISOString().slice(0, 10) ?? null,
+          ...(a.encerraEm ? { encerramento_agendado_em: dataBr(a.encerraEm) } : {}),
           troca_solicitada: await alteracaoAtual(a.id),
           pagamento_em_aberto: sit.cobrancaEmAberto && {
             valor: reais(sit.cobrancaEmAberto.valorCentavos),
@@ -230,9 +232,13 @@ export async function executarAssinatura(nome: string, entrada: unknown, ctx: Co
         ? await linkDaMensalidadeParaAtendimento(c.id, aberta.id) : null;
       const portal = `${urlSite()}/c/planos`;
       if (pagamento?.link) return { texto: JSON.stringify({ link: pagamento.link, forma: aberta?.forma, cobranca_existente: true }) };
-      if (!aberta && a.status === "ATIVA" && sit.valida && !sit.pausada && !a.encerraEm && !a.operacaoInicial) {
+      if (!aberta && a.status === "ATIVA" && sit.valida && !sit.pausada && !a.operacaoInicial &&
+        (!a.encerraEm || +a.encerraEm > Date.now())) {
         return { texto: JSON.stringify({ cobranca_aberta_encontrada: false, forma_atual: a.formaPagamento, link_area_do_plano: portal,
-          orientar: "Explique que o BarberOS não encontrou mensalidade em aberto. Se for cartão, diga que a forma atual é recorrente. Pode enviar a área do plano. Se o titular viu uma pendência, pergunte de qual mês. Não transfira só por estar no cartão e não declare quitação." }) };
+          ...(a.encerraEm ? { encerramento_agendado_em: dataBr(a.encerraEm) } : {}),
+          orientar: a.encerraEm
+            ? "Diga que o BarberOS não encontrou mensalidade em aberto e informe a data de encerramento agendado. Se o titular viu uma pendência, pergunte de qual mês. Não declare quitação nem prometa renovação."
+            : "Explique que o BarberOS não encontrou mensalidade em aberto. Se for cartão, diga que a forma atual é recorrente. Pode enviar a área do plano. Se o titular viu uma pendência, pergunte de qual mês. Não transfira só por estar no cartão e não declare quitação." }) };
       }
       if (a.status === "PENDENTE" && a.tokenPublico && !a.operacaoInicial && (!e.forma || a.plano.formasPagamento.includes(e.forma))) {
         return { texto: JSON.stringify({ link: portal, orientar: "Abra a assinatura pendente no app e confira as opções de pagamento disponíveis." }) };

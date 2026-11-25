@@ -21,6 +21,7 @@ export function PaginaLegal({ titulo, versao, controlador: c, children }: { titu
         <nav className="mt-12 flex gap-5 border-t border-[rgba(255,255,255,0.05)] pt-6 text-sm text-zinc-500">
           <Link href="/privacidade" className="underline hover:text-zinc-900">Política de privacidade</Link>
           <Link href="/termos" className="underline hover:text-zinc-900">Termos de uso</Link>
+          <Link href="/exclusao-dados" className="underline hover:text-zinc-900">Exclusão de dados</Link>
         </nav>
       </main>
     </div>

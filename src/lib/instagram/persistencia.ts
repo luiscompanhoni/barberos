@@ -8,11 +8,12 @@ import { pediuParar } from "@/lib/automacoes/regras";
 import { instanteDaEntradaCloud } from "@/lib/whatsapp/horario-entrada";
 import { dentroJanelaInstagram, enviarTextoInstagram, partesInstagram } from "./canal";
 import { telefoneDoDirect, textoDaEquipeNoDirect, textoSeguroDoDirect } from "./privacidade";
-import type { EntradaInstagram } from "./protocolo";
+import type { EntradaInstagram, RemocaoInstagram } from "./protocolo";
 import { ENVIO_INSTAGRAM_SIMULADO } from "./status";
 
 const idExterno = (valor: string) => `instagram:${valor}`;
 const ENVIO_PENDENTE = "Envio pendente de confirmação. Confira no Direct antes de reenviar.";
+export const MENSAGEM_APAGADA_DIRECT = "[Mensagem apagada pelo cliente]";
 const ordemEntrada = [{ criadoEm: "desc" }, { id: "desc" }] as const;
 const selecionarConversa = { id: true, instagramIgsid: true, estado: true, ultimaEntradaEm: true, sessaoInicioEm: true, recusaAutomaticas: true } as const;
 
@@ -74,6 +75,22 @@ export async function registrarEntradaInstagram(entrada: EntradaInstagram): Prom
   }
   if (registrada) publicar({ tipo: "conversa", conversaId: registrada.conversaId });
   return registrada;
+}
+
+
+export async function registrarRemocaoInstagram(remocao: RemocaoInstagram) {
+  const wamid = idExterno(remocao.mid);
+  const mudou = await db.$transaction(async tx => {
+    await travarInboxInstagram(tx, remocao.igsid);
+    const mensagem = await tx.mensagem.findUnique({ where: { wamid }, select: { id: true, conversaId: true, texto: true, autor: true } });
+    if (!mensagem || mensagem.autor !== "CLIENTE" || mensagem.texto === MENSAGEM_APAGADA_DIRECT) return null;
+    const conversa = await tx.conversa.findFirst({ where: { id: mensagem.conversaId, instagramIgsid: remocao.igsid }, select: { id: true } });
+    if (!conversa) return null;
+    await tx.mensagem.update({ where: { id: mensagem.id }, data: { texto: MENSAGEM_APAGADA_DIRECT, instagramPendenteEm: null } });
+    return conversa.id;
+  });
+  if (mudou) publicar({ tipo: "conversa", conversaId: mudou });
+  return mudou;
 }
 
 export async function lerConversaInstagram(id: string, acesso: Pick<Prisma.TransactionClient, "conversa"> = db) {
