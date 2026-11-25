@@ -913,6 +913,28 @@ model WebhookPagamentoEntrada {
   @@map("webhooks_pagamento_entrada")
 }
 
+/// Posição de um contrato da Celcoin que o BarberOS não emitiu (planos vendidos pelo CashBarber).
+/// Só exibição: vem da consulta à API a cada webhook. Não altera assinatura, cobrança nem acesso.
+model ContratoCelcoin {
+  /// galaxPayId do contrato na Celcoin.
+  id            String         @id
+  clienteId     String?
+  /// Como o titular foi ligado ao cadastro: CPF, TELEFONE, AMBIGUO ou SEM_VINCULO.
+  vinculo       String
+  /// Parcela de vencimento mais recente conhecida.
+  transacaoId   String
+  valorCentavos Int
+  statusCelcoin String
+  situacao      StatusCobranca
+  vencimento    DateTime       @db.Date
+  pagoEm        DateTime?      @db.Timestamptz(3)
+  criadoEm      DateTime       @default(now()) @db.Timestamptz(3)
+  atualizadoEm  DateTime       @updatedAt @db.Timestamptz(3)
+
+  @@index([clienteId])
+  @@map("contratos_celcoin")
+}
+
 /// Uma tentativa de emitir Pix por assinatura e vencimento; falhas exigem conciliação.
 model EmissaoPixMensal {
   id           String   @id @default(cuid())

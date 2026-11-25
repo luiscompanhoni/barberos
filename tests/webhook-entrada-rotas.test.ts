@@ -49,6 +49,24 @@ describe("webhooks persistem antes do sucesso", () => {
       expect(mocks.agendar).not.toHaveBeenCalled();
     });
   }
+  it("Celcash registra a parcela nova de um contrato e ignora eventos que não tratam de parcela", async () => {
+    const enviar = (corpo: object) => celcash(new Request("https://localhost/webhook?token=fake", json(corpo)));
+    expect((await enviar({ event: "subscription.addTransaction", webhookId: 1, Transaction: { galaxPayId: 3 } })).status).toBe(200);
+    expect(mocks.registrar).toHaveBeenCalledWith(expect.objectContaining({ fonte: "celcash", tipo: "subscription.addTransaction", cobranca: "celtx_3" }));
+    mocks.registrar.mockClear();
+    expect((await enviar({ event: "company.cashOut", webhookId: 2, Transaction: { galaxPayId: 3 } })).status).toBe(200);
+    expect((await enviar({ event: "transaction.updateStatus", webhookId: 2, Transaction: { galaxPayId: "3; DROP" } })).status).toBe(200);
+    expect(mocks.registrar).not.toHaveBeenCalled();
+  });
+  it("Celcash exige o token da URL e o confirmHash configurado", async () => {
+    vi.stubEnv("CELCASH_WEBHOOK_HASH", "hash-fake");
+    const corpo = { event: "transaction.updateStatus", webhookId: 1, Transaction: { galaxPayId: 2 } };
+    expect((await celcash(new Request("https://localhost/webhook?token=outro", json({ ...corpo, confirmHash: "hash-fake" })))).status).toBe(401);
+    expect((await celcash(new Request("https://localhost/webhook?token=fake", json({ ...corpo, confirmHash: "errado" })))).status).toBe(401);
+    expect(mocks.registrar).not.toHaveBeenCalled();
+    expect((await celcash(new Request("https://localhost/webhook?token=fake", json({ ...corpo, confirmHash: "hash-fake" })))).status).toBe(200);
+    expect(mocks.registrar).toHaveBeenCalledOnce();
+  });
   it("Celcash preserva duas entregas da mesma transação mesmo com webhookId igual", async () => {
     const requisicao = () => new Request("https://localhost/webhook?token=fake", json({ event: "transaction.updateStatus", webhookId: 1, Transaction: { galaxPayId: 2 } }));
     expect((await celcash(requisicao())).status).toBe(200);

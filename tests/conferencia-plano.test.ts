@@ -3,8 +3,8 @@ import { GET } from "@/app/api/clientes/[id]/conferencia-plano/route";
 import { consultarConferenciaPlano } from "@/lib/clientes/conferencia-plano";
 import { proibido } from "@/lib/erros";
 
-const m = vi.hoisted(() => ({ cliente: vi.fn(), registro: vi.fn(), sessao: vi.fn() }));
-vi.mock("@/lib/db", () => ({ db: { cliente: { findFirst: m.cliente }, auditoria: { findFirst: m.registro } } }));
+const m = vi.hoisted(() => ({ cliente: vi.fn(), registro: vi.fn(), sessao: vi.fn(), contratos: vi.fn() }));
+vi.mock("@/lib/db", () => ({ db: { cliente: { findFirst: m.cliente }, auditoria: { findFirst: m.registro }, contratoCelcoin: { findMany: m.contratos } } }));
 vi.mock("@/lib/auth/sessao", () => ({ BALCAO: ["DONO", "GERENTE", "RECEPCAO"], exigirSessao: m.sessao }));
 const foto = { dataCorte: "2025-11-24", contratos: [{ plano: "Corte", valorCentavos: 10800, vencimento: "2025-11-07", proximoVencimento: "2025-12-07", situacao: "PAGO_CELCOIN" }] };
 const requisitar = () => GET(new Request("http://localhost/api/clientes/titular/conferencia-plano"), { params: Promise.resolve({ id: "titular" }) });
@@ -13,16 +13,22 @@ beforeEach(() => {
   vi.resetAllMocks();
   m.cliente.mockResolvedValue({ id: "titular" });
   m.registro.mockResolvedValue({ dados: foto });
+  m.contratos.mockResolvedValue([]);
 });
 
 describe("histórico de conciliação da recepção", () => {
   it("expõe o fato com seu corte, sem acesso, cobrança ou alteração de assinatura", async () => {
     const r = await requisitar();
     expect(r.headers.get("Cache-Control")).toBe("private, no-store");
-    expect(await r.json()).toEqual({ conferencia: foto });
+    expect(await r.json()).toEqual({ conferencia: foto, contratos: [], hoje: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
     expect(m.sessao).toHaveBeenCalledWith(["DONO", "GERENTE", "RECEPCAO"]);
     expect(m.cliente).toHaveBeenCalledWith({ where: { id: "titular", excluidoEm: null }, select: { id: true } });
     expect(m.registro.mock.calls[0][0].where).toEqual({ entidade: "cliente", entidadeId: "titular", acao: "conferir_planos_celcoin" });
+  });
+  it("mostra a posição atual do contrato da Celcoin ligada ao cliente", async () => {
+    m.contratos.mockResolvedValue([{ id: "77", clienteId: "titular", valorCentavos: 10800, situacao: "PAGA", vencimento: new Date("2026-11-07T00:00:00Z"), pagoEm: new Date("2026-11-06T15:00:00Z"), atualizadoEm: new Date("2026-11-06T15:01:00Z") }]);
+    expect((await (await requisitar()).json()).contratos).toEqual([{ id: "77", valorCentavos: 10800, situacao: "PAGA", vencimento: "2026-11-07", pagoEm: "2026-11-06T15:00:00.000Z", atualizadoEm: "2026-11-06T15:01:00.000Z" }]);
+    expect(m.contratos.mock.calls[0][0].where).toEqual({ clienteId: "titular" });
   });
   it("preserva a data de fim histórica mesmo depois do encerramento do ciclo", async () => {
     const dados = { ...foto, confirmacaoGerencial: { plano: "Corte", acessoAteInclusive: "2025-12-06" } };

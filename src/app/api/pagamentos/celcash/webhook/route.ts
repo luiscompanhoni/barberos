@@ -6,6 +6,7 @@ import { PREFIXO } from "@/lib/pagamentos/celcash";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 
 export const dynamic = "force-dynamic";
+const EVENTOS = ["transaction.updateStatus", "subscription.addTransaction"];
 
 function iguais(a: string | null | undefined, b: string) {
   if (!a) return false;
@@ -15,7 +16,7 @@ function iguais(a: string | null | undefined, b: string) {
 }
 
 /**
- * Webhook da Celcash (evento transaction.updateStatus). Cadastre na Celcash a URL
+ * Webhook da Celcash (eventos transaction.updateStatus e subscription.addTransaction). Cadastre na Celcash a URL
  *   https://SEU-DOMINIO/api/pagamentos/celcash/webhook?token=<CELCASH_WEBHOOK_TOKEN>
  * Confere o token da URL e o confirmHash (CELCASH_WEBHOOK_HASH, mostrado pela Celcash ao
  * salvar o webhook). Persiste os identificadores antes da resposta e busca o status real na API depois.
@@ -33,7 +34,8 @@ export async function POST(req: Request) {
   if (hash && !iguais(corpo?.confirmHash, hash)) return new Response("Hash invalido", { status: 401 });
 
   const transacao = corpo?.Transaction?.galaxPayId;
-  if (corpo?.event === "transaction.updateStatus" && transacao) {
+  // subscription.addTransaction avisa a parcela nova de um contrato (inclusive os vendidos pelo CashBarber).
+  if (corpo?.event && EVENTOS.includes(corpo.event) && Number.isSafeInteger(transacao) && transacao! > 0) {
     const id = `${PREFIXO.transacao}${transacao}`;
     // O contrato desta rota não comprova que webhookId seja único por mudança
     // de status. Cada entrega é preservada e processada em série pela transação.
