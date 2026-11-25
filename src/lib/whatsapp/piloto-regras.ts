@@ -1,6 +1,7 @@
 import { normalizarTelefone } from "@/lib/telefone";
 export type EstadoPiloto = { ativo: boolean; telefone: string | null; expiraEm: Date | null; enviados: number; versao: number };
 export const recursoPiloto = () => process.env.WHATSAPP_PILOTO_ENTREVISTAS_HABILITADO === "true";
+export const somenteAtendimentoWhatsApp = () => process.env.WHATSAPP_SOMENTE_ATENDIMENTO === "true";
 /** Ativação independente, deliberada, somente após o encerramento confirmado do piloto. */
 export function atendimentoAposPiloto(p: EstadoPiloto | null) {
   return recursoPiloto() && process.env.WHATSAPP_ATENDIMENTO_APOS_PILOTO === "true" && !!p && !p.ativo;

@@ -5,7 +5,7 @@
  */
 import { rodarRetomadas } from "@/lib/convites/retomadas";
 import { lembrarHorarios } from "./lembrar-horarios";
-import { recursoPiloto } from "@/lib/whatsapp/piloto-regras";
+import { recursoPiloto, somenteAtendimentoWhatsApp } from "@/lib/whatsapp/piloto-regras";
 import { sincronizarDisponibilidadeAtendimento } from "@/lib/whatsapp/disponibilidade-atendimento";
 import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { apagarCandidaturasVencidas } from "@/lib/recrutamento/servico";
@@ -43,6 +43,7 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
     await gerarNotificacoes(new Date(agora), opts);
     await processarPush(new Date(agora), { ...(usuarios ? { usuarioIds: usuarios.map(u => u.id) } : {}) });
   } catch { console.error("[notificacoes] Falha na rotina de avisos do aplicativo."); }
+  if (somenteAtendimentoWhatsApp()) return cont;
   await registrarAbandonosRoleta(agora, opts).catch(() => console.error("[roleta] Falha ao medir jornadas sem continuidade."));
   if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") {
     if (loteAutorizadoConfigurado()) cont.campanha = await processarCampanhas(agora, opts);
@@ -179,6 +180,7 @@ export function agendarAutomacoes() {
     try {
       await sincronizarDisponibilidadeAtendimento();
       const r = await rodarAutomacoes();
+      if (somenteAtendimentoWhatsApp()) return;
       if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") return;
       // Checklist da equipe (lista da manha e resumo da noite).
       const ck = await (await import("@/lib/checklist/servico")).rodarChecklist().catch((e) => {
