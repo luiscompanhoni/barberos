@@ -368,6 +368,11 @@ depois para a produção.
   · [Split na autorização](https://connect-stone.stone.com.br/reference/split-no-pedido).
 - **Celcash:** variáveis `CELCASH_*` em `deploy/env.producao.exemplo`; webhook
   `<PAINEL_URL>/api/pagamentos/celcash/webhook?token=<CELCASH_WEBHOOK_TOKEN>` (`CELCASH_WEBHOOK_HASH` = confirmHash).
+  Eventos aceitos: `transaction.updateStatus` e `subscription.addTransaction`. Parcela de contrato que o BarberOS
+  não emitiu (planos vendidos pelo CashBarber) atualiza só `contratos_celcoin`
+  (`src/lib/pagamentos/celcash-contratos.ts`): situação, vencimento e data de pagamento lidos da API e mostrados
+  no cartão do cliente. Não muda assinatura, cobrança ou acesso e não envia mensagem. O titular é ligado ao
+  cadastro por CPF único ou, na falta dele, telefone único; sem isso a posição fica guardada sem cliente.
 - **Asaas:** chave em Integrações → Chave de API; `PAGAMENTOS_PROVIDER="asaas"`, `ASAAS_API_KEY`, `ASAAS_AMBIENTE`
   (`sandbox` ou `producao`), `SITE_URL`; webhook `<PAINEL_URL>/api/pagamentos/webhook` com token em
   `ASAAS_WEBHOOK_TOKEN`, eventos de cobrança.

@@ -67,6 +67,7 @@ type Transacao = {
   status: string;
   Pix?: { qrCode?: string | null; image?: string | null; page?: string | null } | null;
   Boleto?: { pdf?: string | null; bankLine?: string | null } | null;
+  Subscription?: { galaxPayId: number; Customer?: { document?: string | null; phones?: (string | number)[] | null } | null } | null;
 };
 type Assinatura = { galaxPayId: number; paymentLink?: string | null; mainPaymentMethodId: string; Transactions?: Transacao[] };
 type Avulsa = { galaxPayId: number; value?: number; paymentLink?: string | null; mainPaymentMethodId: string; Transactions?: Transacao[] };
@@ -140,6 +141,22 @@ async function assinaturaPorId(galaxPayId: string) {
   const a = r.Subscriptions?.[0];
   if (!a) throw new Error(`Celcash: assinatura ${galaxPayId} não encontrada.`);
   return a;
+}
+
+/** Só leitura: a parcela com o contrato e o titular, para contratos que o BarberOS não emitiu. */
+export async function consultarParcelaComContrato(id: string) {
+  const numero = semPrefixo(id, PREFIXO.transacao);
+  const r = await chamar<{ Transactions: Transacao[] }>("GET", `/transactions?galaxPayIds=${encodeURIComponent(numero)}&startAt=0&limit=1`);
+  const t = r.Transactions?.find((x) => String(x.galaxPayId) === numero);
+  if (!t) return null;
+  const contrato = t.Subscription?.galaxPayId ?? t.subscriptionGalaxPayId ?? null;
+  // Contratos conflitantes na mesma resposta não comprovam nenhum dos dois.
+  if (t.Subscription && t.subscriptionGalaxPayId && t.Subscription.galaxPayId !== t.subscriptionGalaxPayId) return null;
+  const titular = t.Subscription?.Customer;
+  return {
+    parcela: converter(t, null), statusCelcoin: t.status, contratoId: contrato ? String(contrato) : null,
+    titular: { cpf: titular?.document ?? "", telefones: (titular?.phones ?? []).map(String) },
+  };
 }
 
 export const celcash: Gateway = {

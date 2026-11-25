@@ -44,6 +44,13 @@ async function executar(carga: EntradaWebhook) {
     await processarWebhookPagarme(carga);
     return;
   }
+  if (carga.fonte === "celcash") {
+    // Plano vendido pelo CashBarber: só atualiza a posição exibida no cartão do cliente.
+    const { atualizarContratoExterno } = await import("./celcash-contratos");
+    if (await atualizarContratoExterno(carga.cobranca)) return;
+    // Contrato emitido aqui: só a mudança de status move a assinatura, como antes.
+    if (carga.tipo !== "transaction.updateStatus") return;
+  }
   const { processarEventoGateway } = await import("@/lib/assinaturas/cobrancas");
   const r = await processarEventoGateway(carga.evento, carga.tipo, carga.cobranca);
   // Uma cobrança sem vínculo local não deve ser anunciada como conciliada.

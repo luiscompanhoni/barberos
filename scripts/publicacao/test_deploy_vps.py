@@ -38,6 +38,13 @@ class DeployTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
             exigir_migracoes_da_publicacao([*nomes, "20261111180000_reativacao_clientes"])
 
+    def test_contratos_celcoin_aceita_somente_a_tabela_nova(self):
+        nome = "20261125010000_contratos_celcoin"
+        exigir_migracoes_da_publicacao([nome])
+        self.assertTrue((Path(__file__).resolve().parents[2] / "prisma/migrations" / nome / "migration.sql").is_file())
+        with self.assertRaisesRegex(RuntimeError, "fora do escopo"):
+            exigir_migracoes_da_publicacao([nome, "20261111180000_reativacao_clientes"])
+
     def test_revisao_integral_exige_as_migracoes_revisadas(self):
         revisadas = {
             "20261120000000_liberar_agenda_comanda_cancelada": "9d3afd52f7f754b6c0995207a20f94c9ee79a3d3ea510161d9172d1153cc7102",
