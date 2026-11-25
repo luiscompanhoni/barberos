@@ -11,6 +11,7 @@ import { HorarioModal } from "./HorarioModal";
 import { EncaixesPainel, type DestaqueEncaixe } from "./EncaixesPainel";
 import { ConfiguracaoAgenda } from "./ConfiguracaoAgenda";
 import { Grade } from "./Grade";
+import { BloqueioModal } from "./BloqueioModal";
 import { montarColunas, type AgendamentoApi, type Coluna } from "./tipos";
 import { useAgenda } from "./useAgenda";
 
@@ -48,6 +49,7 @@ export function AgendaTela(p: {
   const [todosBarbeiros, setTodosBarbeiros] = useState<{ id: string; nome: string; ativo: boolean }[]>([]);
   const [encaixe, setEncaixe] = useState<{ coluna: Coluna | null; inicio: number | null; fim?: number; servicoInicial?: string } | null>(null);
   const [aberto, setAberto] = useState<AgendamentoApi | null>(null);
+  const [bloqueio, setBloqueio] = useState<{ item: Coluna["bloqueios"][number]; coluna: Coluna } | null>(null);
   const [aviso, setAviso] = useState<{ texto: string; erro?: boolean } | null>(null);
 
   const dias = modo === "semana" ? 7 : 1;
@@ -148,6 +150,8 @@ export function AgendaTela(p: {
           granularidadeMin={agenda.granularidadeMin}
           podeEditar={podeEditar}
           podeDuracao={permissoes.duracao}
+          podeBloquear={permissoes.bloquear_agenda}
+          onAbrirBloqueio={(item, coluna) => setBloqueio({ item, coluna })}
           arrastarToque={arrastarToque}
           destaques={destaques}
           intervaloEntreClientesMin={agenda.intervaloEntreClientesMin}
@@ -173,6 +177,11 @@ export function AgendaTela(p: {
           onFechar={() => setEncaixe(null)}
           onCriado={(msg) => { setEncaixe(null); setAviso({ texto: msg }); recarregar(); }}
         />
+      )}
+      {bloqueio && agenda && (
+        <BloqueioModal bloqueio={bloqueio.item} barbeiroNome={bloqueio.coluna.barbeiroNome} fuso={agenda.fuso}
+          onFechar={() => setBloqueio(null)}
+          onRemovido={msg => { setBloqueio(null); setAviso({ texto: msg }); recarregar(); }} />
       )}
       {aberto && agenda && (
         <DetalheModal

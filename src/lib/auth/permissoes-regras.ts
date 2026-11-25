@@ -82,8 +82,8 @@ export const PERMISSOES = [
   },
   {
     chave: "bloquear_agenda", rotulo: "Bloquear e reabrir horários",
-    detalhe: "Barbeiros podem bloquear somente a própria agenda; liderança e recepção, as agendas sob sua gestão.",
-    papeis: ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"], padrao: ["GERENTE", "LIDER", "BARBEIRO"],
+    detalhe: "Barbeiros podem reabrir somente a própria agenda; liderança e recepção, as agendas sob sua gestão. O bloqueio pelo barbeiro depende de aprovação.",
+    papeis: ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"], padrao: ["GERENTE", "LIDER", "RECEPCAO", "BARBEIRO"],
   },
 ] as const satisfies readonly { chave: string; rotulo: string; detalhe: string; papeis: readonly PapelConfiguravel[]; padrao: readonly PapelConfiguravel[] }[];
 

@@ -34,6 +34,7 @@ export function FecharAgenda(p: { barbeiroId: string; bloqueios: BloqueioApi[]; 
   const [escolhas, setEscolhas] = useState<Record<string, string>>({});
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState("");
+  const [removendo, setRemovendo] = useState<string | null>(null);
 
   function periodo() {
     if (diaInteiro) {
@@ -82,8 +83,13 @@ export function FecharAgenda(p: { barbeiroId: string; bloqueios: BloqueioApi[]; 
   }
 
   async function reabrir(id: string) {
-    await api(`/api/bloqueios/${id}`, { method: "DELETE" });
-    p.onSalvo();
+    setRemovendo(id); setErro(""); setOk("");
+    try {
+      await api(`/api/bloqueios/${id}`, { method: "DELETE" });
+      setOk("Bloqueio removido. Agenda liberada para novos horários.");
+      p.onSalvo();
+    } catch (e) { setErro((e as Error).message); }
+    finally { setRemovendo(null); }
   }
 
   return (
@@ -137,7 +143,7 @@ export function FecharAgenda(p: { barbeiroId: string; bloqueios: BloqueioApi[]; 
           </div>
         </div>
       )}
-      {erro && <p className="text-sm text-red-600">{erro}</p>}
+      {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
       {ok && <p className="text-sm text-emerald-700">{ok}</p>}
 
       {p.bloqueios.length > 0 && (
@@ -146,7 +152,7 @@ export function FecharAgenda(p: { barbeiroId: string; bloqueios: BloqueioApi[]; 
             <li key={b.id} className="flex items-center gap-2 py-2">
               <span>{fmt(b.inicio)} até {fmt(b.fim)}</span>
               {b.motivo && <span className="text-zinc-500">· {b.motivo}</span>}
-              <button className="ml-auto text-xs text-zinc-500 underline" onClick={() => reabrir(b.id)}>reabrir</button>
+              <button className="ml-auto text-xs text-zinc-500 underline" disabled={removendo !== null} onClick={() => reabrir(b.id)}>{removendo === b.id ? "removendo…" : "reabrir"}</button>
             </li>
           ))}
         </ul>

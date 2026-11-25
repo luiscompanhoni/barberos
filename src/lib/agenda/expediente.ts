@@ -279,9 +279,10 @@ export async function reabrirAgenda(bloqueioId: string, ator: Sessao) {
   if (!b) throw naoEncontrado("Bloqueio");
   exigirGestaoBarbeiro(ator, b.barbeiroId);
   await exigirPermissao(ator, "bloquear_agenda");
-  if (ator.papel === "BARBEIRO") throw proibido();
   await db.$transaction(async (tx) => {
-    await tx.bloqueio.delete({ where: { id: bloqueioId } });
+    await travarBarbeiro(tx, b.barbeiroId);
+    const removidos = await tx.bloqueio.deleteMany({ where: { id: bloqueioId, barbeiroId: b.barbeiroId } });
+    if (!removidos.count) throw naoEncontrado("Bloqueio");
     await auditar(tx, ator.usuarioId, "reabrir_agenda", "bloqueio", bloqueioId);
   });
   publicar({ tipo: "agenda", barbeiroIds: [b.barbeiroId], datas: [] });

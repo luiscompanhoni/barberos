@@ -422,6 +422,10 @@ incompletos; com os CSVs, quem ficou de fora; com `--saida`, grava CSVs (fora da
 
 Uso e ativação: [guia da equipe](evolucao-equipe.md). As regras de recompra, mensagens de avaliação, prêmios e bônus exigem configuração.
 
+## Remoção de bloqueios na agenda
+
+A grade permite abrir um bloqueio e confirmar “Remover bloqueio”. Dono, gerente e recepção podem reabrir as agendas que administram; barbeiro somente a própria. A ação usa `bloquear_agenda` (liberada por padrão também para a recepção), preservando revogações explícitas por papel ou usuário. A remoção compartilha a trava da agenda, registra auditoria e publica atualização SSE. A interface recarrega a grade e mostra falhas sem indicar sucesso falso. Entrevistas exibidas como indisponibilidade não oferecem essa ação; não são bloqueios removíveis por esta rota. A regra de aprovação de novos bloqueios do barbeiro permanece inalterada.
+
 ## Aplicativo instalável e notificações
 
 - Manifestos públicos em `/manifest-cliente.webmanifest` e `/manifest-equipe.webmanifest`, com identidade e início próprios (`/c` e `/painel`). `public/sw.js` usa escopo `/`, sem cache de API, RSC ou HTML privado. Guarda apenas `/offline.html`. Ícones próprios em `public/pwa/`.

@@ -39,6 +39,8 @@ export function Grade(props: {
   onMover: (ag: AgendamentoApi, coluna: Coluna, inicio: number, fim: number) => Promise<void>;
   onVazio: (coluna: Coluna, inicio: number, fim?: number) => void;
   podeDuracao: boolean;
+  podeBloquear?: boolean;
+  onAbrirBloqueio?: (bloqueio: Coluna["bloqueios"][number], coluna: Coluna) => void;
   arrastarToque?: boolean;
   intervaloEntreClientesMin: number;
   destaques?: { chave: string; inicio: string; fim: string; quantidade: number }[];
@@ -199,12 +201,18 @@ export function Grade(props: {
               {c.bloqueios.map((b) => {
                 const ini = dataLocal(Date.parse(b.inicio), fuso) < c.data ? iniDia : minLocal(b.inicio);
                 const fim = dataLocal(Date.parse(b.fim) - 1, fuso) > c.data ? fimDia : minLocal(b.fim) || 1440;
+                const podeRemover = editavel && props.podeBloquear && props.onAbrirBloqueio && !b.id.startsWith("entrevista:");
                 return (
                   <div key={b.id} className="absolute inset-x-1 rounded-md border border-dashed border-zinc-400 px-2 py-1 text-xs text-zinc-600"
                     style={{ top: y(Math.max(ini, iniDia)), height: (Math.min(fim, fimDia) - Math.max(ini, iniDia)) * PX_MIN,
                       background: "repeating-linear-gradient(135deg,#141312,#141312 6px,#1c1b19 6px,#1c1b19 12px)" }}
                     onPointerDown={e => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-                    Agenda fechada{b.motivo ? ` · ${b.motivo}` : ""}
+                    {podeRemover ? <button type="button" aria-haspopup="dialog" aria-label={`Abrir bloqueio de ${c.barbeiroNome}`}
+                      className="h-full w-full overflow-hidden rounded text-left text-zinc-900 focus-visible:outline-2 focus-visible:outline-ouro"
+                      onClick={() => props.onAbrirBloqueio?.(b, c)}>
+                      Agenda fechada{b.motivo ? ` · ${b.motivo}` : ""}
+                      <span className="block underline">Remover bloqueio</span>
+                    </button> : <>Agenda fechada{b.motivo ? ` · ${b.motivo}` : ""}</>}
                   </div>
                 );
               })}
