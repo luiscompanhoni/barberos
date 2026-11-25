@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { enviarAvisosNovoAgendamento } from "@/lib/notificacoes/envio-agendamento";
 import { z } from "zod";
 import { BALCAO, exigirSessao } from "@/lib/auth/sessao";
 import { rota } from "@/lib/erros";
@@ -20,5 +21,7 @@ const decisao = z.discriminatedUnion("acao", [
 
 export const PATCH = rota(async (req: Request) => {
   const s = await exigirSessao(BALCAO), p = await corpoPedido(req, decisao, true);
-  return NextResponse.json(await decidirPedido(p.id, s, p));
+  const resultado = await decidirPedido(p.id, s, p);
+  if ("agendamentoId" in resultado) after(() => enviarAvisosNovoAgendamento(resultado.agendamentoId));
+  return NextResponse.json(resultado);
 });

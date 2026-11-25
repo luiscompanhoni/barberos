@@ -39,7 +39,7 @@ rastreável e o primeiro grupo de clientes pronto para entrar. Jogos, IA e finan
 - [ ] Configurar e validar token Meta de leitura no servidor. Sessão no navegador não conecta o backend. Definir metas, atribuição, orçamento e aprovação antes de implementar publicação/ajustes de anúncios. 👤
 - [ ] Conectar e-mail, publicação social, pesquisa web e outros efeitos externos conforme prioridade. Nenhum desses efeitos é executado pela central atual.
 
-- [ ] Publicar a etapa de aplicativo instalável e notificações (implementada em 28/10), configurar VAPID definitivo e validar instalação/envio em Android e iPhone físicos. Central, preferências, inscrição, revogação e transporte simulado implementados; nenhum push real foi enviado nesta entrega. [Guia de ativação](app-notificacoes.md).
+- [ ] Publicar o ajuste de notificações no celular preparado em 24/11, configurar VAPID definitivo e validar a exibição na barra do iPhone com o app fechado. Convite por gesto, detalhes de agenda, avisos para dono/gerente e profissional, entrega após reserva e independência do WhatsApp implementados. Na consulta de produção, push estava desativado e sem VAPID. [Guia de ativação](app-notificacoes.md), [roteiro de revisão](revisao-notificacoes-celular-2026-11-24.md).
 - [ ] Achar a causa do 404 em appblackbarber.com (preciso do link exato que deu erro). 👤
 - [x] PRs #1 a #8 mesclados na `main` (último em 28/10), com o CI verde.
 - [ ] Conferir a versão no ar depois do deploy (`bash scripts/deploy.sh root@IP`): rodar `backup.sh agora`,

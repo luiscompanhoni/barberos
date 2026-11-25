@@ -46,7 +46,7 @@ export function hrefNotificacaoValido(href: string) {
   if (href.length > 500 || !href.startsWith("/") || href.startsWith("//") || /[\\\r\n]|%2f|%5c/i.test(href)) return false;
   try {
     const u = new URL(href, "https://barberos.invalid");
-    return u.origin === "https://barberos.invalid" && ["/c", "/meu-dia", "/minha-agenda", "/desempenho", "/reunioes", "/notificacoes"].some((p) => u.pathname === p || u.pathname.startsWith(`${p}/`));
+    return u.origin === "https://barberos.invalid" && ["/c", "/meu-dia", "/minha-agenda", "/recepcao", "/desempenho", "/reunioes", "/notificacoes"].some((p) => u.pathname === p || u.pathname.startsWith(`${p}/`));
   } catch { return false; }
 }
 

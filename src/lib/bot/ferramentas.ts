@@ -6,6 +6,7 @@ import { ErroNegocio } from "@/lib/erros";
 import { configuracao } from "@/lib/agenda/carregar";
 import { horariosDisponiveis } from "@/lib/agenda/consultas";
 import { agendarPeloCliente, cancelarPeloCliente, confirmarPeloCliente, proximosDoCliente, remarcarPeloCliente } from "@/lib/agenda/cliente";
+import { enviarAvisosNovoAgendamento } from "@/lib/notificacoes/envio-agendamento";
 import { executarAssinatura, FERRAMENTAS_ASSINATURA, NOMES_ASSINATURA } from "./ferramentas-assinatura";
 import { executarCrescimento, FERRAMENTAS_CRESCIMENTO, NOMES_CRESCIMENTO } from "./ferramentas-crescimento";
 import { executarPagamento, FERRAMENTAS_PAGAMENTO, NOMES_PAGAMENTO } from "./ferramentas-pagamento";
@@ -151,7 +152,6 @@ export const FERRAMENTAS: Ferramenta[] = [
   ...FERRAMENTAS_PAGAMENTO,
   ...FERRAMENTAS_OPERACAO,
 ];
-
 const zData = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const zHora = z.string().regex(/^\d{1,2}:\d{2}$/);
 const ENTRADAS = {
@@ -166,7 +166,6 @@ const ENTRADAS = {
   receber_mensagens: z.object({ receber: z.boolean() }),
   salvar_perfil: z.object({ data_nascimento: zNascimento.optional(), origem: z.enum(ORIGENS_CLIENTE).optional(), origem_detalhe: z.string().trim().max(80).optional() }),
 };
-
 const reais = (c: number) => `R$ ${(c / 100).toFixed(2).replace(".", ",")}`;
 
 export type ResultadoFerramenta = { texto: string; erro?: boolean; passouParaHumano?: boolean };
@@ -251,6 +250,7 @@ async function executar(nome: string, entrada: unknown, ctx: ContextoBot): Promi
       const ag = await agendarPeloCliente({
         telefone: ctx.telefone, nome, barbeiroId: e.barbeiro_id, servicoId: e.servico_id, servicosAdicionais: e.servicos_adicionais, inicio, origem: "BOT", semPreferencia: e.qualquer_barbeiro, forcarAvulso: e.avulso,
       });
+      await enviarAvisosNovoAgendamento(ag.id);
       await ligarConversaAoCliente(ctx);
       const det = await db.agendamento.findUniqueOrThrow({
         where: { id: ag.id },

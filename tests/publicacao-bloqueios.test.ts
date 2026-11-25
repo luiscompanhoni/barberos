@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   piloto: vi.fn(), transporte: vi.fn(), configuracao: vi.fn(), assinaturas: vi.fn(),
   entrada: vi.fn(), entrevista: vi.fn(), mensagem: vi.fn(), modelo: vi.fn(),
+  gerarAvisos: vi.fn(), enviarAvisos: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ db: {
   assinatura: { findMany: mocks.assinaturas },
@@ -14,6 +15,8 @@ vi.mock("@/lib/whatsapp/conversas", () => ({ registrarEntrada: mocks.entrada, en
 vi.mock("@/lib/bot/entrevistas", () => ({ processarBotEntrevista: mocks.entrevista, registroSeguroEntrevista: (s: string) => s, contemConviteEntrevista: () => false, comandoReservadoEntrevista: () => false }));
 vi.mock("@/lib/bot/agente", () => ({ executarTurno: mocks.modelo }));
 vi.mock("@/lib/agenda/carregar", () => ({ configuracao: mocks.configuracao }));
+vi.mock("@/lib/notificacoes/geracao", () => ({ gerarNotificacoes: mocks.gerarAvisos }));
+vi.mock("@/lib/notificacoes/envio", () => ({ processarPush: mocks.enviarAvisos }));
 
 import { enviarCodigoAcesso, enviarTemplate, enviarTexto } from "@/lib/whatsapp/canal";
 import { receberMensagem } from "@/lib/bot/processar";
@@ -67,7 +70,7 @@ describe("publicação com envios e gastos desativados", () => {
     expect(mocks.configuracao).not.toHaveBeenCalled();
     expect(mocks.assinaturas).not.toHaveBeenCalled();
   });
-  it("não processa fila nem checklist enquanto envios estão bloqueados", async () => {
+  it("não processa WhatsApp nem checklist enquanto envios estão bloqueados e mantém o canal do aplicativo", async () => {
     vi.useFakeTimers();
     try {
       expect(Object.values(await rodarAutomacoes()).every((x) => x === 0)).toBe(true);
@@ -75,6 +78,8 @@ describe("publicação com envios e gastos desativados", () => {
       await vi.advanceTimersByTimeAsync(46_000);
       expect(mocks.configuracao).not.toHaveBeenCalled();
       expect(mocks.transporte).not.toHaveBeenCalled();
+      expect(mocks.gerarAvisos).toHaveBeenCalled();
+      expect(mocks.enviarAvisos).toHaveBeenCalled();
     } finally {
       delete (globalThis as { rotinaAutomacoes?: boolean }).rotinaAutomacoes;
       vi.useRealTimers();

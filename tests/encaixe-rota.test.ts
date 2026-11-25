@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const m = vi.hoisted(() => ({ sessao: vi.fn(), criar: vi.fn() }));
+const m = vi.hoisted(() => ({ sessao: vi.fn(), criar: vi.fn(), depois: vi.fn(), enviar: vi.fn() }));
+vi.mock("next/server", async original => ({ ...await original<typeof import("next/server")>(), after: m.depois }));
+vi.mock("@/lib/notificacoes/envio-agendamento", () => ({ enviarAvisosNovoAgendamento: m.enviar }));
 vi.mock("@/lib/auth/sessao", () => ({ exigirSessao: m.sessao }));
 vi.mock("@/lib/agenda/agendamentos", () => ({ criarAgendamento: m.criar }));
 import { POST } from "@/app/api/agendamentos/route";
@@ -20,6 +22,9 @@ describe("conferência de valor e duração do encaixe", () => {
     expect(r.status).toBe(201);
     expect(m.criar).toHaveBeenCalledWith({ ...dados, inicio: new Date(dados.inicio), origem: "RECEPCAO",
       forcarAvulso: true, precoEsperadoCentavos: 4000, duracaoEsperadaMin: 45 }, ator);
+    expect(m.enviar).not.toHaveBeenCalled();
+    await m.depois.mock.calls[0][0]();
+    expect(m.enviar).toHaveBeenCalledWith("agendamento");
   });
   it.each([{ precoEsperadoCentavos: -1 }, { precoEsperadoCentavos: 0.5 }, { duracaoEsperadaMin: 0 }, { duracaoEsperadaMin: 481 }])("recusa confirmação inválida %#", async (mudanca) => {
     expect((await POST(req({ ...dados, ...mudanca }))).status).toBe(400); expect(m.criar).not.toHaveBeenCalled();
@@ -28,6 +33,7 @@ describe("conferência de valor e duração do encaixe", () => {
     m.criar.mockRejectedValue(new ErroNegocio("Consulte novamente.", 409, codigo));
     const r = await POST(req({ ...dados, forcarAvulso: true, precoEsperadoCentavos: 4000, duracaoEsperadaMin: 45 }));
     expect(r.status).toBe(409); expect((await r.json()).codigo).toBe(codigo);
+    expect(m.depois).not.toHaveBeenCalled();
   });
   it("preserva encaixe comum sem forçar avulso e a origem do barbeiro", async () => {
     m.sessao.mockResolvedValue({ ...ator, papel: "BARBEIRO" });

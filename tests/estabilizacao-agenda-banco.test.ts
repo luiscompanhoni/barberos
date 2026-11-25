@@ -75,7 +75,7 @@ describe.skipIf(!habilitado)("estabilização: agenda, adicionais e entrevistas 
     const f = await fixture();
     const reserva = await f.reservar(f.barbeiro.id, f.terceiro.id);
     const usuario = await db.barbeiro.findUniqueOrThrow({ where: { id: f.barbeiro.id } });
-    const avisos = await db.notificacao.findMany({ where: { chave: `novo-agendamento:${reserva.id}` } });
+    const avisos = await db.notificacao.findMany({ where: { chave: `novo-agendamento:${reserva.id}`, usuarioId: usuario.usuarioId! } });
     expect(avisos).toHaveLength(1);
     expect(avisos[0].usuarioId).toBe(usuario.usuarioId);
     const sessao = { ...f.dono, usuarioId: usuario.usuarioId!, papel: "BARBEIRO" as const, barbeiroId: f.barbeiro.id };

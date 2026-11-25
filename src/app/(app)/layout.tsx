@@ -99,8 +99,8 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
 
   return (
     <div className={`gestao-shell black-workspace ${appBlack ? "black-app black-sereno" : "crm-workspace"} flex min-h-full flex-1 flex-col lg:flex-row`}>
-      <RegistroApp area="equipe" />
-      {s.barbeiroId && <AvisosAgenda key={s.usuarioId} />}
+      <RegistroApp area="equipe" usuarioId={s.usuarioId} />
+      {(s.barbeiroId || GESTAO.includes(s.papel)) && <AvisosAgenda key={s.usuarioId} />}
       <Navegacao nome={s.nome} papel={s.papel} links={links} selos={selos} nomeBarbearia={cfg.nomeBarbearia} />
       <div className="black-workspace-content">
         <TopoWorkspace links={links} nome={s.nome} />

@@ -56,6 +56,18 @@ describe("worker sem dados privados offline", () => {
 });
 
 describe("push e clique seguro", () => {
+  it("mostra serviço, profissional e horário do aviso de agenda com o aplicativo fechado", async () => {
+    const a = ambiente();
+    await a.disparar("push", { data: { json: () => ({ id: "agenda-1", href: "/c", tipo: "AGENDA", titulo: "Seu atendimento está próximo", corpo: "Corte com Ygor · 26/11/2026 às 09:30" }) } });
+    expect(a.mostrar).toHaveBeenCalledWith("Seu atendimento está próximo", expect.objectContaining({ body: "Corte com Ygor · 26/11/2026 às 09:30", tag: "black-agenda-1" }));
+  });
+  it("usa mensagem geral quando os detalhes são incompletos ou excessivos", async () => {
+    const a = ambiente();
+    for (const texto of [{ titulo: "", corpo: "Corte" }, { titulo: "x".repeat(121), corpo: "Corte" }, { titulo: "Lembrete", corpo: "x".repeat(601) }]) {
+      await a.disparar("push", { data: { json: () => ({ id: "agenda-1", href: "/c", tipo: "AGENDA", ...texto }) } });
+    }
+    expect(a.mostrar.mock.calls.every(([titulo]) => titulo === "Black Barber")).toBe(true);
+  });
   it("mantém aviso genérico e tag estável, mesmo com texto sensível no payload", async () => {
     const a = ambiente();
     await a.disparar("push", { data: { json: () => ({ id: "aviso-1", href: "/c/avaliacoes", title: "Nome do cliente", body: "Nota privada" }) } });

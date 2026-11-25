@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
+import { quarentenaRestauracao } from "@/lib/recuperacao/quarentena";
 import { configuracao } from "@/lib/agenda/carregar";
 import { dataLocal, instanteLocal, minutosLocal, somarDias } from "@/lib/agenda/tempo";
 import { horarioComercial } from "@/lib/automacoes/regras";
@@ -7,6 +8,8 @@ import { configuracaoPush } from "./configuracao";
 import { notificacaoAindaRelevante } from "./geracao-relevancia";
 import { enviarPush } from "./provedor";
 import { categoriaPermitida, PREFERENCIAS_PADRAO } from "./regras";
+import { dadosNovoAgendamento } from "./geracao-regras";
+import { corpoAtualPush } from "./texto-atual";
 
 export type OpcoesProcessarPush = { usuarioId?: string; usuarioIds?: string[]; notificacaoIds?: string[]; limite?: number; simular?: boolean };
 const resumoVazio = () => ({ processados: 0, enviados: 0, simulados: 0, cancelados: 0, incertos: 0, falhas: 0, adiados: 0 });
@@ -15,6 +18,7 @@ const resumoVazio = () => ({ processados: 0, enviados: 0, simulados: 0, cancelad
 export async function processarPush(agoraEntrada: Date | number = new Date(), opts: OpcoesProcessarPush = {}) {
   const agora = new Date(agoraEntrada);
   const resumo = resumoVazio();
+  if (quarentenaRestauracao()) return resumo;
   const usuarios = opts.usuarioId ? (opts.usuarioIds && !opts.usuarioIds.includes(opts.usuarioId) ? [] : [opts.usuarioId]) : opts.usuarioIds;
   if (usuarios?.length === 0 || opts.notificacaoIds?.length === 0) return resumo;
   const escopo: Prisma.PushEntregaWhereInput = {
@@ -24,14 +28,15 @@ export async function processarPush(agoraEntrada: Date | number = new Date(), op
   const limite = Math.max(1, Math.min(50, Math.floor(opts.limite ?? 20)));
   const vencidas = await db.pushEntrega.updateMany({ where: { ...escopo, estado: "ENVIANDO", tentadoEm: { lt: new Date(+agora - 2 * 60_000) } }, data: { estado: "INCERTO", codigoErro: "RESERVA_INTERROMPIDA" } });
   resumo.incertos += vencidas.count;
-  const pendentes = await db.pushEntrega.findMany({ where: { ...escopo, estado: "PENDENTE", OR: [{ proximaTentativaEm: null }, { proximaTentativaEm: { lte: agora } }] }, orderBy: [{ criadoEm: "asc" }, { id: "asc" }], take: limite, select: { id: true, notificacao: { select: { categoria: true, expiraEm: true } } } });
+  const pendentes = await db.pushEntrega.findMany({ where: { ...escopo, estado: "PENDENTE", OR: [{ proximaTentativaEm: null }, { proximaTentativaEm: { lte: agora } }] }, orderBy: [{ criadoEm: "asc" }, { id: "asc" }], take: limite, select: { id: true, notificacao: { select: { categoria: true, expiraEm: true, dados: true } } } });
   const cfgAgenda = pendentes.some((p) => p.notificacao.categoria !== "TESTE") ? await configuracao() : null;
   for (const p of pendentes) {
     if (p.notificacao.expiraEm <= agora) {
       const r = await db.pushEntrega.updateMany({ where: { id: p.id, estado: "PENDENTE" }, data: { estado: "CANCELADO", codigoErro: "AVISO_EXPIRADO" } });
       resumo.cancelados += r.count; continue;
     }
-    if (p.notificacao.categoria !== "TESTE" && cfgAgenda && !horarioComercial(+agora, cfgAgenda.fuso)) {
+    const novaReserva = p.notificacao.categoria === "EQUIPE" && dadosNovoAgendamento.safeParse(p.notificacao.dados).success;
+    if (p.notificacao.categoria !== "TESTE" && !novaReserva && cfgAgenda && !horarioComercial(+agora, cfgAgenda.fuso)) {
       const dia = dataLocal(+agora, cfgAgenda.fuso);
       const proximoDia = minutosLocal(+agora, cfgAgenda.fuso) < 8 * 60 ? dia : somarDias(dia, 1);
       await db.pushEntrega.updateMany({ where: { id: p.id, estado: "PENDENTE" }, data: { proximaTentativaEm: new Date(instanteLocal(proximoDia, 8 * 60, cfgAgenda.fuso)) } });
@@ -66,7 +71,19 @@ export async function processarPush(agoraEntrada: Date | number = new Date(), op
     if (!dispositivo?.ativo || dispositivo.usuarioId !== n.usuarioId || dispositivo.tokenHash !== entrega.inscricao.tokenHash || !usuario?.ativo || !categoriaPermitida(n.categoria, usuario.notificacaoPreferencia ?? PREFERENCIAS_PADRAO)) {
       await db.pushEntrega.update({ where: { id: p.id }, data: { estado: "CANCELADO", codigoErro: "CONSENTIMENTO_ALTERADO" } }); resumo.cancelados++; continue;
     }
-    const resultado = await enviarPush(entrega.inscricao, n, { agora, simular: opts.simular });
+    let corpo: string | null;
+    try { corpo = cfgAgenda ? await corpoAtualPush(n, cfgAgenda.fuso) : n.corpo; }
+    catch {
+      // O provedor ainda não foi chamado, portanto é seguro tentar novamente.
+      const repetir = entrega.tentativas < 3;
+      await db.pushEntrega.update({ where: { id: p.id }, data: { estado: repetir ? "PENDENTE" : "FALHOU", codigoErro: "DADOS_INDISPONIVEIS", proximaTentativaEm: repetir ? new Date(+agora + 300_000) : null } });
+      if (repetir) resumo.adiados++; else resumo.falhas++;
+      continue;
+    }
+    if (corpo === null) {
+      await db.pushEntrega.update({ where: { id: p.id }, data: { estado: "CANCELADO", codigoErro: "EVENTO_DESATUALIZADO" } }); resumo.cancelados++; continue;
+    }
+    const resultado = await enviarPush(entrega.inscricao, { ...n, corpo }, { agora, simular: opts.simular });
     const repetir = resultado.estado === "PENDENTE" && entrega.tentativas < 3;
     const estado = resultado.estado === "PENDENTE" && !repetir ? "FALHOU" : resultado.estado;
     await db.$transaction(async (tx) => {

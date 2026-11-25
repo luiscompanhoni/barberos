@@ -31,7 +31,7 @@ async function main() {
   let avisos = await db.notificacao.findMany({ where: { usuarioId: p.u.id, categoria: "AGENDA" } });
   ok(avisos.length === 1, "Um aviso de agenda por evento/usuário");
   ok(await notificacaoAindaRelevante(avisos[0], agora), "Aviso próprio ainda relevante");
-  ok(!JSON.stringify({ titulo: avisos[0].titulo, corpo: avisos[0].corpo }).includes(servico.nome), "Texto não expõe serviço/nome/preço");
+  ok(avisos[0].corpo.includes(servico.nome) && avisos[0].corpo.includes(p.b.nome) && avisos[0].corpo.includes("09:30"), "Lembrete informa serviço, profissional e horário local");
   ok(await db.notificacao.count({ where: { usuarioId: p.staff.id } }) === 0, "Filtro de usuário não inclui equipe de terceiros");
   await db.agendamento.update({ where: { id: a.id }, data: { status: "CANCELADO" } });
   ok(!await notificacaoAindaRelevante(avisos[0], agora), "Cancelamento invalida aviso já persistido");

@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { enviarAvisosNovoAgendamento } from "@/lib/notificacoes/envio-agendamento";
 import { z } from "zod";
 import { exigirSessao } from "@/lib/auth/sessao";
 import { criarAgendamento } from "@/lib/agenda/agendamentos";
@@ -28,5 +29,6 @@ export const POST = rota(async (req: Request) => {
   const b = await corpo(req, schema);
   const origem = s.papel === "BARBEIRO" ? "BARBEIRO" : "RECEPCAO";
   const ag = await criarAgendamento({ ...b, origem }, s);
+  after(() => enviarAvisosNovoAgendamento(ag.id));
   return NextResponse.json(ag, { status: 201 });
 });

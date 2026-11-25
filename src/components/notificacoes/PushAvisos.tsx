@@ -3,7 +3,7 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/cliente-api";
 import type { PainelNotificacoes } from "@/lib/notificacoes/tipos";
-import { ativarPush, desativarPushLocal, suportaPush } from "@/lib/pwa/push-cliente";
+import { ativarPush, desativarPushLocal, inscricaoPushLocal, suportaPush } from "@/lib/pwa/push-cliente";
 import { assinarInstalacao, estadoInstalacao, estadoInstalacaoServidor } from "@/lib/pwa/instalacao";
 
 const permissao = () => suportaPush() ? Notification.permission : "indisponivel";
@@ -26,7 +26,7 @@ export function PushAvisos(p: { dados: PainelNotificacoes; onAlterado: () => Pro
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     let vivo = true;
-    navigator.serviceWorker.getRegistration("/").then(async reg => !!(await reg?.pushManager?.getSubscription()))
+    inscricaoPushLocal()
       .then(inscrito => vivo && setInscritoLocalmente(inscrito)).catch(() => vivo && setInscritoLocalmente(false));
     return () => { vivo = false; };
   }, [p.dados.dispositivos]);
@@ -53,11 +53,11 @@ export function PushAvisos(p: { dados: PainelNotificacoes; onAlterado: () => Pro
   const podeAtivar = p.dados.push.disponivel && !!p.dados.push.chavePublica && acesso !== "indisponivel" && acesso !== "carregando" && acesso !== "denied" && !(app.ios && !app.instalado);
   return <section className="cartao space-y-3" aria-labelledby="push-avisos-titulo">
     <h2 id="push-avisos-titulo" className="font-semibold">Avisos com o aplicativo fechado</h2>
-    <p className="text-sm text-zinc-600">Os avisos na tela do aparelho mostram apenas uma mensagem geral. Abra sua conta para consultar os detalhes.</p>
+    <p className="text-sm text-zinc-600">Lembretes e novos agendamentos mostram serviço, data, horário e barbeiro. Para a equipe, incluem o cliente. Esses detalhes podem aparecer na tela bloqueada. Os demais avisos mostram uma mensagem geral.</p>
     {ativo ? <p className="text-sm text-emerald-700">Ativados neste aparelho.</p>
       : acesso === "carregando" ? <p className="text-sm text-zinc-500">Verificando navegador…</p>
         : app.ios && !app.instalado ? <p className="text-sm text-zinc-600">No iPhone ou iPad, instale pela tela inicial e abra o ícone do aplicativo antes de ativar notificações.</p>
-          : acesso === "denied" ? <p className="text-sm text-amber-700">O navegador bloqueou as notificações. Abra as permissões deste site nas configurações do navegador, libere “Notificações” e volte aqui.</p>
+          : acesso === "denied" ? <p className="text-sm text-amber-700">As notificações estão bloqueadas. {app.ios ? "No iPhone ou iPad, abra Ajustes → Notificações → este aplicativo e ative Permitir Notificações." : "Abra as permissões deste site nas configurações do navegador e libere Notificações."} Depois volte aqui.</p>
             : acesso === "indisponivel" ? <p className="text-sm text-zinc-600">Este navegador não permite notificações neste modo. Você pode consultar todos os avisos nesta central.</p>
               : !p.dados.push.disponivel ? <p className="text-sm text-zinc-600">As notificações no aparelho ainda não estão habilitadas pela barbearia. Seus avisos continuam disponíveis aqui.</p>
                 : <p className="text-sm text-zinc-600">Escolha ativar para receber avisos neste aparelho. A permissão será pedida pelo navegador.</p>}

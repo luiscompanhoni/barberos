@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { enviarAvisosNovoAgendamento } from "@/lib/notificacoes/envio-agendamento";
 import { avisarReservaPeloApp } from "@/lib/convites/confirmar";
 import { z } from "zod";
 import { exigirCliente } from "@/lib/auth/sessao";
@@ -47,6 +48,7 @@ export const POST = rota(async (req: Request) => {
   }
   const ag = await agendarPeloCliente({ ...dados, premioId, clienteId: s.clienteId, usuarioId: s.usuarioId, sessaoVersao: s.sessaoVersao ?? 0,
     telefone: cliente.telefone, nome: cliente.nome, origem: "SITE", canalApp: true });
+  after(() => enviarAvisosNovoAgendamento(ag.id));
   if (process.env.LEMBRETE_ABANDONO_PREVIA === "true") {
     // A reserva já foi feita; falha ao limpar a prévia não desfaz o horário.
     await cancelarLembreteAgendamento(s.clienteId, new Date(), s.usuarioId).catch(() => {});

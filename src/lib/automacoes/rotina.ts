@@ -35,6 +35,14 @@ const MAX_REATIVACAO_POR_RODADA = 15;
 export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: string[] } = {}) {
   const cont = { retomadasConvite: 0, lembretes: 0, faltas: 0, pos: 0, reativacao: 0, aniversario: 0, espera: 0, retorno: 0, indicacao: 0, campanha: 0, roletaNudge: 0, roletaUpsell: 0 };
   if (quarentenaRestauracao()) return cont;
+  // Push tem consentimento próprio e continua funcionando com o WhatsApp pausado ou em piloto.
+  try {
+    const usuarios = opts.clienteIds
+      ? await db.usuario.findMany({ where: { cliente: { id: { in: opts.clienteIds } } }, select: { id: true } })
+      : undefined;
+    await gerarNotificacoes(new Date(agora), opts);
+    await processarPush(new Date(agora), { ...(usuarios ? { usuarioIds: usuarios.map(u => u.id) } : {}) });
+  } catch { console.error("[notificacoes] Falha na rotina de avisos do aplicativo."); }
   await registrarAbandonosRoleta(agora, opts).catch(() => console.error("[roleta] Falha ao medir jornadas sem continuidade."));
   if (process.env.WHATSAPP_ENVIOS_BLOQUEADOS === "true") {
     if (loteAutorizadoConfigurado()) cont.campanha = await processarCampanhas(agora, opts);
@@ -50,15 +58,6 @@ export async function rodarAutomacoes(agora = Date.now(), opts: { clienteIds?: s
     if (comercial && process.env.WHATSAPP_CAMPANHAS_MANUAIS_ATIVAS === "true") cont.campanha = await processarCampanhas(agora, opts);
     return cont;
   }
-
-  // O canal do aplicativo tem preferências próprias; uma falha não interrompe os canais existentes.
-  try {
-    const usuarios = opts.clienteIds
-      ? await db.usuario.findMany({ where: { cliente: { id: { in: opts.clienteIds } } }, select: { id: true } })
-      : undefined;
-    await gerarNotificacoes(new Date(agora), opts);
-    await processarPush(new Date(agora), { ...(usuarios ? { usuarioIds: usuarios.map(u => u.id) } : {}) });
-  } catch { console.error("[notificacoes] Falha na rotina de avisos do aplicativo."); }
 
   // Vaga que abriu e premio de indicacao nao esperam o horario comercial das outras mensagens.
   cont.espera = await processarEsperas(agora, opts);

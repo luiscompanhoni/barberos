@@ -66,7 +66,8 @@ export async function notificacaoAindaRelevante(n: AvisoRevalidavel, agora = new
     if (novo.success) {
       return !!await db.agendamento.findFirst({ where: {
         id: novo.data.agendamentoId, barbeiroId: novo.data.barbeiroId, adicionalDeId: null,
-        barbeiro: { ativo: true, usuarioId: n.usuarioId },
+        barbeiro: { ativo: true, ...(["DONO", "GERENTE"].includes(usuario.papel) ? {} : { usuarioId: n.usuarioId }) },
+        ...(novo.data.inicio ? { inicio: new Date(novo.data.inicio) } : {}),
         status: { in: ["MARCADO", "CONFIRMADO", "CHEGOU", "EM_ATENDIMENTO"] }, fim: { gt: agora },
       }, select: { id: true } });
     }

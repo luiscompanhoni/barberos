@@ -46,6 +46,17 @@ describe("provedor seguro", () => {
     expect(JSON.parse(payload)).toEqual({ id: aviso.id, href: aviso.href });
     expect(opcoes.timeout).toBe(8000); expect(opcoes.TTL).toBeLessThanOrEqual(60);
   });
+  it("envia os detalhes de agenda pedidos pelo cliente, sem incluir os metadados privados", async () => {
+    mock.enviar.mockResolvedValue({ statusCode: 201 });
+    const ag = { ...aviso, href: "/c", categoria: "AGENDA", titulo: "Seu atendimento está próximo", corpo: "Corte com Ygor · 26/11/2026 às 09:30", dados: { agendamentoId: "privado" } };
+    await enviarPush(destino, ag);
+    expect(JSON.parse(mock.enviar.mock.calls[0][1])).toEqual({ id: ag.id, href: ag.href, tipo: "AGENDA", titulo: ag.titulo, corpo: ag.corpo });
+  });
+  it("avaliação conserva mensagem geral mesmo tendo título e corpo", async () => {
+    mock.enviar.mockResolvedValue({ statusCode: 201 });
+    await enviarPush(destino, { ...aviso, categoria: "AVALIACAO", titulo: "Avaliação", corpo: "Dado privado" });
+    expect(JSON.parse(mock.enviar.mock.calls[0][1])).toEqual({ id: aviso.id, href: aviso.href });
+  });
   it("erro de transporte não vaza endpoint nem gera novo envio", async () => {
     mock.enviar.mockRejectedValue({ code: "ETIMEDOUT", message: destino.endpoint });
     const r = await enviarPush(destino, aviso);

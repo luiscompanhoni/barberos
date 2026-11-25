@@ -1,9 +1,11 @@
 import webPush from "web-push";
 import { configuracaoPush } from "./configuracao";
 import { authPushValido, chavePublicaValida, endpointPushValido, hrefNotificacaoValido, resultadoErroPush, type ResultadoProvedorPush } from "./regras";
+import { dadosNovoAgendamento } from "./geracao-regras";
 
 type Destino = { endpoint: string; p256dh: string; auth: string; vapidHash: string };
-export async function enviarPush(destino: Destino, aviso: { id: string; href: string; expiraEm: Date }, opts: { simular?: boolean; agora?: Date } = {}): Promise<ResultadoProvedorPush> {
+type AvisoPush = { id: string; href: string; expiraEm: Date; categoria?: string; titulo?: string; corpo?: string; dados?: unknown };
+export async function enviarPush(destino: Destino, aviso: AvisoPush, opts: { simular?: boolean; agora?: Date } = {}): Promise<ResultadoProvedorPush> {
   const cfg = configuracaoPush();
   const agora = opts.agora ?? new Date();
   if (!endpointPushValido(destino.endpoint) || !chavePublicaValida(destino.p256dh) || !authPushValido(destino.auth) || !hrefNotificacaoValido(aviso.href)) return { estado: "FALHOU", codigo: "INSCRICAO_INVALIDA", desativar: true };
@@ -14,8 +16,9 @@ export async function enviarPush(destino: Destino, aviso: { id: string; href: st
   const ttl = Math.min(24 * 60 * 60, Math.floor((+aviso.expiraEm - +agora) / 1000));
   if (ttl <= 0) return { estado: "FALHOU", codigo: "AVISO_EXPIRADO" };
   try {
-    // Só identificador e destino interno: tela bloqueada não recebe dados de clientes ou financeiros.
-    await webPush.sendNotification({ endpoint: destino.endpoint, keys: { p256dh: destino.p256dh, auth: destino.auth } }, JSON.stringify({ id: aviso.id, href: aviso.href }), {
+    const agenda = aviso.categoria === "AGENDA" || (aviso.categoria === "EQUIPE" && dadosNovoAgendamento.safeParse(aviso.dados).success);
+    const detalhes = agenda && aviso.titulo && aviso.corpo ? { tipo: "AGENDA", titulo: aviso.titulo, corpo: aviso.corpo } : {};
+    await webPush.sendNotification({ endpoint: destino.endpoint, keys: { p256dh: destino.p256dh, auth: destino.auth } }, JSON.stringify({ id: aviso.id, href: aviso.href, ...detalhes }), {
       TTL: ttl, urgency: "normal", timeout: 8000,
       vapidDetails: { subject: cfg.contato, publicKey: cfg.chavePublica, privateKey: cfg.chavePrivada },
     });

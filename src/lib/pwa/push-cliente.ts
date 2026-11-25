@@ -8,6 +8,14 @@ export function suportaPush() {
   return typeof window !== "undefined" && window.isSecureContext && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
+export async function inscricaoPushLocal() {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return false;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration("/");
+    return !!(await reg?.pushManager?.getSubscription());
+  } catch { return false; }
+}
+
 export function registrarApp() {
   if (typeof window === "undefined" || !window.isSecureContext || !("serviceWorker" in navigator)) return Promise.reject(new Error("Este navegador não permite instalar o aplicativo neste endereço."));
   if (!registro) registro = navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).catch(e => { registro = null; throw e; });

@@ -10,6 +10,7 @@ import { publicarNotificacao } from "./caixa";
 import { chaveAgenda, chaveRecompra, limiteGeracao } from "./geracao-regras";
 import { resumoEquipeProprio } from "./geracao-equipe";
 import { notificacaoAindaRelevante } from "./geracao-relevancia";
+import { textoAtendimento } from "./textos-agenda";
 
 export { notificacaoAindaRelevante } from "./geracao-relevancia";
 
@@ -27,14 +28,17 @@ async function gerarAgenda(u: Alvo, agora: Date, cfg: Configuracao) {
   const agendamentos = await db.agendamento.findMany({ where: {
     clienteId: u.cliente.id, adicionalDeId: null, status: { in: ["MARCADO", "CONFIRMADO"] },
     inicio: { gt: agora, lte: new Date(+agora + horizonte) },
-  }, select: { id: true, inicio: true, criadoEm: true, status: true }, orderBy: [{ inicio: "asc" }, { id: "asc" }] });
+  }, select: { id: true, inicio: true, criadoEm: true, status: true, servico: { select: { nome: true } }, barbeiro: { select: { nome: true } },
+    adicionais: { where: { status: { not: "CANCELADO" } }, select: { servico: { select: { nome: true } } }, orderBy: { inicio: "asc" } },
+  }, orderBy: [{ inicio: "asc" }, { id: "asc" }] });
   let criadas = 0;
   for (const a of agendamentos) {
     const tipo = lembreteDevido({ inicio: +a.inicio, criadoEm: +a.criadoEm, status: a.status }, +agora, cfg);
     if (!tipo) continue;
     const r = await publicarNotificacao({ usuarioId: u.id, categoria: "AGENDA", chave: chaveAgenda(a.id, a.inicio, tipo),
       titulo: tipo === "LEMBRETE_PROXIMO" ? "Seu atendimento está próximo" : "Lembrete do seu atendimento",
-      corpo: "Abra sua agenda para conferir o horário e os detalhes da visita.", href: "/c", criadoEm: agora, expiraEm: a.inicio,
+      corpo: textoAtendimento({ inicio: a.inicio, barbeiro: a.barbeiro.nome, servicos: [a.servico.nome, ...a.adicionais.map(s => s.servico.nome)] }, cfg.fuso),
+      href: "/c", criadoEm: agora, expiraEm: a.inicio,
       dados: { agendamentoId: a.id, inicio: a.inicio.toISOString(), tipo },
     });
     if (r?.criada) criadas++;

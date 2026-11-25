@@ -47,8 +47,10 @@ self.addEventListener("push", event => {
   const area = dados.area === "cliente" || (typeof dados.href === "string" && (dados.href === "/c" || dados.href.startsWith("/c/"))) ? "cliente" : "equipe";
   const id = typeof dados.id === "string" && /^[\w-]{1,100}$/.test(dados.id) ? dados.id : "aviso";
   const href = destinoNotificacao(dados.href, area);
-  event.waitUntil(self.registration.showNotification("Black Barber", {
-    body: "Você tem um novo aviso. Abra o aplicativo para conferir.",
+  const detalhado = dados.tipo === "AGENDA" && typeof dados.titulo === "string" && dados.titulo.trim().length > 0 && dados.titulo.length <= 120
+    && typeof dados.corpo === "string" && dados.corpo.trim().length > 0 && dados.corpo.length <= 600;
+  event.waitUntil(self.registration.showNotification(detalhado ? dados.titulo : "Black Barber", {
+    body: detalhado ? dados.corpo : "Você tem um novo aviso. Abra o aplicativo para conferir.",
     icon: "/pwa/icon-192.png", badge: "/pwa/icon-192.png",
     tag: `black-${id}`, renotify: false,
     data: { href, area },
