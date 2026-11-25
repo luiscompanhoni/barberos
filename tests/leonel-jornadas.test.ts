@@ -41,8 +41,8 @@ describe("jornadas de campanha do Leonel", () => {
   it("espera cinco horas da última atividade e oferece ajuda adequada à etapa", () => {
     expect(instanteDeRetomada(agora)).toEqual(cincoHoras);
     expect(instanteDeAjudaAposLeitura(agora, cincoHoras)).toEqual(new Date("2026-11-22T18:00:00Z"));
-    expect(mensagemDaRetomada("João", "cadastro", "/c/entrar")).toContain("cadastro");
-    expect(mensagemDaRetomada("João", "roleta", "/c/r/teste")).toContain("girar");
-    expect(mensagemDaRetomada("João", "agenda", "/c/entrar")).toContain("horário");
+    expect(mensagemDaRetomada("João", "cadastro").join(" ")).toContain("cadastro");
+    expect(mensagemDaRetomada("João", "roleta").join(" ")).toContain("girar");
+    expect(mensagemDaRetomada("João", "agenda").join(" ")).toContain("horário");
   });
 });
