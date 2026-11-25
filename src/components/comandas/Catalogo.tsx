@@ -102,7 +102,7 @@ function ServicosAdicionais({ servicos, barbeiros, barbeiro, setBarbeiro, desabi
   servicos: ServicoCat[] | null; barbeiros: BarbeiroCat[]; barbeiro: string; setBarbeiro: (id: string) => void;
   desabilitado: boolean; onServico: (servicoId: string, barbeiroId: string, reservarTempo: boolean) => void;
 }) {
-  const [reservarTempo, setReservarTempo] = useState(true);
+  const [reservarTempo, setReservarTempo] = useState(false);
   if (!servicos) return <p className="text-sm text-zinc-500">Carregando serviços...</p>;
   const doBarbeiro = servicos.filter((s) => s.barbeiros.some((b) => b.barbeiroId === barbeiro));
   return (

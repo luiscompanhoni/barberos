@@ -7,6 +7,7 @@ export const dadosAgenda = z.object({
 });
 export const dadosAvaliacao = z.object({ conviteId: z.string().min(1) });
 export const dadosRecompra = z.object({ clienteId: z.string().min(1), ciclos: z.array(z.object({ servicoId: z.string().min(1), ultimaEm: z.iso.datetime() })).min(1) });
+export const dadosNovoAgendamento = z.object({ tipo: z.literal("NOVO_AGENDAMENTO"), agendamentoId: z.string().min(1), barbeiroId: z.string().min(1) });
 export const dadosEquipe = z.object({ barbeiroId: z.string().min(1), data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
 
 export function chaveAgenda(id: string, inicio: Date, tipo: "LEMBRETE_VESPERA" | "LEMBRETE_PROXIMO") {
