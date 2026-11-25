@@ -316,8 +316,21 @@ Falta:
     devolve, vencido expira, e só a gerência cancela, com motivo.
   - Campanha pode dar uma jogada de presente em qualquer jogo. O endereço antigo da roleta continua funcionando.
 - **Serviço adicional na comanda** (fora da lista): sobrancelha junto do corte, por exemplo. Conta na comissão, no
-  plano e nos relatórios. Por padrão o adicional reserva intervalo próprio na agenda (`ocupaAgenda=true`),
-  com confirmação de realização separada; quem lança pode desmarcar a reserva e o serviço entra junto do principal. O legado conserva a duração original; repetir solicitação não cria outra cobrança.
+  plano e nos relatórios. A inclusão acompanha o principal e não reserva tempo por padrão.
+  Marcar “Reservar o tempo do serviço na agenda” cria intervalo próprio, com validação de disponibilidade.
+  Repetir a mesma solicitação não cria outra cobrança.
+- **Agenda do barbeiro em tempo real**: Meu dia e Minha agenda acompanham eventos, reconciliam a cada 15 segundos
+  e atualizam ao voltar ao aplicativo ou recuperar a conexão. Cada nova reserva principal gera aviso privado para
+  o profissional, respeita preferências e usa a fila de push existente. O app aberto exibe o aviso.
+  Implementação de 24/11 preparada localmente. Lint, regras de qualidade, tipos, build e 2.563 testes unitários passaram.
+  Os 21 testes PostgreSQL da agenda passaram, incluindo adicional com próximo horário ocupado e aviso privado.
+  O teste de navegador em viewport de celular confirmou Meu dia, Minha agenda, aviso, inclusão pela recepção e
+  recuperação com SSE bloqueado. Publicação e teste em aparelho físico pendentes.
+  Pela combinação de agenda, cobrança e avisos, sugerem-se três ciclos de revisão antes de publicar.
+  Prompt copiável — “Revise esta correção em três ciclos. Primeiro confira adicionais, disponibilidade,
+  preço e repetição de solicitações. Depois confira eventos, reconexão e descarte de respostas antigas.
+  Por último confira destinatário dos avisos, preferências, cancelamento e integração. Execute lint, tipos,
+  os testes unitários e os 21 testes PostgreSQL de estabilização da agenda no banco descartável.”
 
 
 ### Recrutamento: formulários profissionais (02/11/2026)

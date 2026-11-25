@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, reais } from "@/lib/cliente-api";
+import { acompanharAgenda } from "@/lib/agenda/acompanhar";
 import { dataLocal } from "@/lib/agenda/tempo";
 import type { MeuDiaResposta } from "@/lib/reunioes/meu-dia";
 import { cenarioDoServico } from "@/lib/reunioes/regras";
@@ -14,12 +15,21 @@ export function MeuDiaTela() {
   const [dados, setDados] = useState<MeuDiaResposta | null>(null), [erro, setErro] = useState(""), [carregando, setCarregando] = useState(false);
   const [servicoId, setServicoId] = useState(""), [quantidade, setQuantidade] = useState(1), [versao, setVersao] = useState(0);
   useEffect(() => {
-    let vivo = true;
-    Promise.resolve().then(() => { if (vivo) { setCarregando(true); setErro(""); } });
-    api<MeuDiaResposta>(`/api/meu-dia?${new URLSearchParams({ data, ...(barbeiroId ? { barbeiroId } : {}) })}`)
-      .then((d) => { if (vivo) { setDados(d); setServicoId(""); setQuantidade(1); } })
-      .catch((e: Error) => { if (vivo) { setErro(e.message); setDados(null); } }).finally(() => { if (vivo) setCarregando(false); });
-    return () => { vivo = false; };
+    let vivo = true, buscando = false;
+    async function atualizar() {
+      if (buscando) return;
+      buscando = true;
+      try {
+        const d = await api<MeuDiaResposta>(`/api/meu-dia?${new URLSearchParams({ data, ...(barbeiroId ? { barbeiroId } : {}) })}`);
+        if (vivo) { setDados(d); setErro(""); }
+      } catch (e) { if (vivo) setErro((e as Error).message); }
+      finally { buscando = false; if (vivo) setCarregando(false); }
+    }
+    Promise.resolve().then(() => {
+      if (vivo) { setDados(null); setCarregando(true); setErro(""); setServicoId(""); setQuantidade(1); void atualizar(); }
+    });
+    const parar = acompanharAgenda(() => { void atualizar(); });
+    return () => { vivo = false; parar(); };
   }, [data, barbeiroId, versao]);
   const servico = dados?.servicos.find((s) => s.servicoId === servicoId), cenario = servico ? cenarioDoServico(servico, quantidade) : null;
   const hora = (d: string) => new Date(d).toLocaleTimeString("pt-BR", { timeZone: dados?.fuso ?? "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" });

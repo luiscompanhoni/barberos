@@ -5,7 +5,7 @@ import { dataLocal } from "@/lib/agenda/tempo";
 import { lembreteDevido } from "@/lib/automacoes/regras";
 import { configRecompras } from "@/lib/recompras/configuracao";
 import { ciclosDoCliente } from "@/lib/recompras/rotina";
-import { dadosAgenda, dadosAvaliacao, dadosEquipe, dadosRecompra, mesmosCiclos } from "./geracao-regras";
+import { dadosAgenda, dadosAvaliacao, dadosEquipe, dadosNovoAgendamento, dadosRecompra, mesmosCiclos } from "./geracao-regras";
 import { resumoEquipeProprio } from "./geracao-equipe";
 
 export type AvisoRevalidavel = { usuarioId: string; categoria: string; dados: Prisma.JsonValue; expiraEm: Date };
@@ -62,6 +62,14 @@ export async function notificacaoAindaRelevante(n: AvisoRevalidavel, agora = new
   }
   if (n.categoria === "EQUIPE") {
     if (usuario.papel === "CLIENTE" || pref?.equipe === false) return false;
+    const novo = dadosNovoAgendamento.safeParse(n.dados);
+    if (novo.success) {
+      return !!await db.agendamento.findFirst({ where: {
+        id: novo.data.agendamentoId, barbeiroId: novo.data.barbeiroId, adicionalDeId: null,
+        barbeiro: { ativo: true, usuarioId: n.usuarioId },
+        status: { in: ["MARCADO", "CONFIRMADO", "CHEGOU", "EM_ATENDIMENTO"] }, fim: { gt: agora },
+      }, select: { id: true } });
+    }
     const d = dadosEquipe.safeParse(n.dados);
     if (!d.success) return false;
     const cfg = await umaVez(cache, "config", configuracao);

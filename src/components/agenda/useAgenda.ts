@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/cliente-api";
+import { acompanharAgenda } from "@/lib/agenda/acompanhar";
 import type { AgendaApi } from "./tipos";
 
 /**
@@ -32,30 +33,11 @@ export function useAgenda(data: string, dias: number, barbeiroId?: string) {
     // Busca inicial dos dados; o estado so muda depois da resposta.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     recarregar();
+    const requisicao = pedido;
+    return () => { requisicao.current++; };
   }, [recarregar]);
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const es = new EventSource("/api/eventos");
-    es.onopen = () => setAoVivo(true);
-    es.onerror = () => setAoVivo(false);
-    es.onmessage = (ev) => {
-      try {
-        if (JSON.parse(ev.data).tipo !== "agenda") return;
-      } catch {
-        return;
-      }
-      clearTimeout(timer);
-      timer = setTimeout(recarregar, 250);
-    };
-    const aoFocar = () => recarregar();
-    window.addEventListener("focus", aoFocar);
-    return () => {
-      clearTimeout(timer);
-      es.close();
-      window.removeEventListener("focus", aoFocar);
-    };
-  }, [recarregar]);
+  useEffect(() => acompanharAgenda(recarregar, { aoConectar: setAoVivo }), [recarregar]);
 
   return { agenda, erro, aoVivo, recarregar, setAgenda };
 }

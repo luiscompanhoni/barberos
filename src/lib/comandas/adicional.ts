@@ -1,7 +1,7 @@
 /**
  * Servico adicional na comanda (ex.: o cliente veio cortar e quer fazer a sobrancelha tambem).
  * Vira um atendimento ligado ao principal (comissao do barbeiro, uso do plano e relatorios contam normal),
- * Por padrão reserva horário próprio. Com reservarTempo=false acontece junto do principal, sem ocupar a agenda.
+ * Por padrão acompanha o principal. Reserva horário próprio quando solicitado explicitamente.
  */
 import { randomUUID } from "node:crypto";
 import { auditar } from "@/lib/auditoria";
@@ -22,11 +22,11 @@ import { retomarSolicitacaoAdicional } from "./adicional-solicitacao";
 
 const MIN = 60_000;
 
-export async function adicionarServico(s: Sessao, comandaId: string, servicoId: string, barbeiroId: string, solicitacaoId: string = randomUUID(), reservarTempo = true) {
+export async function adicionarServico(s: Sessao, comandaId: string, servicoId: string, barbeiroId: string, solicitacaoId: string = randomUUID(), reservarTempo = false) {
   exigirGestaoBarbeiro(s, barbeiroId);
   const cfg = await configuracao();
   const r = await db.$transaction(async (tx) => {
-    const anterior = await retomarSolicitacaoAdicional(tx, solicitacaoId, { comandaId, servicoId, barbeiroId, usuarioId: s.usuarioId });
+    const anterior = await retomarSolicitacaoAdicional(tx, solicitacaoId, { comandaId, servicoId, barbeiroId, usuarioId: s.usuarioId, reservarTempo });
     if (anterior) return anterior;
     const contexto = await travarAgendaComanda(tx, comandaId, barbeiroId);
     if (contexto.clienteId) await travarClienteAgenda(tx, contexto.clienteId);

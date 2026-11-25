@@ -1,3 +1,4 @@
+import { AvisosAgenda } from "@/components/notificacoes/AvisosAgenda";
 import { habilitado as estudioHabilitado } from "@/lib/estudio/http";
 import { redirect } from "next/navigation";
 import { AcessoProvider } from "@/components/AcessoContexto";
@@ -99,6 +100,7 @@ export default async function LayoutApp({ children }: LayoutProps<"/">) {
   return (
     <div className={`gestao-shell black-workspace ${appBlack ? "black-app black-sereno" : "crm-workspace"} flex min-h-full flex-1 flex-col lg:flex-row`}>
       <RegistroApp area="equipe" />
+      {s.barbeiroId && <AvisosAgenda key={s.usuarioId} />}
       <Navegacao nome={s.nome} papel={s.papel} links={links} selos={selos} nomeBarbearia={cfg.nomeBarbearia} />
       <div className="black-workspace-content">
         <TopoWorkspace links={links} nome={s.nome} />

@@ -26,6 +26,11 @@ describe("adicional: a intenção permanece identificada após timeout", () => {
     expect(solicitacaoAdicional(memoria, "c", "s", "b", s)).toBe(primeira);
     expect(() => encerrarSolicitacaoAdicional(memoria, "c", "s", "b", s)).not.toThrow();
   });
+  it("API reserva tempo somente quando solicitado explicitamente", () => {
+    const corpo = { acao: "servico", servicoId: "s", barbeiroId: "b", solicitacaoId: crypto.randomUUID() };
+    expect(schemaAcaoComanda.parse(corpo)).toMatchObject({ reservarTempo: false });
+    expect(schemaAcaoComanda.parse({ ...corpo, reservarTempo: true })).toMatchObject({ reservarTempo: true });
+  });
   it("API exige chave UUID antes de lançar o serviço", () => {
     const corpo = { acao: "servico", servicoId: "s", barbeiroId: "b" };
     expect(schemaAcaoComanda.safeParse(corpo).success).toBe(false);

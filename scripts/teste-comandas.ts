@@ -270,13 +270,13 @@ async function main() {
     data: { barbeiroId: barbeiro.id, clienteId: proximoCliente.id, servicoId: servico.id, inicio: ag2.fim, fim: new Date(+ag2.fim + 30 * 60_000), origem: "RECEPCAO", precoCentavos: 5000, status: "MARCADO" },
   });
   const solicitacaoId = randomUUID();
-  const conflito = await falha(() => adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, solicitacaoId));
+  const conflito = await falha(() => adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, solicitacaoId, true));
   ok(conflito instanceof ErroNegocio && conflito.codigo === "conflito_horario", "próximo cliente impede adicional no mesmo período, sem alterar a reserva existente");
   ok(await db.agendamento.count({ where: { adicionalDeId: ag2.id } }) === 0, "tentativa em conflito não deixa adicional nem cobrança parcial");
   await alterarStatus(proximo.id, "CANCELADO", s);
   const [adic, repetida] = await Promise.all([
-    adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, solicitacaoId),
-    adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, solicitacaoId),
+    adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, solicitacaoId, true),
+    adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, solicitacaoId, true),
   ]);
   const precoExtra = extra.precoCentavos ?? extra.servico.precoCentavos;
   ok(adic.adicionalDeId === ag2.id && adic.status === "MARCADO" && adic.ocupaAgenda && +adic.inicio === +ag2.fim && adic.precoCentavos === precoExtra,
@@ -298,15 +298,15 @@ async function main() {
   ok((await falha(() => adicionarServico(s, semCliente.id, extra.servicoId, barbeiro.id)))?.message.includes("avulso") === true, "comanda sem cliente pede item avulso");
   await cancelarComanda(s, semCliente.id, "teste");
   const removivelId = randomUUID();
-  const removivel = await adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, removivelId);
+  const removivel = await adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, removivelId, true);
   dc = await detalheComanda(cm.id);
   await alterarItem(s, dc.itens.find((i) => i.agendamentoId === removivel.id)!.id, 0);
   ok((await db.agendamento.findUniqueOrThrow({ where: { id: removivel.id } })).status === "CANCELADO", "remover adicional ainda marcado cancela sua reserva");
-  const repetirRemovido = await falha(() => adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, removivelId));
+  const repetirRemovido = await falha(() => adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, removivelId, true));
   ok(repetirRemovido instanceof ErroNegocio && repetirRemovido.codigo === "solicitacao_encerrada", "repetir solicitação removida não ressuscita reserva nem cobrança");
   dc = await detalheComanda(cm.id);
   ok(dc.resumo.total === 5000 + precoExtra, "remoção do pendente preserva o principal e o adicional realizado");
-  const pendente = await adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, randomUUID());
+  const pendente = await adicionarServico(s, cm.id, extra.servicoId, barbeiro.id, randomUUID(), true);
   await cancelarComanda(s, cm.id, "teste");
   await alterarStatus(ag2.id, "CONFIRMADO", s);
   ok((await db.agendamento.findUniqueOrThrow({ where: { id: pendente.id } })).status === "CANCELADO"

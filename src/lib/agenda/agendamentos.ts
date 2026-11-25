@@ -1,3 +1,4 @@
+import { notificarNovoAgendamento } from "@/lib/notificacoes/novo-agendamento";
 import { aoCancelarHorario } from "./antecipado";
 import { Prisma, type StatusAgendamento } from "@prisma/client";
 import { db } from "@/lib/db";
@@ -77,13 +78,11 @@ export async function validarEncaixe(
     throw conflitoHorario();
   }
 }
-
 export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | null) {
   const cfg = await configuracao();
   const equipe = ator && ator.papel !== "CLIENTE";
   const autoatendimento = !equipe || !!input.pedidoId;
   if (ator && equipe) exigirGestaoBarbeiro(ator, input.barbeiroId);
-
   const barbeiro = await db.barbeiro.findUnique({ where: { id: input.barbeiroId } });
   if (!barbeiro || !barbeiro.ativo) throw naoEncontrado("Barbeiro");
   const sb = await servicoDoBarbeiro(input.barbeiroId, input.servicoId);
@@ -186,6 +185,7 @@ export async function criarAgendamento(input: NovoAgendamento, ator: Sessao | nu
         avulsoAceito: input.forcarAvulso === true,
         realizado: !!input.realizado,
       });
+      await notificarNovoAgendamento(tx, criado, cfg.fuso);
       return criado;
     });
     publicar({ tipo: "agenda", barbeiroIds: [ag.barbeiroId], datas: [dataLocal(ag.inicio, cfg.fuso)] });

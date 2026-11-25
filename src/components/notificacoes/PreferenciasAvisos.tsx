@@ -8,7 +8,7 @@ const OPCOES: { chave: keyof PreferenciasNotificacoes; nome: string; detalhe: st
   { chave: "agenda", nome: "Agenda", detalhe: "Lembretes dos seus próximos atendimentos." },
   { chave: "avaliacoes", nome: "Avaliações", detalhe: "Convites e avisos sobre avaliações internas." },
   { chave: "recompra", nome: "Recompra de serviços", detalhe: "Lembretes para repetir serviços no período indicado." },
-  { chave: "equipe", nome: "Rotina da equipe", detalhe: "Resumo da sua agenda e oportunidades de encaixe no dia." },
+  { chave: "equipe", nome: "Rotina da equipe", detalhe: "Novos agendamentos, resumo da sua agenda e oportunidades de encaixe no dia." },
 ];
 export function PreferenciasAvisos(p: { area: "cliente" | "equipe"; preferencias: PreferenciasNotificacoes; onSalvo: () => Promise<void> }) {
   const [ocupado, setOcupado] = useState(false);

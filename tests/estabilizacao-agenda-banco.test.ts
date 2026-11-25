@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { adicionarServico } from "@/lib/comandas/adicional";
 import { abrirComanda, alterarItem, cancelarComanda, fecharComanda } from "@/lib/comandas/servico";
 import { alterarAgendamento, alterarStatus, criarAgendamento } from "@/lib/agenda/agendamentos";
+import { caixaNotificacoes } from "@/lib/notificacoes/caixa";
 import { carregarDia } from "@/lib/agenda/carregar";
 import { agendaDoPeriodo, horariosDisponiveis } from "@/lib/agenda/consultas";
 import { instanteLocal, dataLocal, diaSemana, somarDias } from "@/lib/agenda/tempo";
@@ -52,6 +53,36 @@ describe.skipIf(!habilitado)("estabilização: agenda, adicionais e entrevistas 
     const reservar = (barbeiroId: string, clienteId: string, inicio = horario(630), cadeiraId?: string) => criarAgendamento({ barbeiroId, cliente: { id: clienteId }, servicoId: servico.id, inicio, origem: "RECEPCAO", ...(cadeiraId ? { cadeiraId } : {}) }, dono);
     return { dono, barbeiro, outro, cadeira, cliente, terceiro, servico, principal, comanda, reservar, adicionar: (reservarTempo = true) => adicionarServico(dono, comanda.id, servico.id, barbeiro.id, undefined, reservarTempo) };
   }
+
+  it("padrão do balcão inclui adicional com a agenda ocupada e repete sem duplicar", async () => {
+    const f = await fixture();
+    const proximo = await f.reservar(f.barbeiro.id, f.terceiro.id);
+    const antes = await db.agendamento.findUniqueOrThrow({ where: { id: f.principal.id } });
+    const chave = randomUUID();
+    const adicional = await adicionarServico(f.dono, f.comanda.id, f.servico.id, f.barbeiro.id, chave);
+    expect(adicional.ocupaAgenda).toBe(false);
+    expect(adicional.status).toBe(antes.status);
+    expect(await db.agendamento.findUniqueOrThrow({ where: { id: f.principal.id } })).toEqual(antes);
+    expect(await db.agendamento.findUniqueOrThrow({ where: { id: proximo.id } })).toEqual(proximo);
+    const repetido = await adicionarServico(f.dono, f.comanda.id, f.servico.id, f.barbeiro.id, chave);
+    expect(repetido.id).toBe(adicional.id);
+    expect(await db.itemComanda.count({ where: { agendamentoId: adicional.id } })).toBe(1);
+    await expect(adicionarServico(f.dono, f.comanda.id, f.servico.id, f.barbeiro.id, chave, true)).rejects.toMatchObject({ codigo: "solicitacao_reutilizada" });
+    await expect(f.adicionar(true)).rejects.toMatchObject({ codigo: "conflito_horario" });
+  });
+
+  it("nova reserva avisa seu profissional e a central retira aviso de reserva cancelada", async () => {
+    const f = await fixture();
+    const reserva = await f.reservar(f.barbeiro.id, f.terceiro.id);
+    const usuario = await db.barbeiro.findUniqueOrThrow({ where: { id: f.barbeiro.id } });
+    const avisos = await db.notificacao.findMany({ where: { chave: `novo-agendamento:${reserva.id}` } });
+    expect(avisos).toHaveLength(1);
+    expect(avisos[0].usuarioId).toBe(usuario.usuarioId);
+    const sessao = { ...f.dono, usuarioId: usuario.usuarioId!, papel: "BARBEIRO" as const, barbeiroId: f.barbeiro.id };
+    expect((await caixaNotificacoes(sessao)).itens.some(n => n.id === avisos[0].id)).toBe(true);
+    await alterarStatus(reserva.id, "CANCELADO", f.dono);
+    expect((await caixaNotificacoes(sessao)).itens.some(n => n.id === avisos[0].id)).toBe(false);
+  });
 
   it("sem reservar tempo: entra junto do principal mesmo com o próximo horário ocupado e não bloqueia a agenda", async () => {
     const f = await fixture();
