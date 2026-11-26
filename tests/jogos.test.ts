@@ -4,6 +4,7 @@ import {
   multiplicador, normalizarCodigo, raridadePelaChance, retornoPorReal, simular, sortear, trioDaGrade, validarPremios,
 } from "@/lib/jogos/regras";
 import { JOGOS_PADRAO, ROLETA_PADRAO } from "@/lib/jogos/padroes";
+import { zPremio } from "@/lib/jogos/esquema";
 
 const p = (id: string, chanceBps: number, extra: Partial<{ ativo: boolean; limiteMensal: number | null; estoque: number | null }> = {}) =>
   ({ id, chanceBps, ativo: true, limiteMensal: null, estoque: null, ...extra });
@@ -72,6 +73,21 @@ describe("validacao das chances", () => {
     const impossivel = { ...base, rotulo: "Um ano grátis", tipo: "BRINDE", chanceBps: 0, ativo: true };
     expect(validarPremios("CAIXA", [real, impossivel]).join()).toContain("chance real");
     expect(validarPremios("CAIXA", [real, { ...impossivel, ativo: false }])).toEqual([]);
+  });
+
+  it("permite salvar os nomes do rascunho e mantém a assinatura de 0% fora das fatias", () => {
+    const comum = { ...base, tipo: "BRINDE", valorCentavos: 0, raridade: "COMUM", cor: "#141416",
+      icone: "presente", limiteMensal: null, estoque: null, custoCentavos: 0 };
+    const premios = zPremio.array().parse([
+      { ...comum, id: "hidratacao", rotulo: "Hidratação de presente ao agendar um corte", chanceBps: 7000, ativo: true },
+      { ...comum, id: "sobrancelha", rotulo: "Sobrancelha", chanceBps: 2000, ativo: true },
+      { ...comum, id: "corte", rotulo: "Corte grátis", chanceBps: 1000, ativo: true },
+      { ...comum, id: "assinatura", rotulo: "Assinatura de corte grátis", chanceBps: 0, ativo: false },
+    ]);
+    expect(premios).toHaveLength(4);
+    expect(validarPremios("ROLETA", premios)).toEqual([]);
+    expect(elegiveis(premios.map(premio => ({ ...premio, id: premio.id! })), new Map()).map(pr => pr.id))
+      .toEqual(["hidratacao", "sobrancelha", "corte"]);
   });
 
   it("jogos padrao ja nascem validos", () => {

@@ -8,7 +8,7 @@
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, FlaskConical, Plus, Save, Trash2 } from "lucide-react";
 import { api, centavosParaTexto, paraCentavos, reais } from "@/lib/cliente-api";
-import { ICONES, ROTULO_RARIDADE, type Raridade, type TipoPremio } from "@/lib/jogos/tipos";
+import { ICONES, LIMITE_NOME_PREMIO, ROTULO_RARIDADE, type Raridade, type TipoPremio } from "@/lib/jogos/tipos";
 import { IconePremio } from "../kit/IconePremio";
 import { PreviaRoleta } from "./PreviaRoleta";
 import type { JogoPainel, Painel, PremioPainel, Simulacao } from "./tipos";
@@ -30,6 +30,7 @@ const paraBps = (t: string) => {
   return Number.isFinite(n) ? Math.round(n * 100) : NaN;
 };
 const deBps = (b: number) => (b / 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+const participa = (p: Linha) => p.ativo && paraBps(p.chance) > 0;
 const numOuNulo = (t: string) => (t.trim() === "" ? null : Math.max(0, Math.round(Number(t))));
 const dataInput = (d: string | null) => (d ? new Date(d).toISOString().slice(0, 10) : "");
 
@@ -49,7 +50,8 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
   const [msg, setMsg] = useState<{ t: string; erro?: boolean } | null>(null);
   const [salvando, setSalvando] = useState(false);
 
-  const soma = useMemo(() => premios.filter((p) => p.ativo).reduce((t, p) => t + (paraBps(p.chance) || 0), 0), [premios]);
+  const ativos = useMemo(() => premios.filter(participa), [premios]);
+  const soma = ativos.reduce((total, premio) => total + paraBps(premio.chance), 0);
   const muda = (chave: string, d: Partial<Linha>) => { setSim(null); setPremios((ps) => ps.map((p) => (p.chave === chave ? { ...p, ...d } : p))); };
   const mover = (i: number, dir: -1 | 1) => setPremios((ps) => { const j = i + dir; if (j < 0 || j >= ps.length) return ps; const c = [...ps]; [c[i], c[j]] = [c[j], c[i]]; return c; });
   const num = (k: keyof typeof cfg, v: string) => setCfg({ ...cfg, [k]: Math.max(0, Math.round(Number(v) || 0)) });
@@ -59,14 +61,15 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
       ...(p.id ? { id: p.id } : comId ? { id: p.chave } : {}),
       rotulo: p.rotulo.trim(), tipo: p.tipo, valorCentavos: p.tipo === "CREDITO" || p.tipo === "SERVICO" ? paraCentavos(p.valor || "0") : 0,
       percentual: p.tipo === "DESCONTO" ? Math.round(Number(p.percentual) || 0) : 0, servicoId: p.tipo === "SERVICO" ? p.servicoId || null : null,
-      chanceBps: paraBps(p.chance) || 0, raridade: p.raridade, cor: p.cor, icone: p.icone, ativo: p.ativo,
+      chanceBps: paraBps(p.chance), raridade: p.raridade, cor: p.cor, icone: p.icone, ativo: participa(p),
       limiteMensal: numOuNulo(p.limite), estoque: numOuNulo(p.estoque), custoCentavos: p.custo.trim() ? paraCentavos(p.custo) : 0,
     }));
   }
   function validarLocal() {
     for (const p of premios) {
       if (!p.rotulo.trim()) return "Dê um nome para cada prêmio.";
-      if (Number.isNaN(paraBps(p.chance))) return `"${p.rotulo}": chance inválida.`;
+      const chance = paraBps(p.chance);
+      if (!Number.isFinite(chance) || chance < 0 || chance > 10_000) return `"${p.rotulo}": informe uma chance entre 0% e 100%.`;
       if ((p.tipo === "CREDITO") && !(paraCentavos(p.valor) > 0)) return `"${p.rotulo}": informe o valor em reais.`;
       if (p.custo.trim() && Number.isNaN(paraCentavos(p.custo))) return `"${p.rotulo}": custo inválido.`;
     }
@@ -117,7 +120,7 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
 
   return (
     <div className="space-y-4">
-      {jogo.tipo === "ROLETA" && <section className="cartao space-y-3" aria-label="Prévia visual da roleta"><h2 className="font-semibold">Teste visual da roleta</h2><PreviaRoleta fatias={premios.filter((p) => p.ativo && p.rotulo.trim()).map((p) => ({ id: p.chave, rotulo: p.rotulo.trim(), cor: p.cor, icone: p.icone, tipo: p.tipo, raridade: p.raridade }))} /></section>}
+      {jogo.tipo === "ROLETA" && <section className="cartao space-y-3" aria-label="Prévia visual da roleta"><h2 className="font-semibold">Teste visual da roleta</h2><PreviaRoleta fatias={ativos.filter((p) => p.rotulo.trim()).map((p) => ({ id: p.chave, rotulo: p.rotulo.trim(), cor: p.cor, icone: p.icone, tipo: p.tipo, raridade: p.raridade }))} /></section>}
       <section className="cartao space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <label className="flex items-center gap-3 font-semibold">
@@ -161,14 +164,14 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
         </div>
         <div className="space-y-2">
           {premios.map((p, i) => (
-            <div key={p.chave} className={`rounded-xl border p-2 ${p.ativo ? "border-zinc-200" : "border-dashed border-zinc-300 opacity-60"}`}>
+            <div key={p.chave} className={`rounded-xl border p-2 ${participa(p) ? "border-zinc-200" : "border-dashed border-zinc-300"}`}>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-[auto_1.4fr_1.2fr_.9fr_.8fr_auto]">
                 <div className="flex items-center gap-1">
                   <input type="color" value={p.cor} onChange={(e) => muda(p.chave, { cor: e.target.value })} className="h-9 w-9 cursor-pointer rounded border-0 bg-transparent" aria-label="Cor" />
                   <select className="campo w-auto py-1.5" value={p.icone} onChange={(e) => muda(p.chave, { icone: e.target.value })} aria-label="Ícone">{ICONES.map((x) => <option key={x} value={x}>{x}</option>)}</select>
                   <span className="text-ouro"><IconePremio icone={p.icone} tamanho={20} /></span>
                 </div>
-                <input className="campo py-1.5" maxLength={24} placeholder="Nome do prêmio" value={p.rotulo} onChange={(e) => muda(p.chave, { rotulo: e.target.value })} />
+                <input className="campo py-1.5" maxLength={LIMITE_NOME_PREMIO} placeholder="Nome do prêmio" value={p.rotulo} onChange={(e) => muda(p.chave, { rotulo: e.target.value })} />
                 <select className="campo py-1.5" value={p.tipo} onChange={(e) => muda(p.chave, { tipo: e.target.value as TipoPremio })}>{TIPOS.map((t) => <option key={t.v} value={t.v}>{t.r}</option>)}</select>
                 {p.tipo === "CREDITO" && <input className="campo py-1.5" inputMode="decimal" placeholder="Valor R$" value={p.valor} onChange={(e) => muda(p.chave, { valor: e.target.value })} />}
                 {p.tipo === "DESCONTO" && <input className="campo py-1.5" type="number" min={1} max={100} placeholder="% off" value={p.percentual} onChange={(e) => muda(p.chave, { percentual: e.target.value })} />}
@@ -185,10 +188,12 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
                 <div className="col-span-2 flex items-center justify-end gap-1 sm:col-span-1">
                   <button className="rounded p-1 text-zinc-500 hover:bg-zinc-100" onClick={() => mover(i, -1)} aria-label="Subir"><ArrowUp size={14} /></button>
                   <button className="rounded p-1 text-zinc-500 hover:bg-zinc-100" onClick={() => mover(i, 1)} aria-label="Descer"><ArrowDown size={14} /></button>
-                  <input type="checkbox" className="h-4 w-4 accent-[#d3ab45]" checked={p.ativo} onChange={(e) => muda(p.chave, { ativo: e.target.checked })} title="Ativo" />
+                  <input type="checkbox" className="h-4 w-4 accent-[#d3ab45]" checked={participa(p)} disabled={paraBps(p.chance) <= 0}
+                    onChange={(e) => muda(p.chave, { ativo: e.target.checked })} aria-label="Participa do sorteio" />
                   <button className="rounded p-1 text-zinc-500 hover:bg-red-50 hover:text-red-600" onClick={() => setPremios((ps) => ps.filter((x) => x.chave !== p.chave))} aria-label="Remover"><Trash2 size={14} /></button>
                 </div>
               </div>
+              {paraBps(p.chance) === 0 && <p className="mt-2 text-xs font-medium text-zinc-500">Só no painel</p>}
               {p.tipo !== "NADA" && (
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <select className="campo py-1.5 text-xs" value={p.raridade} onChange={(e) => muda(p.chave, { raridade: e.target.value as Raridade })} aria-label="Raridade">{RARIDADES.map((r) => <option key={r} value={r}>{ROTULO_RARIDADE[r]}</option>)}</select>
@@ -206,8 +211,8 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
           <button className="btn" onClick={() => setPremios((ps) => [...ps, { chave: `novo${++seq}`, rotulo: "", tipo: "CREDITO", valor: "", percentual: "", servicoId: "", chance: "0", raridade: "COMUM", cor: CORES[ps.length % CORES.length], icone: "dinheiro", ativo: true, limite: "", estoque: "", custo: "", saiuNoMes: 0 }])}>
             <Plus size={15} /> Adicionar prêmio
           </button>
-          {!somaOk && premios.some((p) => p.ativo) && (
-            <button className="btn" onClick={() => { const i = premios.findIndex((p) => p.ativo); muda(premios[i].chave, { chance: deBps((paraBps(premios[i].chance) || 0) + 10_000 - soma) }); }}>
+          {!somaOk && ativos.length > 0 && (
+            <button className="btn" onClick={() => muda(ativos[0].chave, { chance: deBps(paraBps(ativos[0].chance) + 10_000 - soma) })}>
               Ajustar o 1º para fechar 100%
             </button>
           )}
@@ -239,7 +244,7 @@ export function EditorJogo({ jogo, servicos, aoSalvar }: { jogo: JogoPainel; ser
 
       {msg && <p className={`rounded-xl p-3 text-sm ${msg.erro ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"}`}>{msg.t}</p>}
       <div className="flex justify-end">
-        <button className="btn-primario px-6 py-2.5" disabled={salvando || !somaOk} onClick={salvar}><Save size={16} /> {salvando ? "Publicando…" : "Publicar"}</button>
+        <button className="btn-primario px-6 py-2.5" disabled={salvando || !somaOk} onClick={salvar}><Save size={16} /> {salvando ? "Salvando…" : cfg.ativo ? "Publicar" : "Salvar"}</button>
       </div>
     </div>
   );

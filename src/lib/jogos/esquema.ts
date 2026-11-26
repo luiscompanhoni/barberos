@@ -2,13 +2,13 @@
  * Validacao (zod) da configuracao dos jogos vinda do painel.
  */
 import { z } from "zod";
-import { ICONES } from "./tipos";
+import { ICONES, LIMITE_NOME_PREMIO } from "./tipos";
 
 const dinheiro = z.number().int().min(0).max(1_000_000);
 
 export const zPremio = z.object({
   id: z.string().max(40).optional(),
-  rotulo: z.string().trim().min(1).max(24),
+  rotulo: z.string().trim().min(1).max(LIMITE_NOME_PREMIO),
   tipo: z.enum(["CREDITO", "BRINDE", "SERVICO", "DESCONTO", "NADA"]),
   valorCentavos: dinheiro,
   percentual: z.number().int().min(0).max(100),

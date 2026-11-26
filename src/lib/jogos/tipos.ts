@@ -8,6 +8,8 @@ export type Raridade = "COMUM" | "RARO" | "EPICO" | "LENDARIO";
 export type StatusPremio = "DISPONIVEL" | "RESERVADO" | "UTILIZADO" | "EXPIRADO" | "CANCELADO";
 export type OrigemJogada = "ATENDIMENTO" | "GRATIS" | "CAMPANHA" | "INDICACAO" | "ANIVERSARIO" | "ASSINATURA" | "MANUAL" | "AVALIACAO";
 
+export const LIMITE_NOME_PREMIO = 60;
+
 /** Icones desenhados na tela (lista fixa). */
 export const ICONES = ["dinheiro", "presente", "tesoura", "navalha", "pomada", "bebida", "coroa", "barba", "desconto", "estrela", "pente", "poste", "bigode", "nada"] as const;
 export type Icone = (typeof ICONES)[number];
