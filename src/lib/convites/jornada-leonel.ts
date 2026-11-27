@@ -32,16 +32,19 @@ export function instanteDeAjudaAposLeitura(envio: Date, leitura: Date) {
   return new Date(Math.max(+envio, +leitura) + 3_600_000);
 }
 
-export const AJUDA_APOS_LEITURA = "Opa! Conseguiu abrir o link que te mandei? Se precisar de ajuda, me chama por aqui.";
+export const AJUDA_APOS_LEITURA = [
+  "Opa! Conseguiu abrir o link que te mandei?",
+  "Se precisar de ajuda, me chama por aqui.",
+] as const;
 
-export function mensagemDaRetomada(nome: string, etapa: EtapaJornadaLeonel, link: string) {
+export function mensagemDaRetomada(nome: string, etapa: EtapaJornadaLeonel): readonly [string, string] {
   const primeiro = primeiroNome(nome);
   const oi = primeiro ? `Oi, ${primeiro}!` : "Oi!";
   switch (etapa) {
-    case "link": return `${oi} Conseguiu abrir o link que te mandei? Se quiser, te ajudo por aqui.\n\n${link}`;
-    case "roleta": return `${oi} Conseguiu girar a roleta da Black? Se a tela travou, me diz o que apareceu.\n\n${link}`;
-    case "cadastro": return `${oi} Conseguiu terminar o cadastro? Se travou em alguma etapa, me diz o que apareceu que eu te ajudo por aqui.\n\n${link}`;
-    case "agenda": return `${oi} Quer uma mão pra marcar teu próximo horário? Me diz o serviço e o dia que fica bom pra ti.`;
+    case "link": return [`${oi} Conseguiu abrir o link que te mandei?`, "Se quiser, te ajudo por aqui."];
+    case "roleta": return [`${oi} Conseguiu girar a roleta da Black?`, "Se a tela travou, me diz o que apareceu."];
+    case "cadastro": return [`${oi} Conseguiu terminar o cadastro?`, "Se travou em alguma etapa, me diz o que apareceu que eu te ajudo por aqui."];
+    case "agenda": return [`${oi} Quer uma mão pra marcar teu próximo horário?`, "Me diz o serviço e o dia que fica bom pra ti."];
   }
 }
 

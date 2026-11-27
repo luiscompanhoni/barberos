@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { assinaturaInstagramValida, desafioInstagram, lerEntradasInstagram } from "@/lib/instagram/protocolo";
+import { assinaturaInstagramValida, desafioInstagram, lerEntradasInstagram, lerRemocoesInstagram } from "@/lib/instagram/protocolo";
 import { dentroJanelaInstagram, enviarTextoInstagram, partesInstagram } from "@/lib/instagram/canal";
 import { pedidoDeNovaReservaDirect, pedidoPrivadoNoDirect, respostaModeloExigeEquipe, telefoneDoDirect, textoDaEquipeNoDirect, textoSeguroDoDirect } from "@/lib/instagram/privacidade";
 
@@ -54,6 +54,23 @@ describe("webhook do Instagram", () => {
     ]);
     expect(lerEntradasInstagram({ object: "instagram", entry: [{ id: "987", messaging: [entrada] }] }, perfil, agora)).toEqual([]);
     expect(lerEntradasInstagram([payload(entrada)], perfil, agora)).toHaveLength(1);
+  });
+
+  it("isola mensagens desfeitas para remoção retroativa, inclusive as já gravadas há mais tempo", () => {
+    const antiga = { ...entrada, timestamp: agora - 3 * 24 * 3_600_000, message: { mid: "apagada-ontem", is_deleted: true } };
+    const futura = { ...entrada, timestamp: agora + 20 * 60_000, message: { mid: "futura", is_deleted: true } };
+    const eco = { ...entrada, message: { mid: "eco", is_deleted: true, is_echo: true } };
+    expect(lerRemocoesInstagram(payload(
+      entrada,
+      antiga,
+      futura,
+      eco,
+      { ...entrada, message: { ...entrada.message, is_deleted: true } },
+    ), perfil, agora)).toEqual([
+      { igsid, mid: "apagada-ontem", timestamp: agora - 3 * 24 * 3_600_000 },
+      { igsid, mid: "aWdf:1_-=", timestamp: agora },
+    ]);
+    expect(lerEntradasInstagram(payload({ ...entrada, message: { ...entrada.message, is_deleted: true } }), perfil, agora)).toEqual([]);
   });
 });
 

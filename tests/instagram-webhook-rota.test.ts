@@ -2,9 +2,9 @@ import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET, POST } from "@/app/api/instagram/webhook/route";
 
-const mocks = vi.hoisted(() => ({ registrar: vi.fn(), depois: vi.fn(), processar: vi.fn(), encaminhar: vi.fn(), concluir: vi.fn() }));
+const mocks = vi.hoisted(() => ({ registrar: vi.fn(), remover: vi.fn(), depois: vi.fn(), processar: vi.fn(), encaminhar: vi.fn(), concluir: vi.fn() }));
 vi.mock("next/server", async importOriginal => ({ ...(await importOriginal<typeof import("next/server")>()), after: mocks.depois }));
-vi.mock("@/lib/instagram/persistencia", () => ({ registrarEntradaInstagram: mocks.registrar, encaminharEntradaInstagram: mocks.encaminhar, concluirEntradaInstagram: mocks.concluir }));
+vi.mock("@/lib/instagram/persistencia", () => ({ registrarEntradaInstagram: mocks.registrar, registrarRemocaoInstagram: mocks.remover, encaminharEntradaInstagram: mocks.encaminhar, concluirEntradaInstagram: mocks.concluir }));
 vi.mock("@/lib/instagram/processar", () => ({ processarEntradaInstagram: mocks.processar }));
 
 const url = "https://painel.exemplo.test/api/instagram/webhook";
@@ -12,9 +12,9 @@ const segredo = "app-secret-ficticio";
 const perfil = "17841400000001";
 const pagina = "887766";
 
-function mensagemAssinada({ objeto = "instagram", conta = perfil, destinatario = perfil, eco = false } = {}) {
+function mensagemAssinada({ objeto = "instagram", conta = perfil, destinatario = perfil, eco = false, apagada = false } = {}) {
   const timestamp = Date.now();
-  const entrada = { sender: { id: "1234" }, recipient: { id: destinatario }, timestamp, message: { mid: "m:1", text: "Olá", is_echo: eco } };
+  const entrada = { sender: { id: "1234" }, recipient: { id: destinatario }, timestamp, message: { mid: "m:1", text: apagada ? undefined : "Olá", is_echo: eco, is_deleted: apagada || undefined } };
   const corpo = `\n ${JSON.stringify({ object: objeto, entry: [{ id: conta, time: timestamp, messaging: [entrada] }] })}\n`;
   const assinatura = `sha256=${createHmac("sha256", segredo).update(corpo).digest("hex")}`;
   return { corpo, assinatura };
@@ -108,5 +108,14 @@ describe("rota pública do Instagram", () => {
       expect(mocks.encaminhar).toHaveBeenCalledOnce();
       expect(mocks.concluir).not.toHaveBeenCalled();
     } finally { log.mockRestore(); }
+  });
+
+  it("registra a remoção de uma mensagem desfeita e não agenda turno de atendimento", async () => {
+    const { corpo, assinatura } = mensagemAssinada({ apagada: true });
+    mocks.remover.mockResolvedValueOnce("c-teste");
+    expect((await POST(requisicao(corpo, assinatura))).status).toBe(200);
+    expect(mocks.remover).toHaveBeenCalledExactlyOnceWith({ igsid: "1234", mid: "m:1", timestamp: expect.any(Number) });
+    expect(mocks.registrar).not.toHaveBeenCalled();
+    expect(mocks.depois).not.toHaveBeenCalled();
   });
 });

@@ -35,7 +35,7 @@ export async function proxy(req: NextRequest) {
 
   // Logins, vitrine e paginas de pagamento (link com codigo aleatorio) sao publicos.
   const PUBLICAS = ["/vagas/", "/c/pagamento-simulado/", "/c/pagar/", "/c/assinar/", "/c/link/", "/c/r/", "/i/", "/t/"];
-  if (path === "/entrevistas" || path === "/entrar" || path === "/c/entrar" || path === "/assine" || path === "/privacidade" || path === "/termos" || PUBLICAS.some((p) => path.startsWith(p))) return NextResponse.next();
+  if (path === "/entrevistas" || path === "/entrar" || path === "/c/entrar" || path === "/assine" || path === "/privacidade" || path === "/termos" || path === "/exclusao-dados" || PUBLICAS.some((p) => path.startsWith(p))) return NextResponse.next();
   const sessao = await lerToken(tokenDoCookie(req.cookies));
   if (!sessao) {
     // Com enderecos separados, monta pelo endereco configurado (req.url pode vir com o host interno do servidor).
